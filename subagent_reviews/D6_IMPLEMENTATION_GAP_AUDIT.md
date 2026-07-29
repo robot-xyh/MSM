@@ -1,5 +1,42 @@
 # D6 实现差距审计
 
+## 2026-07-29 D4 readiness-v3 v2b 隔离配对
+
+### 已关闭
+
+1. D6 已实现 v3 紧凑证据的外部摘要绑定、清单/JSONL/逐 seed 一致性、有限值、truth-use
+   和生产权限失败关闭审计。
+2. 开发 ACK 与生产 authority 已分离；accepted ACK 不产生任何生产权限。
+3. 同键 R0/treatment 的拦截数和最小距离具备 10/10 覆盖，有界非退化可用并通过。
+4. `runtime_plan_outcome_join` 已增加 authority epoch/lease 丢失回归，保持
+   `same_plan_execution_signature_changed` 拒绝。
+5. 最终 v2b 来源合同已验证 11 个关键实现文件、episode manifest 和 implementation-set
+   摘要；v1 默认拒绝。
+6. seed 2007 full chain 已独立重算 control/treatment runtime join。D3 同身份 refresh
+   保持 epoch/lease 和严格执行签名，原上游刷新错误已关闭。
+7. D4 advisory、D3 successor、开发 ACK 和 19 条 D7 非 hold 指令同链；开发 ACK 与生产
+   authority 继续分离。
+8. 默认 runtime join 与冻结 persisted 原生 18/19 语义保持一致；full-chain audit 新增
+   显式 D2 v2 evaluator-only bounded coast bridge。seed 2007 的唯一 confirmed/unmatched
+   空档由同 track、同唯一 `TGT-0004` 双锚界定，原生 18 + bridge 1 = effective 19/19。
+9. bridge 的跨 schema、生命周期/关联状态、reason、空档污染、异 track/truth、超时、
+   uncommitted、ambiguous、竞争 claim、缺锚和缺 observation/hash/lineage 负例已失败关闭；
+   D2 写回、track 重绑、在线暴露与生产权限均为 false。
+
+### 当前 P1
+
+1. seed 2007 的候选与规则臂没有 D3 可执行字段差异；source/successor 的资源—目标和联盟
+   绑定也相同。学习候选干预不可辨识，正收益
+   unavailable/false。
+2. compact 10-seed 不嵌入每 seed 完整 episode，只支持摘要层非退化。若需 10-seed
+   ACK/D7/物理链覆盖率，仍需 main 保留对应 full episodes。
+
+当前无新增 D6-owned P0。D6 v2b adapter、full-chain replay 和失败关闭测试已完成。
+冻结 runtime 的原生 18/19 不被改写；本次关闭的是 D6 对该精确空档的 evaluator-only
+覆盖缺口，不代表 D2 在线恢复能力变化。双锚门限固定为
+`min(configuration.lineage_time_window_s, 0.9s hard cap)`；2026-07-29 全量 D6 回归为
+`1196 passed`。
+
 ## 2026-07-28 D4 A2 current-lineage 来源与配对
 
 ### 已关闭的 D6-owned 缺口

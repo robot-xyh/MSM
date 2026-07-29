@@ -23,11 +23,15 @@ from research_modules.scalable_3d_simulation.module_stack import (
 from research_modules.scalable_3d_simulation.orchestrator import run_episode
 
 from d6_evaluation_metrics.runtime_plan_outcome_join import (
+    D2_EVALUATOR_ONLY_BOUNDED_COAST_BRIDGE_POLICY,
+    D6_EVALUATOR_ONLY_BOUNDED_COAST_MAX_ANCHOR_GAP_S,
     HashedArtifact,
     RUNTIME_PLAN_OUTCOME_DIAGNOSTIC_NAME,
     RUNTIME_PLAN_OUTCOME_INPUT_SCHEMA_VERSION,
     RuntimePlanOutcomeJoinError,
     RuntimePlanOutcomeJoinInputs,
+    _build_identity_index,
+    _identity_mapping_for_window,
     evaluate_runtime_plan_outcomes,
     load_runtime_plan_outcome_join_inputs,
     write_runtime_plan_outcome_join_report,
@@ -306,6 +310,65 @@ def _identity_frame(index: int, timestamp: float) -> dict[str, Any]:
         "unavailable_mapping_count": 0,
         "reason_counts": {},
     }
+
+
+def _bounded_coast_identity_payload() -> dict[str, Any]:
+    track_id = "GT3D-000004"
+    truth_id = "TGT-0004"
+    gap = _track_mapping(track_id, truth_id)
+    gap.update(
+        {
+            "association_state": "unmatched",
+            "status": "unavailable",
+            "truth_target_id": None,
+            "reason": "track_not_assigned_in_frame",
+            "unavailable_reasons": ["track_not_assigned_in_frame"],
+            "candidate_truth_target_ids": [],
+            "source_observation_ids": [],
+            "source_lineage_hashes": [],
+            "evidence_count": 0,
+            "unique_lineage_count": 0,
+            "labeled_evidence_count": 0,
+            "replayed_lineage_count": 0,
+        }
+    )
+    timestamps = (
+        0.8334722201965242,
+        1.0351927210886156,
+        1.2361487940887796,
+    )
+    mappings = [
+        _track_mapping(track_id, truth_id),
+        gap,
+        _track_mapping(track_id, truth_id),
+    ]
+    return {
+        "schema_version": "d2.scalable3d_identity_evaluation.v2",
+        "configuration": {"lineage_time_window_s": 0.9},
+        "frames": [
+            {
+                "frame_index": index,
+                "frame_timestamp": timestamp,
+                "mappings": [mapping],
+            }
+            for index, (timestamp, mapping) in enumerate(
+                zip(timestamps, mappings, strict=True)
+            )
+        ],
+    }
+
+
+def _bounded_coast_mapping(
+    payload: Mapping[str, Any],
+) -> dict[str, Any]:
+    return _identity_mapping_for_window(
+        _build_identity_index(payload),
+        global_track_id="GT3D-000004",
+        start=1.0,
+        end=1.5,
+        end_inclusive=False,
+        allow_evaluator_only_bounded_coast_bridge=True,
+    )
 
 
 def _make_fixture(
@@ -1097,6 +1160,7 @@ def _rewrite_second_plan_as_refresh(
     rows: list[dict[str, Any]],
     *,
     tamper_execution_signature: bool = False,
+    drop_authority_scope: bool = False,
 ) -> None:
     refresh_plan = json.loads(json.dumps(rows[2]["payload"]))
     refresh_plan["metadata"]["execution_signature_changed"] = False
@@ -1104,6 +1168,9 @@ def _rewrite_second_plan_as_refresh(
     refresh_plan["metadata"]["plan_refresh_only"] = False
     if tamper_execution_signature:
         refresh_plan["assignments"][0]["coalition_version"] = 99
+    if drop_authority_scope:
+        refresh_plan["metadata"]["authority_epoch"] = None
+        refresh_plan["metadata"]["lease_expires_at_s"] = None
     refresh_guidance = _guidance(1, "GT-0001", 2.0)
     rows[7] = _envelope(
         8,
@@ -1691,6 +1758,24 @@ def test_same_version_refresh_with_changed_binding_signature_fails_closed(
     assert captured.value.code == "same_plan_execution_signature_changed"
 
 
+def test_same_version_refresh_cannot_drop_authority_epoch_or_lease(
+    tmp_path: Path,
+) -> None:
+    inputs, _ = _make_fixture(tmp_path / "sources")
+    inputs = _rewrite_online(
+        inputs,
+        lambda rows: _rewrite_second_plan_as_refresh(
+            rows,
+            drop_authority_scope=True,
+        ),
+    )
+
+    with pytest.raises(RuntimePlanOutcomeJoinError) as captured:
+        evaluate_runtime_plan_outcomes(inputs)
+
+    assert captured.value.code == "same_plan_execution_signature_changed"
+
+
 def test_stale_plan_version_is_rejected(tmp_path: Path) -> None:
     inputs, _ = _make_fixture(tmp_path / "sources")
 
@@ -1741,6 +1826,187 @@ def test_d2_mapping_missing_or_ambiguous_keeps_score_unavailable(
     assert first["start_3d_distance_m"] is None
     assert first["bounded_pair_progress_diagnostic"]["available"] is False
     assert first["formal_d3_ppo_reward"] is None
+
+
+def test_d2_v2_evaluator_only_bounded_coast_bridge_accepts_exact_gap() -> None:
+    mapping = _bounded_coast_mapping(_bounded_coast_identity_payload())
+
+    assert mapping["available"] is True
+    assert mapping["global_track_id"] == "GT3D-000004"
+    assert mapping["truth_target_id"] == "TGT-0004"
+    assert mapping["policy"] == (
+        D2_EVALUATOR_ONLY_BOUNDED_COAST_BRIDGE_POLICY
+    )
+    assert mapping["bridged_frame_count"] == 1
+    assert mapping["bridge_anchor_timestamps"] == [
+        0.8334722201965242,
+        1.2361487940887796,
+    ]
+    assert mapping["bridge_anchor_pairs"] == [
+        {
+            "before_frame_timestamp": 0.8334722201965242,
+            "after_frame_timestamp": 1.2361487940887796,
+            "anchor_gap_s": pytest.approx(0.4026765738922554),
+        }
+    ]
+    assert mapping["lineage_time_window_s"] == 0.9
+    assert mapping["max_anchor_gap_s"] == (
+        D6_EVALUATOR_ONLY_BOUNDED_COAST_MAX_ANCHOR_GAP_S
+    )
+    assert mapping["evaluator_only"] is True
+    assert mapping["online_exposure_allowed"] is False
+
+
+def test_d2_v2_bounded_coast_bridge_is_disabled_by_default() -> None:
+    payload = _bounded_coast_identity_payload()
+
+    mapping = _identity_mapping_for_window(
+        _build_identity_index(payload),
+        global_track_id="GT3D-000004",
+        start=1.0,
+        end=1.5,
+        end_inclusive=False,
+    )
+
+    assert mapping["available"] is False
+    assert mapping["reason"] == "d2_mapping_unavailable_in_window"
+    assert mapping["online_exposure_allowed"] is False
+
+
+@pytest.mark.parametrize(
+    ("field", "value"),
+    [
+        ("lifecycle_state", "lost"),
+        ("lifecycle_state", "dropped"),
+        ("lifecycle_state", "tentative"),
+        ("association_state", "lost"),
+        ("association_state", "dropped"),
+        ("reason", "identity_temporarily_unavailable"),
+    ],
+)
+def test_d2_v2_bounded_coast_bridge_rejects_gap_state_or_reason(
+    field: str,
+    value: str,
+) -> None:
+    payload = _bounded_coast_identity_payload()
+    payload["frames"][1]["mappings"][0][field] = value
+
+    assert _bounded_coast_mapping(payload)["available"] is False
+
+
+@pytest.mark.parametrize(
+    ("field", "value"),
+    [
+        ("truth_target_id", "TGT-0004"),
+        ("candidate_truth_target_ids", ["TGT-0004"]),
+        ("source_observation_ids", ["OBS-GAP"]),
+        ("source_lineage_hashes", ["sha256:" + "a" * 64]),
+    ],
+)
+def test_d2_v2_bounded_coast_bridge_rejects_gap_binding_evidence(
+    field: str,
+    value: Any,
+) -> None:
+    payload = _bounded_coast_identity_payload()
+    payload["frames"][1]["mappings"][0][field] = value
+
+    assert _bounded_coast_mapping(payload)["available"] is False
+
+
+@pytest.mark.parametrize("status", ["uncommitted", "ambiguous"])
+def test_d2_v2_bounded_coast_bridge_rejects_noncoast_status(
+    status: str,
+) -> None:
+    payload = _bounded_coast_identity_payload()
+    payload["frames"][1]["mappings"][0]["status"] = status
+
+    assert _bounded_coast_mapping(payload)["available"] is False
+
+
+@pytest.mark.parametrize("anchor_index", [0, 2])
+@pytest.mark.parametrize(
+    "field",
+    ["source_observation_ids", "source_lineage_hashes"],
+)
+def test_d2_v2_bounded_coast_bridge_rejects_anchor_without_lineage(
+    anchor_index: int,
+    field: str,
+) -> None:
+    payload = _bounded_coast_identity_payload()
+    payload["frames"][anchor_index]["mappings"][0][field] = []
+
+    assert _bounded_coast_mapping(payload)["available"] is False
+
+
+@pytest.mark.parametrize("anchor_index", [0, 2])
+def test_d2_v2_bounded_coast_bridge_rejects_missing_anchor(
+    anchor_index: int,
+) -> None:
+    payload = _bounded_coast_identity_payload()
+    del payload["frames"][anchor_index]
+
+    assert _bounded_coast_mapping(payload)["available"] is False
+
+
+def test_d2_v2_bounded_coast_bridge_rejects_cross_schema() -> None:
+    payload = _bounded_coast_identity_payload()
+    payload["schema_version"] = "d2.scalable3d_identity_evaluation.v1"
+
+    assert _bounded_coast_mapping(payload)["available"] is False
+
+
+def test_d2_v2_bounded_coast_bridge_rejects_different_anchor_track() -> None:
+    payload = _bounded_coast_identity_payload()
+    payload["frames"][2]["mappings"][0]["global_track_id"] = "GT3D-000099"
+
+    assert _bounded_coast_mapping(payload)["available"] is False
+
+
+def test_d2_v2_bounded_coast_bridge_rejects_different_anchor_truth() -> None:
+    payload = _bounded_coast_identity_payload()
+    anchor = payload["frames"][2]["mappings"][0]
+    anchor["truth_target_id"] = "TGT-0005"
+    anchor["candidate_truth_target_ids"] = ["TGT-0005"]
+
+    assert _bounded_coast_mapping(payload)["available"] is False
+
+
+def test_d2_v2_bounded_coast_bridge_rejects_anchor_timeout() -> None:
+    payload = _bounded_coast_identity_payload()
+    payload["frames"][2]["frame_timestamp"] = 1.8
+
+    assert _identity_mapping_for_window(
+        _build_identity_index(payload),
+        global_track_id="GT3D-000004",
+        start=1.0,
+        end=2.0,
+        end_inclusive=False,
+        allow_evaluator_only_bounded_coast_bridge=True,
+    )["available"] is False
+
+
+def test_d2_v2_bounded_coast_bridge_cannot_expand_hard_limit() -> None:
+    payload = _bounded_coast_identity_payload()
+    payload["configuration"]["lineage_time_window_s"] = 2.0
+    payload["frames"][2]["frame_timestamp"] = 1.8
+
+    assert _identity_mapping_for_window(
+        _build_identity_index(payload),
+        global_track_id="GT3D-000004",
+        start=1.0,
+        end=2.0,
+        end_inclusive=False,
+        allow_evaluator_only_bounded_coast_bridge=True,
+    )["available"] is False
+
+
+def test_d2_v2_bounded_coast_bridge_rejects_competing_truth_claim() -> None:
+    payload = _bounded_coast_identity_payload()
+    payload["frames"][1]["mappings"].append(
+        _track_mapping("GT3D-000099", "TGT-0004")
+    )
+
+    assert _bounded_coast_mapping(payload)["available"] is False
 
 
 def test_d2_v2_uncommitted_mapping_is_local_outcome_unavailable(

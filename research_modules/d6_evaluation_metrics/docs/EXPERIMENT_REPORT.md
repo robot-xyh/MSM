@@ -1,5 +1,65 @@
 # D6 正式实验矩阵准入预检报告
 
+## D4 readiness-v3 v2b 隔离双臂审计（2026-07-29）
+
+输入为 20 目标/20 资源、2 个侦察节点、8 区域、seeds 2003-2012、3.2 秒的开发隔离批次。
+最终 compact `SHA256SUMS` 外部摘要为
+`4077379face18c036b1cec3fe62e158c9cedb2e42da0d4e5c1573090b2da7745`，
+full seed 2007 摘要为
+`a061b2d69c98e07d506c28ce322761c5968417ac08ef607c1775a34f90c3d72c`。
+重生 D6 full-chain 输出的 `SHA256SUMS` 摘要为
+`6201eed6f7bcb6396c33631fe484d452cc050c630b5fb9783c11fde0ecf00199`。
+两份 v2b manifest 的 11 个关键实现文件集合摘要均为
+`893918a8b1b76df3fe7bf1efc75a3c81f76b97d3cc8633a1e2bf6568c01cc77c`。
+compact 13 个源文件和 full 92 个源文件全部受根清单约束。重复/缺失 seed、在线真值、
+非有限值和权限冒充均为 0。
+
+| 指标 | 结果 |
+| --- | ---: |
+| 原始推理/运行门/投影/隔离采用 | 10/10 |
+| D3 后继 | 1/10 |
+| 接受的开发 ACK | 1/10 |
+| producer 物理窗口摘要 | 1/10 |
+| compact 摘要内严格 successor→ACK→D7 同链重放 | 0/1 |
+| 无可执行后继 | 9/10 |
+| 拦截数 R0/treatment | 全部 0/0 |
+| 最小距离差值最大绝对值 | 0.0 米 |
+
+拦截数和最小距离在 10 个 seed 上覆盖完整，因此这两项的有界非退化可用并通过。10/10
+双臂均无拦截，最小距离逐 seed 完全相同，正收益 unavailable/false。候选与规则臂没有
+D3 可执行字段差异。
+
+seed 2007 full runtime join 的独立重算结果如下。
+
+| 指标 | control | treatment |
+| --- | ---: | ---: |
+| ACK | 4 | 4 |
+| bindings | 77 | 77 |
+| D4 regional applied ACK | 0 | 1 |
+| 同身份 refresh | 1 | 1 |
+| 在线真值使用 | 0 | 0 |
+| admission | closed | closed |
+
+treatment 的 advisory、source plan、P2/v2 successor、ACK 和 19 条 D7 非 hold 指令形成
+同链。首次发布与 refresh 的严格执行签名均为
+`sha256:00f71e0f06063c042e224af82faf19ec59d5319ac0c5cfb5ced3afe85576b4ad`，
+authority epoch 1 和 lease 5.85 秒保持不变。D3 refresh 修复通过 D6 失败关闭合同。
+
+默认 runtime join 与冻结 persisted 结果语义完全一致，19 条 D7 绑定中原生 18 条形成
+物理状态窗口。full-chain audit 对 `INT-0004/GT3D-000004` 的单帧空档显式应用
+evaluator-only bounded coast bridge：前锚 `0.833472220197s`、空档
+`1.035192721089s`、后锚 `1.236148794089s`，前后均唯一映射 `TGT-0004`，锚间隔
+`0.402676573892s <= 0.9s`。最终为原生 18 + bridge 1 = effective 19/19。
+
+bridge policy 为 `offline_confirmed_unmatched_double_anchor_v1`，只读 D2 v2 和离线 truth
+state，不回写 D2、不重绑 `global_track_id`，在线暴露为 false。source 与 successor 的
+资源—目标及联盟绑定仍完全相同，实际候选动作不可辨识。正收益保持 unavailable/false；
+该结果不能支持因果收益或生产准入，admission closed、规则回退和全部 false 权限保持。
+验收日期为 2026-07-29；样本为 seed 2007 的 1 个完整双臂 episode 和 19 条 applied-chain
+D7 绑定，bridge 接受门限为
+`<=min(configuration.lineage_time_window_s, 0.9s hard cap)`。D6 全量回归为
+`1196 passed`。
+
 ## D4 A2 来源与运行分布验证（2026-07-28）
 
 ### 结论

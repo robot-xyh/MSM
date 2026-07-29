@@ -1,5 +1,45 @@
 # D6 Evaluation Metrics Plan
 
+## 2026-07-29 D4 readiness-v3 v2b 隔离证据
+
+### 已完成
+
+- [x] 增加 v3 紧凑证据审计 adapter、CLI 和原子输出，外部固定 `SHA256SUMS` 摘要。
+- [x] 拒绝文件篡改、缺 seed、重复 seed、初态/外生配置不一致声明、在线真值、非有限值和
+  生产权限冒充。
+- [x] 分离开发 ACK、生产 authority、D4→D3 谱系、ACK/D7 摘要和严格同链可用性。
+- [x] 20v20、8 区域、10-seed 审计完成：D3 后继 1/10，开发 ACK 1/10，有界非退化
+  10/10 可评价并通过，正收益 unavailable/false。
+- [x] 增加同 plan identity refresh 丢失 authority epoch/lease 的失败关闭回归；不放宽
+  `runtime_plan_outcome_join`。
+- [x] 将最终来源 schema 收紧为
+  `scalable3d-d4-v3-isolated-rollout-v2`，精确验证 11 个关键实现文件、episode manifest
+  和 implementation-set 摘要；v1 默认拒绝。
+- [x] 增加 full-episode chain adapter、CLI、原子 JSON/中文 Markdown 输出；动态文件清单
+  要求全量根摘要绑定，并独立重算 control/treatment runtime join。
+- [x] 最终 v2b seed 2007 已验证同身份 refresh 保持 authority epoch/lease 和严格执行
+  签名；D4→D3 successor→ACK→D7 指令同链成立，全部生产权限保持 false。
+- [x] 保持通用 runtime join 默认行为与冻结 persisted 18/19 语义逐字段一致；新增默认关闭的
+  D2 v2 evaluator-only bounded coast helper，仅由 full-chain audit 显式启用。
+- [x] seed 2007 的 `GT3D-000004` confirmed/unmatched 单帧空档由
+  `0.833472220197s` 与 `1.236148794089s` 同 truth 双锚界定，锚间隔
+  `0.402676573892s <= 0.9s`；原生 18 + bridge 1 = effective 19/19。
+- [x] 桥接路径拒绝跨 schema、lost/dropped/tentative、错误 reason、非空候选/观测/lineage、
+  异 track/truth、超时、缺锚、缺 hash/lineage、uncommitted、ambiguous 和竞争 claim；
+  不写回 D2、不改 `global_track_id`，在线暴露与生产权限保持 false。
+- [x] 2026-07-29 全量 D6 回归 `1196 passed`；重生 full-chain JSON/中文 Markdown/
+  `SHA256SUMS`，输出清单摘要为
+  `6201eed6f7bcb6396c33631fe484d452cc050c630b5fb9783c11fde0ecf00199`。
+
+### 剩余 P1
+
+- [ ] 候选需产生与规则控制臂不同、且被 D3 合同消费的可辨识动作，随后再评价正收益。
+- [ ] compact 10-seed 只提供摘要，不能替代每 seed full-chain replay；若需要 10-seed
+  ACK/D7 物理链覆盖率，main 需保留相应完整 episode。
+
+冻结 runtime join 中原生 18/19 仍是上游事实；本次只关闭 D6 对该精确单帧空档的离线评估
+覆盖缺口，不把 evaluator bridge 解释为 D2 在线身份恢复。
+
 ## 2026-07-28 D4 A2 可信来源与严格配对
 
 ### 已完成

@@ -78,6 +78,10 @@ _D2_IDENTITY_POLICY_BY_SCHEMA = {
     D2_IDENTITY_EVALUATION_SCHEMA: D2_IDENTITY_POLICY,
     D2_IDENTITY_EVALUATION_SCHEMA_V2: D2_IDENTITY_POLICY_V2,
 }
+D2_EVALUATOR_ONLY_BOUNDED_COAST_BRIDGE_POLICY = (
+    "offline_confirmed_unmatched_double_anchor_v1"
+)
+D6_EVALUATOR_ONLY_BOUNDED_COAST_MAX_ANCHOR_GAP_S = 0.9
 EPISODE_BUS_SCHEMA = "scalable3d-episode-bus-v1"
 SCENARIO_SCHEMA = "scalable3d-scenario-v1"
 WORLD_SCHEMA = "scalable3d-world-v1"
@@ -324,6 +328,10 @@ class _IdentityIndex:
     by_global_track_id: Mapping[
         str,
         tuple[tuple[float, Mapping[str, Any]], ...],
+    ]
+    frame_mappings: tuple[
+        tuple[float, tuple[Mapping[str, Any], ...]],
+        ...,
     ]
 
 
@@ -2012,11 +2020,20 @@ def _build_identity_index(
         str,
         list[tuple[float, Mapping[str, Any]]],
     ] = defaultdict(list)
+    frame_mappings: list[
+        tuple[float, tuple[Mapping[str, Any], ...]]
+    ] = []
     for raw_frame in _sequence(evaluation.get("frames"), "D2 identity frames"):
         frame = _mapping(raw_frame, "D2 identity frame")
         frame_time = float(frame["frame_timestamp"])
-        for raw_mapping in _sequence(frame.get("mappings"), "D2 frame mappings"):
-            item = _mapping(raw_mapping, "D2 track mapping")
+        mappings = tuple(
+            _mapping(raw_mapping, "D2 track mapping")
+            for raw_mapping in _sequence(
+                frame.get("mappings"), "D2 frame mappings"
+            )
+        )
+        frame_mappings.append((frame_time, mappings))
+        for item in mappings:
             by_global_track_id[str(item["global_track_id"])].append(
                 (frame_time, item)
             )
@@ -2027,6 +2044,7 @@ def _build_identity_index(
             track_id: tuple(values)
             for track_id, values in by_global_track_id.items()
         },
+        frame_mappings=tuple(frame_mappings),
     )
 
 
@@ -2037,6 +2055,7 @@ def _identity_mapping_for_window(
     start: float,
     end: float,
     end_inclusive: bool,
+    allow_evaluator_only_bounded_coast_bridge: bool = False,
 ) -> dict[str, Any]:
     lineage_window = identity.lineage_time_window_s
     candidates = identity.by_global_track_id.get(global_track_id, ())
@@ -2049,9 +2068,11 @@ def _identity_mapping_for_window(
     relevant = [
         item
         for item in candidates
-        if item[0] >= selected_time - 1.0e-9
-        and _timestamp_in_window(
-            item[0], start=start, end=end, end_inclusive=end_inclusive
+        if (
+            item[0] >= selected_time - 1.0e-9
+            and _timestamp_in_window(
+                item[0], start=start, end=end, end_inclusive=end_inclusive
+            )
         )
         or math.isclose(item[0], selected_time, abs_tol=1.0e-9)
     ]
@@ -2083,18 +2104,29 @@ def _identity_mapping_for_window(
             ),
         )
     unavailable = [
-        item
-        for _, item in relevant
+        (timestamp, item)
+        for timestamp, item in relevant
         if item.get("status") != "available"
         or item.get("truth_target_id") is None
         or not item.get("source_observation_ids")
         or not item.get("source_lineage_hashes")
     ]
     if unavailable:
+        if allow_evaluator_only_bounded_coast_bridge:
+            bridge = _bounded_coast_identity_mapping(
+                identity,
+                global_track_id=global_track_id,
+                start=start,
+                end=end,
+                end_inclusive=end_inclusive,
+                selected_time=selected_time,
+            )
+            if bridge is not None:
+                return bridge
         reasons = sorted(
             {
                 str(item.get("reason") or "d2_mapping_unavailable_in_window")
-                for item in unavailable
+                for _, item in unavailable
             }
         )
         return _unavailable_identity(
@@ -2133,6 +2165,282 @@ def _identity_mapping_for_window(
         "source_lineage_hashes": lineage_hashes,
         "online_exposure_allowed": False,
     }
+
+
+def _bounded_coast_identity_mapping(
+    identity: _IdentityIndex,
+    *,
+    global_track_id: str,
+    start: float,
+    end: float,
+    end_inclusive: bool,
+    selected_time: float,
+) -> dict[str, Any] | None:
+    if (
+        identity.evaluation_schema_version
+        != D2_IDENTITY_EVALUATION_SCHEMA_V2
+    ):
+        return None
+
+    scope_frames = [
+        (timestamp, mappings)
+        for timestamp, mappings in identity.frame_mappings
+        if math.isclose(timestamp, selected_time, abs_tol=1.0e-9)
+        or (
+            timestamp >= selected_time - 1.0e-9
+            and _timestamp_in_window(
+                timestamp,
+                start=start,
+                end=end,
+                end_inclusive=end_inclusive,
+            )
+        )
+    ]
+    if not scope_frames:
+        return None
+
+    scoped_track_entries: list[tuple[float, Mapping[str, Any]]] = []
+    for timestamp, mappings in scope_frames:
+        track_mappings = [
+            item
+            for item in mappings
+            if item.get("global_track_id") == global_track_id
+        ]
+        if len(track_mappings) != 1:
+            return None
+        if any(
+            item.get("status") in {"uncommitted", "ambiguous"}
+            for item in mappings
+        ):
+            return None
+        scoped_track_entries.append((timestamp, track_mappings[0]))
+
+    scoped_track_entries.sort(key=lambda item: item[0])
+    if any(
+        math.isclose(left[0], right[0], abs_tol=1.0e-9)
+        for left, right in zip(
+            scoped_track_entries,
+            scoped_track_entries[1:],
+        )
+    ):
+        return None
+
+    unavailable_indices = [
+        index
+        for index, (timestamp, item) in enumerate(scoped_track_entries)
+        if item.get("status") == "unavailable"
+        and _timestamp_in_window(
+            timestamp,
+            start=start,
+            end=end,
+            end_inclusive=end_inclusive,
+        )
+    ]
+    if not unavailable_indices:
+        return None
+    if any(
+        not _bounded_coast_entry_is_valid(
+            item,
+            global_track_id=global_track_id,
+        )
+        for _, item in scoped_track_entries
+    ):
+        return None
+
+    available_truth_ids = {
+        str(item["truth_target_id"])
+        for _, item in scoped_track_entries
+        if item.get("status") == "available"
+    }
+    if len(available_truth_ids) != 1:
+        return None
+    truth_target_id = next(iter(available_truth_ids))
+
+    anchor_pairs: list[tuple[float, float]] = []
+    max_anchor_gap_s = min(
+        identity.lineage_time_window_s,
+        D6_EVALUATOR_ONLY_BOUNDED_COAST_MAX_ANCHOR_GAP_S,
+    )
+    for index in unavailable_indices:
+        before_index = next(
+            (
+                candidate
+                for candidate in range(index - 1, -1, -1)
+                if scoped_track_entries[candidate][1].get("status")
+                == "available"
+            ),
+            None,
+        )
+        after_index = next(
+            (
+                candidate
+                for candidate in range(
+                    index + 1,
+                    len(scoped_track_entries),
+                )
+                if scoped_track_entries[candidate][1].get("status")
+                == "available"
+            ),
+            None,
+        )
+        if before_index is None or after_index is None:
+            return None
+        before_time = scoped_track_entries[before_index][0]
+        after_time = scoped_track_entries[after_index][0]
+        if (
+            after_time - before_time
+            > max_anchor_gap_s + 1.0e-9
+        ):
+            return None
+        pair = (before_time, after_time)
+        if pair not in anchor_pairs:
+            anchor_pairs.append(pair)
+
+    for _, mappings in scope_frames:
+        for item in mappings:
+            if item.get("global_track_id") == global_track_id:
+                continue
+            candidates = _bounded_coast_string_sequence(
+                item.get("candidate_truth_target_ids")
+            )
+            if candidates is None:
+                return None
+            if (
+                item.get("truth_target_id") == truth_target_id
+                or truth_target_id in candidates
+            ):
+                return None
+
+    available_entries = [
+        item
+        for _, item in scoped_track_entries
+        if item.get("status") == "available"
+    ]
+    source_observations = sorted(
+        {
+            value
+            for item in available_entries
+            for value in (
+                _bounded_coast_string_sequence(
+                    item.get("source_observation_ids")
+                )
+                or ()
+            )
+        }
+    )
+    lineage_hashes = sorted(
+        {
+            _normalise_sha256(value)
+            for item in available_entries
+            for value in (
+                _bounded_coast_string_sequence(
+                    item.get("source_lineage_hashes")
+                )
+                or ()
+            )
+        }
+    )
+    anchor_timestamps = sorted(
+        {timestamp for pair in anchor_pairs for timestamp in pair}
+    )
+    return {
+        "available": True,
+        "reason": None,
+        "global_track_id": global_track_id,
+        "truth_target_id": truth_target_id,
+        "policy": D2_EVALUATOR_ONLY_BOUNDED_COAST_BRIDGE_POLICY,
+        "source_frame_timestamp": selected_time,
+        "evidence_frame_count": len(scoped_track_entries),
+        "source_observation_ids": source_observations,
+        "source_lineage_hashes": lineage_hashes,
+        "bridged_frame_count": len(unavailable_indices),
+        "bridge_anchor_timestamps": anchor_timestamps,
+        "bridge_anchor_pairs": [
+            {
+                "before_frame_timestamp": before,
+                "after_frame_timestamp": after,
+                "anchor_gap_s": after - before,
+            }
+            for before, after in anchor_pairs
+        ],
+        "lineage_time_window_s": identity.lineage_time_window_s,
+        "max_anchor_gap_s": max_anchor_gap_s,
+        "evaluator_only": True,
+        "online_exposure_allowed": False,
+    }
+
+
+def _bounded_coast_entry_is_valid(
+    item: Mapping[str, Any],
+    *,
+    global_track_id: str,
+) -> bool:
+    if (
+        item.get("global_track_id") != global_track_id
+        or item.get("lifecycle_state") != "confirmed"
+    ):
+        return False
+    status = item.get("status")
+    if status == "available":
+        truth_target_id = item.get("truth_target_id")
+        candidates = _bounded_coast_string_sequence(
+            item.get("candidate_truth_target_ids")
+        )
+        observations = _bounded_coast_string_sequence(
+            item.get("source_observation_ids")
+        )
+        lineage = _bounded_coast_string_sequence(
+            item.get("source_lineage_hashes")
+        )
+        return bool(
+            item.get("association_state") == "matched"
+            and isinstance(truth_target_id, str)
+            and truth_target_id
+            and candidates == (truth_target_id,)
+            and observations
+            and lineage
+            and all(_SHA256_RE.fullmatch(value.lower()) for value in lineage)
+        )
+    if status != "unavailable":
+        return False
+    reason = "track_not_assigned_in_frame"
+    return bool(
+        item.get("association_state") == "unmatched"
+        and item.get("reason") == reason
+        and _bounded_coast_string_sequence(item.get("unavailable_reasons"))
+        == (reason,)
+        and item.get("truth_target_id") is None
+        and _bounded_coast_string_sequence(
+            item.get("candidate_truth_target_ids")
+        )
+        == ()
+        and _bounded_coast_string_sequence(item.get("source_observation_ids"))
+        == ()
+        and _bounded_coast_string_sequence(item.get("source_lineage_hashes"))
+        == ()
+        and all(
+            isinstance(item.get(name), int)
+            and not isinstance(item.get(name), bool)
+            and item.get(name) == 0
+            for name in (
+                "evidence_count",
+                "unique_lineage_count",
+                "labeled_evidence_count",
+                "replayed_lineage_count",
+            )
+        )
+    )
+
+
+def _bounded_coast_string_sequence(value: Any) -> tuple[str, ...] | None:
+    if not isinstance(value, Sequence) or isinstance(
+        value,
+        (str, bytes, bytearray),
+    ):
+        return None
+    if any(not isinstance(item, str) or not item for item in value):
+        return None
+    return tuple(value)
 
 
 def _unavailable_identity(
@@ -2624,6 +2932,7 @@ def _fail(code: str, message: str) -> None:
 __all__ = [
     "ASSIGNMENT_PLAN_ACK_SCHEMA",
     "ASSIGNMENT_PLAN_ACK_TOPIC",
+    "D6_EVALUATOR_ONLY_BOUNDED_COAST_MAX_ANCHOR_GAP_S",
     "FIVE_METER_THRESHOLD_M",
     "GUIDANCE_COMMAND_TOPIC",
     "HashedArtifact",

@@ -1,5 +1,33 @@
 # D6 系统级离线评估模块原理
 
+## 隔离配对与计划刷新（2026-07-29）
+
+D4 readiness-v3 v2 证据先由外部 `SHA256SUMS` 摘要固定。D6 对 compact 复核精确文件
+清单，对 full episode 复核动态全文件清单。两类输入都要求 manifest、JSONL、逐 seed JSON
+和来源谱系一致。来源谱系固定提交、dirty 状态、episode manifest、11 个关键实现文件和
+实现集合摘要。开发 ACK 是隔离运行事实，不是生产 authority。
+
+同一 `plan_id/plan_version` 的 evaluation refresh 必须保持执行签名不变。执行签名由资源-
+目标绑定、联盟、未分配目标和 `active_plan_owner/owner_node_id/authority_epoch/
+lease_expires_at_s` 构成。原 seed 2007 刷新丢失 epoch 和 lease，D6 拒绝正确。最终 v2b
+中，首次发布与 refresh 的签名均为
+`sha256:00f71e0f06063c042e224af82faf19ec59d5319ac0c5cfb5ced3afe85576b4ad`，
+epoch 1 和 lease 5.85 秒保持不变。
+
+本批有界非退化只覆盖拦截数和最小距离，两项在 10 个 seed 上均有数据。该结论不等于候选
+有效。3.2 秒内无拦截且最小距离无变化，正收益不可用。full replay 验证 19 条 D7 指令
+同链。默认 runtime join 保持冻结的原生 18/19；full-chain audit 对唯一 confirmed/unmatched
+空档显式启用 evaluator-only 双锚 coast bridge，得到原生 18 + bridge 1 = effective 19/19。
+source/successor 绑定没有变化，实际动作仍不可辨识。
+
+bridge 只接受 D2 v2。空档帧必须为 confirmed、unmatched、reason 精确为
+`track_not_assigned_in_frame`，且不携带 truth candidate、observation 或 lineage。前后最近
+available 锚必须同 `global_track_id`、同唯一 truth，且 observation/lineage 非空；锚间隔不得
+超过 `min(configuration.lineage_time_window_s, 0.9s)`，调用方配置不能放宽 D6 的 0.9 秒
+硬门。相关窗口出现 uncommitted、ambiguous、竞争 claim、异 track/truth、缺锚或缺 hash 时
+一律不可用。策略不写回 D2、不重绑 `global_track_id`，`online_exposure_allowed=false`；
+truth state 只在身份桥接通过后进入 `_state_window`。
+
 ## 四层证据边界（2026-07-28）
 
 D4 A2 current-lineage 的评估分为模型来源、运行分布、影子动作和实际采用四层。来源层回答

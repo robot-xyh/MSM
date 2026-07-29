@@ -1,5 +1,24 @@
 # D6 系统评估指标综述及子方案
 
+## 2026-07-29 D4 readiness-v3 v2b 评审
+
+评审接受 D6 v3 紧凑证据 adapter。10 个开发 seed 的完整性、有限值、零在线真值和 false
+生产权限通过；D3 后继与开发 ACK 仅 1/10。拦截数和最小距离的有界非退化可评价并通过，
+但全批无拦截、距离无改善，正收益保持 unavailable/false。
+
+最终 v2b 来源谱系固定 11 个关键实现文件。seed 2007 full episode 已独立重放：
+control/treatment 均为 4 ACK、77 bindings、1 次同身份 refresh，treatment 有 1 次 D4
+regional applied。首次 successor 和 refresh 的严格签名一致，authority epoch/lease 保留，
+说明 D3 修复有效且 D6 检查无需放宽。
+
+19 条 D7 非 hold 指令同链。通用 runtime replay 默认保持冻结 persisted 的原生 18/19；
+full-chain audit 以默认关闭、D2 v2-only 的 evaluator bridge 处理
+`GT3D-000004` confirmed/unmatched 单帧空档，得到原生 18 + bridge 1 = effective 19/19。
+双锚为 `0.833472220197s/1.236148794089s`，同为唯一 `TGT-0004`，间隔
+`0.402676573892s <= 0.9s`。策略不回写 D2、不改 track ID，在线暴露为 false。
+source/successor 绑定相同，候选动作仍不可辨识。评审维持正收益 unavailable/false、
+admission closed、rule fallback required 和全部生产权限 false。
+
 ## 2026-07-28 D4 A2 来源、分布与配对评审
 
 评审接受 A2 current-lineage 固定来源适配器。reference 只登记候选清单路径和摘要，D6 从

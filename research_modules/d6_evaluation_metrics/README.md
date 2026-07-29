@@ -1,5 +1,47 @@
 # D6 Evaluation Metrics
 
+## 2026-07-29 D4 readiness-v3 v2b 隔离审计
+
+D6 使用两个只读入口审计最终 v2b：紧凑 10-seed 配对审计和 seed 2007 完整 episode
+链路重放。两者均先固定根 `SHA256SUMS` 外部摘要。v2 manifest 还必须携带精确
+`source_provenance`，包括提交、dirty 状态、双臂 episode manifest 摘要、11 个关键实现
+文件摘要及实现集合摘要。完整 episode 允许动态文件清单，但目录内每个文件都必须被根
+清单绑定。
+
+最终 compact anchor 为
+`4077379face18c036b1cec3fe62e158c9cedb2e42da0d4e5c1573090b2da7745`。
+20 目标/20 资源、8 区域、seeds 2003-2012、3.2 秒批次中，10/10
+通过输入完整性、初态/外生配置一致声明和候选推理门；1/10 形成 D3 后继及开发 ACK，9/10
+为 `regional_hint_no_executable_successor`。已声明的拦截数和最小距离具有 10/10 覆盖，
+两臂逐 seed 完全相同，因此有界非退化可用且通过。全批无拦截、无最小距离改善，正收益
+保持 unavailable/false。
+
+最终 full anchor 为
+`a061b2d69c98e07d506c28ce322761c5968417ac08ef607c1775a34f90c3d72c`。
+重生后的 D6 full-chain 输出 `SHA256SUMS` 摘要为
+`6201eed6f7bcb6396c33631fe484d452cc050c630b5fb9783c11fde0ecf00199`。
+control/treatment 均独立重算为 4 ACK、77 bindings、1 次同身份 refresh；treatment 有
+1 条 D4 regional applied ACK。source sequence/hash 全部通过，在线真值使用为 0。
+后继首次发布和 refresh 的严格执行签名均为
+`sha256:00f71e0f06063c042e224af82faf19ec59d5319ac0c5cfb5ced3afe85576b4ad`，
+epoch 1 和 lease 5.85 秒保持不变，确认原 D6 拒绝正确且 D3 refresh 已修复。
+
+该后继的 19 条 D7 指令和非 hold 控制均同链。冻结 persisted runtime join 及默认
+`evaluate_runtime_plan_outcomes` 语义保持原生 18/19，二者除可迁移暂存路径外逐字段一致。
+full-chain audit 另以显式 evaluator-only
+`offline_confirmed_unmatched_double_anchor_v1` 桥接
+`GT3D-000004` 的 1 个 confirmed/unmatched 空档帧：前锚
+`0.833472220197s`、空档 `1.035192721089s`、后锚 `1.236148794089s`，锚间隔
+`0.402676573892s <= 0.9s`。因此统计为原生 18 + bridge 1 = effective 19/19。
+该策略默认关闭，仅支持 `d2.scalable3d_identity_evaluation.v2`；不写回 D2、不改
+`global_track_id`，`online_exposure_allowed=false`。双锚有效上限为
+`min(configuration.lineage_time_window_s, 0.9s)`，调用方配置不能放宽 D6 的 0.9 秒硬门。
+
+source 与 successor 的资源—目标及联盟绑定仍完全相同，因此实际候选动作不可辨识，正收益
+仍为 unavailable/false。开发 ACK 不产生生产权限，admission 继续关闭并要求规则回退。
+2026-07-29 验证覆盖 seed 2007 的 1 个完整双臂 episode、19 条 applied-chain D7 绑定及
+全部 D6 测试；`pytest -q research_modules/d6_evaluation_metrics/tests` 为 `1196 passed`。
+
 ## 2026-07-28 D4 A2 来源、分布、动作与采用审计
 
 D6 已为 D4 current-lineage A2 候选增加只读可信来源适配器。当前信任锚固定为 clean

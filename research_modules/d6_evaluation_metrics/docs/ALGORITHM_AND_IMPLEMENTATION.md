@@ -1,5 +1,52 @@
 # D6 系统级离线评估：算法原理与实施说明
 
+## D4 v3 隔离证据审计（2026-07-29）
+
+审计入口要求 `input_root` 和调用方固定的 `SHA256SUMS` SHA-256。最终 schema 为
+`scalable3d-d4-v3-isolated-rollout-v2`。manifest 必须精确包含 `source_provenance`，
+其 11 个实现文件路径、逐文件摘要、实现集合摘要、提交/dirty 状态和双臂 episode manifest
+摘要均需复算。compact 使用固定清单；full episode 使用动态清单，但每个文件必须被根
+清单绑定。v1 默认拒绝。
+
+语义审计依次检查双臂隔离声明、候选管线、D4 advisory 来源、D3 successor 谱系、开发 ACK
+摘要和 D7 物理窗口摘要。所有生产权限必须显式为 false。候选动作按
+`resource_quota_delta/reserve_ratio/hold/request_replan/transfers` 比较规则臂和候选臂；
+侦察优先级单独记录，不作为当前 D3 可执行变化。
+
+同键非退化按 seed 比较 treatment 与 R0。拦截数采用“越大越好”，最小距离采用“越小越好”。
+只有全部 seed 两项均存在且有限时输出 available。本批两项差值均为 0，因此非退化通过，
+正收益仍 unavailable/false。ACK 摘要缺 plan identity/source sequence，D7 摘要缺原始
+guidance payload/hash，严格同链不由摘要反推。
+
+full adapter 从 hash-bound `input_specification.json` 重新调用
+`runtime_plan_outcome_join`。持久化结果中的原子暂存绝对路径允许归一化，其他字段必须逐项
+一致。随后按 bus sequence 和 payload hash 重放 D4 advisory、source/successor plan、ACK
+和 D7 指令。最终 v2b 首次发布与 refresh 的严格签名一致，证明 D3 已修复 epoch/lease
+继承；检查没有放宽。通用 `evaluate_runtime_plan_outcomes` 不启用 coast bridge，因而仍与
+冻结 persisted join 的原生 18/19 结果逐字段一致。
+
+full-chain adapter 随后显式调用默认关闭的
+`offline_confirmed_unmatched_double_anchor_v1`。该 helper 仅接受
+`d2.scalable3d_identity_evaluation.v2`，按 assignment window 读取同 track 全帧 mapping，
+并要求所有 unavailable 帧同时满足：
+
+1. `lifecycle_state=confirmed`、`association_state=unmatched`、
+   `reason=track_not_assigned_in_frame`；
+2. truth、candidate truth、source observation 和 source lineage 全空，四类证据计数均为 0；
+3. 前后最近 available 锚为同一 `global_track_id`、同一唯一 `truth_target_id`，两端
+   observation 和 SHA-256 lineage 均非空；
+4. 锚间隔不超过
+   `min(configuration.lineage_time_window_s, D6 hard cap 0.9s)`，且相关帧内不存在
+   uncommitted、ambiguous 或其他 track 对同 truth 的竞争 claim；configuration 取 2.0 秒
+   也不能放宽该硬门。
+
+身份桥接通过后才把 evaluator truth label 交给 `_state_window` 验证物理时间窗。helper
+不修改 D2 artifact 或 `global_track_id`，并固定 `online_exposure_allowed=false`。seed 2007
+的前锚、空档、后锚分别为 `0.833472220197s`、`1.035192721089s`、
+`1.236148794089s`，锚间隔 `0.402676573892s <= 0.9s`，因此 D7 覆盖为原生
+18 + bridge 1 = effective 19/19。D7 绑定覆盖、原生物理窗口和 evaluator bridge 分开计数，
+避免掩盖冻结 runtime 的原生缺口。
+
 ## D4 A2 来源与严格配对算法（2026-07-28）
 
 ### 来源适配

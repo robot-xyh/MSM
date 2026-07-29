@@ -1,5 +1,18 @@
 # D6 M 对 N 协同拦截评估框架审查
 
+## 2026-07-29 20 对 20 D4 v3 v2b 隔离证据
+
+20 目标/20 资源、8 区域、10-seed 紧凑批次通过 D6 完整性审计。D3 后继和开发 ACK 为
+1/10，其余 9/10 无可执行后继。两臂拦截数和最小距离逐 seed 相同，只能形成这两项的有界
+非退化，不能形成正收益。seed 2007 候选与规则臂的可执行字段相同。
+
+最终 seed 2007 full episode 已通过独立 runtime join 重放。P2/v2 首次发布和 refresh 保持
+相同严格签名、authority epoch 1 和 lease 5.85 秒。D4 successor 的 19 条 D7 非 hold 指令
+同链。默认 runtime join 保留原生 18/19；显式 D2 v2 evaluator-only 双锚 coast bridge
+接受 1 个 confirmed/unmatched 空档后，有效覆盖为 19/19。source/successor 绑定相同，
+候选动作仍不可辨识。M 对 N 评估框架不从场景名推断规模，也不以开发 ACK 或 bridge
+替代生产 authority。
+
 ## 2026-07-28 A2 区域资源影子证据边界
 
 A2 current-lineage 来源适配器和严格 A2/R0 配对 consumer 已完成，可用于后续 M 对 N 区域
