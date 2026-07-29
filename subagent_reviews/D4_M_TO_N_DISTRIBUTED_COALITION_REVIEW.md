@@ -1,5 +1,19 @@
 # D4 M 对 N 分布式联盟形成与降级接管调研
 
+## 2026-07-27 区域策略实际动作边界
+
+实际 development 模型已在独立 calibration split 的 20 seed/420 sample 上产生 76 个安全
+非零区域动作，证明模型并非只能输出无操作。其余 344 个样本因资源可行域回到无操作，主要
+发生在资源已全部承诺时。该批没有形成联盟成员选择、required-member ACK、原子 commit 或
+物理执行，不能作为 M 对 N 联盟采用证据。
+
+候选 manifest、模型权重、数据集和逐 seed 分母已经绑定，两次重跑稳定得到 76/344；当前
+候选实现谱系与代码不一致，当前谱系开发证据为 false，seed 1000-1019 未使用。区域建议
+仍不能指定 target/member，
+也不能绕过中心、二级或 distributed 的 owner/version/epoch/lease 和联盟门。专项 10/10，
+D4 全量 **689/689 passed**；中心重规划、二级接管、联盟提交、assignment、failover、
+control 和 benefit 均为 false。
+
 ## 2026-07-27 联盟输入严格性复核
 
 联盟成员确认现在要求 `can_execute` 为原生布尔值，确认和状态时间为有限非负数。字符串

@@ -1,5 +1,44 @@
 # D4 分布式协同与降级接管计划
 
+## 2026-07-27 A2 实际模型诊断与后续校准计划
+
+模块内 development-only 实际模型诊断路径已经完成。路径不修改模型和安全状态机，只从
+候选清单读取互斥的 train/validation/calibration/reserved seed 目录，在 calibration 目录
+上执行以下固定顺序：
+
+1. 验证候选、模型权重、数据集和校准种子身份，拒绝 dirty 来源、保留 seed 和真值字段。
+2. 执行实际 `LearnedRegionResourcePolicy` 推理，并固定使用 0.60 置信门和 0.05 分布外
+   余量。动作分类使用固定 0 ms 功能性时延覆盖以消除主机调度抖动；50 ms 运行门配置不变，
+   时延性能另行验证。
+3. 逐区域比较原始与投影后配额、整数备用资源、`hold` 和 `request_replan`；逐转移检查边
+   容量、链路掩码和源区域资源预算。
+4. 将无操作归因为动作与基线相同、置信不足、动作掩码、owner/lease/epoch、资源不可行或
+   批次策略输出退化。只有模型身份一致、固定门通过、advisory 可消费且干预字段非空时，
+   才记录 `safe_nonzero_actual_model`。
+5. 输出仅为开发诊断。不得装配正式 runtime adoption、收益或任何权限。
+
+2026-07-27 的本地完整校准运行包含 20 seed/420 sample。结果为固定门通过 420、回退 0，
+安全非零实际模型动作 76、资源可行域无操作 344；保留 seed 和在线真值使用均为 0。原始
+可执行动作签名为 88 种，批次退化为 false。当前结论说明模型能产生非零区域动作，也说明
+nominal/全承诺资源状态会系统性压掉备用比例建议。受控
+`ConstrainedDevelopmentRegionResourceAdapter` 继续只作链路探针，不能替代本次模型证据。
+
+后续 P1 顺序为：
+
+1. 用当前实现谱系重新生成候选制品；现有候选因 implementation lineage mismatch 只能用于
+   开发诊断。
+2. 在 train/validation 内处理全承诺资源下的零备用动作表达，可研究显式零动作头或
+   feasibility-aware mask；不得用校准或 seed 1000-1019 调门限。
+3. 重新运行独立 calibration split，要求至少一个实际模型非零动作、固定门不降低、资源
+   无操作原因分布可解释。
+4. 之后才在至少 20 个正式未见 seed 上生成严格后继计划、owner/coalition ACK、物理窗口和
+   独立同键 R0，并交由 D6 做非退化审计。
+
+本轮专项 **10/10 passed**，D4 全量 **689/689 passed**。候选清单 SHA-256、模型
+manifest/权重摘要、逐 seed 分母和分类摘要均已绑定；两次重跑稳定得到 76/420 与 344/420。
+assist、assignment、center replan、secondary takeover、coalition commit、failover 和
+control 权限保持 false；未启动正式 900-cell、AirSim 或大写盘实验。
+
 ## 2026-07-27 提交前状态
 
 模块内 A2 类型边界、通信映射严格解析、成员确认有限值检查和中心/二级/完全分布式三层
@@ -9,7 +48,8 @@
 
 仍开放的 P1 不在本次模块内收尾范围：main 真实 episode 的 owner/coalition ACK 路由与
 物理窗口持久化、独立同键 R0 和 D6 非退化审计、二级/完全分布式 AirSim 多随机种子验证，
-以及实际 admitted A2 策略自身产生非零动作后的未见种子收益验证。上述证据形成前，学习
+以及当前谱系 A2 策略在正式未见种子中的实际采用和收益验证。独立校准集已经证明旧
+development 模型可产生非零动作，但未形成运行时采用。上述证据形成前，学习
 assist、failover、assignment 和 control 权限继续关闭。
 
 ## 2026-07-27 A2 开发态干预计划状态
@@ -71,8 +111,10 @@ member 同样参与首次投影。验证为安全采用专项 **68/68 passed**�
 5 target/5 resource/1 recon/2 region、3.0 s、seed 1、radar detection probability 0.45。
 显式开启 `force_request_replan_on_projected_noop` 后，1/1 A2 记录到达
 `physical_window_available`，可辨识干预、安全采用和物理窗口均可用，权限和收益均不可用。
-当前 P1 是 main 将该 formal-aware 调用固定到自身开发探针、完成 20-seed 重跑、独立 R0 和
-实际模型非零策略；标准 advisor 的适配器仍为 shadow，该开发探针不关闭模型准入或收益 P1。
+当前 P1 是 main 将该 formal-aware 调用固定到自身开发探针、完成 20-seed 重跑和独立 R0。
+实际旧 development 模型已在独立 calibration split 产生 76 个安全非零动作，但当前实现
+谱系、正式未见 seed 和运行时采用尚未闭合；标准 advisor 的适配器仍为 shadow，该开发探针
+不关闭模型准入或收益 P1。
 
 ## 2026-07-27 A2 无操作归因计划状态
 

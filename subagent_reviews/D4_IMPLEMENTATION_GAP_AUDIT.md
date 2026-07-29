@@ -1,5 +1,36 @@
 # D4 实现差距审计：分布式协同与降级接管
 
+## 2026-07-27 A2 实际策略干预诊断 GAP 更新
+
+- **已关闭的 D4 模块 P1 子项**：实际 development 模型能否在与训练、验证和保留 seed
+  隔离的校准样本上产生安全、非零、可归因区域动作。新诊断直接调用模型，不把受控适配器的
+  规则派生动作归给模型。
+- **互斥切分**：20 个 calibration seed/420 sample；train、validation 和
+  seed 1000-1019 使用数为 0。固定最低置信度 0.60、分布外余量 0.05，未在校准集调参。
+  动作分类固定使用 0 ms 功能性时延覆盖，运行 50 ms 门配置不变；本批不提供时延性能证据。
+- **实际结果**：固定门通过 420、回退 0；`safe_nonzero_actual_model=76`，
+  `resource_infeasible=344`。安全非零字段累计为备用资源 197、重规划 40、配额 40、
+  hold 20、transfer 20。原始可执行动作签名 88，批次输出退化为 false。
+- **无操作根因**：360 个样本至少一个区域的正备用请求超过可行备用量。备用比例头经
+  Sigmoid 后严格为正，整数向上取整会请求至少 1 个备用资源；区域资源已全部承诺时，
+  确定性投影将请求压回受保护基线。低置信、OOD、owner/lease/epoch、动作掩码和模型输出
+  非有限拒绝均为 0。
+- **证据边界**：候选 manifest SHA-256、模型 manifest/权重、数据集 SHA-256、逐 seed
+  分母和分类摘要已经绑定。候选 implementation lineage 与当前代码不一致；历史非零观察为
+  true，当前谱系开发证据为 false，不构成 runtime adoption、系统收益或正式 holdout。
+- **失败关闭补强**：未知区域动作、非有限配额、模型 manifest 错绑，以及缺失/错误
+  plan version、epoch、lease、ACK 均失败关闭，不进入 76 个安全非零计数。
+- **权限**：assist、assignment、center replan、secondary takeover、coalition commit、
+  failover、control、formal evidence、actual safe adoption 和 benefit 全部为 false。
+- **验证**：2026-07-27，专项 **10/10 passed**，D4 全量 **689/689 passed**；两次重跑均为
+  76/420 安全非零、344/420 资源不可行，每个 seed 21 个样本，稳定摘要一致。紧凑审计位于
+  `research_modules/d4_distributed_fallback/reports/region_resource_a2_actual_policy_calibration_20260727_v1/`。
+  未运行 AirSim、正式 900-cell 或大写盘实验。
+- **剩余 P1**：重新生成当前实现谱系候选；不使用 calibration/保留 seed 调参；在至少
+  20 个正式未见 seed 中形成非零候选、严格 D3 后继计划、owner/coalition ACK、物理窗口、
+  独立同键 R0 和 D6 非退化审计。完成前不得开放任何权限。
+- **P0**：无新增 P0。
+
 ## 2026-07-27 提交就绪 GAP 复核
 
 - **本轮关闭**：联盟 `can_execute` 字符串真值、非有限 ACK/commit 时间、安全采用非布尔
@@ -12,8 +43,9 @@
   `py_compile` 与 scoped `git diff --check` 通过。唯一警告为既有 Matplotlib 环境提示。
 - **P0**：未发现新增 P0，当前 D4 模块变更建议提交。
 - **剩余 P1**：main 真实 episode owner/coalition ACK 与物理窗口持久化；独立同键 R0 和
-  D6 非退化；二级/完全分布式 AirSim 多 seed；实际 admitted A2 策略非零干预和未见种子
-  收益。完成前全部学习及控制权限保持失败关闭。
+  D6 非退化；二级/完全分布式 AirSim 多 seed；当前实现谱系 A2 策略的正式未见种子采用和
+  收益。旧 development 模型在独立校准集的非零输出已得到证明，但不能替代上述证据。完成
+  前全部学习及控制权限保持失败关闭。
 
 ## 2026-07-27 A2 开发态非零候选 GAP 更新
 
@@ -48,8 +80,9 @@
   夹具运行指定 seed 1 探针，1/1 A2 记录到达 `physical_window_available`；可辨识、安全
   采用、物理窗口均为 true，在线真值使用为 0，权限和收益均为 false。
 - **仍开放的 P1**：main 需把该调用方式固化到 main-owned 开发探针并重跑 20 seed，记录
-  successor reason。实际 learned policy 仍需产生自身非零动作；独立同键 R0 和 D6 收益仍
-  未形成。标准 advisor 继续将此适配器限制为 shadow。
+  successor reason。旧 actual learned policy 已在独立 calibration split 产生 76 个非零
+  动作，但当前实现谱系、正式未见 seed、独立同键 R0 和 D6 收益仍未形成。标准 advisor
+  继续将此适配器限制为 shadow。
 - **P0**：无新增 P0。该适配器没有进入默认路径，也没有改变 D3/D7 控制门。
 
 ## 2026-07-27 A2 无操作误归因 GAP 更新

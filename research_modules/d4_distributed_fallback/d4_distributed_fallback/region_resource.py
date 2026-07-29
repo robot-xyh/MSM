@@ -132,14 +132,37 @@ class RegionResourceNode:
             "epoch",
             "assignment_conflict_count",
         ):
-            if int(getattr(self, name)) < 0:
-                raise ValueError(f"{name} must be non-negative")
+            object.__setattr__(
+                self,
+                name,
+                _strict_integer(
+                    getattr(self, name),
+                    name=name,
+                    minimum=0,
+                ),
+            )
+        for name in (
+            "coalition_ack_complete",
+            "owner_active",
+            "fault_fenced",
+            "degradation_failed",
+        ):
+            if not isinstance(getattr(self, name), bool):
+                raise ValueError(f"{name} must be a boolean")
         if self.reserve_resources + self.committed_resources > self.available_resources:
             raise ValueError(
                 "reserve_resources plus committed_resources exceeds available_resources"
             )
-        if self.fault_fence_epoch is not None and int(self.fault_fence_epoch) < 0:
-            raise ValueError("fault_fence_epoch must be non-negative when present")
+        if self.fault_fence_epoch is not None:
+            object.__setattr__(
+                self,
+                "fault_fence_epoch",
+                _strict_integer(
+                    self.fault_fence_epoch,
+                    name="fault_fence_epoch",
+                    minimum=0,
+                ),
+            )
 
     def to_dict(self) -> dict[str, Any]:
         return to_jsonable(self)
@@ -147,6 +170,22 @@ class RegionResourceNode:
     @classmethod
     def from_dict(cls, value: Mapping[str, Any]) -> "RegionResourceNode":
         _reject_truth_identifiers(value)
+        required_authority_fields = {
+            "current_owner_id",
+            "current_owner_layer",
+            "plan_id",
+            "plan_version",
+            "epoch",
+            "lease_expires_at_s",
+            "coalition_ack_complete",
+            "owner_active",
+            "fault_fenced",
+        }
+        missing = sorted(required_authority_fields - set(value))
+        if missing:
+            raise ValueError(
+                "region authority fields missing: " + ",".join(missing)
+            )
         return cls(**dict(value))
 
 
@@ -425,10 +464,38 @@ class RegionResourceAction:
             raise ValueError("reserve_ratio must be in [0, 1]")
         if not _unit_interval(self.reconnaissance_priority):
             raise ValueError("reconnaissance_priority must be in [0, 1]")
-        if int(self.expected_plan_version) < 0 or int(self.expected_epoch) < 0:
-            raise ValueError("action version and epoch must be non-negative")
+        object.__setattr__(
+            self,
+            "resource_quota_delta",
+            _strict_integer(
+                self.resource_quota_delta,
+                name="resource_quota_delta",
+            ),
+        )
+        object.__setattr__(
+            self,
+            "expected_plan_version",
+            _strict_integer(
+                self.expected_plan_version,
+                name="expected_plan_version",
+                minimum=0,
+            ),
+        )
+        object.__setattr__(
+            self,
+            "expected_epoch",
+            _strict_integer(
+                self.expected_epoch,
+                name="expected_epoch",
+                minimum=0,
+            ),
+        )
         if not _finite_non_negative(self.expected_lease_expires_at_s):
             raise ValueError("action lease must be finite and non-negative")
+        if not isinstance(self.hold, bool) or not isinstance(
+            self.request_replan, bool
+        ):
+            raise ValueError("action hold and request_replan must be booleans")
         object.__setattr__(self, "reasons", _unique(self.reasons))
 
     def to_dict(self) -> dict[str, Any]:
@@ -437,6 +504,19 @@ class RegionResourceAction:
     @classmethod
     def from_dict(cls, value: Mapping[str, Any]) -> "RegionResourceAction":
         _reject_truth_identifiers(value, path="recommendation.action")
+        required_authority_fields = {
+            "expected_owner_id",
+            "expected_owner_layer",
+            "expected_plan_id",
+            "expected_plan_version",
+            "expected_epoch",
+            "expected_lease_expires_at_s",
+        }
+        missing = sorted(required_authority_fields - set(value))
+        if missing:
+            raise ValueError(
+                "action authority fields missing: " + ",".join(missing)
+            )
         return cls(**dict(value))
 
 
@@ -2426,6 +2506,26 @@ def _finite_non_negative(value: Any) -> bool:
         return isfinite(float(value)) and float(value) >= 0.0
     except (TypeError, ValueError):
         return False
+
+
+def _strict_integer(
+    value: Any,
+    *,
+    name: str,
+    minimum: int | None = None,
+) -> int:
+    if isinstance(value, bool):
+        raise ValueError(f"{name} must be an integer")
+    try:
+        numeric = float(value)
+        resolved = int(value)
+    except (TypeError, ValueError, OverflowError) as exc:
+        raise ValueError(f"{name} must be a finite integer") from exc
+    if not isfinite(numeric) or numeric != float(resolved):
+        raise ValueError(f"{name} must be a finite integer")
+    if minimum is not None and resolved < minimum:
+        raise ValueError(f"{name} must be at least {minimum}")
+    return resolved
 
 
 def _unit_interval(value: Any) -> bool:

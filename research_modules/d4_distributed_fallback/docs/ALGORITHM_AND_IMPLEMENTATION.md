@@ -1,5 +1,48 @@
 # D4 分布式协同与降级接管算法及实施方案
 
+## 2026-07-27 实际策略干预诊断实现
+
+新增 `region_resource_actual_policy_diagnostic.py`，用于检查实际开发模型，不包装
+`ConstrainedDevelopmentRegionResourceAdapter`。入口先严格读取候选 manifest、模型 bundle
+和 composite dataset，再按 manifest 中的 calibration seed 白名单选样本。train、
+validation、calibration 和 seed 1000-1019 必须互斥；数据 loader 继续递归拒绝 truth、
+actor 和 evaluator 身份字段。
+
+单样本诊断执行以下步骤：
+
+1. 调用实际 `recommend_raw()`，验证 `source=learned` 和模型 SHA-256。
+2. 使用固定 `minimum_confidence=0.60`、`ood_margin=0.05` 调用现有 development
+   gate。动作分类固定覆盖 `latency=0 ms`，避免主机调度抖动改变分类；运行门
+   `latency_limit_ms=50` 保持不变，本路径不输出时延性能证据。
+3. 对每个区域保存原始和投影后的配额、整数备用资源、`hold`、`request_replan`，并逐字段
+   比较 owner、layer、plan ID/version、epoch 和 lease。
+4. 对每条转移保存请求数量、投影保留数量、边容量、源资源预算、邻接和分区掩码。
+5. 复用安全采用链的 projected-intervention 口径，只有投影安全、advisory 可消费且 D3
+   可消费字段非空时输出 `safe_nonzero_actual_model`。
+
+稳定原因码分为：`action_same_as_baseline`、`confidence_insufficient`、
+`out_of_distribution`、`owner_lease_epoch_blocked`、`action_masked`、
+`resource_infeasible` 和 `policy_output_invalid`。批次另统计原始离散动作签名；只有全部
+样本无非零动作且签名不超过一种时，才标记 `policy_output_degenerate=true`。
+
+本地实际候选诊断为 20 seed/420 sample。固定门通过 420、门回退 0；安全非零 76、资源
+不可行无操作 344。360 个样本至少一个区域的正备用请求超过可行备用量，其中 16 个样本仍由
+其他区域或动作形成非零干预。非零字段累计为备用资源 197、重规划请求 40、配额 40、保持
+20、转移 20。无低置信、分布外、权威错绑、动作掩码或非有限输出。原始离散动作签名 88，
+批次输出未塌缩。
+
+命令入口
+`scripts/run_region_resource_actual_policy_diagnostic.py` 默认只写小型 JSON、中文报告和每类
+代表样本；`--include-all-samples` 仅用于显式调试。入口要求提供可信候选 manifest
+SHA-256，并核对模型 manifest 版本、权重 SHA-256、数据集 SHA-256 和逐 seed 样本分母。
+候选实现谱系与当前代码不一致时，历史非零观察与当前谱系开发证据分开记录，后者保持 false。
+
+专项测试覆盖非零转移、低置信、时期错绑、资源不可行、分区掩码、模型/manifest 身份错绑、
+未知与非有限动作、缺失权威字段、独立 seed 隔离和批次输出退化，共 **10/10 passed**。
+D4 全量 **689/689 passed**。两次重跑的逐 seed 分母、76/344 分类、样本身份摘要和分类
+摘要一致。该实现未改动
+`RegionResourceAdvisor`、投影器、安全采用 assembler、降级状态机或正式权限。
+
 ## 2026-07-27 提交前验证加固
 
 联盟嵌套确认 DTO 现在严格检查 `can_execute`、版本/时期整数和有限时间。安全采用 DTO
@@ -8,7 +51,8 @@
 
 回归覆盖中心、二级和完全分布式三种当前 owner。三类证据链均可闭合，但输出的 authority、
 收益和在线真值标志始终为 false。字符串执行标志、非有限执行时间、额外映射字段和开发
-策略正式收益输入均失败关闭。D4 全量验证为 **679/679 passed**。
+策略正式收益输入均失败关闭。该阶段 D4 全量验证为 **679/679 passed**；加入实际策略诊断
+专项后当前全量为 **689/689 passed**。
 
 ## 2026-07-27 A2 开发态非零候选
 
