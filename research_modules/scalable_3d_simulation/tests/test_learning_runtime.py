@@ -21,7 +21,18 @@ from research_modules.scalable_3d_simulation.learning_runtime import (
     resolve_learning_runtime,
 )
 from research_modules.scalable_3d_simulation.models import ScenarioConfig
+from research_modules.scalable_3d_simulation.module_stack import (
+    IntegratedStackConfig,
+)
 from research_modules.scalable_3d_simulation.orchestrator import run_episode
+
+
+READINESS_D4_BUNDLE = (
+    Path(__file__).resolve().parents[2]
+    / "d4_distributed_fallback/model_registry"
+    / "region_resource_a2_8region_runtime_action_readiness_shadow_v2"
+    / "bundle"
+)
 
 
 def _short_integrated_config() -> ScenarioConfig:
@@ -124,6 +135,52 @@ def test_missing_bundles_fall_back_and_d4_assist_cannot_self_promote(
     assert d5_messages
     assert d5_messages[-1].payload["probability_source"] == "deterministic_geometry_rule"
     assert d5_messages[-1].payload["fallback_reason"].startswith("bundle_")
+    assert result.summary["online_truth_use_count"] == 0
+
+
+def test_d4_runtime_gate_diagnostic_stays_out_of_online_bus() -> None:
+    config = ScenarioConfig(
+        scenario_name="d4_runtime_gate_bus_boundary",
+        scenario_version="d4-runtime-gate-bus-boundary-v1",
+        seed=2000,
+        target_count=20,
+        resource_count=20,
+        recon_count=2,
+        region_count=8,
+        duration_s=1.2,
+        acoustic_enabled=False,
+    )
+    resolved = resolve_learning_runtime(
+        config,
+        LearningRuntimeOptions(
+            d4_mode="shadow",
+            d4_bundle_dir=READINESS_D4_BUNDLE,
+        ),
+        stack_config=IntegratedStackConfig(
+            capture_learning_artifacts=True
+        ),
+    )
+
+    assert resolved.diagnostics["d4"]["bundle_loaded"] is True
+    result = run_episode(resolved.config, module_stack=resolved.stack)
+    advice_messages = tuple(
+        message
+        for message in result.online_messages
+        if message.topic == "modules.d4.region_resource_advice"
+    )
+    assert advice_messages
+    assert all(
+        "runtime_confidence_gate_diagnostic" not in message.payload
+        for message in advice_messages
+    )
+    frames = resolved.stack.learning_artifacts().d4_region_frames
+    assert frames
+    assert all(
+        frame.recommendation is not None
+        and frame.recommendation.runtime_confidence_gate_diagnostic
+        is not None
+        for frame in frames
+    )
     assert result.summary["online_truth_use_count"] == 0
 
 

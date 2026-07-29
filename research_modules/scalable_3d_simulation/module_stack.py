@@ -9266,13 +9266,17 @@ class IntegratedScalableModuleStack:
         )
 
     def _d4_region_advice_publication(self, now: float) -> RuntimePublication:
+        payload = self.latest_d4_region_advice.to_dict()
+        # The confidence-gate diagnostic is local preflight evidence. It is
+        # intentionally excluded from the online bus contract.
+        payload.pop("runtime_confidence_gate_diagnostic", None)
         return RuntimePublication(
             topic="modules.d4.region_resource_advice",
             source="D4",
             schema_version="d4-region-resource-advisory-runtime-v1",
             payload={
                 "timestamp": now,
-                **self.latest_d4_region_advice.to_dict(),
+                **payload,
             },
             copy_payload=False,
         )
