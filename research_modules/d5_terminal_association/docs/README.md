@@ -16,6 +16,12 @@ D5 文档遵循 `research_modules/DOCUMENTATION_STANDARD.md`。推荐阅读顺�
 12. `../reports/D5_TRACKLET_GRAPH_CANONICAL_SEED_VIEW_20260721.md`：跨视角图数据共享 seed 只读视图、正式计数和失败关闭门。
 13. `../reports/D5_ACTIVE_VISION_CANONICAL_SEED_VIEW_20260721.md`：主动视觉共享 seed 只读视图、正式样本计数和 shadow-only 边界。
 
+2026-07-27，主动视觉行为克隆开发链增加有界逆平方根意图加权、动作签名统计、宏平均与
+每动作召回、相机角色分层、置信度校准、分布外比例和诊断回退原因。99:1 多数类 fixture
+即使达到 0.99 总体精确动作准确率，也因少数动作召回 0 和 `hold` 无正样本被模型预检查
+拒绝。D5 全量为 `744 passed, 2 warnings in 111.52s`。本轮未重训正式模型；第 11 项报告
+仍是 2026-07-20 历史证据，新 v2 报告需 clean/frozen 重训后生成。所有运行权限保持 false。
+
 2026-07-27，A3 证据桥已增加 main runtime 的严格结构适配、相机姿态版本血缘、逐帧匿名观测
 窗口、独立规则 `ActiveVisionA3RuleArmTrace`、唯一同键 R0 配对验证和逐候选 disposition。
 规则 trace 不携带候选模型 provenance，可序列化后在另一进程中重建并组装 R0 窗口。

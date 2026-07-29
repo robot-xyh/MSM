@@ -61,14 +61,18 @@ from .active_vision_learning import (
 
 
 ACTIVE_VISION_BC_CACHE_SCHEMA_VERSION = "d5.active-vision-bc-cache.v1"
-ACTIVE_VISION_BC_REPORT_SCHEMA_VERSION = "d5.active-vision-bc-formal-report.v1"
-ACTIVE_VISION_BC_SUMMARY_SCHEMA_VERSION = "d5.active-vision-bc-tracked-summary.v1"
-VALIDATION_DATE = "2026-07-20"
+ACTIVE_VISION_BC_REPORT_SCHEMA_VERSION = "d5.active-vision-bc-formal-report.v2"
+ACTIVE_VISION_BC_SUMMARY_SCHEMA_VERSION = "d5.active-vision-bc-tracked-summary.v2"
+ACTIVE_VISION_BC_MODEL_DIAGNOSTICS_SCHEMA_VERSION = (
+    "d5.active-vision-bc-model-diagnostics.v1"
+)
+VALIDATION_DATE = "2026-07-27"
 VALIDATION_TIMEZONE = "America/Los_Angeles"
 _SPLITS = ("train", "validation", "test")
 _INTENT_VALUES = tuple(item.value for item in ActiveVisionIntent)
 _FOV_VALUES = tuple(item.value for item in ActiveVisionFovMode)
 _CAMERA_TYPES = ("interceptor", "recon", "unknown")
+_INTENT_WEIGHTING_STRATEGIES = ("none", "inverse_sqrt")
 _FILE_SPECS = {
     "features": ("candidate_features.f32", "<f4"),
     "candidate_intent": ("candidate_intent.u1", "u1"),
@@ -97,6 +101,10 @@ class ActiveVisionBcConfig:
     cpu_threads: int = 16
     latency_samples: int = 2048
     latency_warmup: int = 64
+    intent_weighting: str = "inverse_sqrt"
+    maximum_intent_weight: float = 8.0
+    calibration_bin_count: int = 10
+    ood_margin: float = 0.05
 
     def __post_init__(self) -> None:
         for name in (
@@ -106,6 +114,7 @@ class ActiveVisionBcConfig:
             "hidden_dim",
             "cpu_threads",
             "latency_samples",
+            "calibration_bin_count",
         ):
             if int(getattr(self, name)) <= 0:
                 raise ValueError(f"{name} must be positive")
@@ -115,6 +124,41 @@ class ActiveVisionBcConfig:
             raise ValueError("learning_rate must be positive")
         if not np.isfinite(self.weight_decay) or self.weight_decay < 0.0:
             raise ValueError("weight_decay must be non-negative")
+        if self.intent_weighting not in _INTENT_WEIGHTING_STRATEGIES:
+            raise ValueError(
+                "intent_weighting must be one of "
+                f"{', '.join(_INTENT_WEIGHTING_STRATEGIES)}"
+            )
+        if (
+            not np.isfinite(self.maximum_intent_weight)
+            or self.maximum_intent_weight < 1.0
+        ):
+            raise ValueError("maximum_intent_weight must be finite and at least 1")
+        if not np.isfinite(self.ood_margin) or not 0.0 <= self.ood_margin <= 1.0:
+            raise ValueError("ood_margin must be finite and in [0, 1]")
+
+
+@dataclass(frozen=True)
+class ActiveVisionBcDevelopmentCriteria:
+    """Model-only checks that cannot grant runtime or camera authority."""
+
+    minimum_macro_intent_recall: float = 0.50
+    minimum_per_intent_recall: float = 0.25
+    minimum_camera_role_exact_action_accuracy: float = 0.50
+    maximum_expected_calibration_error: float = 0.25
+    maximum_out_of_distribution_fraction: float = 0.10
+
+    def __post_init__(self) -> None:
+        for name in (
+            "minimum_macro_intent_recall",
+            "minimum_per_intent_recall",
+            "minimum_camera_role_exact_action_accuracy",
+            "maximum_expected_calibration_error",
+            "maximum_out_of_distribution_fraction",
+        ):
+            value = float(getattr(self, name))
+            if not np.isfinite(value) or not 0.0 <= value <= 1.0:
+                raise ValueError(f"{name} must be finite and in [0, 1]")
 
 
 @dataclass
@@ -362,6 +406,117 @@ def load_behavior_cloning_feature_cache(
     return manifest, caches, sha256_file(manifest_path)
 
 
+def selected_intent_codes(
+    cache: ActiveVisionBcSplitCache,
+    indices: np.ndarray | None = None,
+) -> np.ndarray:
+    """Return the demonstrated intent code for each requested sample."""
+
+    sample_indices = (
+        np.arange(cache.sample_count, dtype=np.int64)
+        if indices is None
+        else np.asarray(indices, dtype=np.int64).reshape(-1)
+    )
+    if np.any(sample_indices < 0) or np.any(sample_indices >= cache.sample_count):
+        raise ValueError("active-vision BC sample index is out of range")
+    selected = np.asarray(
+        cache.files["selected_index"][sample_indices],
+        dtype=np.int64,
+    )
+    counts = np.asarray(
+        cache.files["candidate_count"][sample_indices],
+        dtype=np.int64,
+    )
+    if np.any(counts <= 0):
+        raise ValueError("active-vision BC samples require at least one candidate")
+    if np.any(selected < 0) or np.any(selected >= counts):
+        raise ValueError("active-vision BC selected candidate index is out of range")
+    selected_rows = cache.offsets[sample_indices] + selected
+    if np.any(selected_rows < 0) or np.any(selected_rows >= cache.candidate_row_count):
+        raise ValueError("active-vision BC selected candidate row is out of range")
+    return np.asarray(
+        cache.files["candidate_intent"][selected_rows],
+        dtype=np.int64,
+    )
+
+
+def intent_weighting_profile(
+    cache: ActiveVisionBcSplitCache,
+    *,
+    mappings: Mapping[str, Any],
+    strategy: str,
+    maximum_weight: float,
+) -> dict[str, Any]:
+    """Build bounded sample weights without fabricating absent actions."""
+
+    if strategy not in _INTENT_WEIGHTING_STRATEGIES:
+        raise ValueError("unsupported active-vision intent weighting strategy")
+    if not np.isfinite(maximum_weight) or maximum_weight < 1.0:
+        raise ValueError("maximum_weight must be finite and at least 1")
+    if cache.sample_count <= 0:
+        raise ValueError("active-vision BC weighting requires training samples")
+    intent_mapping = _invert_mapping(mappings["intent"])
+    codes = selected_intent_codes(cache)
+    if np.any(codes < 0) or np.any(codes >= len(intent_mapping)):
+        raise ValueError("active-vision BC selected intent code is out of range")
+    counts = np.bincount(codes, minlength=len(intent_mapping)).astype(np.int64)
+    weights = np.ones(len(intent_mapping), dtype=np.float64)
+    supported = counts > 0
+    if strategy == "inverse_sqrt":
+        raw = np.ones(len(intent_mapping), dtype=np.float64)
+        raw[supported] = np.sqrt(cache.sample_count / counts[supported])
+        raw[supported] = np.minimum(raw[supported], maximum_weight)
+        normalizer = float(np.sum(raw[supported] * counts[supported])) / float(
+            cache.sample_count
+        )
+        weights[supported] = raw[supported] / normalizer
+    # No training sample consumes these entries.  A held-out sample from an
+    # unseen action receives the maximum validation penalty instead of being
+    # silently ignored.
+    weights[~supported] = maximum_weight
+    training_sample_weight_mean = float(np.mean(weights[codes]))
+    if (
+        not np.all(np.isfinite(weights))
+        or np.any(weights <= 0.0)
+        or not math.isclose(training_sample_weight_mean, 1.0, abs_tol=1.0e-12)
+    ):
+        raise RuntimeError("active-vision intent weights are not normalized")
+    count_by_intent = {
+        intent_mapping[code]: int(counts[code])
+        for code in range(len(intent_mapping))
+    }
+    weight_by_intent = {
+        intent_mapping[code]: (
+            available(float(weights[code]))
+            if supported[code]
+            else unavailable("no_positive_samples")
+        )
+        for code in range(len(intent_mapping))
+    }
+    return {
+        "strategy": strategy,
+        "normalization": "mean_training_sample_weight_equals_one",
+        "training_sample_weight_mean": training_sample_weight_mean,
+        "maximum_weight": float(maximum_weight),
+        "sample_count": cache.sample_count,
+        "count_by_intent": count_by_intent,
+        "fraction_by_intent": {
+            name: count / cache.sample_count
+            for name, count in count_by_intent.items()
+        },
+        "weight_by_intent": weight_by_intent,
+        "weight_by_code": weights.tolist(),
+        "supported_by_code": supported.tolist(),
+        "unseen_validation_intent_weight": float(maximum_weight),
+        "unavailable_intents": [
+            intent_mapping[code]
+            for code in range(len(intent_mapping))
+            if not supported[code]
+        ],
+        "zero_padding_or_synthetic_positive_used": False,
+    }
+
+
 def train_cached_behavior_cloning(
     cache_manifest: Mapping[str, Any],
     caches: Mapping[str, ActiveVisionBcSplitCache],
@@ -386,6 +541,16 @@ def train_cached_behavior_cloning(
     )
     train_cache = caches["train"]
     validation_cache = caches["validation"]
+    intent_weighting = intent_weighting_profile(
+        train_cache,
+        mappings=cache_manifest["mappings"],
+        strategy=config.intent_weighting,
+        maximum_weight=config.maximum_intent_weight,
+    )
+    intent_weight_lookup = np.asarray(
+        intent_weighting["weight_by_code"],
+        dtype=np.float32,
+    )
     epoch_reports: list[dict[str, Any]] = []
     best_validation_loss = math.inf
     best_epoch = 0
@@ -396,7 +561,8 @@ def train_cached_behavior_cloning(
         order = np.random.default_rng(config.seed + epoch).permutation(
             train_cache.sample_count
         )
-        loss_sum = 0.0
+        weighted_loss_sum = 0.0
+        sample_weight_sum = 0.0
         for start in range(0, train_cache.sample_count, config.batch_size):
             indices = order[start : start + config.batch_size]
             features, mask, selected = padded_batch(train_cache, indices)
@@ -405,19 +571,35 @@ def train_cached_behavior_cloning(
             selected_tensor = torch.as_tensor(selected.astype(np.int64), device=device)
             logits = actor_logits(model, feature_tensor)
             logits = logits.masked_fill(~mask_tensor, torch.finfo(logits.dtype).min)
-            loss = F.cross_entropy(logits, selected_tensor)
+            sample_intent_codes = selected_intent_codes(train_cache, indices)
+            sample_weights = torch.as_tensor(
+                intent_weight_lookup[sample_intent_codes],
+                device=device,
+            )
+            per_sample_loss = F.cross_entropy(
+                logits,
+                selected_tensor,
+                reduction="none",
+            )
+            loss = torch.sum(per_sample_loss * sample_weights) / torch.sum(
+                sample_weights
+            )
             if not bool(torch.isfinite(loss)):
                 raise RuntimeError("non-finite active-vision BC loss")
             optimizer.zero_grad(set_to_none=True)
             loss.backward()
             optimizer.step()
-            loss_sum += float(loss.detach().cpu()) * len(indices)
-        train_loss = loss_sum / train_cache.sample_count
+            weighted_loss_sum += float(
+                torch.sum(per_sample_loss.detach() * sample_weights).cpu()
+            )
+            sample_weight_sum += float(torch.sum(sample_weights).cpu())
+        train_loss = weighted_loss_sum / sample_weight_sum
         validation_loss = evaluate_loss(
             model,
             validation_cache,
             batch_size=config.evaluation_batch_size,
             device=device,
+            intent_weight_lookup=intent_weight_lookup,
         )
         epoch_reports.append(
             {
@@ -449,6 +631,7 @@ def train_cached_behavior_cloning(
         "method": "behavior_cloning",
         "ppo_started": False,
         "config": asdict(config),
+        "intent_weighting": intent_weighting,
         "train_sample_count": train_cache.sample_count,
         "samples_seen_per_epoch": train_cache.sample_count,
         "total_sample_presentations": train_cache.sample_count * config.epochs,
@@ -482,6 +665,8 @@ def evaluate_behavior_cloning_model(
             cache_manifest=cache_manifest,
             batch_size=config.evaluation_batch_size,
             device=device,
+            calibration_bin_count=config.calibration_bin_count,
+            ood_margin=config.ood_margin,
         )
         for split, cache in caches.items()
     }
@@ -503,14 +688,42 @@ def evaluate_split(
     cache_manifest: Mapping[str, Any],
     batch_size: int,
     device: torch.device,
+    calibration_bin_count: int = 10,
+    ood_margin: float = 0.05,
 ) -> dict[str, Any]:
+    if cache.sample_count <= 0:
+        raise ValueError("active-vision BC evaluation split is empty")
+    if batch_size <= 0:
+        raise ValueError("active-vision BC evaluation batch size must be positive")
+    if not np.isfinite(ood_margin) or not 0.0 <= ood_margin <= 1.0:
+        raise ValueError("active-vision OOD margin must be finite and in [0, 1]")
     model.eval()
     predictions = np.empty(cache.sample_count, dtype=np.int64)
+    confidences = np.empty(cache.sample_count, dtype=np.float64)
+    out_of_distribution = np.empty(cache.sample_count, dtype=bool)
+    bounds_payload = cache_manifest["training_feature_bounds"]
+    lower = np.asarray(bounds_payload["minimum"], dtype=np.float64)
+    upper = np.asarray(bounds_payload["maximum"], dtype=np.float64)
+    expected_shape = (cache.feature_dim,)
+    if (
+        lower.shape != expected_shape
+        or upper.shape != expected_shape
+        or not np.all(np.isfinite(lower))
+        or not np.all(np.isfinite(upper))
+        or np.any(lower > upper)
+    ):
+        raise ValueError("active-vision training feature bounds are invalid")
+    span = np.maximum(upper - lower, 1.0e-6)
+    expanded_lower = lower - ood_margin * span
+    expanded_upper = upper + ood_margin * span
     loss_sum = 0.0
     with torch.no_grad():
         for start in range(0, cache.sample_count, batch_size):
             indices = np.arange(start, min(start + batch_size, cache.sample_count))
             features, mask, selected = padded_batch(cache, indices)
+            valid_features = features[mask]
+            if not np.all(np.isfinite(valid_features)):
+                raise ValueError("active-vision BC evaluation features are non-finite")
             logits = actor_logits(model, torch.as_tensor(features, device=device))
             logits = logits.masked_fill(
                 ~torch.as_tensor(mask, device=device),
@@ -519,14 +732,28 @@ def evaluate_split(
             selected_tensor = torch.as_tensor(selected.astype(np.int64), device=device)
             loss = F.cross_entropy(logits, selected_tensor, reduction="sum")
             loss_sum += float(loss.cpu())
-            predictions[start : start + len(indices)] = (
-                torch.argmax(logits, dim=1).cpu().numpy()
+            probabilities = torch.softmax(logits, dim=1)
+            confidence, prediction = torch.max(probabilities, dim=1)
+            predictions[start : start + len(indices)] = prediction.cpu().numpy()
+            confidences[start : start + len(indices)] = confidence.cpu().numpy()
+            outside = np.logical_or(
+                features < expanded_lower.reshape(1, 1, -1),
+                features > expanded_upper.reshape(1, 1, -1),
+            )
+            outside &= mask[:, :, None]
+            out_of_distribution[start : start + len(indices)] = np.any(
+                outside,
+                axis=(1, 2),
             )
     return action_metrics(
         cache,
         predictions,
         mappings=cache_manifest["mappings"],
         loss=loss_sum / cache.sample_count,
+        confidences=confidences,
+        out_of_distribution=out_of_distribution,
+        calibration_bin_count=calibration_bin_count,
+        ood_margin=ood_margin,
     )
 
 
@@ -536,13 +763,39 @@ def action_metrics(
     *,
     mappings: Mapping[str, Any],
     loss: float,
+    confidences: np.ndarray | None = None,
+    out_of_distribution: np.ndarray | None = None,
+    calibration_bin_count: int = 10,
+    ood_margin: float = 0.05,
 ) -> dict[str, Any]:
-    if predictions.shape != (cache.sample_count,):
+    prediction_values = np.asarray(predictions)
+    if prediction_values.shape != (cache.sample_count,):
         raise ValueError("prediction count does not match BC cache")
-    sample_indices = np.arange(cache.sample_count, dtype=np.int64)
+    if not np.issubdtype(prediction_values.dtype, np.integer):
+        raise ValueError("active-vision candidate predictions must be integer indices")
+    prediction_values = prediction_values.astype(np.int64, copy=False)
+    if not np.isfinite(loss) or loss < 0.0:
+        raise ValueError("active-vision cross-entropy loss must be finite and non-negative")
+    if confidences is not None and np.asarray(confidences).shape != (
+        cache.sample_count,
+    ):
+        raise ValueError("confidence count does not match BC cache")
+    if out_of_distribution is not None and np.asarray(
+        out_of_distribution
+    ).shape != (cache.sample_count,):
+        raise ValueError("OOD count does not match BC cache")
     true_indices = np.asarray(cache.files["selected_index"], dtype=np.int64)
+    candidate_counts = np.asarray(cache.files["candidate_count"], dtype=np.int64)
+    if np.any(candidate_counts <= 0):
+        raise ValueError("active-vision BC samples require at least one candidate")
+    if np.any(true_indices < 0) or np.any(true_indices >= candidate_counts):
+        raise ValueError("active-vision BC selected candidate index is out of range")
+    if np.any(prediction_values < 0) or np.any(
+        prediction_values >= candidate_counts
+    ):
+        raise ValueError("active-vision predicted candidate index is out of range")
     true_rows = cache.offsets[:-1] + true_indices
-    predicted_rows = cache.offsets[:-1] + predictions
+    predicted_rows = cache.offsets[:-1] + prediction_values
     candidate_intent = cache.files["candidate_intent"]
     candidate_fov = cache.files["candidate_fov"]
     candidate_yaw = cache.files["candidate_yaw"]
@@ -558,7 +811,7 @@ def action_metrics(
     predicted_pitch = np.asarray(candidate_pitch[predicted_rows], dtype=np.float64)
     true_target = np.asarray(candidate_target[true_rows], dtype=np.int64)
     predicted_target = np.asarray(candidate_target[predicted_rows], dtype=np.int64)
-    exact = predictions == true_indices
+    exact = prediction_values == true_indices
     intent_equal = predicted_intent == true_intent
     fov_equal = predicted_fov == true_fov
     target_equal = predicted_target == true_target
@@ -567,6 +820,8 @@ def action_metrics(
     intent_mapping = _invert_mapping(mappings["intent"])
     camera_mapping = _invert_mapping(mappings["camera_type"])
     scale_mapping = _invert_mapping(mappings["scale"])
+    _validate_codes(true_intent, intent_mapping, "true intent")
+    _validate_codes(predicted_intent, intent_mapping, "predicted intent")
     per_intent: dict[str, Any] = {}
     classification = intent_classification_metrics(
         true_intent,
@@ -589,16 +844,43 @@ def action_metrics(
         }
     camera_codes = np.asarray(cache.files["camera_type"], dtype=np.int64)
     scale_codes = np.asarray(cache.files["scale"], dtype=np.int64)
+    _validate_codes(camera_codes, camera_mapping, "camera type")
+    _validate_codes(scale_codes, scale_mapping, "scenario scale")
     per_camera = {
-        camera_name: subset_action_metrics(
-            camera_codes == code,
-            exact=exact,
-            intent_equal=intent_equal,
-            fov_equal=fov_equal,
-            target_equal=target_equal,
-            yaw_error=yaw_error,
-            pitch_error=pitch_error,
-        )
+        camera_name: {
+            **subset_action_metrics(
+                camera_codes == code,
+                exact=exact,
+                intent_equal=intent_equal,
+                fov_equal=fov_equal,
+                target_equal=target_equal,
+                yaw_error=yaw_error,
+                pitch_error=pitch_error,
+            ),
+            "intent_classification": intent_classification_metrics(
+                true_intent[camera_codes == code],
+                predicted_intent[camera_codes == code],
+                intent_mapping,
+            ),
+            "calibration": exact_action_calibration(
+                exact[camera_codes == code],
+                (
+                    None
+                    if confidences is None
+                    else np.asarray(confidences)[camera_codes == code]
+                ),
+                bin_count=calibration_bin_count,
+            ),
+            "out_of_distribution": out_of_distribution_metrics(
+                exact[camera_codes == code],
+                (
+                    None
+                    if out_of_distribution is None
+                    else np.asarray(out_of_distribution)[camera_codes == code]
+                ),
+                margin=ood_margin,
+            ),
+        }
         for code, camera_name in camera_mapping.items()
     }
     per_scale = {
@@ -613,7 +895,6 @@ def action_metrics(
         )
         for code, scale_name in scale_mapping.items()
     }
-    del sample_indices
     return {
         "sample_count": cache.sample_count,
         "cross_entropy_loss": loss,
@@ -627,6 +908,26 @@ def action_metrics(
             pitch_error=pitch_error,
         ),
         "intent_classification": classification,
+        "action_distribution": action_distribution_metrics(
+            true_intent,
+            predicted_intent,
+            intent_mapping,
+        ),
+        "calibration": exact_action_calibration(
+            exact,
+            confidences,
+            bin_count=calibration_bin_count,
+        ),
+        "out_of_distribution": out_of_distribution_metrics(
+            exact,
+            out_of_distribution,
+            margin=ood_margin,
+        ),
+        "diagnostic_fallback_reason_counts": diagnostic_fallback_reason_counts(
+            exact=exact,
+            confidences=confidences,
+            out_of_distribution=out_of_distribution,
+        ),
         "per_intent": per_intent,
         "per_camera_type": per_camera,
         "per_scale": per_scale,
@@ -638,41 +939,481 @@ def intent_classification_metrics(
     predicted: np.ndarray,
     mapping: Mapping[int, str],
 ) -> dict[str, Any]:
+    truth_values = np.asarray(truth)
+    predicted_values = np.asarray(predicted)
+    if truth_values.ndim != 1 or predicted_values.shape != truth_values.shape:
+        raise ValueError("intent truth and predictions must be aligned vectors")
+    if not np.issubdtype(truth_values.dtype, np.integer) or not np.issubdtype(
+        predicted_values.dtype,
+        np.integer,
+    ):
+        raise ValueError("intent truth and predictions must use integer codes")
+    truth_values = truth_values.astype(np.int64, copy=False)
+    predicted_values = predicted_values.astype(np.int64, copy=False)
     size = len(mapping)
+    if set(mapping) != set(range(size)):
+        raise ValueError("intent metric mapping codes are not contiguous")
+    _validate_codes(truth_values, mapping, "intent truth")
+    _validate_codes(predicted_values, mapping, "intent prediction")
     confusion = np.zeros((size, size), dtype=np.int64)
-    np.add.at(confusion, (truth, predicted), 1)
+    np.add.at(confusion, (truth_values, predicted_values), 1)
     per_class: dict[str, Any] = {}
+    precision_values: list[float] = []
+    recall_values: list[float] = []
     f1_values: list[float] = []
+    precision_unavailable_classes: list[str] = []
+    recall_unavailable_classes: list[str] = []
+    f1_unavailable_classes: list[str] = []
     for code, name in mapping.items():
         support = int(confusion[code, :].sum())
         predicted_count = int(confusion[:, code].sum())
         true_positive = int(confusion[code, code])
-        if support == 0:
-            per_class[name] = {
-                "support": 0,
-                "predicted_count": predicted_count,
-                "precision": unavailable("no_positive_samples"),
-                "recall": unavailable("no_positive_samples"),
-                "f1": unavailable("no_positive_samples"),
-            }
-            continue
-        precision = true_positive / predicted_count if predicted_count else 0.0
-        recall = true_positive / support
-        f1 = 0.0 if precision + recall == 0.0 else 2.0 * precision * recall / (precision + recall)
-        f1_values.append(f1)
+        false_positive = predicted_count - true_positive
+        false_negative = support - true_positive
+        f1_denominator = 2 * true_positive + false_positive + false_negative
+        if predicted_count:
+            precision = true_positive / predicted_count
+            precision_metric = available(precision)
+            precision_values.append(precision)
+        else:
+            precision_unavailable_classes.append(name)
+            precision_metric = unavailable("no_predicted_samples")
+        if support:
+            recall = true_positive / support
+            recall_metric = available(recall)
+            recall_values.append(recall)
+        else:
+            recall_unavailable_classes.append(name)
+            recall_metric = unavailable("no_positive_samples")
+        if f1_denominator:
+            f1 = 2.0 * true_positive / f1_denominator
+            f1_metric = available(f1)
+            f1_values.append(f1)
+        else:
+            f1_unavailable_classes.append(name)
+            f1_metric = unavailable("no_positive_or_predicted_samples")
         per_class[name] = {
             "support": support,
             "predicted_count": predicted_count,
-            "precision": available(precision),
-            "recall": available(recall),
-            "f1": available(f1),
+            "true_positive": true_positive,
+            "false_positive": false_positive,
+            "false_negative": false_negative,
+            "precision_denominator": predicted_count,
+            "recall_denominator": support,
+            "f1_denominator": f1_denominator,
+            "precision": precision_metric,
+            "recall": recall_metric,
+            "f1": f1_metric,
         }
     return {
-        "accuracy": available(float(np.mean(truth == predicted))),
-        "macro_f1_supported_classes": available(float(np.mean(f1_values))),
+        "sample_count": int(len(truth_values)),
+        "accuracy": (
+            available(float(np.mean(truth_values == predicted_values)))
+            if len(truth_values)
+            else unavailable("no_samples")
+        ),
+        "supported_class_count": len(recall_values),
+        "truth_supported_class_count": len(recall_values),
+        "predicted_class_count": len(precision_values),
+        "observed_class_count": len(f1_values),
+        "unavailable_classes": recall_unavailable_classes,
+        "precision_unavailable_classes": precision_unavailable_classes,
+        "recall_unavailable_classes": recall_unavailable_classes,
+        "f1_unavailable_classes": f1_unavailable_classes,
+        "macro_precision_supported_classes": (
+            available(float(np.mean(precision_values)))
+            if precision_values
+            else unavailable("no_predicted_samples")
+        ),
+        "macro_precision_denominator": "classes_with_predictions",
+        "macro_recall_supported_classes": (
+            available(float(np.mean(recall_values)))
+            if recall_values
+            else unavailable("no_positive_samples")
+        ),
+        "macro_recall_denominator": "classes_with_truth_support",
+        "macro_f1_supported_classes": (
+            available(float(np.mean(f1_values)))
+            if f1_values
+            else unavailable("no_positive_or_predicted_samples")
+        ),
+        "macro_f1_denominator": "classes_with_truth_or_predictions",
         "class_order": [mapping[index] for index in range(size)],
         "confusion_matrix": confusion.tolist(),
         "per_class": per_class,
+    }
+
+
+def action_distribution_metrics(
+    truth: np.ndarray,
+    predicted: np.ndarray,
+    mapping: Mapping[int, str],
+) -> dict[str, Any]:
+    truth_values = np.asarray(truth)
+    predicted_values = np.asarray(predicted)
+    if truth_values.ndim != 1 or predicted_values.shape != truth_values.shape:
+        raise ValueError("action distributions require aligned vectors")
+    if not np.issubdtype(truth_values.dtype, np.integer) or not np.issubdtype(
+        predicted_values.dtype,
+        np.integer,
+    ):
+        raise ValueError("action distributions require integer codes")
+    truth_values = truth_values.astype(np.int64, copy=False)
+    predicted_values = predicted_values.astype(np.int64, copy=False)
+    _validate_codes(truth_values, mapping, "action distribution truth")
+    _validate_codes(predicted_values, mapping, "action distribution prediction")
+    sample_count = int(len(truth_values))
+    truth_counts = {
+        mapping[code]: int(np.sum(truth_values == code))
+        for code in range(len(mapping))
+    }
+    predicted_counts = {
+        mapping[code]: int(np.sum(predicted_values == code))
+        for code in range(len(mapping))
+    }
+    if sample_count:
+        majority_count = max(truth_counts.values())
+        majority_names = sorted(
+            name for name, count in truth_counts.items() if count == majority_count
+        )
+        majority_baseline = available(majority_count / sample_count)
+    else:
+        majority_names = []
+        majority_baseline = unavailable("no_samples")
+    return {
+        "sample_count": sample_count,
+        "truth_counts": truth_counts,
+        "predicted_counts": predicted_counts,
+        "truth_fractions": {
+            name: count / sample_count if sample_count else None
+            for name, count in truth_counts.items()
+        },
+        "predicted_fractions": {
+            name: count / sample_count if sample_count else None
+            for name, count in predicted_counts.items()
+        },
+        "majority_truth_actions": majority_names,
+        "majority_only_exact_accuracy": majority_baseline,
+        "zero_positive_actions": sorted(
+            name for name, count in truth_counts.items() if count == 0
+        ),
+    }
+
+
+def exact_action_calibration(
+    exact: np.ndarray,
+    confidences: np.ndarray | None,
+    *,
+    bin_count: int,
+) -> dict[str, Any]:
+    if bin_count <= 0:
+        raise ValueError("calibration bin_count must be positive")
+    exact_values = np.asarray(exact)
+    if exact_values.ndim != 1:
+        raise ValueError("exact-action outcomes must be a vector")
+    if exact_values.dtype != np.bool_:
+        if not np.issubdtype(exact_values.dtype, np.integer) or np.any(
+            (exact_values != 0) & (exact_values != 1)
+        ):
+            raise ValueError("exact-action outcomes must be boolean")
+    exact_values = exact_values.astype(bool, copy=False)
+    count = int(len(exact_values))
+    if confidences is None:
+        return {
+            "sample_count": count,
+            "status": "unavailable",
+            "reason": "confidence_not_recorded",
+            "expected_calibration_error": unavailable("confidence_not_recorded"),
+            "maximum_calibration_error": unavailable("confidence_not_recorded"),
+            "mean_confidence": unavailable("confidence_not_recorded"),
+            "binary_brier_score": unavailable("confidence_not_recorded"),
+            "bins": [],
+        }
+    values = np.asarray(confidences, dtype=np.float64)
+    if values.shape != (count,) or not np.all(np.isfinite(values)):
+        raise ValueError("exact-action confidences must be finite and aligned")
+    if np.any(values < 0.0) or np.any(values > 1.0):
+        raise ValueError("exact-action confidences must be in [0, 1]")
+    if not count:
+        return {
+            "sample_count": 0,
+            "status": "unavailable",
+            "reason": "no_samples",
+            "expected_calibration_error": unavailable("no_samples"),
+            "maximum_calibration_error": unavailable("no_samples"),
+            "mean_confidence": unavailable("no_samples"),
+            "binary_brier_score": unavailable("no_samples"),
+            "bins": [],
+        }
+    correctness = exact_values.astype(np.float64)
+    edges = np.linspace(0.0, 1.0, bin_count + 1)
+    bin_indices = np.minimum(
+        np.searchsorted(edges, values, side="right") - 1,
+        bin_count - 1,
+    )
+    bins: list[dict[str, Any]] = []
+    weighted_gap = 0.0
+    maximum_gap = 0.0
+    for index in range(bin_count):
+        selector = bin_indices == index
+        selected_count = int(np.sum(selector))
+        if not selected_count:
+            continue
+        accuracy = float(np.mean(correctness[selector]))
+        confidence = float(np.mean(values[selector]))
+        gap = abs(accuracy - confidence)
+        weighted_gap += selected_count * gap
+        maximum_gap = max(maximum_gap, gap)
+        bins.append(
+            {
+                "lower": float(edges[index]),
+                "upper": float(edges[index + 1]),
+                "sample_count": selected_count,
+                "accuracy": accuracy,
+                "mean_confidence": confidence,
+                "absolute_gap": gap,
+            }
+        )
+    return {
+        "sample_count": count,
+        "status": "available",
+        "reason": None,
+        "expected_calibration_error": available(weighted_gap / count),
+        "maximum_calibration_error": available(maximum_gap),
+        "mean_confidence": available(float(np.mean(values))),
+        "binary_brier_score": available(
+            float(np.mean(np.square(values - correctness)))
+        ),
+        "bins": bins,
+    }
+
+
+def out_of_distribution_metrics(
+    exact: np.ndarray,
+    out_of_distribution: np.ndarray | None,
+    *,
+    margin: float,
+) -> dict[str, Any]:
+    if not np.isfinite(margin) or not 0.0 <= margin <= 1.0:
+        raise ValueError("OOD margin must be finite and in [0, 1]")
+    exact_values = np.asarray(exact)
+    if exact_values.ndim != 1:
+        raise ValueError("exact-action outcomes must be a vector")
+    if exact_values.dtype != np.bool_:
+        if not np.issubdtype(exact_values.dtype, np.integer) or np.any(
+            (exact_values != 0) & (exact_values != 1)
+        ):
+            raise ValueError("exact-action outcomes must be boolean")
+    exact_values = exact_values.astype(bool, copy=False)
+    count = int(len(exact_values))
+    if out_of_distribution is None:
+        return {
+            "sample_count": count,
+            "status": "unavailable",
+            "reason": "feature_bounds_not_evaluated",
+            "margin": float(margin),
+            "out_of_distribution_count": None,
+            "out_of_distribution_fraction": unavailable(
+                "feature_bounds_not_evaluated"
+            ),
+            "in_distribution_exact_action_accuracy": unavailable(
+                "feature_bounds_not_evaluated"
+            ),
+            "out_of_distribution_exact_action_accuracy": unavailable(
+                "feature_bounds_not_evaluated"
+            ),
+        }
+    flags = np.asarray(out_of_distribution, dtype=bool)
+    if flags.shape != (count,):
+        raise ValueError("OOD flags must align with exact-action outcomes")
+    ood_count = int(np.sum(flags))
+    in_distribution = ~flags
+    return {
+        "sample_count": count,
+        "status": "available" if count else "unavailable",
+        "reason": None if count else "no_samples",
+        "margin": float(margin),
+        "out_of_distribution_count": ood_count,
+        "out_of_distribution_fraction": (
+            available(ood_count / count) if count else unavailable("no_samples")
+        ),
+        "in_distribution_exact_action_accuracy": (
+            available(float(np.mean(exact_values[in_distribution])))
+            if np.any(in_distribution)
+            else unavailable("no_in_distribution_samples")
+        ),
+        "out_of_distribution_exact_action_accuracy": (
+            available(float(np.mean(exact_values[flags])))
+            if np.any(flags)
+            else unavailable("no_out_of_distribution_samples")
+        ),
+    }
+
+
+def diagnostic_fallback_reason_counts(
+    *,
+    exact: np.ndarray,
+    confidences: np.ndarray | None,
+    out_of_distribution: np.ndarray | None,
+    low_confidence_threshold: float = 0.50,
+) -> dict[str, int]:
+    reasons = {
+        "model_action_mismatch": int(np.sum(~exact)),
+        "low_confidence": 0,
+        "feature_out_of_distribution": 0,
+    }
+    if confidences is not None:
+        reasons["low_confidence"] = int(
+            np.sum(np.asarray(confidences) < low_confidence_threshold)
+        )
+    if out_of_distribution is not None:
+        reasons["feature_out_of_distribution"] = int(
+            np.sum(np.asarray(out_of_distribution, dtype=bool))
+        )
+    return reasons
+
+
+def assess_behavior_cloning_development_readiness(
+    data_audit: Mapping[str, Any],
+    evaluation: Mapping[str, Any],
+    *,
+    criteria: ActiveVisionBcDevelopmentCriteria | None = None,
+) -> dict[str, Any]:
+    """Fail closed before paired-shadow evaluation or bundle promotion."""
+
+    cfg = criteria or ActiveVisionBcDevelopmentCriteria()
+    test = evaluation["test"]
+    classification = test["intent_classification"]
+    reasons: list[str] = []
+    warnings: list[str] = []
+    unavailable_actions: list[str] = []
+    training_support: dict[str, dict[str, Any]] = {}
+    split_counts = data_audit.get("intent_counts_by_split")
+    train_counts = (
+        split_counts.get("train")
+        if isinstance(split_counts, Mapping)
+        else None
+    )
+    if not isinstance(train_counts, Mapping):
+        reasons.append("training_intent_support_unavailable")
+        training_support = {
+            action: unavailable("training_split_counts_not_recorded")
+            for action in _INTENT_VALUES
+        }
+    else:
+        for action in _INTENT_VALUES:
+            raw_count = train_counts.get(action, 0)
+            if (
+                isinstance(raw_count, bool)
+                or not isinstance(raw_count, (int, np.integer))
+                or int(raw_count) < 0
+            ):
+                reasons.append(f"training_action_support_invalid:{action}")
+                training_support[action] = unavailable(
+                    "invalid_training_positive_sample_count"
+                )
+                continue
+            count = int(raw_count)
+            training_support[action] = available(count)
+            if count == 0:
+                reasons.append(f"training_action_unavailable:{action}")
+    for action in _INTENT_VALUES:
+        recall = classification["per_class"][action]["recall"]
+        if not recall["available"]:
+            unavailable_actions.append(action)
+            reasons.append(f"action_recall_unavailable:{action}")
+        elif float(recall["value"]) < cfg.minimum_per_intent_recall:
+            reasons.append(f"action_recall_below_threshold:{action}")
+    macro_recall = classification["macro_recall_supported_classes"]
+    if not macro_recall["available"]:
+        reasons.append("macro_intent_recall_unavailable")
+    elif float(macro_recall["value"]) < cfg.minimum_macro_intent_recall:
+        reasons.append("macro_intent_recall_below_threshold")
+    for camera_role in ("interceptor", "recon"):
+        role_metrics = test["per_camera_type"].get(camera_role)
+        if not role_metrics or int(role_metrics["sample_count"]) == 0:
+            reasons.append(f"camera_role_metrics_unavailable:{camera_role}")
+            continue
+        accuracy = role_metrics["exact_action_accuracy"]
+        if not accuracy["available"]:
+            reasons.append(
+                f"camera_role_exact_action_accuracy_unavailable:{camera_role}"
+            )
+        elif (
+            float(accuracy["value"])
+            < cfg.minimum_camera_role_exact_action_accuracy
+        ):
+            reasons.append(
+                f"camera_role_exact_action_accuracy_below_threshold:{camera_role}"
+            )
+    calibration = test["calibration"]["expected_calibration_error"]
+    if not calibration["available"]:
+        reasons.append("exact_action_calibration_unavailable")
+    elif float(calibration["value"]) > cfg.maximum_expected_calibration_error:
+        reasons.append("expected_calibration_error_above_threshold")
+    ood_fraction = test["out_of_distribution"]["out_of_distribution_fraction"]
+    if not ood_fraction["available"]:
+        reasons.append("out_of_distribution_diagnostic_unavailable")
+    elif (
+        float(ood_fraction["value"])
+        > cfg.maximum_out_of_distribution_fraction
+    ):
+        reasons.append("out_of_distribution_fraction_above_threshold")
+    majority_fraction_raw = data_audit.get("class_imbalance", {}).get(
+        "majority_fraction"
+    )
+    if (
+        isinstance(majority_fraction_raw, bool)
+        or not isinstance(majority_fraction_raw, (int, float, np.number))
+        or not np.isfinite(float(majority_fraction_raw))
+        or not 0.0 <= float(majority_fraction_raw) <= 1.0
+    ):
+        majority_fraction: float | None = None
+        reasons.append("majority_action_fraction_unavailable")
+    else:
+        majority_fraction = float(majority_fraction_raw)
+    if majority_fraction is not None and majority_fraction >= 0.80:
+        warnings.append("majority_action_fraction_at_least_0_80")
+    if unavailable_actions:
+        warnings.append("missing_positive_actions_must_not_be_zero_padded")
+    unique_reasons = list(dict.fromkeys(reasons))
+    precheck_passed = not unique_reasons
+    return {
+        "schema_version": ACTIVE_VISION_BC_MODEL_DIAGNOSTICS_SCHEMA_VERSION,
+        "status": (
+            "development_model_precheck_passed_shadow_only"
+            if precheck_passed
+            else "fail_closed_model_precheck"
+        ),
+        "development_model_precheck_passed": precheck_passed,
+        "may_enter_formal_paired_shadow": precheck_passed,
+        "assist_admitted": False,
+        "active_vision_authority_granted": False,
+        "assignment_authority_granted": False,
+        "control_authority_granted": False,
+        "rule_fallback_required": True,
+        "criteria": asdict(cfg),
+        "failure_reasons": unique_reasons,
+        "warnings": warnings,
+        "unavailable_actions": unavailable_actions,
+        "training_intent_support": training_support,
+        "majority_action_fraction": majority_fraction,
+        "test_macro_intent_recall": macro_recall,
+        "test_per_action_recall": {
+            action: classification["per_class"][action]["recall"]
+            for action in _INTENT_VALUES
+        },
+        "test_camera_role_exact_action_accuracy": {
+            role: test["per_camera_type"][role]["exact_action_accuracy"]
+            for role in ("interceptor", "recon")
+            if role in test["per_camera_type"]
+        },
+        "test_calibration": test["calibration"],
+        "test_out_of_distribution": test["out_of_distribution"],
+        "diagnostic_fallback_reason_counts": test[
+            "diagnostic_fallback_reason_counts"
+        ],
+        "hold_positive_fabrication_used": False,
     }
 
 
@@ -716,8 +1457,16 @@ def padded_batch(
     indices: np.ndarray,
 ) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
     sample_indices = np.asarray(indices, dtype=np.int64).reshape(-1)
+    if not len(sample_indices):
+        raise ValueError("active-vision BC batch cannot be empty")
+    if np.any(sample_indices < 0) or np.any(sample_indices >= cache.sample_count):
+        raise ValueError("active-vision BC sample index is out of range")
     counts = np.asarray(cache.files["candidate_count"][sample_indices], dtype=np.int64)
     selected = np.asarray(cache.files["selected_index"][sample_indices], dtype=np.int64)
+    if np.any(counts <= 0):
+        raise ValueError("active-vision BC samples require at least one candidate")
+    if np.any(selected < 0) or np.any(selected >= counts):
+        raise ValueError("active-vision BC selected candidate index is out of range")
     maximum = int(counts.max())
     features = np.zeros(
         (len(sample_indices), maximum, cache.feature_dim),
@@ -747,9 +1496,27 @@ def evaluate_loss(
     *,
     batch_size: int,
     device: torch.device,
+    intent_weight_lookup: np.ndarray | None = None,
 ) -> float:
+    if cache.sample_count <= 0:
+        raise ValueError("active-vision validation split is empty")
+    if batch_size <= 0:
+        raise ValueError("active-vision validation batch size must be positive")
+    weight_lookup: np.ndarray | None = None
+    if intent_weight_lookup is not None:
+        weight_lookup = np.asarray(intent_weight_lookup, dtype=np.float64)
+        if (
+            weight_lookup.ndim != 1
+            or not len(weight_lookup)
+            or not np.all(np.isfinite(weight_lookup))
+            or np.any(weight_lookup <= 0.0)
+        ):
+            raise ValueError(
+                "active-vision validation intent weights must be finite and positive"
+            )
     model.eval()
-    total = 0.0
+    weighted_total = 0.0
+    weight_total = 0.0
     with torch.no_grad():
         for start in range(0, cache.sample_count, batch_size):
             indices = np.arange(start, min(start + batch_size, cache.sample_count))
@@ -759,14 +1526,37 @@ def evaluate_loss(
                 ~torch.as_tensor(mask, device=device),
                 torch.finfo(logits.dtype).min,
             )
-            total += float(
-                F.cross_entropy(
-                    logits,
-                    torch.as_tensor(selected.astype(np.int64), device=device),
-                    reduction="sum",
-                ).cpu()
+            per_sample_loss = F.cross_entropy(
+                logits,
+                torch.as_tensor(selected.astype(np.int64), device=device),
+                reduction="none",
             )
-    return total / cache.sample_count
+            if weight_lookup is None:
+                sample_weights = torch.ones(
+                    len(indices),
+                    dtype=per_sample_loss.dtype,
+                    device=device,
+                )
+            else:
+                sample_intents = selected_intent_codes(cache, indices)
+                if np.any(sample_intents < 0) or np.any(
+                    sample_intents >= len(weight_lookup)
+                ):
+                    raise ValueError(
+                        "active-vision validation intent code is out of range"
+                    )
+                sample_weights = torch.as_tensor(
+                    weight_lookup[sample_intents],
+                    dtype=per_sample_loss.dtype,
+                    device=device,
+                )
+            weighted_total += float(
+                torch.sum(per_sample_loss * sample_weights).cpu()
+            )
+            weight_total += float(torch.sum(sample_weights).cpu())
+    if weight_total <= 0.0:
+        raise RuntimeError("active-vision validation weights have zero mass")
+    return weighted_total / weight_total
 
 
 def measure_inference_latency(
@@ -861,6 +1651,10 @@ def run_formal_behavior_cloning(
         caches,
         config=config,
     )
+    model_diagnostics = assess_behavior_cloning_development_readiness(
+        data_audit,
+        evaluation,
+    )
     evaluation_elapsed = time.perf_counter() - evaluation_started
     audit_path = output_root / "dataset_audit.json"
     capacity_path = output_root / "capacity_probe.json"
@@ -883,8 +1677,12 @@ def run_formal_behavior_cloning(
         "validation": evaluation["validation"],
         "test": evaluation["test"],
         "inference_latency": evaluation["inference_latency"],
+        "model_diagnostics": model_diagnostics,
         "promotion_status": "fail_closed_shadow_only",
-        "statistical_limits": data_audit["generalization_risks"],
+        "statistical_limits": (
+            data_audit["generalization_risks"]
+            + model_diagnostics["failure_reasons"]
+        ),
     }
     write_active_vision_model_bundle(
         bundle_dir,
@@ -946,6 +1744,7 @@ def run_formal_behavior_cloning(
         },
         "training": training,
         "evaluation": evaluation,
+        "model_diagnostics": model_diagnostics,
         "hardware": hardware_summary(config.device),
         "bundle": {
             "directory": str(bundle_dir),
@@ -970,10 +1769,14 @@ def run_formal_behavior_cloning(
             "training_readiness": "pass_development_behavior_cloning",
             "runtime_status": "development_shadow_only",
             "assist": False,
+            "active_vision_authority_granted": False,
+            "assignment_authority_granted": False,
+            "control_authority_granted": False,
             "ppo": False,
             "promotion": "fail_closed",
             "rule_fallback_required": True,
             "failure_reasons": data_audit["generalization_risks"]
+            + model_diagnostics["failure_reasons"]
             + [
                 "no_applied_action_outcomes",
                 "no_reward_or_counterfactual_labels",
@@ -1012,6 +1815,7 @@ def tracked_summary(report: Mapping[str, Any], *, command: Sequence[str]) -> dic
         "capacity_probe": report["capacity_probe"],
         "training": report["training"],
         "evaluation": report["evaluation"],
+        "model_diagnostics": report["model_diagnostics"],
         "hardware": report["hardware"],
         "bundle": report["bundle"],
         "external_evidence": report["external_evidence"],
@@ -1023,6 +1827,7 @@ def tracked_summary(report: Mapping[str, Any], *, command: Sequence[str]) -> dic
 def report_markdown(report: Mapping[str, Any]) -> str:
     audit = report["data_audit"]
     evaluation = report["evaluation"]
+    diagnostics = report["model_diagnostics"]
     bundle = report["bundle"]
     lines = [
         "# D5 主动视觉行为克隆正式数据审计",
@@ -1043,6 +1848,7 @@ def report_markdown(report: Mapping[str, Any]) -> str:
         f"- 唯一 seed：`{_slash(audit['split_seed_counts'])}`，分割交集为 0",
         f"- 保留 seed 1000-1019 进入训练：`{len(audit['reserved_evaluation_seed_overlap']['train'])}`",
         f"- 意图：`{json.dumps(audit['intent_counts'], ensure_ascii=False, sort_keys=True)}`",
+        f"- 动作签名：`{json.dumps(audit['selected_action_signature_counts'], ensure_ascii=False, sort_keys=True)}`",
         f"- 视场模式：`{json.dumps(audit['fov_counts'], ensure_ascii=False, sort_keys=True)}`",
         f"- 相机类型：`{json.dumps(audit['camera_type_counts'], ensure_ascii=False, sort_keys=True)}`",
         "",
@@ -1053,6 +1859,9 @@ def report_markdown(report: Mapping[str, Any]) -> str:
         f"固定 seed `{report['training']['config']['seed']}`，训练 `{report['training']['config']['epochs']}` 个 epoch，",
         f"最佳 epoch `{report['training']['best_epoch']}`。训练耗时 `{report['training']['training_elapsed_seconds']:.3f} s`。",
         f"完整训练样本每个 epoch 使用一次，总样本呈现次数 `{report['training']['total_sample_presentations']}`。",
+        f"损失加权：`{report['training']['intent_weighting']['strategy']}`；缺失动作："
+        f"`{json.dumps(report['training']['intent_weighting']['unavailable_intents'], ensure_ascii=False)}`。"
+        "缺失动作权重保持不可用，没有补零或伪造正样本。",
         "",
         "## 指标",
         "",
@@ -1071,8 +1880,21 @@ def report_markdown(report: Mapping[str, Any]) -> str:
             f"{metric_text(overall['pitch_mae_deg'], ' deg')} |"
         )
     latency = evaluation["inference_latency"]
+    test_classification = evaluation["test"]["intent_classification"]
+    test_calibration = evaluation["test"]["calibration"]
+    test_ood = evaluation["test"]["out_of_distribution"]
     lines.extend(
         [
+            "",
+            "### 动作分层",
+            "",
+            f"- test 宏平均召回：`{metric_text(test_classification['macro_recall_supported_classes'])}`",
+            f"- test 宏平均 F1：`{metric_text(test_classification['macro_f1_supported_classes'])}`",
+            f"- test 每动作召回：`{json.dumps(diagnostics['test_per_action_recall'], ensure_ascii=False, sort_keys=True)}`",
+            f"- test 相机角色精确动作：`{json.dumps(diagnostics['test_camera_role_exact_action_accuracy'], ensure_ascii=False, sort_keys=True)}`",
+            f"- test 期望校准误差：`{metric_text(test_calibration['expected_calibration_error'])}`",
+            f"- test 分布外比例：`{metric_text(test_ood['out_of_distribution_fraction'])}`",
+            f"- 诊断回退原因计数：`{json.dumps(diagnostics['diagnostic_fallback_reason_counts'], ensure_ascii=False, sort_keys=True)}`",
             "",
             f"单次候选集前向推理 P50/P95/P99 为 `{latency['p50_ms']:.4f}/"
             f"{latency['p95_ms']:.4f}/{latency['p99_ms']:.4f} ms`，设备为 `{latency['device']}`。",
@@ -1083,6 +1905,8 @@ def report_markdown(report: Mapping[str, Any]) -> str:
             f"- assist：`{str(bundle['assist_admitted']).lower()}`",
             f"- PPO：`{str(bundle['ppo_enabled']).lower()}`",
             f"- assist 加载：`{str(bundle['assist_load_available']).lower()}`（{bundle['assist_load_failure_reason']}）",
+            f"- 模型前置检查：`{diagnostics['status']}`",
+            f"- 前置检查失败原因：`{json.dumps(diagnostics['failure_reasons'], ensure_ascii=False)}`",
             f"- 权重 SHA256：`{bundle['weights_sha256']}`",
             f"- manifest SHA256：`{bundle['manifest_sha256']}`",
             f"- 实现 SHA256：`{bundle['implementation_sha256']}`",
@@ -1232,6 +2056,8 @@ def _new_audit(dataset: LazyActiveVisionEpisodeDataset) -> dict[str, Any]:
         },
         "intent_counts": Counter(),
         "intent_counts_by_split": defaultdict(Counter),
+        "selected_action_signature_counts": Counter(),
+        "selected_action_signature_counts_by_split": defaultdict(Counter),
         "fov_counts": Counter(),
         "fov_counts_by_split": defaultdict(Counter),
         "camera_type_counts": Counter(),
@@ -1268,6 +2094,21 @@ def _update_audit(
     audit["split_sample_counts"][split] += 1
     audit["intent_counts"][action.intent.value] += 1
     audit["intent_counts_by_split"][split][action.intent.value] += 1
+    action_signature = "|".join(
+        (
+            action.intent.value,
+            action.fov_mode.value,
+            (
+                "target_reference"
+                if action.target_global_track_id is not None
+                else "no_target_reference"
+            ),
+        )
+    )
+    audit["selected_action_signature_counts"][action_signature] += 1
+    audit["selected_action_signature_counts_by_split"][split][
+        action_signature
+    ] += 1
     audit["fov_counts"][action.fov_mode.value] += 1
     audit["fov_counts_by_split"][split][action.fov_mode.value] += 1
     audit["camera_type_counts"][camera_type] += 1
@@ -1300,7 +2141,13 @@ def _finalize_audit(
     intent_fractions = {
         name: intent_counts[name] / expected_samples for name in _INTENT_VALUES
     }
-    majority_intent, majority_count = max(intent_counts.items(), key=lambda item: item[1])
+    majority_intent, majority_count = max(
+        (
+            (name, int(intent_counts[name]))
+            for name in _INTENT_VALUES
+        ),
+        key=lambda item: item[1],
+    )
     audit["intent_fractions"] = intent_fractions
     audit["class_imbalance"] = {
         "majority_intent": majority_intent,
@@ -1309,12 +2156,15 @@ def _finalize_audit(
         "observe_target_fraction": intent_fractions[ActiveVisionIntent.OBSERVE_TARGET.value],
         "reacquire_fraction": intent_fractions[ActiveVisionIntent.REACQUIRE.value],
     }
-    audit["generalization_risks"] = [
-        "hold_has_no_positive_demonstrations",
-        "observe_target_is_low_prevalence",
-        "reacquire_dominates_rule_demonstrations",
-        "all_runtime_actions_disabled_no_applied_action_feedback",
-    ]
+    risks: list[str] = []
+    if intent_counts[ActiveVisionIntent.HOLD.value] == 0:
+        risks.append("hold_has_no_positive_demonstrations")
+    if intent_fractions[ActiveVisionIntent.OBSERVE_TARGET.value] < 0.05:
+        risks.append("observe_target_is_low_prevalence")
+    if intent_fractions[ActiveVisionIntent.REACQUIRE.value] >= 0.80:
+        risks.append("reacquire_dominates_rule_demonstrations")
+    risks.append("all_runtime_actions_disabled_no_applied_action_feedback")
+    audit["generalization_risks"] = risks
     audit["behavior_cloning_readiness"] = {
         "status": "pass_development_only",
         "rule_demonstration_complete": True,
@@ -1412,6 +2262,19 @@ def _invert_mapping(payload: Mapping[str, Any]) -> dict[int, str]:
     return result
 
 
+def _validate_codes(
+    values: np.ndarray,
+    mapping: Mapping[int, str],
+    label: str,
+) -> None:
+    if values.ndim != 1:
+        raise ValueError(f"{label} codes must be a vector")
+    if len(values) and (
+        np.any(values < 0) or np.any(values >= len(mapping))
+    ):
+        raise ValueError(f"{label} code is out of range")
+
+
 def _scale_sort_key(value: str) -> tuple[int, int, str]:
     left, right = value.split("v", 1)
     return (int(left), int(right), value)
@@ -1498,6 +2361,14 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--cpu-threads", type=int, default=16)
     parser.add_argument("--latency-samples", type=int, default=2048)
     parser.add_argument("--latency-warmup", type=int, default=64)
+    parser.add_argument(
+        "--intent-weighting",
+        choices=_INTENT_WEIGHTING_STRATEGIES,
+        default="inverse_sqrt",
+    )
+    parser.add_argument("--maximum-intent-weight", type=float, default=8.0)
+    parser.add_argument("--calibration-bin-count", type=int, default=10)
+    parser.add_argument("--ood-margin", type=float, default=0.05)
     parser.add_argument("--external-observed-outcome-count", type=int, default=None)
     parser.add_argument("--canonical-view-manifest")
     parser.add_argument("--training-seed-registry")
@@ -1522,6 +2393,10 @@ def main(argv: Sequence[str] | None = None) -> int:
             cpu_threads=args.cpu_threads,
             latency_samples=args.latency_samples,
             latency_warmup=args.latency_warmup,
+            intent_weighting=args.intent_weighting,
+            maximum_intent_weight=args.maximum_intent_weight,
+            calibration_bin_count=args.calibration_bin_count,
+            ood_margin=args.ood_margin,
         ),
         tracked_summary_path=args.tracked_summary,
         tracked_report_path=args.tracked_report,
@@ -1578,14 +2453,21 @@ if __name__ == "__main__":  # pragma: no cover - exercised through the CLI.
 
 __all__ = [
     "ACTIVE_VISION_BC_CACHE_SCHEMA_VERSION",
+    "ACTIVE_VISION_BC_MODEL_DIAGNOSTICS_SCHEMA_VERSION",
     "ACTIVE_VISION_BC_REPORT_SCHEMA_VERSION",
     "ActiveVisionBcConfig",
+    "ActiveVisionBcDevelopmentCriteria",
     "ActiveVisionBcSplitCache",
     "action_metrics",
+    "assess_behavior_cloning_development_readiness",
     "audit_capacity_probe",
     "build_behavior_cloning_feature_cache",
+    "exact_action_calibration",
     "evaluate_behavior_cloning_model",
+    "intent_weighting_profile",
     "load_behavior_cloning_feature_cache",
+    "out_of_distribution_metrics",
     "run_formal_behavior_cloning",
+    "selected_intent_codes",
     "train_cached_behavior_cloning",
 ]

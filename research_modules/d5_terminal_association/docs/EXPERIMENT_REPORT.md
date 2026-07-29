@@ -1,5 +1,27 @@
 # D5 末端视觉配准与身份认证实验报告
 
+## 2026-07-27 主动视觉不平衡回归
+
+本轮只运行开发态软件回归，没有启动 AirSim、正式 900-cell 训练或大写盘实验。新增 99:1
+极端不平衡 fixture：100 个样本中 99 个规则动作是 `reacquire`，1 个是
+`observe_target`，`hold/search_sector` 没有正样本。多数动作预测得到 0.99 总体精确动作
+准确率，但 `observe_target` 召回为 0，缺失动作召回保持 unavailable。开发模型预检查拒绝
+进入正式 paired-shadow 候选阶段，assist、主动视觉、分配和控制权限全部为 false。
+
+逆平方根意图权重测试确认训练样本权重均值为 1、少数动作权重大于多数动作，加权验证损失
+使用冻结的 train 权重。缺失动作没有补零或伪造正样本，train split 缺类会单独阻断模型
+预检查。逐动作 precision、recall 和 F1 的零分母保持 unavailable。既有
+observation-frame v2 回归继续验证：相机帧已处理但零检测时，有分配目标只能输出
+`reacquire`，覆盖率为 0，locked/ambiguous/hold 计数均为 0。D5 完整回归结果为
+`744 passed, 2 warnings in 111.52s`。警告来自既有 Matplotlib `Axes3D` 多版本环境和 NVML
+初始化失败。
+
+该 fixture 只证明模型筛查不会被多数类准确率绕过，不证明加权模型已经改善真实
+`observe_target` 或侦察相机性能。当前有效模型指标仍来自 2026-07-20：总体精确动作准确率
+`0.955978`、`observe_target` 召回 0、`hold=0`、侦察相机约 `0.621823`。正式指标需在
+clean/frozen 数据谱系上重训，并使用至少 20 个明确未见、非 synthetic seed 做同配置 A3/R0
+成对非退化验证。
+
 ## 2026-07-27 A3 证据合同验证
 
 本轮完成 A3 主动视觉采用证据的软件合同验证，没有启动 AirSim，也没有形成物理收益数据。

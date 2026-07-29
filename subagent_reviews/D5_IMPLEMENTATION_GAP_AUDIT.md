@@ -1,5 +1,24 @@
 # D5 实现差距审计
 
+## 2026-07-27 A3 主动视觉模型前置 GAP
+
+| 缺口 | 当前状态 | 证据与剩余边界 |
+| --- | --- | --- |
+| 类别/动作不平衡统计 | **D5-owned 软件缺口已关闭** | feature cache 审计现输出各 split 意图、视场、相机角色和动作签名；评估输出真实/预测动作分布及多数动作基线。旧正式数据 `reacquire=92.16%`、`observe_target=1.72%`、`hold=0` 的证据不变。 |
+| 少数动作训练权重 | **development-only 已实现** | 默认使用最大权重 8 的逆平方根意图加权，并用同一训练权重选择最佳验证轮次。无正样本动作保持 unavailable，不补零、不伪造；若验证集出现训练未见动作，使用最大惩罚暴露缺口。 |
+| 分层诊断 | **D5-owned 软件缺口已关闭** | report v2 输出宏平均 precision/recall/F1、每动作召回、拦截/侦察相机分层、精确动作置信度校准、训练边界分布外比例和动作不一致/低置信/分布外诊断回退计数。 |
+| 多数类准入投机 | **D5-owned 软件门已关闭** | 新 development precheck 同时要求 train split 每动作有真实正样本，并要求 test split 每动作召回、宏平均召回、两类相机角色、校准和分布外同时可用并达标；99:1 fixture 即使总体准确率 0.99，仍因 `observe_target` 召回 0 与 `hold/search_sector` 无正样本失败关闭。 |
+| 指标分母与边界 | **D5-owned 软件缺口已关闭** | precision、recall、F1 分别按预测数、真实正样本数和 `2TP+FP+FN` 计算；分母为零时 unavailable。缓存标签越界、非法权重、非有限评估特征均失败关闭。 |
+| `hold` 正样本 | **P1 开放，unavailable** | 当前正式 producer 仍为 `hold=0`。代码没有把零检测、补零或重采样解释为 hold 正样本。需独立场景和 seed 产生真实规则示范。 |
+| 侦察相机泛化 | **P1 开放** | 旧 test recon 精确动作准确率约 `0.621823`。本轮增加角色分层和门限，没有生成新的正式模型指标。 |
+| 正式 bundle 准入 | **P1 开放，权限保持关闭** | 本轮未启动 900-cell/大写盘重训。旧 2026-07-20 模型仍是当前证据：总体 `0.955978`、`observe_target` 召回 0、`hold=0`。至少需要 clean/frozen 数据/模型谱系、20 个明确未见且非 synthetic seed、同配置 A3/R0 成对非退化和逐 episode 安全/可见率/重捕获无退化；production evidence assembler 可用前不得晋级。 |
+| 零检测安全语义 | **关闭并保持回归** | observation-frame v2 有分配目标时仍固定为 `reacquire + coverage=false`，不会计为 locked、ambiguous、hold 或模型正收益。 |
+
+本轮新增两项极端不平衡回归，D5 全量为
+`744 passed, 2 warnings in 111.52s`。警告来自既有 Matplotlib `Axes3D` 多版本环境和 NVML
+初始化失败。没有在线 truth ID、`global_track_id` 改写或权限变化。P1 从“缺少不平衡训练与
+诊断软件门”收敛为“缺真实少数动作/侦察相机 producer、正式重训及未见 seed 非退化证据”。
+
 ## 2026-07-27 A3 主动视觉采用证据 GAP
 
 | 缺口 | 当前状态 | 证据与剩余边界 |
