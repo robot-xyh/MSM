@@ -12,11 +12,13 @@ D3 的 A1 动作裕量校准在一个冻结规划帧内比较规则代价间隔�
 夹具越过离散求解边界。A1 隔离批次现可由公共 strict loader 重算固定文件布局、摘要、
 seed/帧范围、候选选择守恒和版本连续性。加载结果不等同于计划发布或运行采用。
 
-D4 的实际区域策略诊断使用 20 个独立校准 seed、420 个样本。两次复跑均得到 76 个安全
-非零输出和 344 个资源不可行主分类。候选实现谱系与当前代码不一致，因此当前谱系开发
-证据保持不可用。当前谱系候选构建器现将训练和模型选择限定在 train/validation，并拒绝
-dirty source、split 重叠、摘要篡改和权限升级。当前共享工作区按 dirty source 拒绝生成
-实物。
+D4 的历史实际区域策略诊断使用 20 个独立校准 seed、420 个样本。两次复跑均得到 76 个
+安全非零输出和 344 个资源不可行主分类；该历史候选与当前实现谱系不一致。当前谱系候选
+构建器将训练和模型选择限定在 train/validation，并拒绝 dirty source、split 重叠、摘要
+篡改和权限升级。随后已从 clean commit `b0d498d9...` 构建并 review-only 复核实际
+development/shadow 实物。manifest 文件和权重分别为 `7cc10ad7...de64`、
+`fd1b9c4c...0047`；train/validation 固定门限诊断分别为 168/180、54/60 个安全非零
+动作。test、历史 calibration 和保留 seed 读取数为 0，全部运行权限为 false。
 
 D5 行为克隆在类别权重和逐动作指标之外增加了训练语料结构门。语料按动作、相机角色、
 场景、seed 和 episode 计数；缺 `hold`、少数动作或侦察相机时拒绝训练。旧 v1 缓存可读
@@ -29,8 +31,9 @@ external/post-assembly 审计。对现存正式证据树的只读验证通过，
 
 共享工作区验证为：D3 `593 passed, 1 skipped`、D4 `697 passed, 1 warning`、D5
 `755 passed, 2 warnings`、D6 `1138 passed, 1 warning`、本模块
-`352 passed, 1 warning`、跨模块合同 `8 passed, 1 warning`。当前文件系统可用空间约
-13 GiB，低于 20 GiB 正式运行保护线，本轮没有启动 900-cell 或完整多 seed 写盘。
+`352 passed, 1 warning`、跨模块合同 `8 passed, 1 warning`。2026-07-28 实测文件系统
+可用空间约 32 GiB，高于 20 GiB 正式运行保护线。正式未见 seed、模型权限、运行确认和
+成对非退化仍未闭合，因此没有启动 900-cell 或完整多 seed 写盘。
 本轮集成记录见 `docs/SCALABLE_3D_LEARNING_EVIDENCE_CHAIN_P1_20260728_CN.md`。
 
 ## A3 零检测帧与观测节拍（2026-07-27）
