@@ -1,5 +1,26 @@
 # D4 分布式协同与降级接管综述及子方案
 
+## 2026-07-28 readiness v2 代码评审
+
+本轮没有构建或登记新模型。D4 已将第三个哈希绑定 readiness 补样源接入候选 builder，
+三来源仍按数字 seed 全局原子切分，正式种子 1000-1019 硬排除。补样源固定为
+100 episode/199 frame/100 seed，readiness 零值 1572/1592，在线真值和 dirty episode
+均为 0。
+
+main 指出的验证标签泄漏和运行上下文分裂已经修复。新路径定义为运行时确定性一致性门：
+validation 标签只用于统计；Advisor 将自己的 projector、rule policy 和
+`formal_decision` 交给同一 helper，门内投影结果直接作为最终候选。bundle 哈希同时绑定
+规则/投影配置、OOD 0.05、confidence 0.60、cap 0.59 和 tolerance 0.10。任一上下文
+不匹配均在推理前规则回退。
+
+新增门诊断只记录无真值运行事实：原始推理、门应用、动作一致性、原始/有效置信度、门后
+候选许可和门拒绝规则回退。main 可将其用于 runtime preflight 分母，不得将其解释为
+assist、分配、接管、联盟或控制许可。旧 bundle 不声明该门，既有行为和序列化保持兼容。
+
+代码验证为运行门专项 12/12、readiness 联合专项 20/20、D4 全量 740/740 passed。clean
+readiness v2 候选、真实 validation 原始/有效指标和 main runtime preflight 均未形成，
+正式评价继续关闭，全部运行权限为 false。
+
 ## 2026-07-28 八区域候选评审
 
 D4 已完成 8-region 复合候选的构建、内容寻址登记和专项测试。运行源与动作课程分别绑定

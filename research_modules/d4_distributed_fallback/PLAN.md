@@ -1,5 +1,50 @@
 # D4 分布式协同与降级接管计划
 
+## 2026-07-28 readiness v2 构建前状态
+
+### 已完成
+
+- 已将第三个真实运行时 readiness 补样源加入 8-region 候选 builder。来源 commit、manifest
+  文件哈希、数据内容哈希、100 episode/199 frame/100 seed、1572/1592 个零值、[0, 1]
+  范围、零在线真值和零 dirty episode 均固定校验。
+- 三个来源继续只读，数字 seed 0-99 跨来源全局原子切分；同一 seed 不得跨 split，
+  1000-1019 不得进入训练、validation 或校准。
+- 已删除 validation 标签逐样本修改 confidence 的路径。readiness v2 改用 bundle 绑定的
+  运行时确定性一致性门。
+- 门 manifest 固定 0.05 OOD 余量、0.60 最低置信度、0.59 不一致封顶和 0.10 连续动作
+  容差，并哈希绑定 projector、rule policy 及其完整配置。
+- Advisor 已成为唯一门控入口。同一 projector、同一 rule policy 和同一次
+  `formal_decision` 同时用于门内投影、规则参考和最终建议；门通过时直接复用已投影结果，
+  不再重复门控。
+- validation helper 与 runtime helper 相同。当前数据集明确使用
+  `formal_decision=None`，validation target 只能审计规则参考，不能控制有效置信度。
+- 已增加稳定诊断 DTO，供 main 区分原始推理、门应用、门后许可和门拒绝规则回退。诊断
+  不参与 assist 或控制许可。
+- 专项验证覆盖 formal decision、非默认投影配置、配置不匹配、降低固定门限、bundle
+  配置/哈希篡改、旧 bundle 兼容和 validation/runtime 一致性。D4 全量为
+  **740/740 passed**。
+
+### 构建前阻断
+
+- 新 readiness v2 候选尚未从 clean commit 构建，不能报告真实原始/有效 validation
+  指标、模型权重哈希或候选 manifest 哈希。
+- main runtime preflight 尚未执行。候选是否具有非零 threshold-pass coverage、是否在
+  validation 上保持零动作不一致误接收、是否覆盖 8-region 运行分布均待 clean-build 后
+  检查。
+- 未注册新模型，正式 20-seed/900-cell 评价继续禁止。全部 assist、assignment、
+  takeover、coalition、control、physical 和 formal evaluation 权限保持 false。
+
+### 后续步骤
+
+1. main 提交 D4 源码后，在独立 clean checkout 运行 readiness v2 builder；构建前后保持
+   worktree clean，不覆盖旧候选。
+2. 复核三来源内容地址、全局 seed split、bundle gate 配置哈希和 validation 审计。接受
+   条件为至少 5% validation 样本通过 0.60 且动作不一致通过数为 0。
+3. 仅在 clean review 通过后，由 main 运行 8-region development runtime preflight，并
+   读取 `runtime_confidence_gate_diagnostic`。preflight 不自动注册模型或开放任何权限。
+4. 若 validation 或 runtime preflight 失败，保留 development/read-only shadow 状态并
+   记录 blocker，不降低 0.05、0.60、0.59 或 0.10 固定值。
+
 ## 2026-07-28 八区域候选预检计划
 
 ### 已完成

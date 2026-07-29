@@ -1,5 +1,34 @@
 # D4 实现差距审计：分布式协同与降级接管
 
+## 2026-07-28 readiness v2 构建前 GAP
+
+- **已关闭代码缺口：readiness 运行特征不足。** 候选 builder 已绑定第三个真实补样源：
+  clean commit `9a1f6fc97e86a7e0204b5fbb0d92e4fd13e3c763`，manifest 文件 SHA-256
+  `a1056c721be0c49066912f51e9f1ce0b4eebfac0e832da47a912f9573a22f0c2`，数据内容
+  SHA-256 `34244f1fe4f15cf82ff144e6c6cb5cabedccf5ba7f7880adcd2b820b681c9c56`。
+  100 episode/199 frame/100 seed 中 readiness 零值为 1572/1592，范围 [0, 1]，在线
+  truth 使用数和 dirty episode 数均为 0。
+- **已关闭 P0 语义缺口：validation 标签参与置信度后处理。** validation
+  `target.action_consistent` 不再修改同一样本 confidence。有效置信度只由 runtime
+  helper 基于当前 snapshot、学习动作、规则动作和安全投影计算。
+- **已关闭 P0 语义缺口：门控与最终投影上下文分裂。** Advisor 使用自身同一个
+  projector、rule policy/config 和同一次 `formal_decision` 完成门控与最终投影。学习策略
+  裸调用只返回原始模型建议；门通过后 Advisor 直接复用门内已投影结果。
+- **已关闭 P0 配置绕过缺口。** bundle gate 内容哈希绑定投影配置、规则配置、OOD 0.05、
+  confidence 0.60、cap 0.59 和 tolerance 0.10。Advisor 配置不匹配、规则与 projector
+  不是同一实例、参数或内容哈希被篡改时均失败关闭。旧无门 bundle 保持原行为。
+- **已关闭 P1 preflight 接口缺口。** `RegionResourceAdvisoryResult` 提供无真值门诊断，
+  可区分模型原始推理、门应用、动作一致性、原始/有效置信度、门后许可和门拒绝规则回退。
+  该字段不是 assist、assignment、takeover、coalition、control 或 physical 许可。
+- **验证结果。** 运行门专项 12/12、readiness 联合专项 20/20、D4 全量 740/740
+  passed；仅有既有 Matplotlib `Axes3D` 环境警告。
+- **仍开放 P1：clean 候选和运行证据。** readiness v2 尚未 clean-build，原始/有效
+  validation 指标、候选/权重哈希和 threshold-pass coverage 尚不可用；main runtime
+  preflight、正式 holdout 和模型注册均未执行。接受条件仍为非零且至少 5% validation
+  coverage，并且 `confidence>=0.60` 的动作不一致样本为 0。
+- **权限边界。** 当前仅完成代码和测试。read-only shadow 保持，formal evaluation
+  关闭；assist、assignment、takeover、coalition、control 和 physical 权限全部为 false。
+
 ## 2026-07-28 八区域候选 GAP 更新
 
 - **已关闭 P1 子项**：缺少绑定运行特征几何和动作多样性目标的 8-region 可复现训练视图。

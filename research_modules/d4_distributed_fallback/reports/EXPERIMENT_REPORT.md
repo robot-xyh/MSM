@@ -1,5 +1,39 @@
 # D4 分布式降级与接管实验报告
 
+## 2026-07-28 readiness v2 构建前验证
+
+本轮只完成代码和纯 Python 回归，没有启动 AirSim、候选 clean-build、完整训练、模型注册
+或 main runtime preflight。旧候选结果保留在后续章节，不作为 readiness v2 指标。
+
+| 检查项 | 结果 |
+| --- | --- |
+| 第三 readiness 源 | 100 episode / 199 frame / 100 seed |
+| readiness 零值 | 1572 / 1592 |
+| readiness 范围 | [0, 1] |
+| 在线真值 / dirty episode | 0 / 0 |
+| 三来源预期复合视图 | 1100 episode / 2297 frame |
+| 固定 OOD / confidence / cap / tolerance | 0.05 / 0.60 / 0.59 / 0.10 |
+| 运行门专项 | 12 / 12 passed |
+| readiness 联合专项 | 20 / 20 passed |
+| D4 全量 | 740 / 740 passed |
+| clean v2 候选 | 未构建 |
+| main runtime preflight | 未执行 |
+| 正式评价和运行权限 | 关闭 |
+
+测试证明 Advisor 使用自己的同一 projector、rule policy 和 formal decision 完成门内投影与
+最终建议。formal decision 改变安全投影时，门内候选和 Advisor 输出逐字段一致。匹配的
+非默认 projection config 可运行；配置不匹配、rule/projector 实例不一致、降低 0.60、
+降低 0.05、篡改门参数或内容哈希均失败关闭。旧无门 bundle 保持原始策略输出和序列化。
+
+合成专项中，一致样本的原始和有效 confidence 均约为 0.90，门后候选保留；不一致样本的
+原始 confidence 约为 0.90，有效 confidence 为 0.59，Advisor 使用规则回退。这是单元测试
+夹具，不是新候选 validation 结果。真实 readiness v2 原始/有效 validation 指标只能在
+clean-build 后产生，当前不得沿用此前由 validation 标签逐样本封顶形成的统计。
+
+新增诊断能区分原始推理、门应用、门后许可和门拒绝规则回退，truth ID 使用数固定为 0。
+诊断只服务 development preflight，不证明 assist、assignment、takeover、coalition、
+control 或 physical 能力。
+
 ## 2026-07-28 八区域候选构建与专项测试
 
 本轮完成离线候选构建和 D4 专项测试，没有启动 AirSim、正式 20-seed 或 900-cell。两个源

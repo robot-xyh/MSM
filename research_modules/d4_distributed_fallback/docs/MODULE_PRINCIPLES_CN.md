@@ -1,5 +1,44 @@
 # 分布式协同与降级接管模块原理（模块编号 D4）
 
+## 2026-07-28 运行时确定性一致性门
+
+readiness v2 采用运行时确定性一致性门。对当前区域快照 \(s\)、学习建议 \(a_L\) 和正式
+裁决 \(f\)，Advisor 使用自己的确定性投影器计算
+\(a_L^P=P(s,a_L,f)\)，再使用自己的规则策略计算
+\(a_R^P=P(s,a_R,f)\)。两次计算共用同一个 projector 实例、同一个 rule policy/config 和
+同一次 `formal_decision`。门通过后，最终建议直接使用 \(a_L^P\)，不再执行第二套投影。
+
+一致性要求区域集合相同，配额归一化误差、备用比例误差和侦察优先级误差均不超过 0.10，
+hold 与 request-replan 逐区域相同，转移边、源区域、目标区域和资源数的多重集合完全相同。
+设模型原始置信度为 \(c_{\mathrm{raw}}\)，则有效置信度为
+
+\[
+c_{\mathrm{eff}}=
+\begin{cases}
+c_{\mathrm{raw}}, & a_L^P \text{ 与 } a_R^P \text{ 一致}\\
+\min(c_{\mathrm{raw}},0.59), & \text{其他情况}
+\end{cases}
+\]
+
+固定运行门限为 0.60，分布外余量为 0.05。动作不一致候选因此不能越过置信度门。bundle
+manifest 对上述常数、规则策略名称和版本、投影器名称和版本、最小备用比例、最小备用资源、
+建议有效期、高威胁权重、不确定性权重和转移压力边界统一计算内容哈希。Advisor 的任一配置
+与 bundle 不一致时停止模型推理并使用规则策略。
+
+validation 不使用 `target.action_consistent` 修改 confidence。标签只用于统计门后误接收和
+核对记录规则标签。当前三来源数据集没有 formal decision 字段，因此 validation 明确以
+`formal_decision=None` 调用运行时 helper；这与数据生成语义一致。以后若训练数据携带正式
+裁决，必须将其作为内容寻址输入并逐帧传入，不能继续使用 None。
+
+`RegionResourceAdvisoryResult` 的门诊断记录原始推理是否完成、门是否应用、动作一致性、
+原始/有效置信度、门后候选是否获准、是否因门拒绝进入规则回退、门配置哈希和正式裁决摘要。
+字段不含 truth ID，也不改变正式 D4 裁决。`candidate_permitted_after_gate` 只是一项
+preflight 事实，不表示 assist、分配、接管、联盟、控制或物理许可。
+
+当前完成的是代码与纯 Python 测试，D4 全量 740/740 passed。readiness v2 尚未从 clean
+commit 构建，没有新模型权重、候选 manifest 或真实 validation 指标；main runtime
+preflight 和正式评价均未执行，全部运行权限保持 false。
+
 ## 2026-07-28 八区域训练视图与置信度原则
 
 复合训练视图不直接拼接不同区域数的标签。运行数据保留真实八区域图和特征范围；四区域课程

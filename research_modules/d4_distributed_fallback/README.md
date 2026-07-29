@@ -1,5 +1,40 @@
 # D4 分布式协同与降级接管
 
+## 2026-07-28 readiness v2 运行时一致性门
+
+D4 已完成 readiness v2 候选构建入口和运行语义修复，但尚未构建新候选。第三个只读
+`secondary_readiness` 补样源固定绑定 clean commit
+`9a1f6fc97e86a7e0204b5fbb0d92e4fd13e3c763`、manifest 文件 SHA-256
+`a1056c721be0c49066912f51e9f1ce0b4eebfac0e832da47a912f9573a22f0c2` 和数据内容
+SHA-256 `34244f1fe4f15cf82ff144e6c6cb5cabedccf5ba7f7880adcd2b820b681c9c56`。
+该源包含 100 episode、199 frame 和 100 个数字 seed；1592 个 readiness 值中 1572 个为
+0，范围为 [0, 1]，在线真值使用数和 dirty episode 数均为 0。三来源复合视图预期包含
+1100 episode、2297 frame，数字 seed 0-99 跨来源原子切分，1000-1019 硬排除。
+
+本轮采用“运行时确定性一致性门”，不再使用 validation 标签逐样本封顶。bundle manifest
+内容寻址绑定规则策略、确定性投影器、两者全部配置、固定 OOD 余量 0.05、置信度门限
+0.60、不一致封顶 0.59 和连续动作容差 0.10。`RegionResourceAdvisor` 是唯一运行入口：
+模型先产生未投影建议，Advisor 将自己的 projector、rule policy 和同一次
+`formal_decision` 传入门函数；门函数完成一次安全投影和规则参考计算，Advisor 直接复用该
+投影结果。上下文或配置不匹配时在模型推理前失败关闭。旧 bundle 不声明该门，加载、裸策略
+输出和序列化键集合保持原行为。
+
+`RegionResourceAdvisoryResult` 现提供可序列化、无真值的
+`runtime_confidence_gate_diagnostic`。它区分原始推理是否完成、门是否应用、动作是否一致、
+原始/有效置信度、门后候选是否获准以及是否因门拒绝转入规则回退。该诊断只用于 main
+runtime preflight，不授予 assist、分配、接管、联盟、控制或物理权限。
+
+validation 仍只允许 train/validation 数据。现有数据集没有 formal decision，审计必须显式
+以 `formal_decision=None` 调用与运行时相同的 helper，并核对在线规则参考与记录规则标签
+一致。新候选必须保留非零且至少 5% 的 validation 门限通过覆盖，同时
+`confidence>=0.60` 的动作不一致样本数为 0。当前尚未执行 clean-build，因此没有可报告的
+新候选原始/有效 validation 指标；此前依赖验证标签封顶得到的统计已作废。
+
+2026-07-28 验证结果为运行门专项 **12/12**、readiness 联合专项 **20/20**、D4 全量
+**740/740 passed**。尚未执行 clean v2 构建、模型注册或 main runtime preflight，正式评价
+继续关闭；assist、assignment、takeover、coalition、control 和 physical 权限全部为
+false。
+
 ## 2026-07-28 八区域复合候选与置信度校准
 
 D4 已构建新的 8-region 专用候选

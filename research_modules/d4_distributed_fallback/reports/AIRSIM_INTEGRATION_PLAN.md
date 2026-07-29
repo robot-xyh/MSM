@@ -1,5 +1,35 @@
 # D4 AirSim Episode 集成计划
 
+## 2026-07-28 readiness v2 preflight 接口
+
+本轮没有启动 AirSim，也没有修改 main runtime。D4 已提供新的
+`runtime_confidence_gate_diagnostic`，main 后续应只通过该稳定接口统计 readiness v2 的
+运行状态，不再依据候选 manifest 的单个接受布尔值推断模型是否实际执行。
+
+每帧 preflight 建议依次记录：
+
+1. `model_raw_inference_executed`：原始模型是否成功产生有限建议；
+2. `gate_applied`：是否使用 Advisor 的同一 projector、rule policy 和 formal decision
+   完成运行时一致性门；
+3. `action_consistent` 与原始/有效 confidence；
+4. `candidate_permitted_after_gate`：候选是否同时通过门和固定 0.60 confidence；
+5. `rule_fallback_due_to_gate`：是否因动作不一致或上下文配置不匹配转入规则回退。
+
+main 必须同时保存 gate 内容 SHA-256、formal decision 摘要、bundle/candidate 身份、
+episode/seed/frame 和场景配置。诊断字段无 truth ID，不替代 OOD、finite、timeout、
+owner/version/epoch/lease、ACK、联盟提交或物理窗口检查。即使
+`candidate_permitted_after_gate=true`，development/read-only shadow 也不能发布 D3 计划
+或获得控制权限。
+
+readiness v2 clean 候选尚未构建，main runtime preflight 尚未执行。后续顺序为：D4 源码
+形成 clean commit；独立 clean checkout 构建和 review；main 加载新 bundle；先运行非正式
+8-region development preflight；由 D6 读取逐帧诊断。任何配置不匹配、门未应用、零有效
+coverage 或动作不一致误接收均阻断正式 seed。
+
+固定值保持 OOD 0.05、confidence 0.60、cap 0.59 和 tolerance 0.10。本计划不授权 AirSim
+正式评价；assist、assignment、takeover、coalition、control 和 physical 权限全部为
+false。
+
 ## 2026-07-28 八区域候选运行预检
 
 main 已从受控 registry 加载

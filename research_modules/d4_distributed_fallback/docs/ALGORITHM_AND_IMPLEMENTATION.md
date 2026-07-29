@@ -1,5 +1,63 @@
 # D4 分布式协同与降级接管算法及实施方案
 
+## 2026-07-28 readiness v2 实施状态
+
+### 三来源候选
+
+readiness v2 builder 只读合并运行特征源、动作课程源和真实 readiness 补样源。补样源绑定
+commit `9a1f6fc97e86a7e0204b5fbb0d92e4fd13e3c763`、manifest 文件 SHA-256
+`a1056c721be0c49066912f51e9f1ce0b4eebfac0e832da47a912f9573a22f0c2` 和数据内容
+SHA-256 `34244f1fe4f15cf82ff144e6c6cb5cabedccf5ba7f7880adcd2b820b681c9c56`。
+100 episode/199 frame 中包含 1592 个 readiness 值，1572 个为 0，数值范围 [0, 1]。
+全部帧具有规则标签，在线真值和 dirty episode 均为 0。
+
+三个来源必须具有相同的数字 seed 0-99 库存。builder 忽略来源各自原 split，按数字 seed
+全局原子切分；一个 seed 的全部来源记录只能进入同一个 split。1000-1019 在读取后立即硬
+拒绝。预期复合视图为 1100 episode/2297 frame，适用域固定 8 region，旧候选目录不覆盖。
+
+### 单一门控路径
+
+实现顺序如下：
+
+1. `LearnedRegionResourcePolicy.recommend_raw()` 只执行模型并返回未投影建议，不宣称已完成
+   运行门。
+2. `RegionResourceAdvisor` 核对 bundle 声明的门配置与自身 minimum confidence、OOD
+   margin、projector 和 rule policy/config。
+3. Advisor 将同一 snapshot、projector、rule policy 和 `formal_decision` 传入
+   `recommend_with_runtime_confidence_gate()`。
+4. helper 对学习建议执行确定性投影，并以同一 formal decision 生成规则参考。动作一致时
+   保留原始 confidence；不一致时有效 confidence 至多为 0.59。
+5. Advisor 在固定 0.60 门限前检查门结果。通过时直接复用 helper 的已投影建议；拒绝、
+   配置不匹配、非有限输出、超时或 OOD 时使用同一 rule policy 回退。
+
+门配置内容哈希覆盖投影和规则配置。具有相同数值配置但 rule policy 未共享 Advisor
+projector 实例时也拒绝，防止两个状态不同的投影器形成表面一致。非默认 projection config
+只有在 bundle 构建时绑定、Advisor 运行时逐字段相同的情况下可用。降低 OOD 0.05 或
+confidence 0.60 会失败关闭。
+
+### 验证与诊断
+
+validation metrics 调用同一 helper，并显式传入 projector、rule policy、
+`formal_decision=None`、0.60 和 0.05。validation target 只核对 runtime rule reference，
+不能决定 cap。接受条件为至少 5% validation 样本越过 0.60，且越过门限的动作不一致样本
+为 0。
+
+Advisor 输出稳定诊断结构，包含 `model_raw_inference_executed`、`gate_applied`、
+`action_consistent`、`raw_confidence`、`effective_confidence`、
+`candidate_permitted_after_gate` 和 `rule_fallback_due_to_gate`。无门旧 bundle 不输出该
+字段，保持旧序列化。诊断 truth ID 使用数固定为 0，且不进入任何权限判定。
+
+专项测试覆盖 formal decision 改变投影、自定义配置匹配和拒绝、规则/projector 实例错配、
+固定门限降低、manifest 参数和哈希篡改、validation/runtime 一致性及旧 bundle 兼容。
+2026-07-28 D4 全量 **740/740 passed**。尚未运行 clean-build、训练、模型注册或 main
+runtime preflight。
+
+本阶段评估过将 readiness v2 拆为独立候选模块。v2 当前与 v1 共用来源校验、数字 seed
+原子切分、训练视图、内容寻址 manifest 和 reviewer 的内部合同；立即拆分会复制这些安全
+检查或扩大私有接口。现阶段保留同一候选模块，通过独立 v2 schema、candidate ID 和命令
+入口隔离，不覆盖 v1。旧 v1 manifest/load/build/review 测试与完整 D4 回归均已通过。
+clean-build 和 preflight 完成后，再根据模块稳定性决定是否提取公共构建内核。
+
 ## 2026-07-28 八区域复合候选实现
 
 构建器先对两个只读源执行固定哈希、episode/frame 数量、区域数和动作库存检查。运行源为

@@ -1,5 +1,21 @@
 # D4 M 对 N 分布式联盟形成与降级接管调研
 
+## 2026-07-28 readiness v2 与联盟权限边界
+
+readiness v2 只修复区域资源 shadow 候选的数据覆盖、置信度门和运行诊断，不改变 M 对 N
+联盟形成合同。即使门后候选获准，也只表示同一 Advisor 上下文中的区域建议通过 OOD、
+置信度、规则一致性和确定性投影；它不选择联盟成员，不生成 D3 后继计划，不替代成员 ACK，
+也不授权 D7 控制。
+
+新诊断中的 `candidate_permitted_after_gate=true` 不能直接进入 coalition
+`committed/executing`。后续仍需严格更高版本计划、owner/version/epoch/lease 一致、
+全部 required member ACK、原子 commit、运行回执和确认后的物理窗口。门拒绝时明确记录
+规则回退，现有中心、二级和完全分布式确定性联盟逻辑继续执行。
+
+当前只完成代码和 740/740 D4 测试。readiness v2 尚未 clean-build，main runtime
+preflight 尚未执行。assist、assignment、takeover、coalition、control、physical 和
+formal evaluation 权限全部保持 false。
+
 ## 2026-07-28 八区域候选与联盟边界
 
 新 8-region 候选只输出区域级 shadow 建议，不选择 M 对 N 联盟成员，不发布 D3 后继计划，
