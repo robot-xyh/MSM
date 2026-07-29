@@ -6,6 +6,7 @@ import pytest
 from research_modules.scalable_3d_simulation.dynamics import integrate_point_masses
 from research_modules.scalable_3d_simulation.models import KinematicLimits, ScenarioConfig
 from research_modules.scalable_3d_simulation.world import (
+    REGIONAL_RESOURCE_PROBE_SCHEMA_VERSION,
     VectorizedPointMassWorld,
     WorldCheckpoint,
 )
@@ -114,6 +115,49 @@ def test_world_supports_curriculum_scales_without_shape_assumptions(scale: int) 
     assert np.all(np.isfinite(snapshot.interceptors.state))
 
 
+def test_regional_resource_probe_places_requested_sector_counts() -> None:
+    target_counts = (2, 4, 2, 3, 2, 3, 2, 2)
+    resource_counts = (4, 1, 2, 3, 2, 3, 2, 3)
+    config = ScenarioConfig(
+        target_count=sum(target_counts),
+        resource_count=sum(resource_counts),
+        recon_count=2,
+        region_count=8,
+        duration_s=0.1,
+        metadata={
+            "regional_resource_probe": {
+                "schema": REGIONAL_RESOURCE_PROBE_SCHEMA_VERSION,
+                "target_counts_by_region": target_counts,
+                "resource_counts_by_region": resource_counts,
+            }
+        },
+    )
+
+    snapshot = VectorizedPointMassWorld(config).snapshot()
+
+    assert _sector_counts(snapshot.intruders.position_ned, 8) == target_counts
+    assert _sector_counts(snapshot.interceptors.position_ned, 8) == resource_counts
+
+
+def test_regional_resource_probe_rejects_inventory_mismatch() -> None:
+    config = ScenarioConfig(
+        target_count=4,
+        resource_count=4,
+        recon_count=0,
+        region_count=2,
+        metadata={
+            "regional_resource_probe": {
+                "schema": REGIONAL_RESOURCE_PROBE_SCHEMA_VERSION,
+                "target_counts_by_region": (1, 1),
+                "resource_counts_by_region": (2, 2),
+            }
+        },
+    )
+
+    with pytest.raises(ValueError, match="must sum to entity count"):
+        VectorizedPointMassWorld(config)
+
+
 def test_intercept_registration_uses_three_dimensional_five_meter_radius() -> None:
     config = ScenarioConfig(
         target_count=1,
@@ -173,3 +217,16 @@ def test_fault_scenario_is_explicitly_marked_as_runtime_pending() -> None:
     config = make_curriculum_scenario("secondary_failure", scale=20, seed=7, duration_s=9.0)
     assert len(config.metadata["fault_schedule"]) == 2
     assert config.metadata["fault_schedule_runtime_required"] is True
+
+
+def _sector_counts(position_ned: np.ndarray, region_count: int) -> tuple[int, ...]:
+    angles = np.arctan2(position_ned[:, 1], position_ned[:, 0]) % (
+        2.0 * np.pi
+    )
+    indices = np.floor(
+        angles / (2.0 * np.pi) * int(region_count)
+    ).astype(int)
+    return tuple(
+        int(value)
+        for value in np.bincount(indices, minlength=region_count)
+    )

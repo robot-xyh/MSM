@@ -20,6 +20,9 @@ from .models import (
 
 
 WORLD_CHECKPOINT_SCHEMA_VERSION = "scalable3d-world-checkpoint-v1"
+REGIONAL_RESOURCE_PROBE_SCHEMA_VERSION = (
+    "scalable3d-regional-resource-probe-v1"
+)
 
 
 @dataclass(frozen=True)
@@ -421,7 +424,12 @@ class VectorizedPointMassWorld:
 
     def _initial_intruders(self) -> np.ndarray:
         count = self.config.target_count
-        angles = _even_angles(count) + self.rng.normal(0.0, 0.015, count)
+        angles = self._initial_angles(
+            entity_count=count,
+            count_field="target_counts_by_region",
+        )
+        if angles is None:
+            angles = _even_angles(count) + self.rng.normal(0.0, 0.015, count)
         radii = self.rng.uniform(
             self.config.world_half_extent_m * 0.72,
             self.config.world_half_extent_m * 0.90,
@@ -444,7 +452,12 @@ class VectorizedPointMassWorld:
 
     def _initial_interceptors(self) -> np.ndarray:
         count = self.config.resource_count
-        angles = _even_angles(count) + np.pi / max(count, 1)
+        angles = self._initial_angles(
+            entity_count=count,
+            count_field="resource_counts_by_region",
+        )
+        if angles is None:
+            angles = _even_angles(count) + np.pi / max(count, 1)
         radii = self.rng.uniform(
             self.config.protected_radius_m * 1.3,
             self.config.protected_radius_m * 2.0,
@@ -475,6 +488,42 @@ class VectorizedPointMassWorld:
         velocity = np.zeros((count, 3), dtype=float)
         return np.column_stack((position, velocity))
 
+    def _initial_angles(
+        self,
+        *,
+        entity_count: int,
+        count_field: str,
+    ) -> np.ndarray | None:
+        """Resolve an opt-in regional layout without changing default scenarios."""
+
+        raw = self.config.metadata.get("regional_resource_probe")
+        if raw is None:
+            return None
+        if not isinstance(raw, Mapping):
+            raise ValueError("regional_resource_probe must be a mapping")
+        if raw.get("schema") != REGIONAL_RESOURCE_PROBE_SCHEMA_VERSION:
+            raise ValueError("unsupported regional_resource_probe schema")
+        counts_raw = raw.get(count_field)
+        if not isinstance(counts_raw, (tuple, list)):
+            raise ValueError(
+                f"regional_resource_probe {count_field} must be a sequence"
+            )
+        if any(type(value) is not int or value < 0 for value in counts_raw):
+            raise ValueError(
+                f"regional_resource_probe {count_field} must contain "
+                "non-negative integers"
+            )
+        counts = tuple(int(value) for value in counts_raw)
+        if len(counts) != self.config.region_count:
+            raise ValueError(
+                f"regional_resource_probe {count_field} must match region_count"
+            )
+        if sum(counts) != int(entity_count):
+            raise ValueError(
+                f"regional_resource_probe {count_field} must sum to entity count"
+            )
+        return _sector_angles_from_counts(counts, rng=self.rng)
+
     def _enforce_world_bounds(self, state: np.ndarray) -> None:
         if state.size == 0:
             return
@@ -499,6 +548,43 @@ def _commands_or_zeros(value: np.ndarray | None, count: int) -> np.ndarray:
 
 def _even_angles(count: int) -> np.ndarray:
     return np.arange(count, dtype=float) * (2.0 * np.pi / max(count, 1))
+
+
+def _sector_angles_from_counts(
+    counts: tuple[int, ...],
+    *,
+    rng: np.random.Generator,
+) -> np.ndarray:
+    """Place entities inside requested angular sectors with bounded jitter."""
+
+    region_count = len(counts)
+    if region_count <= 0:
+        raise ValueError("regional probe requires at least one region")
+    sector_width = 2.0 * np.pi / region_count
+    angles: list[float] = []
+    for region_index, count in enumerate(counts):
+        if count <= 0:
+            continue
+        center = (region_index + 0.5) * sector_width
+        offsets = (
+            np.array([0.0], dtype=float)
+            if count == 1
+            else np.linspace(
+                -0.30 * sector_width,
+                0.30 * sector_width,
+                count,
+            )
+        )
+        jitter = rng.normal(
+            0.0,
+            min(0.01, 0.02 * sector_width),
+            count,
+        )
+        region_angles = center + offsets + jitter
+        lower = region_index * sector_width + 0.05 * sector_width
+        upper = (region_index + 1) * sector_width - 0.05 * sector_width
+        angles.extend(np.clip(region_angles, lower, upper).tolist())
+    return np.asarray(angles, dtype=float)
 
 
 def _max_speed(state: np.ndarray) -> float:

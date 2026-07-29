@@ -58,6 +58,10 @@ from research_modules.scalable_3d_simulation.reporting import (
     write_batch_outputs,
 )
 from research_modules.scalable_3d_simulation.scenarios import make_curriculum_scenario
+from research_modules.scalable_3d_simulation.world import (
+    REGIONAL_RESOURCE_PROBE_SCHEMA_VERSION,
+    VectorizedPointMassWorld,
+)
 
 
 class _FiniteLearnedRegionPolicy:
@@ -83,6 +87,48 @@ class _FiniteLearnedRegionPolicy:
             model_sha256="a" * 64,
             fallback_reason=None,
         )
+
+
+def test_regional_resource_probe_limits_default_d3_resource_reachability() -> None:
+    target_counts = (2, 4, 2, 3, 2, 3, 2, 2)
+    resource_counts = (4, 1, 2, 3, 2, 3, 2, 3)
+    config = ScenarioConfig(
+        target_count=sum(target_counts),
+        resource_count=sum(resource_counts),
+        recon_count=2,
+        region_count=8,
+        duration_s=0.1,
+        metadata={
+            "regional_resource_locality_enforced": True,
+            "regional_resource_probe": {
+                "schema": REGIONAL_RESOURCE_PROBE_SCHEMA_VERSION,
+                "target_counts_by_region": target_counts,
+                "resource_counts_by_region": resource_counts,
+            },
+        },
+    )
+    world = VectorizedPointMassWorld(config)
+    snapshot = world.snapshot()
+    stack = IntegratedScalableModuleStack()
+    stack.reset(config)
+    navigation = SimpleNamespace(
+        platform_ids=world.interceptor_ids,
+        active=snapshot.interceptors.active,
+        state_ned=snapshot.interceptors.state,
+        covariance=np.repeat(
+            np.eye(6, dtype=float)[None, :, :],
+            config.resource_count,
+            axis=0,
+        ),
+    )
+
+    resources = stack._d3_resources(navigation)
+
+    assert resources
+    assert all(
+        resource.reachable_target_region_ids == (resource.region_id,)
+        for resource in resources
+    )
 
 
 class _IdentifiableHoldRegionPolicy:

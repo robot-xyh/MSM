@@ -7056,6 +7056,7 @@ class IntegratedScalableModuleStack:
             high_count = max(1, int(math.ceil(len(usable) * fraction))) if usable else 0
         output: list[TargetTrack] = []
         all_regions = _region_ids(config.region_count)
+        local_only = _regional_resource_locality_enabled(config)
         for index, track in enumerate(sorted(usable, key=lambda item: item.global_track_id)):
             commitment = commitment_by_track[track.global_track_id]
             position = np.asarray(track.state[:3], dtype=float)
@@ -7091,7 +7092,9 @@ class IntegratedScalableModuleStack:
                     velocity_ned=tuple(float(value) for value in track.state[3:]),
                     position_covariance_ned=track.covariance[:3, :3].copy(),
                     region_id=region_id,
-                    candidate_resource_region_ids=all_regions,
+                    candidate_resource_region_ids=(
+                        (region_id,) if local_only else all_regions
+                    ),
                     demand=demand,
                     identity_commitment_state=(
                         commitment.identity_commitment_state.value
@@ -7112,10 +7115,12 @@ class IntegratedScalableModuleStack:
     ) -> tuple[ResourceState, ...]:
         config = self._require_ready()
         all_regions = _region_ids(config.region_count)
+        local_only = _regional_resource_locality_enabled(config)
         resources: list[ResourceState] = []
         for index, resource_id in enumerate(navigation.platform_ids):
             active = bool(navigation.active[index])
             position = navigation.state_ned[index, :3]
+            region_id = _region_for_position(position, config.region_count)
             resources.append(
                 ResourceState(
                     resource_id=resource_id,
@@ -7129,8 +7134,10 @@ class IntegratedScalableModuleStack:
                     max_speed_mps=config.interceptor_speed_mps,
                     # The square workspace diameter is 2*sqrt(2)*half_extent.
                     max_intercept_range_m=3.0 * config.world_half_extent_m,
-                    region_id=_region_for_position(position, config.region_count),
-                    reachable_target_region_ids=all_regions,
+                    region_id=region_id,
+                    reachable_target_region_ids=(
+                        (region_id,) if local_only else all_regions
+                    ),
                     capability_class="intercept_visual",
                 )
             )
@@ -7160,12 +7167,16 @@ class IntegratedScalableModuleStack:
         track_by_id = {
             track.global_track_id: track for track in self.latest_d2_tracks
         }
+        d3_track_by_id = {
+            track.track_id: track for track in self._d3_tracks()
+        }
         assignments_by_target = plan.assignments_by_target()
         coalition_by_target = {
             coalition.target_id: coalition for coalition in plan.coalitions
         }
         tasks: list[RegionalTaskEvidence] = []
-        for target_id, assignments in assignments_by_target.items():
+        for target_id in sorted(d3_track_by_id):
+            assignments = assignments_by_target.get(target_id, ())
             track = track_by_id.get(target_id)
             if track is None:
                 continue
@@ -7173,7 +7184,15 @@ class IntegratedScalableModuleStack:
             required_count = (
                 coalition.required_resource_count
                 if coalition is not None
-                else assignments[0].required_resource_count
+                else (
+                    assignments[0].required_resource_count
+                    if assignments
+                    else (
+                        d3_track_by_id[target_id].demand.required_resource_count
+                        if d3_track_by_id[target_id].demand is not None
+                        else 1
+                    )
+                )
             )
             assigned_ids = tuple(item.resource_id for item in assignments)
             support_ids = tuple(
@@ -7219,8 +7238,10 @@ class IntegratedScalableModuleStack:
                     d2_id_switch_count=0,
                     d2_duplicate_track_count=0,
                     d3_is_current=True,
-                    d3_resource_feasible=all(
-                        item.feasibility_state == "feasible" for item in assignments
+                    d3_resource_feasible=bool(assignments)
+                    and all(
+                        item.feasibility_state == "feasible"
+                        for item in assignments
                     )
                     and self._regional_plan_rejection_reason is None,
                     d5_consistency=consistency,
@@ -10132,6 +10153,15 @@ def _advance_schedule(current: float, period: float, now: float) -> float:
 def _region_ids(count: int) -> tuple[str, ...]:
     width = max(3, len(str(int(count))))
     return tuple(f"region-{index:0{width}d}" for index in range(int(count)))
+
+
+def _regional_resource_locality_enabled(config: ScenarioConfig) -> bool:
+    value = config.metadata.get("regional_resource_locality_enforced", False)
+    if type(value) is not bool:
+        raise ValueError(
+            "regional_resource_locality_enforced must be a boolean"
+        )
+    return value
 
 
 def _region_for_position(position_ned: np.ndarray, region_count: int) -> str:

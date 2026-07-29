@@ -1,5 +1,24 @@
 # 200 对 200 三维质点仿真实施计划
 
+## D4 区域资源可执行差异探针（2026-07-29）
+
+1. [x] main 新增默认关闭的 `scalable3d-regional-resource-probe-v1`。场景可按区域
+   指定目标和资源数量，不改变普通课程场景。
+2. [x] main 新增 `regional_resource_locality_enforced`。仅在显式启用时，D3 初始
+   候选边限制为本区资源；D4 后续 transfer allowance 才能开放跨区边。
+3. [x] D4 快照已覆盖未分配的当前 D2/D3 航迹，不再只统计已有 assignment 的目标。
+   20 目标、20 资源、8 区域诊断得到 17 条绑定和 3 个未分配目标，在线真值使用为 0。
+4. [x] 诊断确认 `region-000` 在保留 1 个备用资源后最多可转移 1 个资源，
+   `region-001` 存在资源缺口；场景和资源守恒条件可表达真实可执行差异。
+5. [ ] D4 分离 planning/replan eligibility 与 assignment、coalition、control
+   execution authority。资源不足时只允许 aggregate advisory 进入 D3 下一周期规划，
+   不允许当前不可执行计划获得执行权限。
+6. [ ] 权限合同修复后运行同一探针。验收要求 D4 advisory 可消费，D3 至少新增一条
+   先前未分配目标的绑定，source/R0/treatment 执行签名严格可区分，owner、epoch、
+   lease 不被机械改写，源区仍保留 1 个备用资源。
+7. [ ] main 从 clean commit 导出内容寻址、在线无真值的 D4 runtime 数据。D4 只从
+   外部数据构建未登记 v4，完成正负置信度校准后再进入独立 review 和不可变登记。
+
 ## D4 readiness v3 隔离双臂收口（2026-07-29）
 
 1. [x] main 已使用同一冻结外生配置分别运行规则臂和 v3 候选臂。development seeds
