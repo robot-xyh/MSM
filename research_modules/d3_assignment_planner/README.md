@@ -1980,3 +1980,49 @@ main 提供的未落盘 20-seed 诊断中，15/20 形成 safe/auditable A2，see
 `regional_hint_no_executable_successor`，t=2 为
 `regional_hint_held_assignment_infeasible`。该诊断用于定位策略选择边界，不替代前述
 正式 20-seed 0/20 证据，也不构成运行确认或物理结果。
+
+## 2026-07-28 D4 当前谱系 A2 严格后继证据
+
+D3 新增只读 `a2_successor_evidence`。该模块复用现有 `RegionalPlanningHint`、
+`AssignmentPlan.execution_signature()` 和计划载荷校验，不进入规划热路径，也不改变
+Hungarian、需求槽 Hungarian、迟滞、硬约束或规则回退。公开入口包括：
+
+- `load_a2_current_lineage_identity(...)`：独立读取 D4 当前谱系候选清单，复算文件与内容
+  摘要，绑定候选编号、模型版本、权重和源码身份，并确认全部权限为 false；
+- `build_a2_successor_plan_evidence(...)`：核对 D4 实际模型诊断、确定性投影动作、D3
+  区域提示、前序计划、同输入 R0 计划和候选后继；
+- `validate_a2_successor_plan_evidence(...)`：重新读取单条证据并复核全部摘要和关闭状态；
+- `build/load/write_a2_successor_evidence_batch(...)`：为通过运行兼容性预检的新候选保存
+  正式 20-seed 独立影子评价所需的候选一致、比较键唯一记录集。
+
+证据只承认候选计划相对同输入 R0 的执行签名增量。R0 相对前序计划是否因普通周期重规划
+改变单独记录，不能计入 A2 作用。安全投影后的区域配额、备用资源数、hold、
+`request_replan` 和跨区 transfer 必须与 D3 实际消费提示一致；候选计划还须相对前序
+严格 `version+1`。无操作、资源不可行、过时版本、候选身份错配、候选/R0 混用和候选与
+R0 执行签名相同均失败关闭。
+
+当前本地 D4 实物已通过身份读取：
+
+- candidate manifest 文件 SHA-256：
+  `7cc10ad770bd95fcb813dbf3d16b17040ec5f41f80fe0dc53e3e291a32f4de64`；
+- candidate manifest 内容 SHA-256：
+  `b51f2ed01d7f8b963166fe1d7e73acd6a481c5359d54ed5c3712371733aa6ba9`；
+- model state SHA-256：
+  `fd1b9c4cf7580083fadc04a70b87aa6439930eba764a970279611ccc57f30047`；
+- source identity SHA-256：
+  `b81780cece11c792acb3113af2d4be48a19b51c0337a67c926b388197d09dfdf`。
+
+上述结果只证明当前候选身份可读。D4/main 的运行兼容性检查显示，该候选在 5v5、2 区域
+的 3/3 次预检和 200v200、8 区域的 2/2 次预检中均触发 `feature_ood`，非回退模型执行
+为 0。因此不得使用该候选启动正式 20-seed successor 批次。
+
+正式批次的前置顺序是：D4 先基于实际运行特征和动作课程构建 clean-lineage、
+runtime-compatible 的新 development/shadow 候选；D3 loader 再核对候选身份和关闭权限；
+main 随后执行非正式兼容性预检。只有预检出现非回退模型执行，且确定性安全投影继续通过，
+才能冻结新候选身份并生成至少 20 个真正未见 seed 的正式 successor 证据。预检仍全部
+回退时必须停止，不能用合同夹具或当前候选补足正式分母。
+
+新增专项 `16 passed`，区域提示与新证据组合 `41 passed`。D3 全量收集 610 项，结果为
+`609 passed, 1 skipped`；跳过项仍是可选 OR-Tools。以上只证明软件边界和当前候选身份
+可读。运行兼容的新候选、正式 successor 记录、运行确认、owner/coalition ACK、物理
+窗口、D7 执行或收益证据尚未生成，全部相应字段固定为 false。

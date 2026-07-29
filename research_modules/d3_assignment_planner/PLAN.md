@@ -2233,3 +2233,56 @@ D3 全量为 `571 passed, 1 skipped`，唯一跳过为可选 OR-Tools。既有 M
 本项没有改变 AirSim DTO、episode、相机、actor、D7 控制或物理指标。
 `docs/AIRSIM_INTEGRATION_PLAN.md`、`docs/EXPERIMENT_REPORT.md` 与 M-to-N 专项已检查，
 无需修改。
+
+## 62. D4 当前谱系 A2 后继证据边界（2026-07-28）
+
+### 已完成
+
+1. [x] 复用现有区域提示、执行签名和计划载荷哈希，不建立第二套分配器或后继身份规则。
+2. [x] 增加 D4 当前谱系候选公开 loader，复核候选编号、manifest 文件/内容摘要、模型
+   权重、源码身份、development/shadow 生命周期和全关闭权限。
+3. [x] 将 D4 实际模型单帧诊断中的场景、seed、frame、输入快照摘要、决策摘要和安全投影
+   动作摘要绑定到 D3 消费提示。
+4. [x] 将前序 `owner/plan_version/epoch/lease`、advisory id/version 和前序计划载荷摘要
+   绑定到严格后继。
+5. [x] 使用同输入 R0 计划隔离普通周期重规划。A2 归因范围固定为候选相对 R0 的执行签名
+   增量，不能把 R0 相对前序的变化记入 A2。
+6. [x] 仅当投影后的配额、备用资源、hold、重规划请求或跨区 transfer 非零，并且候选
+   执行签名同时区别于前序和 R0 时生成证据。
+7. [x] 增加单条 verifier、批次 builder/writer/loader、唯一比较键和候选同质性检查。
+8. [x] 把运行 ACK、owner/coalition ACK、物理窗口、D7 执行、收益、assist、分配权和
+   控制权固定为 false。
+
+### 模块验收
+
+当前 D4 current-lineage 候选 manifest、权重和 source identity 已由 D3 loader 读取并与
+已知摘要一致。负例覆盖 no-op、资源不可行、旧版本、候选或权重错配、候选/R0 混用、
+普通重规划同结果、D4-D3 投影动作不一致、真值字段、同输入摘要错配、伪造运行权限和重复
+比较键。
+
+新证据专项 `16 passed`，区域提示组合 `41 passed`，D3 全量
+`609 passed, 1 skipped`（610 项）。本项没有改写默认求解路径或学习权限。
+
+候选身份通过不等于运行兼容。D4/main 已确认当前候选在 5v5、2 区域的 3/3 次预检和
+200v200、8 区域的 2/2 次预检中均为 `feature_ood`，非回退模型执行为 0。当前候选不得
+进入正式 20-seed successor 批次。
+
+### 跨模块后续执行
+
+1. D4 先基于实际运行特征和动作课程构建 clean-lineage、runtime-compatible 的新
+   development/shadow 候选，不能复用当前全量 `feature_ood` 候选。
+2. D3 loader 核对新 candidate id、manifest、model state、source identity、
+   development/shadow 生命周期和全关闭权限。
+3. main 先运行非正式兼容性预检。只有出现非回退模型执行，且安全投影、有限值和权限门
+   继续通过，才能冻结该新候选身份；若仍全部回退，正式批次必须阻断。
+4. 对通过预检的新候选，使用至少 20 个真正未见 seed 生成同输入 A2/R0 双臂记录。
+5. 每个记录必须保存 D4 实际模型诊断、原始区域提示、带权属的前序计划、R0 计划和严格
+   后继计划；episode、seed、frame 和输入摘要必须一一对应。
+6. 只将 loader 接受的记录交给后续运行评价。没有严格后继的 seed 仍进入分母，并以明确
+   拒绝原因保存，不能用其他帧或普通重规划补位。
+7. runtime/owner/coalition ACK、确认后的物理窗口、D7 执行和同键非退化由 main、D4、D6
+   另行生成并连接；D3 本模块不补造这些事实。
+
+`docs/EXPERIMENT_REPORT.md` 已同步软件合同验收和运行兼容性阻断结论。
+`docs/AIRSIM_INTEGRATION_PLAN.md` 已检查；本项不改变 AirSim DTO、settings、episode
+或控制路径，因此不修改。M-to-N 调度专项也未受影响。

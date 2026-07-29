@@ -1732,3 +1732,48 @@ loader 软件缺口，不是
 
 `docs/AIRSIM_INTEGRATION_PLAN.md` 已检查。本项不改变 AirSim DTO、settings、episode 或
 控制路径，不修改该文件。D3 M-to-N 调度和相关专项文档也未变化。
+
+## 58. D4 current-lineage A2 严格后继证据 GAP 更新（2026-07-28）
+
+### 已关闭的 D3 模块级 P1
+
+现有 `d3_regional_planning_hint_successor_v1` 能判断提示是否形成严格后继，但序列化证据
+没有绑定 D4 current-lineage 候选编号、模型权重、源码身份、输入/决策/动作摘要和同输入
+R0。调用方仍可能把普通周期重规划、其他候选或 R0 计划误包装成 A2 后继。
+
+D3 已新增独立、只读、失败关闭的 A2 successor verifier/loader。它复用现有提示与计划
+对象，不触碰 Hungarian/需求槽主线。当前候选 manifest 文件摘要
+`7cc10ad770bd95fcb813dbf3d16b17040ec5f41f80fe0dc53e3e291a32f4de64`、
+权重摘要
+`fd1b9c4cf7580083fadc04a70b87aa6439930eba764a970279611ccc57f30047` 和
+source identity
+`b81780cece11c792acb3113af2d4be48a19b51c0337a67c926b388197d09dfdf`
+已由 D3 loader 独立读取。candidate manifest 的全部权限保持 false。
+
+证据要求安全投影后的配额、备用资源数、hold、重规划请求和 transfer 与 D3 提示逐项
+一致。前序 owner、版本、epoch、lease 必须完整且与各区域约束一致。候选计划必须严格
+`version+1`，执行签名必须同时区别于前序和同输入 R0。R0 相对前序的普通周期变化单独
+记录，A2 归因只覆盖候选相对 R0 的增量。
+
+专项 `16 passed`，区域提示组合 `41 passed`，D3 全量
+`609 passed, 1 skipped`（610 项）。当前没有新增 P0。
+
+### 保持开放的跨模块 P1
+
+1. 当前只完成候选身份加载和确定性合同夹具。D4/main 预检中，当前候选在 5v5、2 区域
+   为 3/3 `feature_ood`，在 200v200、8 区域为 2/2 `feature_ood`，非回退模型执行为
+   0。该候选的正式 20-seed A2/R0 successor 批次必须阻断。
+2. D4 需基于实际运行特征和动作课程构建 clean-lineage、runtime-compatible 的新
+   development/shadow 候选。D3 loader 需重新核对 candidate、manifest、model state、
+   source identity 和全关闭权限。
+3. main 必须先做非正式兼容性预检。只有出现非回退模型执行，且确定性安全投影继续通过，
+   才能冻结新候选并启动至少 20 个真正未见 seed 的正式批次；预检全回退时继续阻断。
+4. 每个正式 seed 还需保存 D4 实际非零决策、同输入 R0、D3 严格后继及拒绝分母。没有
+   后继时必须保留明确原因，不能以普通重规划或其他 candidate 补位。
+5. runtime ACK、owner ACK、必要 coalition ACK、确认后物理窗口、D7 执行和 benefit
+   仍不可用。新 DTO 将这些字段固定为 false，不能据软件验证推断。
+6. D4 候选仍是 development/shadow-only；A2 assist、assignment authority、takeover、
+   coalition commit 和 control authority 均未开放。
+
+`README.md`、`PLAN.md`、原则、算法和实验报告已同步。AirSim 集成计划已检查；没有接口或
+实验变化，无需修改。M-to-N 专项不受本项影响。

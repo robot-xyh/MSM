@@ -1749,3 +1749,36 @@ admission、assignment authority 和 control authority 为 false。D6 可以把�
 后续发布、ACK、完整物理
 窗口、同键 R0 和正式准入仍开放。AirSim 集成计划已检查；本项没有运行时接口变化。实验
 报告仅新增软件合同验证，不改写既有正式 100-frame 结果。M-to-N 专项无变化。
+
+## 64. A2 当前谱系后继证据复核（2026-07-28）
+
+区域提示主线已经能生成安全后继，缺口位于后继的外部归因。旧记录只凭
+`regional_hint_applied`、计划版本和 advisory 身份判断 A2 采用，不能证明该计划来自当前
+候选，也不能排除同周期普通重规划。只有 runtime-compatible 的 current-lineage 候选在
+非正式预检中产生非回退安全输出后，该缺口才进入正式 20-seed A2/R0 影子评价。
+
+D3 新增 `a2_successor_evidence`，没有修改规划器。候选 loader 对 D4 manifest 文件摘要、
+内部内容摘要、权重、source identity、开发阶段和权限执行独立校验。当前实物读取结果与
+D4 记录一致。单帧 verifier 再连接以下五层：
+
+1. D4 实际模型诊断中的 scenario、seed、frame 和 snapshot SHA；
+2. candidate id、model state 和 current source identity；
+3. 安全投影后的配额、备用资源、hold、request-replan 和 transfer；
+4. D3 前序 owner/version/epoch/lease 与严格 successor；
+5. 同输入、无 A2 提示的 R0 计划。
+
+当 R0 自身因周期输入变化形成新计划时，证据保留
+`ordinary_periodic_replan_changed=true`。A2 只记录 successor 与 R0 的执行签名差异。
+successor 与 R0 相同即拒绝，不能把整个新计划归给 A2。候选/R0 混用、旧版本、资源不可
+行、投影动作不一致和 no-op 均有独立负例。
+
+专项 `16 passed`，区域提示组合 `41 passed`，D3 全量
+`609 passed, 1 skipped`。当前只完成模块软件边界和候选身份读取。D4/main 运行兼容性
+预检显示：5v5、2 区域为 3/3 `feature_ood`，200v200、8 区域为 2/2
+`feature_ood`，非回退模型执行均为 0。当前候选不得直接启动正式 20-seed。
+
+D4 应先基于实际运行特征和动作课程生成 clean-lineage、runtime-compatible 的新
+development/shadow 候选。D3 核验身份和关闭权限后，main 先做非正式预检；出现非回退
+模型执行且安全投影通过后，才允许冻结候选并生成正式 successor 证据。20 个未见 seed、
+计划运行确认、owner/coalition ACK、物理窗口、D7 执行和收益仍未生成；所有对应权限和
+可用性字段保持 false。AirSim 集成接口和 M-to-N 调度未变化。

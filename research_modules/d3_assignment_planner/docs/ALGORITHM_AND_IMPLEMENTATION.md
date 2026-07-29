@@ -3935,3 +3935,121 @@ selection；另一个 20-seed 夹具没有安全离散变化，20 条 selection 
 
 隔离批次专项 `46 passed`；D3 全量 `593 passed, 1 skipped`。该结果关闭软件读取缺口。
 正式 A1 输入没有重跑，既有 `0/20 eligible` 和无后续运行证据状态保持不变。
+
+## 69. D4 A2 当前谱系严格后继证据
+
+### 69.1 接口位置
+
+`a2_successor_evidence.py` 是规划器之外的只读审计层。它直接复用：
+
+- `RegionalPlanningHint` 的来源计划、区域约束、资源守恒和权属租约语义；
+- `AssignmentPlan.execution_signature()` 的可执行计划身份；
+- `validated_assignment_plan_payload_sha256(...)` 的完整计划载荷摘要；
+- `canonical_runtime_payload_sha256(...)` 的跨文件内容寻址。
+
+该模块不调用求解器，不修改计划，不调整代价，不授予学习或运行权限。
+
+### 69.2 候选身份
+
+`load_a2_current_lineage_identity(...)` 读取
+`d4-region-resource-current-lineage-candidate-v1`。loader 同时验证文件 SHA-256、去掉
+`content_sha256` 后的规范 JSON 摘要、权重文件绑定、development/shadow 生命周期和九项
+关闭权限。输出只保留：
+
+```text
+candidate_id
+model_version
+candidate_manifest_file_sha256
+candidate_manifest_content_sha256
+model_state_sha256
+source_identity_sha256
+```
+
+当前候选已按该入口成功读取。manifest 文件摘要为 `7cc10ad...de64`，内容摘要为
+`b51f2ed...ba9`，权重摘要为 `fd1b9c4...047`，源码身份为 `b81780c...dfdf`。该结果只
+验证身份和权限边界，不验证运行特征兼容性。
+
+### 69.3 动作归一化
+
+D4 实际模型诊断中的每个区域动作转换为：
+
+```text
+(region_id,
+ resource_quota_delta,
+ reserve_resources,
+ hold,
+ request_replan)
+```
+
+跨区动作转换为：
+
+```text
+(source_region_id, target_region_id, edge_id, resource_count)
+```
+
+D3 提示中的 `reserve_ratio` 使用同一 `resources_before + quota_delta` 计算整数备用资源数：
+
+```text
+reserve_resources = ceil(reserve_ratio * resources_after)
+```
+
+两侧归一化结果必须完全相同。至少一个配额、备用资源、hold、重规划请求或 transfer 相对
+当前状态非零。资源数为负、备用资源超过扣除承诺后的可用数、投影结果为空或 D4
+`safe_nonzero_actual_model` 不成立时拒绝。
+
+### 69.4 后继与 R0
+
+前序计划必须携带 `plan_owner`、`owner_node_id`、`authority_epoch` 和
+`lease_expires_at_s`。全部区域约束必须引用同一前序计划和相同权属。候选后继必须满足：
+
+```text
+successor.plan_id != source.plan_id
+successor.version == source.version + 1
+successor.previous_plan_id == source.plan_id
+regional_hint_successor_plan_available == true
+```
+
+同输入 R0 不得携带 A2 区域提示或学习采用。若 R0 执行签名等于前序，它必须保留前序计划
+身份；若 R0 因普通周期输入变化而改变，它也必须形成独立的 `version+1` 后继。
+
+最终归因条件为：
+
+```text
+signature(A2 successor) != signature(source)
+signature(A2 successor) != signature(same-input R0)
+```
+
+`signature(R0) != signature(source)` 只写入
+`ordinary_periodic_replan_changed`。证据的 `attribution_scope` 固定为
+`candidate_vs_same_input_r0_execution_delta_only`，不把 R0 的周期变化归给 A2。
+
+### 69.5 批次读取
+
+单条证据绑定 scenario、episode、seed、frame、输入摘要、D4 决策摘要、投影动作摘要、
+提示摘要和三份计划摘要。比较键由上述时空身份、输入摘要和前序计划身份计算。
+
+批次 writer/loader 要求全部记录属于同一 candidate/model/source identity，比较键唯一，
+seed 清单与记录一致。JSON 重复键、非有限值、符号链接、文件摘要错配、在线 truth/Actor
+字段和权限升级均失败关闭。loader 可由调用方额外冻结 candidate、权重、源码身份和预期
+seed 清单。
+
+### 69.6 验证边界
+
+新增 16 项测试覆盖正向普通重规划隔离、候选 manifest 读取、权限关闭、单条公开 verifier、
+批次往返，以及 no-op、资源
+不可行、旧版本、候选/权重错配、候选与 R0 混用、候选与 R0 执行签名相同、动作不一致、
+真值、输入不一致、伪造运行状态和重复比较键。区域提示与新证据组合 `41 passed`；D3
+全量为 `609 passed, 1 skipped`。
+
+当前没有实际 20-seed successor 批次。运行 ACK、owner/coalition ACK、物理窗口、D7
+执行、收益和生产权限固定为 false。该模块为后续影子评价提供输入边界，不构成 A2 采用或
+收益结果。
+
+D4/main 的前置检查进一步确认，当前候选在 5v5、2 区域的 3/3 次预检和 200v200、
+8 区域的 2/2 次预检中均触发 `feature_ood`，非回退模型执行为 0。正式批次必须在此处
+阻断，不能把 manifest 可读或合同夹具正例解释为运行兼容。
+
+后续顺序固定为：D4 使用实际运行特征和动作课程构建 clean-lineage、
+runtime-compatible 的新 development/shadow 候选；D3 loader 验证其身份和关闭权限；
+main 执行非正式兼容性预检。只有预检出现非回退模型执行且确定性安全投影继续通过，才
+冻结新候选身份并启动至少 20 个真正未见 seed 的正式 A2/R0 successor 证据批次。

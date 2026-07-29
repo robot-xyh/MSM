@@ -1812,3 +1812,71 @@ loader 再从磁盘独立读取。
 公共 strict loader 软件缺口已关闭。该结果没有重跑正式 20-seed/100-frame A1 数据，
 没有产生新模型、可辨识候选、计划发布、运行确认、物理窗口或同键 R0。既有正式结果仍为
 `0/20 eligible`，不能据此形成 A1 准入或收益结论。
+
+## A2 当前谱系后继证据合同验证（2026-07-28）
+
+### 条件
+
+本次为 D3 软件合同试验，没有运行 AirSim 或新的三维质点 episode。正向夹具包含三区域、
+三个目标和五个资源。前序计划具有中心 owner、epoch 7 和 10 秒租约。下一帧同时发生 B 区
+资源不可用和 C 区成本变化，因此无提示 R0 自身形成普通 `version+1` 计划。
+
+D4 处理臂使用一单位 A→B 守恒转移、C 区 hold 和三个区域的重规划请求。安全投影动作与
+D3 区域提示完全一致。候选后继恢复 B 区跨区绑定并保持 C 区原安全绑定，执行签名同时
+区别于前序和同输入 R0。
+
+### 当前候选读取
+
+D3 loader 对本地 D4 current-lineage candidate manifest 完成独立读取：
+
+| 项目 | SHA-256 |
+|---|---|
+| manifest 文件 | `7cc10ad770bd95fcb813dbf3d16b17040ec5f41f80fe0dc53e3e291a32f4de64` |
+| manifest 内容 | `b51f2ed01d7f8b963166fe1d7e73acd6a481c5359d54ed5c3712371733aa6ba9` |
+| 模型权重 | `fd1b9c4cf7580083fadc04a70b87aa6439930eba764a970279611ccc57f30047` |
+| 源码身份 | `b81780cece11c792acb3113af2d4be48a19b51c0337a67c926b388197d09dfdf` |
+
+候选仍为 development/shadow-only，manifest 的 assist、assignment、authority、takeover、
+coalition commit、control 和 benefit 权限均为 false。
+
+身份读取不构成运行兼容性证据。D4/main 的预检结果为：
+
+| 场景 | 预检结果 | 非回退模型执行 |
+|---|---|---:|
+| 5v5、2 区域 | 3/3 `feature_ood` | 0 |
+| 200v200、8 区域 | 2/2 `feature_ood` | 0 |
+
+当前候选因此不具备正式 20-seed successor 批次的启动条件。
+
+### 结果
+
+正例记录中 `ordinary_periodic_replan_changed=true`，说明 R0 相对前序已有普通变化。
+`candidate_specific_execution_changed=true` 只来自候选后继与同输入 R0 的执行签名差异。
+记录没有运行确认、owner/coalition ACK、物理窗口、D7 执行或收益字段。
+
+负例覆盖：
+
+- D4 投影无操作和资源不可行；
+- 后继版本未严格递增；
+- candidate id 或 model state 错配；
+- 把候选计划作为 R0；
+- 候选与 R0 执行签名相同；
+- D4 投影动作与 D3 提示不一致；
+- 在线真值字段或 R0 输入摘要不一致；
+- 批次伪造运行权限和重复比较键。
+
+新增专项 `16 passed`，区域提示与新证据组合 `41 passed`。D3 全量收集 610 项，结果为
+`609 passed, 1 skipped`。唯一跳过项为可选 OR-Tools；既有 Matplotlib `Axes3D` 告警
+不影响本项。
+
+### 判断
+
+D3 已具备 current-lineage 候选身份加载和 A2/R0 严格后继记录的独立审计能力。该结果仍是
+合同夹具，不是 20-seed 候选效果。当前候选在两组运行尺度均全部分布外回退，必须阻断
+正式 20-seed。
+
+D4 下一步应基于实际运行特征和动作课程生成 clean-lineage、runtime-compatible 的新
+development/shadow 候选。D3 完成身份和权限复核后，main 先运行非正式预检。只有出现
+非回退模型执行且安全投影通过，才能冻结新候选并生成正式未见 seed 证据。真正未见 seed
+的非零决策、拒绝分母、运行确认、物理窗口和配对非退化尚未生成，不能据此开放 A2 assist
+或声明收益。

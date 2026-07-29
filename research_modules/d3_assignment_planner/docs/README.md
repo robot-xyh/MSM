@@ -154,3 +154,14 @@ AirSim 接入边界已检查，本轮未运行 AirSim，也未生成生产 ACK�
 区域保持和完整 successor 权属谱系。区域提示专项 `25 passed`，D3 全量
 `551 passed, 1 skipped`（552 项）。算法见 `ALGORITHM_AND_IMPLEMENTATION.md` 第 66 节，
 原则见 `MODULE_PRINCIPLES_CN.md`。本轮未运行 AirSim，未产生运行确认或物理结果。
+
+2026-07-28，D3 新增 D4 current-lineage A2 严格后继证据层。公开 loader 绑定 candidate
+manifest、模型权重和源码身份；单条 verifier 将 D4 输入/决策/投影动作、前序权属、D3
+区域提示、严格 successor 与同输入 R0 连接。普通周期重规划单独记录，A2 只认候选相对
+R0 的执行签名增量。算法见 `ALGORITHM_AND_IMPLEMENTATION.md` 第 69 节，原则见
+`MODULE_PRINCIPLES_CN.md`，软件合同试验见 `EXPERIMENT_REPORT.md`。新增专项
+`16 passed`，D3 全量 `609 passed, 1 skipped`。当前候选在 5v5/2 区域和
+200v200/8 区域预检中均为 `feature_ood`，非回退模型执行为 0，不得直接进入正式
+20-seed。D4 需先生成 clean-lineage、runtime-compatible 的新影子候选，main 非正式预检
+出现非回退模型执行后，才能启动正式 successor 证据批次。当前没有正式运行、ACK、物理
+窗口或收益证据。
