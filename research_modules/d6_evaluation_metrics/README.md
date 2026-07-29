@@ -1,5 +1,73 @@
 # D6 Evaluation Metrics
 
+## 2026-07-27 正式学习运行准备度审计
+
+D6 新增只读聚合器 `learning_run_readiness.py`，统一检查
+`G1/A1/A2/A3/C1/F1` 六个学习变体。v2 输入 manifest 的每个 gate 只携带相对制品路径和
+文件 SHA-256，不再接受调用方自报的来源类别、formal 标志或 facts。聚合器以 manifest
+所在目录为只读根目录，拒绝绝对路径、`..` 路径逃逸、目录、缺文件、符号链接出口、文件
+摘要错配和未知 schema。文件只读取一次，文件摘要通过后再校验内部内容摘要，并从原始记录
+重算 gate facts。
+
+输入、输出和 consumer schema 分别为 `d6.learning-run-readiness-input.v2`、
+`d6.learning-run-readiness-audit.v2` 和
+`d6.learning-run-readiness-consumer.v2`。当前只接入冻结未见 seed gate。它通过
+`d6.learning-run-canonical-seed-source-reference.v1` 引用既有训练 seed 注册表、共享 split
+注册表及 D3/D4/D5 四个数据集 manifest，并调用现有
+`audit_canonical_seed_split_readiness()` 重读和重算。该 sidecar 只保存六个原制品路径和
+文件摘要，不携带通过断言。
+
+其余九类 gate 没有受信 adapter，全部保持 unavailable。上一版十类
+`d6.learning-run-*-evidence.v1` 通用 wrapper 不再受支持，公共 builder 已移除。聚合器不扫描
+输出目录，不加载策略进入控制链，也不启动 900-cell 或多 seed 正式实验。
+
+每个变体分别报告十类门：模型来源、冻结未见 seed、可辨识实际采用、运行确认、物理窗口、
+唯一同键 R0、成对非退化、在线真值使用、有限状态和外部权限。缺失输入保持
+`availability=false`、结果值为 `null`，并输出稳定原因码。证据存在但不满足条件时保留
+`availability=true`，同时将 `passed=false`，例如 A1 实际采用但最终绑定没有变化、A2
+采用记录只是无操作、A3 候选与 R0 未完整一一配对。
+
+当前只有 seed 来源类别和 formal 状态由既有严格审计链产生。模型、采用、运行确认、物理
+窗口、同键规则基线、成对指标、真值使用、有限状态和外部权限不接受新 wrapper，自报记录
+不能提升可用性。C1/F1 还必须同时具备 D3、D4、D5 图关联和 D5 主动视觉四个组件的模型、
+采用和确认，缺一项即失败关闭。
+
+准备度分为四层：
+
+1. `model_readiness` 只由模型外审和冻结未见 seed 决定；
+2. `runtime_evidence_readiness` 汇总采用、确认、物理、R0、非退化、真值隔离和有限状态；
+3. `formal_evidence_readiness` 合并前两层，不读取磁盘或权限；
+4. `execution_startability` 再加入外部权限和存储资源。
+
+D6 不生成权限。即使前三层全部通过，未提供独立外部权限决定时仍不能启动。固定存储保护线为
+`20 GiB`（`21474836480` 字节），输入不能降低该值。2026-07-27 对当前文件系统的只读观测为
+可用 `14139191296` 字节，约 `13.168 GiB`，且没有第二个可用于正式输出的大容量挂载点。
+因此存储原因固定包含 `formal_runtime_disk_below_20_gib_threshold` 和
+`alternate_large_capacity_mount_unavailable`。该结论只阻断执行，不能改写模型或算法
+readiness。
+
+当前证据边界如下：
+
+- 既有独立报告记录 G1 正式 v5 模型、外部审计和 20-seed held-out/paired-shadow 模型证据，
+  但 readiness 尚未接入对应原制品 adapter；该 gate 仍 unavailable。G1 也没有实际
+  G1 运行采用、运行确认、物理窗口、运行同键 R0 或运行成对非退化。paired-shadow 不替代
+  这些运行证据。
+- A1 当前 development/shadow 模型没有生产准入。保留 seed 对照虽然出现 20/20 代价矩阵变化，
+  最终绑定变化为 0/20；运行确认、物理窗口和运行成对非退化仍不可用。
+- A2 的 20-seed 开发候选均为无操作，可辨识区域干预为 0。单 seed 受约束开发适配器可走通
+  后继计划和物理窗口，但被正式收益装配器明确拒绝，不能作为模型采用证据。
+- A3 最新开发复跑为 492 个候选、488 个可配对、4 个通信丢包缺失；来源工作树、未见 seed
+  和完整落盘清单未形成正式证明，因而不能作为正式配对或非退化证据。
+- C1/F1 依赖上述四个学习组件同时就绪。当前组件准入、复合采用、复合运行确认和正式同键
+  配对均未闭合。
+
+专项测试 18 项通过。正例使用既有六类 seed producer schema 的临时 fixture，并经过现有
+canonical auditor；攻击用例构造十类摘要完全正确的旧通用 wrapper，六个变体的
+`formal_evidence_readiness` 仍全部 unavailable。其余负例覆盖原制品和 sidecar 篡改、摘要
+错配、未知 schema、缺文件、内外层路径逃逸、目录、缺制品根、输出权限与摘要语义篡改。
+全量验收结果见本节后续最终记录。测试没有启动正式矩阵或产生大制品；正向 fixture 不构成
+任何变体已有正式证据。
+
 ## 2026-07-27 A1/A2/A3 实际采用与同键配对审计
 
 `strict_learning_adoption_audit.py` 保持只读。旧输入

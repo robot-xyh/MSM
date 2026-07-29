@@ -1,5 +1,31 @@
 # D6 系统评估指标综述及子方案
 
+## 2026-07-27 正式学习运行准备度评审
+
+D6 readiness 合同已升级为 v2，覆盖 G1/A1/A2/A3/C1/F1。manifest 不再携带来源类别、
+formal 标志或 gate facts，只提供相对源制品路径和文件 SHA-256。D6 在显式只读根目录内校验
+路径和实际文件摘要。只有冻结 seed gate 具备受信 adapter：sidecar 显式绑定六项既有
+producer 制品，再调用 canonical seed auditor 重算。上一版十类通用 wrapper 和公共 builder
+已撤销。其他九类 gate unavailable。
+
+独立审计报告中 G1 具备通过的正式模型外审和冻结 held-out/paired-shadow 模型证据，但
+readiness 尚未接入其原制品 adapter。G1 仍缺实际运行采用、ACK、物理窗口、运行同键 R0 和
+运行成对非退化。A1 模型保持 development/shadow，
+20/20 代价矩阵变化没有带来 final binding 变化。A2 的 20-seed 候选均为 no-op；单 seed
+development adapter 不能进入正式收益分母。A3 的 492/488/4 开发结果未形成 clean、冻结、完整
+落盘证据。C1/F1 因四组件不能同时满足模型和运行门而失败关闭。
+
+当前文件系统可用 `14139191296` 字节，约 13.168 GiB；没有第二大容量挂载点。固定 20 GiB
+保护线保持不变。该资源门只阻断 execution startability，不改变任何变体的 model readiness
+或 formal evidence readiness。单 episode gzip 数据用于容量背景，本轮没有扩展为日志压缩
+实现。
+
+专项测试 18 项通过。正例经过六类既有 producer schema 和 canonical auditor，只通过 seed
+单门；十 wrapper 攻击在文件/内容摘要全部正确时仍不能使任何变体 formal ready。负例还覆盖
+原 producer 与 sidecar 篡改、摘要错配、未知 schema、缺文件、内外层路径逃逸、目录和缺根。
+六个变体当前 formal readiness 全部 unavailable。D6 没有启动正式 900-cell 或大写盘实验，
+也没有生成模型、分配、故障接管、相机或控制权限。
+
 ## 2026-07-27 A1/A2/A3 实际采用与配对审计评审
 
 D6 已形成统一只读 consumer。A1、A2、A3 分别审计，不共用采用计数。输出同时保留最高证据

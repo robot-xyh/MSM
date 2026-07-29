@@ -1,5 +1,96 @@
 # D6 系统级离线评估模块原理
 
+## 正式运行准备度（2026-07-27）
+
+### 分层原则
+
+学习模型通过离线测试，不等于系统可以启动正式运行。D6 将准备度拆成模型证据、运行证据、
+外部权限和执行资源四层，避免一个通过项覆盖另一层缺失。
+
+### 制品绑定
+
+准备度清单不再携带 gate facts。每个可用 gate 只声明相对于清单目录的制品路径和文件
+SHA-256。D6 在受限根目录内解析路径，先确认常规文件和文件摘要。只有已登记 adapter 的
+schema 才会继续读取原 producer 制品并重算事实：
+
+\[
+\text{facts}_g = f_g(\operatorname{validate}_{s_g}(\text{artifact bytes}))
+\]
+
+其中 \(s_g\) 必须是已有严格 producer/auditor schema。路径逃逸、目录、缺文件、摘要不符、
+未知 schema、内部摘要错误或字段不完整都会使该 gate 变为 unavailable。manifest 中夹带
+facts 会因字段集合不符被拒绝。新建一个带摘要的 wrapper 不能成为信任根。
+
+当前只实现冻结 seed adapter。reference sidecar 显式列出训练 seed 注册表、共享 split
+注册表及 D3/D4/D5 四个数据集 manifest 的路径和文件摘要。D6 在审计前后复核这些文件，并
+调用既有 `audit_canonical_seed_split_readiness()` 重算保留 seed 数量、训练交集和各模块
+split 一致性。sidecar 不含 frozen 或 passed 断言。
+
+模型层检查模型来源、实现与权重外审，以及冻结未见 seed。运行层检查学习建议是否产生可辨识
+状态变化、是否收到与版本和对象匹配的运行确认、是否形成后续物理窗口、是否存在唯一同键
+规则基线，以及成对指标是否完整且非退化。在线真值使用必须为 0，受审状态必须全部有限。
+外部权限由项目授权主体提供。D6 只读取该决定，不能生成或替代。执行资源层当前只检查正式
+输出空间，并保持与模型结论解耦。
+
+每个门同时有 availability 和 pass 两个维度。输入缺失时：
+
+\[
+\text{availability}=false,\qquad \text{result}=null
+\]
+
+输入存在但事实不满足冻结条件时：
+
+\[
+\text{availability}=true,\qquad \text{passed}=false
+\]
+
+该数据结构可以区分“事实不合格”和“证据不可用”。但当前模型、采用、ACK、物理窗口、同键
+R0、非退化、truth-use、有限状态和权限九类 gate 没有受信 adapter，因此都保持 unavailable，
+不能用自签 wrapper 演示前一种状态。缺失不补 0，失败不改写成不可用。
+
+### 变体关系
+
+G1 使用 D5 图关联组件；A1 使用 D3 分配组件；A2 使用 D4 区域资源组件；A3 使用 D5 主动
+视觉组件。C1 和 F1 是四组件组合，必须精确覆盖上述全部组件。单组件模型通过不能推出组合
+变体通过。组合运行还要求四个组件都出现可辨识采用和匹配的运行确认。
+
+正式未见 seed 的最低数量为 20，但数量本身不构成证据。seed 必须来自冻结注册表，与训练
+seed 零交集，并绑定到正式来源。开发批次、软件合同夹具和零丢包对照分别只能说明开发覆盖、
+接口可达和通信影响，不能替代正式运行采用或成对非退化。
+
+当前受支持的 readiness reference schema 只有
+`d6.learning-run-canonical-seed-source-reference.v1`。它下接的既有 producer schema 为：
+
+```text
+scalable3d-training-seed-registry-v1
+scalable3d-shared-seed-split-registry-v1
+d3_learning_dataset_v2
+d4-region-learning-dataset-v1
+d5.tracklet-dataset.v2
+d5.active-vision-episode-dataset.v3
+```
+
+其他 gate 在没有可靠 loader 和必要的跨阶段语义关联时保持 unavailable，不做字段猜测或
+目录发现。六个学习变体的 formal readiness 当前均未就绪。
+
+### 存储门
+
+正式运行保护线固定为：
+
+\[
+B_{\min}=20\times 1024^3=21474836480\ \text{bytes}
+\]
+
+对所有可用于正式输出的挂载点取最大可用空间 \(B_{\max}\)。执行资源通过条件为
+\(B_{\max}\ge B_{\min}\)。2026-07-27 的只读观测为
+\(B_{\max}=14139191296\) 字节，约 13.168 GiB，且没有第二个大容量挂载点。执行资源因此
+失败关闭。该门只参与 execution startability，不参与 model readiness 或 formal evidence
+readiness。
+
+单个 200v200 delayed-noisy R0 episode 的三份重复 JSONL 原始约
+55.7、37.4 和 3.5 MB，gzip-6 约 13.0、11.4 和 0.49 MB。该结果可用于后续容量治理评估，
+本轮不实现压缩，也不据此降低 20 GiB 保护线。
+
 ## 学习策略实际采用审计（2026-07-27）
 
 ### 证据问题

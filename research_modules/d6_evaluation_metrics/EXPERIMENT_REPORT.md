@@ -1,5 +1,34 @@
 # D6 系统级评估指标实验报告
 
+## 2.41 正式学习运行准备度审计
+
+### 结论
+
+2026-07-27，D6 完成 G1/A1/A2/A3/C1/F1 的统一运行前 readiness 软件验证。v2 manifest
+只保存相对源制品路径和文件 SHA-256。当前受信 adapter 只有冻结 seed gate：reference
+sidecar 绑定训练 seed 注册表、共享 split 注册表及四个模块数据集 manifest，再由现有
+canonical seed auditor 重算。其他九类 gate unavailable。
+
+18 个专项用例全部通过。每个变体各构造十个文件摘要和内部摘要均正确的旧通用 wrapper 后，
+`formal_evidence_readiness` 仍为 unavailable。原 producer 文件篡改、sidecar 篡改、摘要
+错配、未知 schema、缺文件、内外层路径逃逸、目录、缺制品根、输出篡改和命令行启动均有
+覆盖。
+
+独立审计报告中 G1 具备正式 v5、外部审计、20-seed held-out 和 paired-shadow 证据，但
+readiness 尚无对应 model-source adapter。G1 还缺实际运行采用、ACK、物理窗口、唯一同键
+运行 R0 和运行非退化。A1/A2/A3 受 development/shadow、不可辨识干预或非正式配对证据
+阻断；C1/F1 不能由单组件通过推导。
+
+当前根文件系统可用 `14139191296` 字节，约 `13.168 GiB`，低于固定 `20 GiB` 正式运行
+保护线；没有第二大容量挂载点。该结果只将 execution startability 失败关闭。模型和正式证据
+结论不受磁盘值影响，D6 也没有生成任何模型、分配、接管、相机或控制权限。
+
+专项正例使用既有 canonical seed producer schema，只验证该单门 adapter。它不构成
+G1/A1/A2/A3/C1/F1 已取得完整正式运行证据。六个变体当前均保持 formal unavailable。
+
+单个 200v200 delayed-noisy R0 episode 的三份重复 JSONL 经 gzip-6 可由原始约
+`96.6 MB` 降到约 `24.89 MB`。本节只记录容量背景，没有实现压缩，也没有降低保护线。
+
 ## 2.40 正式实验矩阵准入预检
 
 ### 结论

@@ -1,5 +1,63 @@
 # D6 Evaluation Metrics Plan
 
+## 2026-07-27 正式学习运行准备度审计
+
+### 已完成
+
+- [x] 将 readiness 合同升级为 v2。manifest 每个 gate 只保留相对制品路径和文件
+  SHA-256，不再接收来源类别、formal 标志或调用方自报 facts。
+- [x] 撤销十类通用 gate wrapper 的 formal 信任和公共 builder。摘要正确的
+  `d6.learning-run-*-evidence.v1` 自签文件不能进入 readiness。
+- [x] 首批只接入冻结未见 seed gate。reference sidecar 显式绑定训练 seed 注册表、共享
+  split 注册表以及 D3/D4/D5 四个数据集 manifest，逐文件校验 SHA-256 后调用现有
+  `audit_canonical_seed_split_readiness()` 重算 seed 数、训练交集和模块 split 一致性。
+- [x] 将 manifest 所在目录作为显式只读制品根。绝对路径、`..` 逃逸、目录、缺文件、摘要
+  错配、未知 schema 和缺制品根均失败关闭；不扫描邻近目录补找证据。
+- [x] 输出升级为 `d6.learning-run-readiness-audit.v2`，consumer 升级为
+  `d6.learning-run-readiness-consumer.v2`，保留严格输出复载和小型 JSON/中文
+  Markdown/校验和 writer。
+- [x] 对 `G1/A1/A2/A3/C1/F1` 固定输出模型来源、冻结未见 seed、可辨识实际采用、运行
+  ACK、物理窗口、唯一同键 R0、成对非退化、truth-use、有限状态和外部权限十类门。
+- [x] 缺项使用 `availability=false + null + exact reason`；已有但不合格的证据使用
+  `availability=true + passed=false`，不把 unavailable 补为 0。
+- [x] 将模型、运行证据、正式证据和执行启动四层分离。磁盘与外部权限只进入最后一层，
+  不改变模型或算法结论。
+- [x] 固定正式运行最低可用空间为 `20 GiB`，不接受调用方下调。当前约
+  `13.168 GiB` 且无第二大容量挂载点，执行保持失败关闭。
+- [x] 模型、采用、ACK、物理窗口、同键 R0、非退化、truth-use、有限状态和外部权限九类
+  gate 暂无 readiness 受信 adapter，统一 unavailable。D6 输出中的模型晋级、分配、接管、
+  相机和控制权限始终为 false。
+- [x] 新增 18 个临时 producer/攻击/命令行测试。正例经过既有 canonical seed auditor；
+  攻击例为每个变体构造十个文件/内容摘要均正确的旧通用 wrapper，正式准备度仍全部
+  unavailable。其余负例覆盖原制品与 sidecar 篡改、摘要错配、未知 schema、缺文件、内外层
+  路径逃逸、目录、缺根和输出语义篡改。
+
+### 当前阻断
+
+当前六个变体的 `formal_evidence_readiness` 均为 unavailable。canonical seed adapter 通过
+只关闭冻结 seed 单门，不提升模型、运行证据或执行准备度。
+
+- [ ] 为 G1 已有 external audit/post-assembly 原制品建立严格 model-source adapter；在此
+  之前 held-out/paired-shadow 只保留在独立审计报告，readiness 模型门 unavailable。
+- [ ] A1 使用具备生产准入的候选，在冻结未见 seed 上产生可辨识最终绑定变化，并闭合
+  runtime ACK、物理窗口和同键 R0。当前 0/20 binding change 不满足该条件。
+- [ ] A2 产生非零、受约束且可因果归属的区域干预。开发无操作和 development-only
+  `request_replan` 不能进入正式分母。
+- [ ] A3 在 clean source 下持久化完整候选 disposition 和 paired evidence，修复 4 条通信
+  缺失后仍需证明未见 seed、物理窗口、唯一 R0 和非退化，不能使用零丢包对照替代。
+- [ ] C1/F1 待四个组件各自满足模型与运行证据门后，再生成复合采用、复合 ACK 和同键
+  R0 证据。当前不得以单组件通过推导复合准入。
+- [ ] 逐项为既有严格 producer/auditor schema 增加 adapter。采用、ACK、物理窗口和同键 R0
+  必须从同一版本化运行链重算；不能分别引用互不关联的通过摘要。paired non-degradation、
+  truth-use、finite-state 和 external authority 同样需要原制品 loader。
+- [ ] 由项目外部授权流程提供逐变体权限决定；D6 不承担该步骤。
+- [ ] main 提供不少于 `20 GiB` 的正式输出空间或明确的外部归档挂载点后，才能重新检查
+  execution startability。保护线不因压缩比下降。
+
+本计划不包含日志压缩实现。单个 delayed-noisy R0 episode 的三份重复 JSONL 原始约
+`55.7/37.4/3.5 MB`，流式 gzip-6 约 `13.0/11.4/0.49 MB`，这些数据只说明后续容量治理有
+收益，不能替代当前存储保护门。
+
 ## 2026-07-27 A1/A2/A3 实际采用与同键配对审计
 
 ### 已完成

@@ -1,5 +1,56 @@
 # D6 实现差距审计
 
+## 2026-07-27 正式学习运行准备度 GAP
+
+### D6-owned 已关闭
+
+1. 已将 `G1/A1/A2/A3/C1/F1` 统一 readiness 输入、输出和 consumer 升级为 v2。manifest
+   每个 gate 只引用相对源制品路径和文件 SHA-256，不再接受来源类别、formal 标志或自报
+   facts。
+2. 已撤销十类通用 gate wrapper 的 formal 信任和公共 builder。文件与内容摘要均正确的
+   自签 wrapper 仍按不支持 schema 拒绝。
+3. 已接入冻结 seed 单门。reference sidecar 绑定六项既有 producer 制品，D6 逐文件校验后
+   调用现有 `audit_canonical_seed_split_readiness()` 重算 seed 数、训练交集、dirty 状态和
+   模块 split 一致性。sidecar 不携带通过断言。
+4. 模型来源、冻结未见 seed、可辨识采用、运行 ACK、物理窗口、唯一同键 R0、成对非退化、
+   truth-use、有限状态和外部权限逐门输出 availability、结果和稳定原因。
+5. 模型 readiness、运行证据 readiness、正式证据 readiness 和 execution startability 已
+   分层。磁盘和权限不再污染模型结论。
+6. C1/F1 必须精确覆盖 D3、D4、D5 图关联和 D5 主动视觉四组件。单组件通过不能升级组合
+   变体。
+7. D6 不生成外部权限。模型晋级、分配、接管、相机和控制权限固定为 false。
+8. 固定 `20 GiB` 保护线已进入独立存储门。当前 `14139191296` 字节、无备用大容量挂载点，
+   只阻断执行，不改写模型或正式证据。
+9. 专项 18 项通过。十 wrapper 攻击、原 producer/sidecar 篡改、摘要错配、未知 schema、
+   缺文件、内外层路径逃逸、目录和缺根均失败关闭。六个变体 formal readiness 全部
+   unavailable。未启动正式矩阵、AirSim 或大写盘实验。
+
+### 当前 P1 上游与资源缺口
+
+1. **G1 模型与运行 adapter。** 独立审计已记录正式 v5、held-out 和 paired-shadow，但
+   readiness 尚未通过原 external audit/post-assembly 制品重算 model-source facts。实际
+   G1 采用、runtime ACK、后续物理窗口、唯一同键运行 R0、运行成对非退化、truth-use 与
+   有限状态也 unavailable。
+2. **A1 可辨识正式采用。** 当前模型为 development/shadow。保留 seed 证据虽有 20/20
+   代价矩阵变化，final binding change 为 0/20；运行 ACK、物理窗口和非退化未闭合。
+3. **A2 非 no-op 干预。** 20-seed 开发候选均为 no-op。单 seed 受约束开发适配器被正式
+   assembler 拒绝，尚无可进入正式分母的区域干预、ACK、物理窗口和同键 R0。
+4. **A3 完整正式配对。** 492/488/4 是开发复跑。缺 clean source、冻结未见 seed、逐候选
+   完整持久化和正式非退化；零丢包 500/500 只定位通信影响。
+5. **C1/F1 组合证据。** 四组件当前不能同时满足模型、采用、ACK、物理和同键 R0 门，组合
+   准入保持 unavailable/fail-closed。
+6. **其余九类 adapter。** `identifiable_adoption -> runtime_ack -> physical_window ->
+   same_key_r0` 必须由同一版本化运行链恢复，不能分别引用互不关联的摘要。model source、
+   paired non-degradation、truth-use、finite-state 和 external permission 也缺原制品
+   adapter。对应 gate 保持 unavailable。
+7. **外部权限。** 当前没有逐变体 external authority decision。该项由项目授权流程提供，
+   D6 不生成。
+8. **存储资源。** 当前约 13.168 GiB，低于 20 GiB，且无第二大容量挂载点。正式运行必须
+   等待可用空间或外部归档挂载点，不能降低门限。日志压缩属于后续容量治理，不在本任务内。
+
+当前无新增 D6-owned P0。D6-owned readiness 软件与失败关闭口径已闭合；开放项是上游正式
+运行证据、外部权限和存储资源。
+
 ## 2026-07-27 A1/A2/A3 实际采用与配对 consumer GAP
 
 ### D6-owned 已关闭

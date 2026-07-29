@@ -1,5 +1,14 @@
 # D6 文档索引
 
+2026-07-27 正式学习运行准备度聚合器见 `MODULE_PRINCIPLES_CN.md` 和
+`ALGORITHM_AND_IMPLEMENTATION.md`。该入口统一审计 G1/A1/A2/A3/C1/F1 的模型来源、冻结未见
+seed、可辨识采用、运行 ACK、物理窗口、唯一同键 R0、成对非退化、truth-use、有限状态和外部
+权限。v2 manifest 的每个 gate 只引用相对源制品路径和文件 SHA-256；D6 校验路径、实际文件
+摘要后，只把已登记 adapter 的既有 producer schema 送入原严格 auditor。当前仅接入
+canonical seed gate，其余九类 gate unavailable；十类旧通用 wrapper 均不再受信。
+18 个临时 producer/攻击/命令行测试已通过，没有启动正式矩阵或 AirSim。六个变体的 formal
+readiness 当前全部 unavailable。证据和 blocker 见 `EXPERIMENT_REPORT.md`。
+
 2026-07-27 A1/A2/A3 实际采用与同键配对审计的证据阶段、可用性和权限边界见
 `MODULE_PRINCIPLES_CN.md`，输入 v1/v2 迁移、旧记录/新 pair 分派、四级重算、A3 disposition
 完整分母和跨 episode 日志绑定见 `ALGORITHM_AND_IMPLEMENTATION.md`。A2 已兼容真实 D4

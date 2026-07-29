@@ -1,5 +1,107 @@
 # D6 系统级离线评估：算法原理与实施说明
 
+## 正式学习运行准备度聚合器（2026-07-27）
+
+### 输入
+
+入口 `audit_learning_run_readiness()` 只接受
+`d6.learning-run-readiness-input.v2`。顶层固定包含审计标识、六个变体、存储观测和规范内容
+摘要。六个变体必须精确为 `G1/A1/A2/A3/C1/F1`，每个变体必须提供以下门：
+
+```text
+model_source
+frozen_unseen_seeds
+identifiable_adoption
+runtime_ack
+physical_window
+same_key_r0
+paired_non_degradation
+truth_use
+finite_state
+external_permission
+```
+
+每个门只记录 availability、`source_artifact` 和来源原因码。`source_artifact` 固定为相对
+路径与文件 SHA-256。availability 为 false 时引用必须为空，原因码不能为空。availability
+为 true 时必须提供引用，manifest 不能携带来源类别、formal 标志或 facts。
+
+### 来源约束
+
+命令行将输入 manifest 的父目录作为制品根，直接 API 必须显式提供 `artifact_root`。解析步骤
+固定为：
+
+1. 拒绝绝对路径、`..`、路径逃逸、目录和缺文件；
+2. 单次读取源文件并计算文件 SHA-256，与 manifest 声明比较；
+3. 检查该 gate 是否存在已登记的既有 schema adapter；
+4. adapter 校验 reference sidecar，并逐项读取、校验原 producer 文件；
+5. 调用既有严格 auditor 重算 facts，再执行准备度语义判定。
+
+当前唯一接入项是冻结未见 seed：
+
+```text
+d6.learning-run-canonical-seed-source-reference.v1
+  -> scalable3d-training-seed-registry-v1
+  -> scalable3d-shared-seed-split-registry-v1
+  -> d3_learning_dataset_v2
+  -> d4-region-learning-dataset-v1
+  -> d5.tracklet-dataset.v2
+  -> d5.active-vision-episode-dataset.v3
+  -> audit_canonical_seed_split_readiness()
+```
+
+reference sidecar 的字段只有变体、六项原制品路径、六项文件 SHA-256 和自身内容摘要。
+adapter 要求固定目录布局，在调用 canonical auditor 前后各核验一次原文件摘要。seed 数量、
+训练交集、仓库 dirty 状态和当前变体所需模块的 split 一致性由既有 auditor 输出重算。
+
+上一版十类 `d6.learning-run-*-evidence.v1` wrapper 及其 builder 已撤销。即使 wrapper 的
+文件摘要、内部摘要和 passed/granted/adoption/ACK/physical 断言全部自洽，也只得到
+`gate_source_schema_unsupported`。其他既有正式 schema 在缺少可靠 adapter 或跨阶段关联时
+同样输出 unavailable。
+
+### 事实判定
+
+模型门要求必需组件集合精确匹配且外审通过。seed 门要求冻结、数量不少于 20、训练交集为 0。
+采用门要求实际采用数和可辨识变化数均大于 0。A1 还要求 binding change 大于 0；A2 要求
+至少一个非 no-op 干预。C1/F1 要求四组件全部出现在 adopted component 集合。
+
+运行确认要求 matched count 等于 required count，且组件集合完整。物理窗口要求全部候选窗口
+得到确认。同键 R0 要求 candidate、pair、unique pair 和 same-key pair 四个计数相等且大于
+0。成对非退化要求全部 pair 已评估、必选指标全部可用、每对均非退化。truth-use 要求受审
+记录数大于 0 且在线真值使用为 0；有限状态要求受审值大于 0 且非有限值为 0。
+
+上述非 seed 判据保留为未来 adapter 的输出语义检查，当前没有任何自报输入能到达这些判据。
+因此六个变体的 model readiness、runtime evidence readiness 和 formal evidence readiness
+均保持 unavailable；通过 seed gate 不能提升任一汇总结论。
+
+### 汇总
+
+聚合器生成四个互不覆盖的摘要：
+
+```text
+model_readiness
+runtime_evidence_readiness
+formal_evidence_readiness
+execution_startability
+```
+
+前三项使用上述源制品事实，不使用存储容量或外部执行许可。最后一项加入外部权限和固定
+20 GiB 存储门。所有相关证据可用时，
+startable 为布尔值；任一证据 unavailable 时，startable 保持 null 并失败关闭。D6 顶层六类
+权限和每个变体的 `d6_authority_generated` 固定为 false。
+
+`write_learning_run_readiness_report()` 只生成 JSON、中文 Markdown 和 `SHA256SUMS` 三个小
+文件。输出复载会根据逐门事实重新计算模型、运行、正式证据、执行和总计摘要；即使重新计算
+文件内容摘要，修改摘要结论或权限仍会被拒绝。命令行入口可从仓库根目录直接执行：
+
+```bash
+python3 research_modules/d6_evaluation_metrics/scripts/run_learning_run_readiness_audit.py \
+  readiness_input.json readiness_output
+```
+
+该命令只审计 manifest 同目录下显式引用的制品，不探测邻近目录，不启动 episode，不创建
+正式矩阵。v2 输出和 consumer 分别为 `d6.learning-run-readiness-audit.v2` 与
+`d6.learning-run-readiness-consumer.v2`。
+
 ## A1/A2/A3 实际采用审计（2026-07-27）
 
 ### 输入和摘要

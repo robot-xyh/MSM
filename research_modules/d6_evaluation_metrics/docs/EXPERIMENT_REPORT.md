@@ -1,5 +1,47 @@
 # D6 正式实验矩阵准入预检报告
 
+## 正式学习运行准备度软件验证（2026-07-27）
+
+### 结论
+
+D6 已具备 G1、A1、A2、A3、C1 和 F1 的统一正式运行准备度框架。当前受信 adapter 仅覆盖
+冻结 seed gate。它通过 reference sidecar 绑定六项既有 producer 制品，并调用现有 canonical
+seed auditor 重算；其余九类 gate unavailable。
+
+专项 18 项全部通过。正例由已有训练 seed、共享 split 和四个模块数据集 schema 构造，再经过
+`audit_canonical_seed_split_readiness()`；只通过冻结 seed 单门。攻击例为每个变体构造十个
+文件 SHA-256 和内部摘要均正确的旧通用 wrapper，六个变体的 formal readiness 仍全部
+unavailable。负例还覆盖原 producer 文件和 sidecar 篡改、摘要错配、未知 schema、缺文件、
+内外层路径逃逸、目录和缺制品根。测试没有启动 900-cell、多 seed、AirSim 或大写盘实验。
+
+### 当前观测
+
+当前根文件系统可用 `14139191296` 字节，约 `13.168 GiB`，低于固定 `20 GiB` 保护线。系统
+没有第二个可用于正式输出的大容量挂载点。存储门输出：
+
+```text
+formal_runtime_disk_below_20_gib_threshold
+alternate_large_capacity_mount_unavailable
+```
+
+因此正式运行当前不能启动。六个变体在 readiness 中也都因非 seed gate 缺受信 adapter 而
+保持 formal unavailable。该判断没有改写其他独立审计报告中的 G1 模型结果，也没有将
+A1/A2/A3 的开发证据重新分类。
+
+### 当前变体状态
+
+| 变体 | 当前最强证据 | 主要缺项 |
+| --- | --- | --- |
+| G1 | 独立报告中的正式 v5、20-seed held-out 和 paired-shadow | model-source adapter；实际采用、ACK、物理窗口、运行 R0、运行非退化、外部权限 |
+| A1 | 保留 seed 代价矩阵 20/20 变化 | 模型准入；final binding 0/20；运行 ACK、物理和非退化 |
+| A2 | 20-seed no-op 拒绝；单 seed 开发适配器链路 | 可辨识非零正式干预、正式采用、同键 R0 和非退化 |
+| A3 | 开发复跑 492/488/4 | clean/frozen 全清单、未见 seed、完整物理配对和非退化 |
+| C1 | 四组件组合接口 | 四组件模型与运行证据同时闭合 |
+| F1 | 四组件全流程接口 | 四组件模型与运行证据、外部权限和执行资源同时闭合 |
+
+paired-shadow、20 个开发 seed、软件测试夹具和零丢包对照均未进入正式运行证据分母。当前没有
+模型晋级、分配、降级、相机或控制权限。
+
 ## A3 零检测帧开发审计（2026-07-27）
 
 ### 结论
