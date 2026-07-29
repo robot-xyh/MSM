@@ -1,5 +1,38 @@
 # D4 分布式协同与降级接管
 
+## 2026-07-29 readiness v3 不可变登记
+
+main 已从 clean commit `8421de138442c17e379cd09d27e2e36c110652e0` 对 readiness v2
+执行 5v5/2-region development preflight。运行总线通过，3/3 帧均在模型推理前返回
+`runtime_confidence_gate_context_mismatch`。main 的实际
+`RegionResourceProjectionConfig` 为最小备用比例 0.1、最小备用资源 1、建议有效期
+1.5 秒；v2 bundle 固定的建议有效期为 1.0 秒。在线真值使用数为 0，
+`formal_decision` 未改变投影。v2 保留为不可变失败证据，不覆盖、不重写。
+
+D4 已实现独立候选
+`region_resource_a2_8region_runtime_action_readiness_shadow_v3`，模型版本为
+`d4-region-a2-8region-runtime-action-readiness-shadow-v3`。v3 配置、来源摘要、训练视图、
+训练摘要和 bundle 运行门统一绑定 1.5 秒投影合同，同时固定最小备用参数、规则权重
+2.0/0.5/0.05、分布外余量 0.05、置信度门限 0.60、不一致封顶 0.59 和连续动作容差
+0.10。默认训练配置和运行门内容 SHA-256 分别为 `e8ce37c4...0592` 和
+`77972834...6872`。1.0 秒上下文、混用 v2/v3 identity、配置或哈希篡改均失败关闭。
+
+main 已在 detached clean worktree commit
+`4ba2c8a649dab157d55a2dd7817d5a8ded494114` 构建 v3。D4 独立 review 后将 8 个文件逐字节
+登记到 `model_registry/region_resource_a2_8region_runtime_action_readiness_shadow_v3/`。
+候选 manifest 文件/内容、模型、源码身份、复合数据、split、运行门和登记树 SHA-256
+分别为 `5e575ec4...59c3`、`7978aec0...ada2`、`ace5df6d...7f52d`、
+`e260ff2f...4ef`、`5d174dd3...ee03`、`69ae1b0e...d817`、
+`77972834...6872` 和 `07c770b0...a93a`。源目录与 registry 逐文件相同，v2 树摘要仍为
+`324a5118...5010`。
+
+validation 门后通过 293/344，动作不一致通过 0，动作一致率 1.0，Brier 为
+0.056837453793788656；在线 truth、test payload、calibration seed 和保留 seed 使用数均为
+0。v3/v2 registry 联合专项 13/13、D4 全量 754/754 passed。v3 尚未执行 main runtime
+preflight，也未运行正式 seed。development/read-only shadow 边界不变；assist、
+assignment、takeover、coalition、control、physical、runtime ACK 和 formal evaluation
+权限全部为 false。
+
 ## 2026-07-28 readiness v2 不可变登记
 
 readiness v2 已由 main 在 detached clean worktree commit
@@ -31,9 +64,10 @@ preflight 的只读输入，不授予 assist、分配、接管、联盟、控制
 **3/3**、v1/v2/运行门联合专项 **37/37**、D4 全量 **743/743 passed**；仅有既有
 Matplotlib `Axes3D` 环境警告。
 
-main runtime preflight 尚未执行，正式评价保持关闭。候选仍为 development/read-only
-shadow；assist、assignment、takeover、coalition、control、physical、runtime ACK 和
-formal evaluation 权限全部为 false。
+main runtime preflight 后续已执行但未通过：实际 1.5 秒建议有效期与 v2 固定的 1.0 秒
+合同不一致，3/3 帧失败关闭。正式评价保持关闭。候选仍为 development/read-only shadow；
+assist、assignment、takeover、coalition、control、physical、runtime ACK 和 formal
+evaluation 权限全部为 false。
 
 ## 2026-07-28 八区域复合候选与置信度校准
 

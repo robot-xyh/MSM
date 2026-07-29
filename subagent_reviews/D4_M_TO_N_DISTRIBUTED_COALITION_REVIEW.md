@@ -1,5 +1,18 @@
 # D4 M 对 N 分布式联盟形成与降级接管调研
 
+## 2026-07-29 readiness v3 与联盟边界
+
+v2 preflight 的 3/3 配置不匹配回退没有形成区域干预、后继计划或联盟证据。v3 只修复
+区域 shadow 候选与 main 运行投影的 1.5 秒合同，不改变成员选择、必要成员确认、原子提交、
+租约或物理窗口。v3 即使后续通过运行门，也不能直接进入 coalition
+`committed/executing`。
+
+v3 已从 clean commit `4ba2c8a...4114` 构建并逐字节登记。validation 门后 293/344 通过，
+动作不一致通过 0；v3/v2 registry 联合专项 13/13、D4 全量 754/754 passed。该登记仍未
+形成 M 对 N 联盟证据，5v5、20v20、200v200 runtime preflight 均未执行。全部联盟、接管、
+分配和控制权限仍为 false，M 对 N 路径继续使用既有版本、epoch、lease 和
+required-member ACK 门控。
+
 ## 2026-07-28 readiness v2 与联盟权限边界
 
 readiness v2 只修复区域资源 shadow 候选的数据覆盖、置信度门和运行诊断，不改变 M 对 N
@@ -15,9 +28,8 @@ readiness v2 只修复区域资源 shadow 候选的数据覆盖、置信度门�
 readiness v2 已从 clean commit `891b542...fea9e` 构建并逐字节登记。validation 运行门后
 293/344 样本越过 0.60，动作不一致通过数为 0，校准接受；registry 专项 3/3、联合专项
 37/37、D4 全量 743/743 passed。该候选仍只输出区域级 shadow 建议，没有形成 M 对 N
-成员选择、后继计划、联盟确认或物理窗口。main runtime preflight 尚未执行；assist、
-assignment、takeover、coalition、control、physical、runtime ACK 和 formal evaluation
-权限全部保持 false。
+成员选择、后继计划、联盟确认或物理窗口。main runtime preflight 后续已执行但因 TTL
+上下文不匹配未通过；全部权限保持 false。
 
 ## 2026-07-28 八区域候选与联盟边界
 

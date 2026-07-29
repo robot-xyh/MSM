@@ -1,5 +1,23 @@
 # D4 AirSim Episode 集成计划
 
+## 2026-07-29 readiness v3 preflight 计划
+
+main 已在 clean commit `8421de1...52e0` 对 v2 执行 5v5/2-region preflight。总线检查
+通过，3/3 帧均返回 `runtime_confidence_gate_context_mismatch`。main Advisor 的投影合同
+为 0.1/1/1.5，v2 bundle 为 0.1/1/1.0。在线真值使用数为 0，formal decision 未改变。
+该批次是 v2 不可变失败证据，不得通过改写 v2 registry 修复。
+
+v3 已从 clean commit `4ba2c8a...4114` 构建并登记。固定 manifest 内容、模型、运行门和
+登记树为 `7978aec0...ada2`、`ace5df6d...7f52d`、`77972834...6872` 和
+`07c770b0...a93a`。validation 门后 293/344 通过，动作不一致通过 0。该结果不替代
+runtime preflight。
+
+main 应从固定 registry 依次运行 5v5、20v20、200v200 development preflight。每个尺度
+分别统计原始推理、门应用、门后许可、门拒绝规则回退、8-region 适用域、OOD、有限值和
+配置不匹配，并保存候选、模型、配置和 gate 哈希。1.5 秒正例应实际进入门；1.0 秒负例必须
+返回上下文不匹配。正式 seed、AirSim 正式评价及 assist/assignment/takeover/coalition/
+control/physical 权限继续关闭。
+
 ## 2026-07-28 readiness v2 preflight 接口
 
 本轮没有启动 AirSim，也没有修改 main runtime。D4 已提供新的
@@ -26,10 +44,9 @@ registry。manifest 内容和模型权重为 `48148034...3852f`、`ace5df6d...7f
 树与构建源目录逐文件 SHA-256 相同。validation 门后 293/344 越过 0.60，动作不一致通过
 为 0，离线校准接受。
 
-main runtime preflight 尚未执行。后续由 main 从登记目录加载新 bundle，先核对候选、模型、
-源码身份、复合数据、split 和门配置哈希，再运行非正式 8-region development preflight；
-D6 读取逐帧诊断。任何配置不匹配、门未应用、运行分布外、零有效 coverage 或动作不一致
-误接收均阻断正式 seed。
+main runtime preflight 后续已执行但未通过。实际 1.5 秒建议有效期与 v2 固定 1.0 秒不
+匹配，3/3 帧在模型推理前规则回退。D6 仍应读取逐帧诊断；配置不匹配、门未应用、运行
+分布外、零有效 coverage 或动作不一致误接收继续阻断正式 seed。
 
 固定值保持 OOD 0.05、confidence 0.60、cap 0.59 和 tolerance 0.10。本计划不授权 AirSim
 正式评价；assist、assignment、takeover、coalition、control 和 physical 权限全部为

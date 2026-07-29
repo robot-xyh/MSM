@@ -1,5 +1,49 @@
 # D4 分布式协同与降级接管计划
 
+## 2026-07-29 readiness v3 登记后 preflight 计划
+
+### 已完成
+
+- v2 main development preflight 已执行。5v5/2-region 的总线检查通过，3/3 帧因运行
+  `advisory_ttl_s=1.5` 与 v2 bundle 的 1.0 秒合同不一致而失败关闭；在线真值为 0，
+  `formal_decision=None` 语义未改变。
+- 已新增独立 v3 candidate/source/view/training/config identity，候选 ID 为
+  `region_resource_a2_8region_runtime_action_readiness_shadow_v3`，不复用 v2。
+- v3 builder 显式固定投影参数 0.1/1/1.5、规则权重 2.0/0.5/0.05，以及
+  OOD/confidence/cap/tolerance 0.05/0.60/0.59/0.10。构建、validation 和 bundle gate
+  使用同一个 projector/rule context。
+- reviewer 按 schema 选择严格配置类型。v3 的训练配置、运行门和复合视图内容均绑定 TTL；
+  1.0 秒配置即使重算内容哈希仍拒绝。v2 registry 文件树摘要保持
+  `324a5118...5010`，v2 的 1.0 秒行为未改变。
+- builder 阶段 readiness 专项 30/30；登记回归后的最终测试总数见下。
+- main 已在 detached clean worktree commit `4ba2c8a...4114` 构建 v3。候选 manifest
+  内容、模型、源码身份、复合数据和 split 为 `7978aec0...ada2`、
+  `ace5df6d...7f52d`、`e260ff2f...4ef`、`5d174dd3...ee03` 和
+  `69ae1b0e...d817`。
+- D4 已独立 review 并将 8 个文件逐字节登记到独立 v3 registry。源与登记树摘要均为
+  `07c770b0...a93a`；v2 树摘要保持 `324a5118...5010`。v3/v2 registry 联合专项
+  13/13、D4 全量 754/754 passed。
+
+### 当前阻断
+
+- v3 尚未执行 1.5 秒 Advisor 上下文的 main runtime preflight。不能从 builder 测试推导
+  运行分布、时延、门后 coverage 或规则回退分布。
+- 5v5、20v20 和 200v200 三个尺度均缺少从登记目录加载 v3 的 main clean preflight。
+  候选只声明 8-region 适用域；5v5 若仍生成 2-region 输入，应按适用域门失败关闭并单独
+  记录，不能与 TTL 或特征 OOD 混为同一 blocker。
+- 正式 seed 和 formal evaluation 继续禁止。assist、assignment、takeover、coalition、
+  control、physical 和 runtime ACK 权限全部为 false。
+
+### main 后续步骤
+
+1. 从固定 v3 registry 加载候选，先核对 manifest 内容 `7978aec0...ada2`、模型
+   `ace5df6d...7f52d`、运行门 `77972834...6872` 和权限全关。
+2. 依次运行 5v5、20v20、200v200 development preflight。逐帧统计原始推理、门应用、
+   门后许可、规则回退、OOD、有限值和配置不匹配。
+3. 正例 Advisor 必须使用 0.1/1/1.5 投影合同；1.0 秒负例必须
+   `runtime_confidence_gate_context_mismatch`。不得为提高通过率修改 v3 registry。
+4. 三个尺度完成前不启动正式 seed。preflight 通过也不自动开放 assist、控制或正式评价。
+
 ## 2026-07-28 readiness v2 登记后状态
 
 ### 已完成
@@ -32,8 +76,8 @@
 
 ### 当前阻断
 
-- main runtime preflight 尚未执行。validation 接受不代表真实 8-region episode 的 OOD、
-  时延、有限值、运行门覆盖和规则回退分布已经通过。
+- main runtime preflight 后续已执行但未通过。3/3 帧因实际 TTL 1.5 秒与 v2 固定 TTL
+  1.0 秒不一致而失败关闭；该结果保留为 v2 不可变失败证据。
 - 候选仍为 development/read-only shadow。正式 20-seed/900-cell 评价禁止，assist、
   assignment、takeover、coalition、control、physical、runtime ACK 和 formal evaluation
   权限全部为 false。

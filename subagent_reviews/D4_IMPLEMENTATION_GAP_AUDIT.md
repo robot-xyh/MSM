@@ -1,5 +1,32 @@
 # D4 实现差距审计：分布式协同与降级接管
 
+## 2026-07-29 readiness v3 GAP
+
+- **已识别并保留的 v2 失败证据。** main 从 clean commit `8421de1...52e0` 运行
+  5v5/2-region preflight，总线通过，3/3 帧均为
+  `runtime_confidence_gate_context_mismatch`。运行投影参数为 0.1/1/1.5，v2 bundle
+  绑定 0.1/1/1.0。在线真值使用数为 0，formal decision 未改变投影。v2 registry 不修改。
+- **已关闭 D4 builder P1：候选合同未绑定真实 main TTL。** 新 v3 使用独立 schema、
+  candidate ID 和 model version，将 1.5 秒有效期写入候选配置、来源、view、训练定义、
+  bundle gate 和内容哈希。规则配置与 0.05/0.60/0.59/0.10 安全常数同步绑定。
+- **已关闭 D4 review P1：TTL 可经重哈希绕过。** reviewer 从 schema 选择严格配置，
+  并由 v3 固定合同重算预期运行门。1.0 秒配置或 view 即使连同本地内容哈希一起修改也拒绝。
+- **兼容性证据。** 1.5 秒 Advisor 可实际执行 v3 门；1.0 秒 Advisor 在原始模型推理前
+  失败关闭。v2 registry 文件树摘要保持 `324a5118...5010`，旧 v2 仍绑定 1.0 秒。
+- **已关闭 P1：v3 clean-build 与不可变登记。** main 从 clean commit `4ba2c8a...4114`
+  构建，D4 独立 review 后逐字节登记 8 个文件。manifest 内容、模型、源码身份、复合数据、
+  split 和登记树为 `7978aec0...ada2`、`ace5df6d...7f52d`、
+  `e260ff2f...4ef`、`5d174dd3...ee03`、`69ae1b0e...d817` 和
+  `07c770b0...a93a`。v2 字节未变。
+- **validation 证据。** 门后 293/344 通过，动作不一致通过 0，通过动作一致率 1.0，
+  Brier 0.056837453793788656；在线 truth、test、calibration 和 reserved 使用均为 0。
+- **验证。** 2026-07-29 v3/v2 registry 联合专项 13/13、D4 全量 754/754 passed；仅有
+  既有 Matplotlib `Axes3D` 环境警告。
+- **仍开放 P1。** main 尚未从登记目录完成 5v5、20v20、200v200 development preflight。
+  需要分别统计 8-region 适用域、OOD、有限值、TTL 上下文、门应用、门后许可和规则回退。
+- **P0 与权限。** 无新增运行级 P0。v3 已 clean-build/登记但未 preflight，正式评价关闭；
+  assist、assignment、takeover、coalition、control、physical 和 runtime ACK 全部 false。
+
 ## 2026-07-28 readiness v2 登记后 GAP
 
 - **已关闭代码缺口：readiness 运行特征不足。** 候选 builder 已绑定第三个真实补样源：
@@ -34,8 +61,8 @@
 - **验证结果。** registry 3/3、v1/v2/运行门联合专项 37/37、D4 全量 743/743 passed；
   仅有既有 Matplotlib `Axes3D` 环境警告。隔离副本测试禁止源 loader，证明 clean clone
   review 不依赖 ignored outputs 或源数据；篡改制品失败关闭。
-- **仍开放 P1：main runtime preflight。** 尚未在真实 8-region episode 上验证 OOD、
-  有限值、时延、运行门应用覆盖、门后许可率和规则回退原因分布。正式 holdout/seed 未启动。
+- **后续结果：main runtime preflight 已执行但未通过。** v2 的 1.0 秒合同与 main 实际
+  1.5 秒投影配置不匹配，3/3 帧失败关闭；见 2026-07-29 v3 GAP。正式 holdout/seed 未启动。
 - **权限边界。** 候选仍为 development/read-only shadow，formal evaluation 关闭；
   assist、assignment、takeover、coalition、control、physical 和 runtime ACK 权限全部
   为 false。

@@ -1,5 +1,27 @@
 # D4 分布式协同与降级接管综述及子方案
 
+## 2026-07-29 readiness v3 评审
+
+main 已对不可变 readiness v2 执行真实 development preflight。5v5/2-region 总线通过，
+3/3 帧因 Advisor 的 1.5 秒建议有效期与 v2 bundle 的 1.0 秒合同不一致而规则回退。该结果
+说明运行时一致性门按配置失败关闭，也说明离线 validation 接受不能代替运行投影合同核对。
+在线真值使用数为 0，formal decision 未改变投影。
+
+D4 新增独立 v3 身份和构建入口。v3 将最小备用比例 0.1、最小备用资源 1、有效期 1.5 秒、
+规则权重 2.0/0.5/0.05，以及 OOD/confidence/cap/tolerance
+0.05/0.60/0.59/0.10 写入配置和门内容哈希。构建视图、validation 和 Advisor 使用相同
+projector/rule 语义。1.0 秒 Advisor、混用 v2 identity、篡改 TTL 或哈希均拒绝。
+
+main 已从 clean commit `4ba2c8a...4114` 构建 v3，D4 独立 review 后将 8 个文件逐字节
+登记到新目录。manifest 内容、模型、源码身份、复合数据、split 和登记树为
+`7978aec0...ada2`、`ace5df6d...7f52d`、`e260ff2f...4ef`、
+`5d174dd3...ee03`、`69ae1b0e...d817` 和 `07c770b0...a93a`。validation 门后
+293/344 通过，动作不一致通过 0；在线 truth 使用为 0。
+
+v3/v2 registry 联合专项 13/13、D4 全量 754/754 passed，v2 registry 字节保持不变。
+v3 的 5v5、20v20、200v200 runtime preflight 和正式评价均未执行；全部运行权限继续为
+false。main 下一步只从登记目录加载，任何 preflight 失败都保留规则路径。
+
 ## 2026-07-28 readiness v2 登记评审
 
 main 已在 detached clean worktree commit `891b542...fea9e` 完成 readiness v2 构建。
@@ -25,8 +47,8 @@ validation 共 344 个样本。原始置信度 344/344 越过 0.60，其中动�
 `331b4f29...92ce0`、`996dbd66...493e` 和 `69ae1b0e...d817`。
 
 registry 专项 3/3、v1/v2/运行门联合专项 37/37、D4 全量 743/743 passed。main runtime
-preflight 尚未执行，正式评价继续关闭；assist、assignment、takeover、coalition、
-control、physical、runtime ACK 和 formal evaluation 权限全部为 false。
+preflight 后续已执行但未通过，失败原因为 v2 TTL 1.0 与实际 TTL 1.5 的上下文不匹配；
+正式评价继续关闭，全部权限为 false。
 
 ## 2026-07-28 八区域候选评审
 

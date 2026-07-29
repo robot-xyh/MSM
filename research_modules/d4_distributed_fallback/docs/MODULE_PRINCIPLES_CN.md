@@ -1,5 +1,23 @@
 # 分布式协同与降级接管模块原理（模块编号 D4）
 
+## 2026-07-29 运行投影合同版本
+
+运行时一致性门比较的是同一运行上下文中的学习建议和规则建议。投影配置属于模型运行合同，
+建议有效期会改变输出的 `valid_until_s`，因此必须与最小备用比例、最小备用资源和规则权重
+一起进入 bundle 内容哈希。TTL 不能作为未绑定默认值由运行端自行替换。
+
+readiness v2 固定 TTL 1.0 秒；main 的实际 Advisor 使用 1.5 秒。main 在 clean commit
+`8421de1...52e0` 的 5v5/2-region preflight 中得到 3/3
+`runtime_confidence_gate_context_mismatch`，模型按设计失败关闭。v2 作为不可变失败证据
+保留。
+
+readiness v3 使用独立 identity，固定投影参数 0.1/1/1.5、规则权重 2.0/0.5/0.05 和安全
+门 0.05/0.60/0.59/0.10。来源摘要、训练视图、validation helper 和运行 Advisor 均由同一
+v3 合同生成。main 已从 clean commit `4ba2c8a...4114` 构建，D4 review 后将 8 个文件
+逐字节登记；manifest 内容和登记树为 `7978aec0...ada2`、`07c770b0...a93a`。
+validation 门后 293/344 通过，动作不一致通过 0。v3 尚未运行 5v5、20v20、200v200
+preflight，不能从 754 项模块测试推导运行准入；全部权限仍为 false。
+
 ## 2026-07-28 运行时确定性一致性门
 
 readiness v2 采用运行时确定性一致性门。对当前区域快照 \(s\)、学习建议 \(a_L\) 和正式
@@ -43,8 +61,9 @@ manifest 内容、模型权重和运行门配置 SHA-256 分别为 `48148034...3
 mismatch 为 0。
 
 登记专项 3/3、v1/v2/运行门联合专项 37/37、D4 全量 743/743 passed。main runtime
-preflight 和正式评价仍未执行。validation 门接受只证明离线运行门合同成立，全部 assist、
-分配、接管、联盟、控制、物理、runtime ACK 和正式评价权限保持 false。
+preflight 后续已执行但因 TTL 上下文不匹配未通过。validation 门接受只证明离线运行门
+合同成立，全部 assist、分配、接管、联盟、控制、物理、runtime ACK 和正式评价权限保持
+false。
 
 ## 2026-07-28 八区域训练视图与置信度原则
 

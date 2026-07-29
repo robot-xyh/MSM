@@ -1,5 +1,45 @@
 # D4 分布式协同与降级接管算法及实施方案
 
+## 2026-07-29 readiness v3 实现
+
+readiness v3 在 v2 训练流程外增加独立的版本合同，不修改 v2 registry。候选 ID 为
+`region_resource_a2_8region_runtime_action_readiness_shadow_v3`，模型版本为
+`d4-region-a2-8region-runtime-action-readiness-shadow-v3`。candidate/source/view/
+training/config 各自使用 v3 schema，reviewer 不允许 v2 schema、ID 或模型版本混入。
+
+`RegionResourceEightRegionReadinessV3CandidateConfig` 固定运行投影
+`minimum_reserve_ratio=0.1`、`minimum_reserve_resources=1`、
+`advisory_ttl_s=1.5`。规则配置固定高威胁权重 2.0、不确定性权重 0.5、转移压力余量
+0.05。运行门继续固定 OOD 0.05、confidence 0.60、cap 0.59 和 tolerance 0.10。配置对象
+拒绝其他数值，默认配置内容 SHA-256 为 `e8ce37c4...0592`。
+
+构建器通过同一个版本合同完成以下步骤：
+
+```text
+v3 配置
+  -> 1.5 秒 DeterministicResourceProjector
+  -> 共用该 projector 的 RuleRegionResourcePolicy
+  -> 生成并哈希绑定 runtime confidence gate
+  -> 写入 v3 source/view/training/bundle/candidate manifest
+  -> review 按 v3 固定合同重算并核对
+```
+
+运行门内容 SHA-256 为 `77972834...6872`。validation 仍显式使用
+`formal_decision=None`，与三来源数据语义相同。把 view 中的门改为 v2 的 1.0 秒后，即使
+重新计算 view 内容哈希，v3 validator 仍按固定 1.5 秒合同拒绝。1.5 秒 Advisor 可执行门；
+1.0 秒 Advisor 返回 `runtime_confidence_gate_context_mismatch` 并在原始模型推理前回退。
+
+main 已在 clean commit `4ba2c8a...4114` 构建 v3。D4 review loader 核对后将 8 个文件
+逐字节登记，源与登记树摘要均为 `07c770b0...a93a`。manifest 文件/内容、模型、源码身份、
+复合数据和 split 为 `5e575ec4...59c3`、`7978aec0...ada2`、
+`ace5df6d...7f52d`、`e260ff2f...4ef`、`5d174dd3...ee03` 和
+`69ae1b0e...d817`。validation 门后 293/344 通过，动作不一致通过 0，通过动作一致率
+1.0，Brier 为 0.056837453793788656。
+
+2026-07-29 v3/v2 registry 联合专项 13/13、D4 全量 754/754 passed；v2 registry 文件树
+摘要 `324a5118...5010` 未改变，旧 v1/v2 兼容测试通过。v3 尚未进入 5v5、20v20、200v200
+main preflight，全部运行和正式评价权限为 false。
+
 ## 2026-07-28 readiness v2 实施状态
 
 ### 三来源候选
@@ -56,8 +96,8 @@ main 已在 detached clean worktree commit `891b542...fea9e` 完成构建。候�
 
 validation 原始通过为 344/344，其中动作不一致 51；门后通过为 293/344，动作不一致 0，
 通过动作一致率 1.0，Brier 为 0.056837453793788656，接受结果为 true。登记专项
-**3/3**、v1/v2/运行门联合专项 **37/37**、D4 全量 **743/743 passed**。尚未运行 main
-runtime preflight，也未开放正式评价或运行权限。
+**3/3**、v1/v2/运行门联合专项 **37/37**、D4 全量 **743/743 passed**。main runtime
+preflight 后续已执行但因 TTL 1.0/1.5 上下文不匹配未通过，也未开放正式评价或运行权限。
 
 本阶段评估过将 readiness v2 拆为独立候选模块。v2 当前与 v1 共用来源校验、数字 seed
 原子切分、训练视图、内容寻址 manifest 和 reviewer 的内部合同；立即拆分会复制这些安全

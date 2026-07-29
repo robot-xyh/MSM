@@ -4,6 +4,30 @@
 和 development/shadow 影子诊断。登记不表示模型通过运行准入，也不授予默认 runtime、
 assist、assignment、takeover、coalition commit 或 control 权限。
 
+## region_resource_a2_8region_runtime_action_readiness_shadow_v3
+
+该目录是 detached clean worktree commit
+`4ba2c8a649dab157d55a2dd7817d5a8ded494114` 构建结果的逐字节登记副本。D4 review loader
+独立复核通过，源目录与登记目录均包含 8 个文件，逐文件 SHA-256 完全相同。固定身份如下：
+
+- 候选 manifest 文件：`5e575ec4c0cd40ddb33ae9f06ce3b5ca015825c5ad3364733234349f143459c3`
+- 候选 manifest 内容：`7978aec0bdf577571b9b85df10cf91f11a70f5d1b937f9dd5083bbf7e836ada2`
+- 模型权重：`ace5df6dae62f8a9a80a4cd141d50a93427e609e4caa605b9962494ebfe7f52d`
+- 源码身份：`e260ff2f69660142985569a73634920700325dbd6282b7e76e78a8a6562214ef`
+- 复合数据：`5d174dd3526a0262990c5472556b024ac0306b33262fd805a38da16c999bee03`
+- 全局 split：`69ae1b0e40c6478ac62d65d89b1634f867d10b8167c523763741827a6f96d817`
+- 运行门：`7797283405cad532f2911ea5965102f3b916c4ce6ccf60c17f955ea87e0e6872`
+- 登记文件树：`07c770b05ffc70f190cd8b45d762d579857747e0efb12b472a2354ee5aeaa93a`
+
+运行投影合同为最小备用比例 0.1、最小备用资源 1、建议有效期 1.5 秒；规则权重为
+2.0/0.5/0.05，安全门为 0.05/0.60/0.59/0.10。validation 门后 293/344 通过，动作
+不一致通过 0，校准接受。在线 truth 和 test/calibration/reserved 使用数均为 0。
+
+候选仍只允许 development/read-only shadow。`runtime_preflight_completed=false`，
+formal evaluation 未授权，assist、assignment、takeover、coalition commit、control、
+physical 和 runtime ACK 权限全部为 false。main 尚未完成 5v5、20v20、200v200 preflight。
+该目录不得改写；后续状态变化必须使用独立外部审计，不得修改候选字节。
+
 ## region_resource_a2_8region_runtime_action_readiness_shadow_v2
 
 该目录是 detached clean worktree commit
@@ -23,9 +47,11 @@ assist、assignment、takeover、coalition commit 或 control 权限。
 置信度通过 344，其中动作不一致 51；运行时一致性门后通过 293，其中动作不一致 0，
 校准接受。
 
-候选只允许 development/read-only shadow。main runtime preflight 和正式评价尚未执行；
-assist、assignment、takeover、coalition commit、control、physical、runtime ACK 与
-formal evaluation 权限全部为 false。目录不得改写；后续产物必须使用新的候选标识。
+候选只允许 development/read-only shadow。main 已从 clean commit `8421de1...52e0`
+执行 5v5/2-region preflight，但 3/3 帧因 main 的 1.5 秒建议有效期与 v2 固定的 1.0 秒
+合同不一致而失败关闭。正式评价未执行；assist、assignment、takeover、coalition commit、
+control、physical、runtime ACK 与 formal evaluation 权限全部为 false。该目录是不可变
+失败证据，不得改写；后续产物必须使用新的候选标识。
 
 ## region_resource_a2_8region_runtime_action_shadow_v1
 
@@ -39,8 +65,8 @@ formal evaluation 权限全部为 false。目录不得改写；后续产物必�
 
 候选只允许 read-only shadow。validation 中 51 个动作不一致样本越过固定 0.60，
 `confidence_calibration_accepted=false`；适配器强制规则回退。main runtime preflight
-尚未执行，正式 20-seed/900-cell 禁止。该目录不得改写；后续重新训练必须使用新的候选
-标识和目录。2026-07-28 最终 registry 专项 14/14、D4 全量 720/720 通过。
+已执行但未通过，正式 20-seed/900-cell 禁止。该目录不得改写；后续重新训练必须使用新的
+候选标识和目录。2026-07-28 最终 registry 专项 14/14、D4 全量 720/720 通过。
 
 ## region_resource_a2_current_lineage_development_v1
 

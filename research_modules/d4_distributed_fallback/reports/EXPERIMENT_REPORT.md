@@ -1,5 +1,51 @@
 # D4 分布式降级与接管实验报告
 
+## 2026-07-29 readiness v3 构建与登记
+
+main 在 detached clean worktree commit
+`4ba2c8a649dab157d55a2dd7817d5a8ded494114` 构建 v3。D4 独立调用 review loader，核对
+候选身份、三来源、全局 seed 切分、1.5 秒投影合同、规则权重、四个安全门常数和权限后，
+将 8 个文件逐字节登记到新 v3 registry。本轮没有启动 AirSim、main runtime preflight 或
+正式 seed。
+
+| 检查项 | 结果 |
+| --- | --- |
+| v3 投影配置 | reserve ratio 0.1 / reserve resources 1 / TTL 1.5 s |
+| v3 规则权重 | 2.0 / 0.5 / 0.05 |
+| 固定 OOD / confidence / cap / tolerance | 0.05 / 0.60 / 0.59 / 0.10 |
+| validation 门后通过 | 293 / 344 |
+| validation 动作不一致通过 | 0 |
+| validation 通过动作一致率 | 1.0 |
+| validation Brier | 0.056837453793788656 |
+| 在线真值使用 | 0 |
+| test / calibration / reserved 使用 | 0 / 0 / 0 |
+| v3/v2 registry 联合专项 | 13 / 13 passed |
+| D4 全量 | 754 / 754 passed |
+| v3 clean-build / registry / preflight | 已完成 / 已登记 / 未执行 |
+| 正式评价和运行权限 | 关闭 |
+
+实际哈希如下：
+
+| 制品 | SHA-256 |
+| --- | --- |
+| 候选 manifest 文件 | `5e575ec4c0cd40ddb33ae9f06ce3b5ca015825c5ad3364733234349f143459c3` |
+| 候选 manifest 内容 | `7978aec0bdf577571b9b85df10cf91f11a70f5d1b937f9dd5083bbf7e836ada2` |
+| 模型权重 | `ace5df6dae62f8a9a80a4cd141d50a93427e609e4caa605b9962494ebfe7f52d` |
+| 源码身份 | `e260ff2f69660142985569a73634920700325dbd6282b7e76e78a8a6562214ef` |
+| 复合数据 | `5d174dd3526a0262990c5472556b024ac0306b33262fd805a38da16c999bee03` |
+| 全局 split | `69ae1b0e40c6478ac62d65d89b1634f867d10b8167c523763741827a6f96d817` |
+| 运行门 | `7797283405cad532f2911ea5965102f3b916c4ce6ccf60c17f955ea87e0e6872` |
+| 登记文件树 | `07c770b05ffc70f190cd8b45d762d579857747e0efb12b472a2354ee5aeaa93a` |
+
+源目录与 registry 的相对路径和逐文件 SHA-256 完全相同。隔离副本在禁止访问源数据 loader
+时仍可加载和 review，篡改 bundle manifest 后失败关闭。v2 文件树继续保持
+`324a5118...5010`。
+
+上述结果是 shadow 候选构建和软件回归证据，不是 AirSim 性能或正式准入证据。main 仍需
+从登记目录完成 5v5、20v20、200v200 development preflight。assist、assignment、
+takeover、coalition、control、physical、runtime ACK 和 formal evaluation 权限全部为
+false。
+
 ## 2026-07-28 readiness v2 构建与登记
 
 main 在 detached clean worktree commit `891b542337ef065eee8c794d38dfa6ba382fea9e`
@@ -29,7 +75,7 @@ AirSim、main runtime preflight 或正式 seed。
 | v1/v2/运行门联合专项 | 37 / 37 passed |
 | D4 全量 | 743 / 743 passed |
 | clean v2 候选 | 已构建并逐字节登记 |
-| main runtime preflight | 未执行 |
+| main runtime preflight | 后续已执行但因 TTL 上下文不匹配未通过 |
 | 正式评价和运行权限 | 关闭 |
 
 候选 manifest 文件/内容、模型、源码身份、复合数据、split 和运行门配置 SHA-256 分别为
@@ -44,10 +90,9 @@ AirSim、main runtime preflight 或正式 seed。
 加载和 review，篡改 bundle manifest 后按制品哈希拒绝。旧 v1/current-lineage 测试继续
 通过。
 
-validation 接受不等于运行准入。main 尚未在真实 8-region episode 上核对 OOD、时延、
-有限值、门应用覆盖和回退分布。候选仍为 development/read-only shadow；assist、
-assignment、takeover、coalition、control、physical、runtime ACK 和 formal evaluation
-权限全部为 false。
+validation 接受不等于运行准入。main 后续 preflight 在模型推理前发现 TTL 上下文不匹配，
+因此仍未形成 OOD、时延、门应用 coverage 或模型输出分布证据。候选保持 development/
+read-only shadow；全部权限为 false。
 
 ## 2026-07-28 八区域候选构建与专项测试
 
