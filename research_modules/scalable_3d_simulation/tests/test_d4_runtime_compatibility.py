@@ -17,7 +17,17 @@ from research_modules.d4_distributed_fallback.d4_distributed_fallback import (
 from research_modules.scalable_3d_simulation.d4_runtime_compatibility import (
     D4RuntimeCompatibilityOptions,
     D4RuntimeCompatibilityThresholds,
+    _apply_candidate_runtime_gate,
+    _resolve_d4_model_input,
     assess_d4_runtime_compatibility,
+)
+
+
+EIGHT_REGION_CANDIDATE_ROOT = (
+    Path(__file__).resolve().parents[2]
+    / "d4_distributed_fallback"
+    / "model_registry"
+    / "region_resource_a2_8region_runtime_action_shadow_v1"
 )
 
 
@@ -183,3 +193,103 @@ def test_preflight_options_reject_invalid_or_duplicate_inputs(
 
     with pytest.raises(ValueError, match="fixed at 0.05"):
         D4RuntimeCompatibilityThresholds(ood_margin=0.10)
+
+
+def test_audited_eight_region_candidate_resolves_bundle_and_metadata() -> None:
+    bundle_dir, candidate = _resolve_d4_model_input(
+        EIGHT_REGION_CANDIDATE_ROOT
+    )
+
+    assert bundle_dir == EIGHT_REGION_CANDIDATE_ROOT / "bundle"
+    assert candidate is not None
+    assert candidate["applicable_region_count"] == 8
+    assert candidate["confidence_calibration_accepted"] is False
+    assert (
+        candidate[
+            "validation_action_inconsistent_threshold_pass_count"
+        ]
+        == 51
+    )
+    assert candidate["read_only_shadow"] is True
+    assert all(
+        value is False
+        for key, value in candidate["permissions"].items()
+        if key != "schema"
+    )
+
+
+def test_candidate_gate_separates_scope_and_calibration() -> None:
+    snapshot = _snapshot()
+    bounds = RegionFeatureBounds.from_graphs(
+        (snapshot_to_region_graph(snapshot),)
+    )
+    compatibility = assess_d4_runtime_compatibility(
+        (_frame(snapshot),),
+        feature_bounds=bounds,
+        model_version="test-model",
+        model_sha256="a" * 64,
+        thresholds=D4RuntimeCompatibilityThresholds(
+            minimum_frame_count=1,
+            minimum_in_distribution_fraction=1.0,
+            minimum_model_evaluated_frame_count=1,
+        ),
+    )
+    candidate = {
+        "applicable_region_count": 8,
+        "confidence_calibration_accepted": False,
+        "read_only_shadow": True,
+        "permissions": {
+            "schema": "test-permissions-v1",
+            "assist_enabled": False,
+            "control_enabled": False,
+        },
+    }
+
+    calibration_blocked = _apply_candidate_runtime_gate(
+        compatibility,
+        candidate=candidate,
+        cases=({"region_count": 8},),
+    )
+    assert calibration_blocked["runtime_distribution_compatible"] is True
+    assert (
+        calibration_blocked["raw_bundle_model_evaluated_frame_count"]
+        == 1
+    )
+    assert (
+        calibration_blocked[
+            "candidate_permitted_model_evaluated_frame_count"
+        ]
+        == 0
+    )
+    assert calibration_blocked["paired_development_rollout_allowed"] is False
+    assert calibration_blocked["candidate_blockers"] == [
+        "candidate_confidence_calibration_not_accepted"
+    ]
+
+    scope_blocked = _apply_candidate_runtime_gate(
+        compatibility,
+        candidate={
+            **candidate,
+            "confidence_calibration_accepted": True,
+        },
+        cases=({"region_count": 2},),
+    )
+    assert scope_blocked["candidate_scope_compatible"] is False
+    assert scope_blocked["candidate_blockers"] == [
+        "candidate_region_count_out_of_scope"
+    ]
+
+    accepted = _apply_candidate_runtime_gate(
+        compatibility,
+        candidate={
+            **candidate,
+            "confidence_calibration_accepted": True,
+        },
+        cases=({"region_count": 8},),
+    )
+    assert accepted["candidate_scope_compatible"] is True
+    assert (
+        accepted["candidate_permitted_model_evaluated_frame_count"]
+        == 1
+    )
+    assert accepted["paired_development_rollout_allowed"] is True

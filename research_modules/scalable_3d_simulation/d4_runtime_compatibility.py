@@ -29,6 +29,10 @@ from research_modules.d4_distributed_fallback.d4_distributed_fallback import (
     RegionFeatureBounds,
     snapshot_to_region_graph,
 )
+from research_modules.d4_distributed_fallback.d4_distributed_fallback.region_resource_eight_region_candidate import (
+    REGION_RESOURCE_EIGHT_REGION_CANDIDATE_FILENAME,
+    load_region_resource_eight_region_candidate_manifest,
+)
 
 from .experiment_authorization import sha256_file
 from .learning_runtime import LearningRuntimeOptions, resolve_learning_runtime
@@ -117,6 +121,58 @@ class D4RuntimeCompatibilityOptions:
                 raise ValueError(f"{name} must be positive when provided")
         if self.recon_count is not None and int(self.recon_count) < 0:
             raise ValueError("recon_count must be non-negative when provided")
+
+
+def _resolve_d4_model_input(
+    source: str | Path,
+) -> tuple[Path, dict[str, Any] | None]:
+    """Resolve either a raw bundle or an audited eight-region candidate."""
+
+    root = Path(source).expanduser().resolve()
+    raw_manifest = root / "manifest.json"
+    if raw_manifest.is_file():
+        return root, None
+
+    candidate_manifest_path = (
+        root / REGION_RESOURCE_EIGHT_REGION_CANDIDATE_FILENAME
+    )
+    if not candidate_manifest_path.is_file():
+        raise ValueError(
+            "D4 model input must be a bundle directory or an audited "
+            f"candidate root: {root}"
+        )
+    manifest = load_region_resource_eight_region_candidate_manifest(root)
+    bundle_dir = root / "bundle"
+    if not (bundle_dir / "manifest.json").is_file():
+        raise ValueError(f"D4 candidate bundle is unavailable: {bundle_dir}")
+    return bundle_dir, {
+        "candidate_root": str(root),
+        "candidate_id": manifest.candidate_id,
+        "model_version": manifest.model_version,
+        "model_state_sha256": manifest.model_state_sha256,
+        "manifest_file_sha256": sha256_file(candidate_manifest_path),
+        "manifest_content_sha256": manifest.content_sha256,
+        "source_identity_sha256": manifest.source_identity_sha256,
+        "source_summary_file_sha256": (
+            manifest.source_summary_file_sha256
+        ),
+        "applicable_region_count": manifest.applicable_region_count,
+        "confidence_calibration_accepted": (
+            manifest.confidence_calibration_accepted
+        ),
+        "validation_confidence_brier": (
+            manifest.validation_confidence_brier
+        ),
+        "validation_action_inconsistent_threshold_pass_count": (
+            manifest.validation_action_inconsistent_threshold_pass_count
+        ),
+        "read_only_shadow": manifest.read_only_shadow,
+        "runtime_preflight_completed": manifest.runtime_preflight_completed,
+        "formal_evaluation_authorized": (
+            manifest.permissions.formal_evaluation_authorized
+        ),
+        "permissions": manifest.permissions.to_dict(),
+    }
 
 
 def assess_d4_runtime_compatibility(
@@ -309,6 +365,92 @@ def assess_d4_runtime_compatibility(
     }
 
 
+def _apply_candidate_runtime_gate(
+    compatibility: Mapping[str, Any],
+    *,
+    candidate: Mapping[str, Any] | None,
+    cases: Sequence[Mapping[str, Any]],
+) -> dict[str, Any]:
+    """Keep raw bundle compatibility separate from candidate permission."""
+
+    result = dict(compatibility)
+    raw_model_count = int(result["model_evaluated_frame_count"])
+    result["raw_bundle_model_evaluated_frame_count"] = raw_model_count
+    if candidate is None:
+        result.update(
+            candidate_gate_available=False,
+            candidate_scope_compatible=None,
+            candidate_confidence_calibration_accepted=None,
+            candidate_permitted_model_evaluated_frame_count=None,
+            candidate_blockers=[],
+        )
+        return result
+
+    applicable_region_count = int(candidate["applicable_region_count"])
+    observed_region_counts = sorted(
+        {int(case["region_count"]) for case in cases}
+    )
+    scope_compatible = bool(
+        observed_region_counts
+        and observed_region_counts == [applicable_region_count]
+    )
+    calibration_accepted = bool(
+        candidate["confidence_calibration_accepted"]
+    )
+    candidate_blockers: list[str] = []
+    if not scope_compatible:
+        candidate_blockers.append("candidate_region_count_out_of_scope")
+    if not calibration_accepted:
+        candidate_blockers.append(
+            "candidate_confidence_calibration_not_accepted"
+        )
+    if candidate.get("read_only_shadow") is not True:
+        candidate_blockers.append("candidate_not_read_only_shadow")
+    permissions = candidate.get("permissions")
+    permission_values = (
+        {
+            key: value
+            for key, value in permissions.items()
+            if key != "schema"
+        }
+        if isinstance(permissions, Mapping)
+        else {}
+    )
+    if (
+        not isinstance(permissions, Mapping)
+        or not isinstance(permissions.get("schema"), str)
+        or not permission_values
+        or any(value is not False for value in permission_values.values())
+    ):
+        candidate_blockers.append("candidate_permission_boundary_crossed")
+
+    candidate_permitted_count = (
+        raw_model_count if not candidate_blockers else 0
+    )
+    result.update(
+        candidate_gate_available=True,
+        candidate_scope_compatible=scope_compatible,
+        candidate_applicable_region_count=applicable_region_count,
+        observed_region_counts=observed_region_counts,
+        candidate_confidence_calibration_accepted=calibration_accepted,
+        candidate_permitted_model_evaluated_frame_count=(
+            candidate_permitted_count
+        ),
+        candidate_blockers=candidate_blockers,
+        paired_development_rollout_allowed=bool(
+            result["runtime_distribution_compatible"]
+            and not candidate_blockers
+            and candidate_permitted_count
+            >= int(
+                result["thresholds"][
+                    "minimum_model_evaluated_frame_count"
+                ]
+            )
+        ),
+    )
+    return result
+
+
 def run_d4_runtime_compatibility_preflight(
     options: D4RuntimeCompatibilityOptions,
 ) -> dict[str, Path]:
@@ -326,9 +468,10 @@ def run_d4_runtime_compatibility_preflight(
     base = ScenarioConfig.from_dict(
         json.loads(options.config_path.read_text(encoding="utf-8"))
     )
-    bundle_dir = options.bundle_dir.expanduser().resolve()
-    if not bundle_dir.is_dir():
-        raise ValueError(f"D4 model bundle directory does not exist: {bundle_dir}")
+    model_input = options.bundle_dir.expanduser().resolve()
+    if not model_input.is_dir():
+        raise ValueError(f"D4 model input directory does not exist: {model_input}")
+    bundle_dir, candidate_metadata = _resolve_d4_model_input(model_input)
 
     all_frames: list[D4RegionLearningFrame] = []
     cases: list[dict[str, Any]] = []
@@ -429,6 +572,18 @@ def run_d4_runtime_compatibility_preflight(
         )
 
     assert learned_manifest is not None
+    if (
+        candidate_metadata is not None
+        and (
+            learned_manifest.model_version
+            != candidate_metadata["model_version"]
+            or learned_manifest.state_dict_sha256
+            != candidate_metadata["model_state_sha256"]
+        )
+    ):
+        raise RuntimeError(
+            "D4 candidate manifest does not match the loaded bundle"
+        )
     compatibility = assess_d4_runtime_compatibility(
         all_frames,
         feature_bounds=learned_manifest.feature_bounds,
@@ -437,6 +592,11 @@ def run_d4_runtime_compatibility_preflight(
         thresholds=options.thresholds,
         bundle_metadata=learned_manifest.to_dict(),
         online_truth_use_count=online_truth_use_count,
+    )
+    compatibility = _apply_candidate_runtime_gate(
+        compatibility,
+        candidate=candidate_metadata,
+        cases=cases,
     )
     repository_root = Path(__file__).resolve().parents[2]
     payload = {
@@ -450,10 +610,12 @@ def run_d4_runtime_compatibility_preflight(
         "repository_dirty": bool(
             _git_output(repository_root, "status", "--porcelain").strip()
         ),
+        "model_input": str(model_input),
         "bundle_dir": str(bundle_dir),
         "bundle_manifest_sha256": sha256_file(
             bundle_dir / "manifest.json"
         ),
+        "candidate": candidate_metadata,
         "learning_runtime_diagnostics": runtime_diagnostics,
         "formal_seed_registry": {
             "path": str(options.formal_seed_registry_path),
@@ -585,25 +747,44 @@ def _git_output(repository_root: Path, *args: str) -> str:
 
 def _render_chinese_report(payload: Mapping[str, Any]) -> str:
     compatibility = payload["compatibility"]
-    ready = bool(compatibility["runtime_distribution_compatible"])
+    distribution_ready = bool(
+        compatibility["runtime_distribution_compatible"]
+    )
+    rollout_allowed = bool(
+        compatibility["paired_development_rollout_allowed"]
+    )
+    candidate_gate_available = bool(
+        compatibility["candidate_gate_available"]
+    )
+    if rollout_allowed:
+        conclusion = "当前候选可进入受控的成对开发试验。"
+    elif distribution_ready and candidate_gate_available:
+        conclusion = (
+            "原始模型包通过运行分布检查，但候选级门控未通过，"
+            "不得启动正式多随机种子成对试验。"
+        )
+    else:
+        conclusion = (
+            "当前模型未通过运行分布预检，不应启动正式多随机种子"
+            "成对试验。"
+        )
     lines = [
         "# D4 区域策略运行分布兼容性预检",
         "",
         "## 结论",
         "",
-        (
-            "当前模型通过运行分布预检，可以进入受控的成对开发试验。"
-            if ready
-            else "当前模型未通过运行分布预检，不应启动正式多随机种子成对试验。"
-        ),
+        conclusion,
         (
             f"共检查 {compatibility['frame_count']} 个 D4 区域快照，"
             f"分布内快照 {compatibility['in_distribution_frame_count']} 个，"
-            f"模型实际执行 {compatibility['model_evaluated_frame_count']} 次。"
+            "原始模型前向有效执行 "
+            f"{compatibility['raw_bundle_model_evaluated_frame_count']} 次，"
+            "候选门控许可执行 "
+            f"{compatibility['candidate_permitted_model_evaluated_frame_count']} 次。"
         ),
         "本预检不授予在线辅助、策略能力声明或正式评估权限。",
         "",
-        "## 阻断项",
+        "## 运行分布阻断项",
         "",
     ]
     blockers = list(compatibility["blockers"])
@@ -612,6 +793,14 @@ def _render_chinese_report(payload: Mapping[str, Any]) -> str:
         if not blockers
         else [f"- `{item}`" for item in blockers]
     )
+    lines.extend(["", "## 候选门控阻断项", ""])
+    candidate_blockers = list(compatibility["candidate_blockers"])
+    if not candidate_gate_available:
+        lines.append("- 未提供候选级审计清单，仅完成裸模型包检查。")
+    elif candidate_blockers:
+        lines.extend(f"- `{item}`" for item in candidate_blockers)
+    else:
+        lines.append("- 无。")
     lines.extend(
         [
             "",
@@ -625,8 +814,12 @@ def _render_chinese_report(payload: Mapping[str, Any]) -> str:
                 f"{100.0 * compatibility['in_distribution_fraction']:.1f}% |"
             ),
             (
-                "| 非回退模型执行数 | "
-                f"{compatibility['model_evaluated_frame_count']} |"
+                "| 原始模型前向有效执行数 | "
+                f"{compatibility['raw_bundle_model_evaluated_frame_count']} |"
+            ),
+            (
+                "| 候选门控许可执行数 | "
+                f"{compatibility['candidate_permitted_model_evaluated_frame_count']} |"
             ),
             (
                 "| 非有限特征帧数 | "
@@ -663,7 +856,8 @@ def _render_chinese_report(payload: Mapping[str, Any]) -> str:
             "- 数据来自三维质点主运行时的匿名在线状态，真值不进入 D4 控制输入。",
             "- 预检沿用模型清单中的特征边界和 D4 默认越界余量。",
             "- 确定性资源投影、版本门控和规则回退保持不变。",
-            "- 结果只回答运行分布兼容性，不回答策略收益和部署适用性。",
+            "- 裸模型前向结果与候选级执行许可分开记录。",
+            "- 结果不回答策略收益和部署适用性。",
             "",
         ]
     )

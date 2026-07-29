@@ -25,7 +25,12 @@ DEFAULT_CONFIG = Path(__file__).with_name("configs") / "nominal_200v200.json"
 def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--config", type=Path, default=DEFAULT_CONFIG)
-    parser.add_argument("--d4-model-bundle", type=Path, required=True)
+    parser.add_argument(
+        "--d4-model-bundle",
+        type=Path,
+        required=True,
+        help="raw D4 bundle directory or audited candidate root",
+    )
     parser.add_argument("--output", type=Path, required=True)
     parser.add_argument("--seeds", type=int, nargs="+", default=[2_000])
     parser.add_argument("--duration", type=float, default=2.2)
@@ -88,7 +93,7 @@ def main(argv: list[str] | None = None) -> int:
     payload = json.loads(paths["preflight_json"].read_text(encoding="utf-8"))
     return (
         0
-        if payload["compatibility"]["runtime_distribution_compatible"]
+        if payload["compatibility"]["paired_development_rollout_allowed"]
         else 2
     )
 
