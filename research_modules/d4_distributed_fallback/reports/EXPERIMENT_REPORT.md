@@ -1,5 +1,20 @@
 # D4 分布式降级与接管实验报告
 
+## 2026-07-29 v4 落盘候选复核
+
+候选由 clean commit `fd857457...7f848` 构建。现有 reviewer 从文件系统重新加载并重算
+179 个 artifact，全部匹配 manifest。离线 development loader 成功；默认 loader 按
+`v4_candidate_unregistered` 拒绝。
+
+候选 manifest 内容、模型和数据集 SHA-256 分别为 `4f3e9735...7e116`、
+`33a28060...b9fe5`、`b31fc43f...7fb8c`。从冻结 payload 重算 Actor 和 confidence 的
+类别平衡、可辨识性和门限指标，结果与训练摘要完全一致。TRAIN 非零/零 edge 为
+`72/3848`；TEST payload 未复制、未读取、未拟合。
+
+fixture 置信度为 0.602367，裕量约 0.002367，只属于 training-domain smoke。全部权限
+为 false，formal holdout、runtime preflight、D6 独立审计、D3 successor 和收益仍未
+完成。完整审查见 `D4_V4_PERSISTED_CANDIDATE_IMMUTABILITY_REVIEW_20260729.md`。
+
 ## 2026-07-29 v4 observable-group 只读置信校准
 
 本轮只读加载外部数据 `b31fc43f...7fb8c`，不调用候选 writer。数据含 TRAIN 350 帧和
@@ -32,10 +47,10 @@ target、reward、validation、test、seed 或来源身份。
 unavailable，正式验证声明为 false。薄裕量不能支持模型准入；独立未见图、正式 holdout
 和扰动复跑仍需另行完成。
 
-本结果只证明训练机制和 validation 固定门验收。没有 clean candidate、不可变 review、
-registry 登记、D3 successor、D6 独立审计、运行采用或收益证据。v4 全部生产权限仍为
-false，v3、固定 OOD 0.05 和固定置信门 0.60 未修改。本轮治理收紧后专项 42/42、
-D4 全量 825/825 通过。
+本结果只证明训练机制和 validation 固定门验收。后续 clean candidate 和 D4 不可变
+review 已完成，状态见本报告首节。registry 登记、D3 successor、D6 独立审计、运行采用
+和收益证据仍未完成。v4 全部生产权限仍为 false，v3、固定 OOD 0.05 和固定置信门 0.60
+未修改。本轮治理收紧后专项 42/42、D4 全量 825/825 通过。
 
 ## 2026-07-29 D6 v2b 隔离双臂审计
 

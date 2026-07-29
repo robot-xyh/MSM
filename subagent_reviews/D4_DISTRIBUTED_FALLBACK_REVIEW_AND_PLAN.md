@@ -1,9 +1,26 @@
 # D4 分布式协同与降级接管综述及子方案
 
-## 2026-07-29 v4 observable-group 置信校准评审
+## 2026-07-29 v4 落盘候选不可变评审
 
-本轮只评审 v4 训练机制，不形成正式候选。外部组合数据的 train 有 60 个安全可执行差异
-正例和 290 个 no-op 负例，3920 条有向边目标中 71 条非零。D4 在 v4 私有路径使用
+D4 已从文件系统重新调用现有 reviewer 和离线 development loader。clean commit
+`fd857457...7f848`、manifest 内容 `4f3e9735...7e116`、模型
+`33a28060...b9fe5` 和数据 `b31fc43f...7fb8c` 绑定一致。179 个 artifact 的路径和
+SHA-256 与 manifest 完全相同，四个实现文件与 Git commit blob 逐项一致。
+
+从冻结 TRAIN/VALIDATION payload 重算 Actor 类别平衡、confidence 类别平衡、可辨识性和
+门限指标，结果与训练摘要完全一致。实际非零/零 edge target 为 `72/3848`。候选只复制
+TRAIN/VALIDATION episode；TEST payload 未复制、未读取、未拟合。
+
+fixture 继续标为 training-domain smoke，置信裕量约 0.002367，不形成独立泛化或正式
+验证证据。全部权限为 false。默认 loader 以 `v4_candidate_unregistered` 拒绝，离线
+loader 的注册绑定状态为 false。评审结论是“落盘候选完整性通过，可以保留为后续独立
+评估输入；登记、准入、preflight、holdout、运行采用和收益均未通过”。
+
+## 2026-07-29 v4 observable-group 置信校准评审（构建前）
+
+该阶段只评审 v4 训练机制，不形成正式候选。外部组合数据的 train 有 60 个安全可执行
+差异正例和 290 个 no-op 负例；后续落盘重算确认 3920 条有向边目标中 72 条非零。D4
+在 v4 私有路径使用
 train-only 有界权重：正 frame 权重 4.833333，非零 edge 权重封顶为 32，负 frame 和
 零 edge 权重为 1。通用行为克隆语义未修改。
 
@@ -35,9 +52,10 @@ positive/negative/inconsistent/executable 计数为 train `12/0/0/12`、validati
 `formal_validation_claim_allowed=false`。相对固定门的裕量约 0.002367，不能用于
 准入、泛化或独立验证结论。manifest 对三个治理字段和裕量计算执行失败关闭校验。
 
-当前证据仅为内存训练和只读数据验证。正式 clean build、候选制品、不可变 review、D6
-审计、D3 successor、物理结果和收益均未完成。v4 未登记，全部生产权限为 false；v3
-身份和 registry 保持不变。专项 42/42、D4 全量 825/825 通过。
+该阶段证据仅为内存训练和只读数据验证。后续 clean build、候选制品和不可变 review 已
+完成，状态见本文件首节。D6 审计、D3 successor、物理结果和收益仍未完成。v4 未登记，
+全部生产权限为 false；v3 身份和 registry 保持不变。专项 42/42、D4 全量 825/825
+通过。
 
 ## 2026-07-29 规划权限解耦评审
 
@@ -77,10 +95,10 @@ test/holdout 参与、动作多样性不足和投影裁剪均失败关闭。未�
 `None`，默认 runtime loader 直接拒绝。2026-07-29 专项 11/11、D4 全量 780/780 通过，
 v3 文件树摘要仍为 `07c770b0...a93a`。
 
-该阶段评审结论是“v4 builder/framework 可保留，v4 候选不存在”。后续 observable-group
-数据只读训练已证明 actor 可形成双类命中，confidence 也已形成固定门合格 checkpoint；
-当前状态以本文件首节为准。开放 P1 包括 clean build、不可变登记、D3 successor、独立
-双臂非退化和正收益。AirSim 与既有物理实验结果未受本轮代码变化影响。
+该框架阶段评审结论是“v4 builder/framework 可保留，当时尚无 v4 候选”。后续
+observable-group 数据已完成训练、clean build 和 D4 不可变制品审查；当前状态以本文件
+首节为准。开放 P1 包括 D6 独立审计、正式 holdout、preflight、main 准入决策、
+D3 successor、独立双臂非退化和正收益。AirSim 与既有物理实验结果未受本轮变化影响。
 
 ## 2026-07-29 D6 v2b 最终评审
 

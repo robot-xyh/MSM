@@ -1,5 +1,23 @@
 # D4 分布式协同与降级接管
 
+## 2026-07-29 v4 落盘候选不可变审查
+
+clean commit `fd857457bb27a4a709a7c4937e22ebe1cbd7f848` 已生成 v4
+development/shadow 落盘候选。D4 从文件系统重新调用现有 reviewer 和离线 development
+loader。179 个非 manifest artifact 与 manifest 逐文件 SHA-256 完全一致；四个实现文件
+与该 Git commit 的 blob 逐项一致。manifest 内容、模型和数据集 SHA-256 分别为
+`4f3e9735...7e116`、`33a28060...b9fe5`、`b31fc43f...7fb8c`。
+
+冻结 TRAIN/VALIDATION payload 重新生成的 Actor 权重、置信权重、可辨识性和门限指标与
+`training_summary.json` 完全一致。实际 TRAIN 非零/零 edge target 为 `72/3848`；
+TEST payload 未复制、未读取、未拟合。fixture 仍是与 TRAIN key 完全相同的
+training-domain smoke，置信裕量约 0.002367，不提供独立泛化、正式验证或准入证据。
+
+默认 loader 继续以 `v4_candidate_unregistered` 拒绝运行加载。离线 loader 成功，但
+`registered_binding_verified=false`。全部 permissions 为 false，formal holdout、
+runtime preflight、D6 独立审计、D3 successor、运行采用和收益均未完成。完整身份和结论
+见 `reports/D4_V4_PERSISTED_CANDIDATE_IMMUTABILITY_REVIEW_20260729.md`。
+
 ## 2026-07-29 v4 类别平衡与置信校准验证
 
 v4 actor 继续使用 TRAIN-only frame/edge 类别平衡，通用行为克隆接口未修改。新外部数据
@@ -44,10 +62,10 @@ TRAIN 的模型可见张量域中心距离、固定 0.05 OOD 门、固定 0.60 �
 `formal_validation_claim_allowed=false`。本轮相对 0.60 的置信裕量为 0.002367。
 该薄裕量只支持训练域构建 smoke 检查，不能支持泛化、独立验证或模型准入结论。
 
-本阶段只完成训练机制、测试和新组合数据只读验证。没有生成 clean candidate，没有写入
-registry，也没有完成不可变 review、D6 独立审计、D3 successor、物理结果或收益评价。
-v4 仍为 unregistered、development/shadow only，全部生产权限为 false；v3 未修改。
-2026-07-29 v4 专项 42/42、D4 全量 825/825 通过。
+该训练阶段只完成训练机制、测试和组合数据只读验证；随后已由上述 clean commit 构建落盘
+候选并完成 D4 不可变审查。registry、D6 独立审计、D3 successor、物理结果和收益评价
+仍未完成。v4 仍为 unregistered、development/shadow only，全部生产权限为 false；
+v3 未修改。2026-07-29 v4 专项 42/42、D4 全量 825/825 通过。
 
 ## 2026-07-29 区域规划资格与执行权限
 

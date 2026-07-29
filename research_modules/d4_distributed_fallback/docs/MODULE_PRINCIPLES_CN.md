@@ -1,5 +1,23 @@
 # 分布式协同与降级接管模块原理（模块编号 D4）
 
+## 2026-07-29 落盘候选证据边界
+
+落盘候选采用内容寻址复核。设 manifest 声明的 artifact 集为
+\(\mathcal{F}=\{(p_i,h_i)\}\)，文件系统重算结果为
+\(\hat{\mathcal{F}}=\{(p_i,\hat h_i)\}\)。只有路径集合完全相同且
+\(\hat h_i=h_i\) 对所有文件成立时，候选目录才通过完整性审查。模型、数据、切分、
+训练摘要、外部证据和安全门再分别与 manifest 的顶层摘要交叉绑定。
+
+来源谱系不依赖当前工作区推断。审查从记录的 Git commit 直接读取四个实现文件 blob，
+重算 SHA-256 后与来源摘要比较。TRAIN-only 权重也从冻结 payload 重新计算，不以
+`training_summary.json` 的声明代替复核。TEST payload 不在候选目录中，因而不能被
+reviewer 或离线 loader 读取。
+
+该审查证明候选字节、来源和开发态训练记录内部一致。它不证明泛化、收益或生产适用性。
+默认 loader 继续依赖 registry 绑定，未登记候选只能通过显式 offline development
+上下文加载。全部权限 false、admission closed、formal holdout 未评估和 preflight
+未完成仍是候选语义的一部分。
+
 ## 2026-07-29 v4 observable-group 置信校准原理
 
 v4 正样本表示外部 target 在同一快照和同键规则基线 \(R_0\) 下形成安全可执行差异，
@@ -51,8 +69,9 @@ w_{\mathrm{hard}}
 
 完整复跑有 8 个合格 epoch，最长连续 7 个。最佳 epoch 66 的
 positive/negative/inconsistent/executable 计数为 train `12/0/0/12`、validation
-`4/0/0/4`。这些结果只证明训练机制和固定门验收在该只读数据上成立；clean candidate、
-登记、D3 后继、D6 审计和收益仍未完成。生产权限继续为 false，v3 不受影响。
+`4/0/0/4`。这些结果只证明训练机制和固定门验收在该只读数据上成立。当时尚未生成
+clean candidate；后续落盘候选及复核状态见本文件首节。登记、D3 后继、D6 审计和收益
+仍未完成。生产权限继续为 false，v3 不受影响。
 
 development fixture 需要同时满足“位于训练域”和“能检验安全非零动作”。旧 8 区域
 attribution fixture 的对数 D2 不确定度、视觉可见率和视觉一致率超出当前训练域。直接把

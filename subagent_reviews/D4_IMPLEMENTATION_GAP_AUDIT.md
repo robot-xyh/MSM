@@ -1,12 +1,38 @@
 # D4 实现差距审计：分布式协同与降级接管
 
+## 2026-07-29 v4 落盘候选审查 GAP
+
+- **无新增 P0。** v4 仍未登记，默认 loader 失败关闭；固定 0.05 OOD、0.60 confidence、
+  投影器、同键 R0、v3 registry 和全部生产权限未修改。
+- **已关闭 D4 内 P1：clean candidate build。** clean commit
+  `fd857457...7f848` 已生成落盘 development/shadow 候选。manifest 内容、模型和数据
+  SHA-256 分别为 `4f3e9735...7e116`、`33a28060...b9fe5`、
+  `b31fc43f...7fb8c`。
+- **已关闭 D4 内 P1：artifact 不可变 review。** 现有 reviewer 重算 179 个 artifact，
+  路径和 SHA-256 与 manifest 完全一致；四个实现文件与记录 Git commit 的 blob 完全
+  一致。未发现符号链接。
+- **已关闭 D4 内 P1：训练摘要只读声明缺少重算。** 从冻结 TRAIN/VALIDATION payload
+  重新生成 Actor 权重、confidence 权重、可辨识性和门限指标，全部与训练摘要相同。
+  实际 TRAIN 非零/零 edge target 为 `72/3848`。
+- **TEST 隔离通过。** 完整 manifest 保留 140/30/30 个
+  TRAIN/VALIDATION/TEST episode 身份；候选只复制 TRAIN 140 和 VALIDATION 30 个 payload。
+  TEST payload read/fit、formal holdout seed use 均为 0。
+- **fixture 治理通过。** training-domain smoke、独立泛化 unavailable、正式验证声明
+  false；置信裕量 0.002367。该项只证明构建链路，不关闭泛化或准入 GAP。
+- **权限与加载边界通过。** 全部 permissions 为 false，admission closed，preflight 和
+  holdout 未完成。默认 loader 返回 `v4_candidate_unregistered`；离线 development
+  loader 成功且 registration binding 为 false。
+- **仍开放 P1。** D6 独立审计、正式 holdout、runtime preflight、main 准入决策、
+  registry、D3 successor、运行 ACK、D7/物理窗口、双臂非退化、扰动场景和正收益尚未
+  完成。
+
 ## 2026-07-29 v4 observable-group 置信门 GAP
 
 - **无新增 P0。** projector、同键 R0、0.10 备用比例、1 个备用资源、单边最多 1、
   transfer 总上限、0.60 置信门、OOD、fixture 和全部权限边界均未修改。v4 未登记，
   v3 registry 未修改。
 - **已关闭 D4 内 P1：actor 被 no-op/零边淹没。** train 60/290 的正负 frame 使用
-  4.833333/1 权重；71/3849 的非零/零 edge 使用 32/1 权重。权重只来自 train，
+  4.833333/1 权重；落盘候选重算的 72/3848 非零/零 edge 使用 32/1 权重。权重只来自 train，
   上限、计数、截断状态和标签清单摘要可审计。
 - **已关闭 D4 内 P1：总体 loss 选择全 no-op checkpoint。** 新 selection key 先要求
   validation 正负两类均有命中，再比较较低类别命中率、平衡命中率、固定训练权重下的
@@ -46,9 +72,9 @@
   `training_domain_smoke_only=true`。独立泛化证据和正式验证声明固定为 false。
   manifest 校验置信裕量与 `effective_confidence-0.60` 完全一致；当前约 0.002367 的
   薄裕量不能支持候选准入。
-- **开放 P1。** clean candidate build、候选制品、不可变 review、registry、D6 独立
-  审计、D3 successor、D7/物理窗口、双臂非退化与收益均未完成。当前只可声明训练机制
-  、置信校准和域内 fixture 的只读组合数据验证完成。
+- **P1 状态更新。** clean candidate build、候选制品和 D4 不可变 review 已完成。
+  registry、D6 独立审计、正式 holdout/preflight、D3 successor、D7/物理窗口、双臂
+  非退化与收益仍未完成。
 - **泄漏边界。** 所有权重、间隔和梯度仅来自 TRAIN。validation 仅用于 checkpoint
   排序和固定门验收；`validation_weight_fit_count=0`、`test_payload_fit_count=0`。
 - **验证。** 2026-07-29 v4 专项 42/42、D4 全量 825/825 通过；仅有既有 Matplotlib
@@ -100,11 +126,12 @@
 - **验证。** 2026-07-29 v4 专项 11/11、D4 全量 780/780 通过；仅有既有 Matplotlib
   `Axes3D` 环境警告。验证对象是 builder/framework 和受控 fixture，不是 AirSim、
   clean-build 模型或实飞证据。
-- **开放 P1：clean build。** 新 observable-group 数据已在只读训练中通过 confidence
-  固定门，但 clean commit 构建、模型/manifest/数据集不可变登记仍未完成。
-- **部分关闭 P1：模型可执行差异。** 只读 actor 和 confidence 已分别形成双类命中及
-  固定门合格 checkpoint；仍没有 clean candidate、运行采用或 successor，因此该项不能
-  按正式候选能力关闭。
+- **已关闭 P1 子项：clean build 与 D4 artifact review。** 新 observable-group 数据已
+  在 clean commit 形成落盘候选，模型、manifest、数据、来源和训练摘要完成不可变复核。
+  registry 仍未写入。
+- **部分关闭 P1：模型可执行差异。** Actor、confidence 和 development fixture 已分别
+  形成双类命中、固定门合格 checkpoint 和一条安全差异。仍没有正式 holdout、运行采用
+  或 successor，因此该项不能按准入或运行能力关闭。
 - **开放 P1：后继和收益。** D3 successor、新目标实际绑定、ACK、D7/物理窗口、独立
   双臂 episode、D6 非退化/正收益、扰动多 seed 和正式 holdout 均未完成。证据形成前
   admission 保持 closed，rule fallback required。

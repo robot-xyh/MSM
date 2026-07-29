@@ -1,5 +1,27 @@
 # D4 分布式协同与降级接管算法及实施方案
 
+## 2026-07-29 v4 落盘候选复核实现
+
+落盘复核直接调用既有 manifest loader、candidate reviewer 和离线 development loader。
+reviewer 重算候选目录的 artifact 清单，重新加载冻结 TRAIN/VALIDATION 数据、bundle、
+模型权重、外部 evidence、训练配置、训练摘要和 intervention gate。manifest 文件本身
+单独计算 SHA-256，不进入其自身 `artifact_files`。
+
+第二层复核从冻结 payload 重新构造 Actor 和 confidence 记录。Actor 的 frame/edge
+TRAIN-only 权重、置信正负类与硬负例权重、可辨识性审计、TRAIN/VALIDATION 命中指标均
+与落盘训练摘要逐项比较。实际 TRAIN 非零/零 edge target 为 `72/3848`。候选只含
+TRAIN 140 和 VALIDATION 30 个 episode payload；TEST 30 个 episode 仅保留 manifest
+身份，不复制、不加载、不拟合。
+
+离线 loader 必须显式设置 `evaluation_context="offline_development"`，并保持
+`registered_binding_verified=false`。默认 loader 仍要求 registry 绑定，本候选返回
+`v4_candidate_unregistered`。本轮没有调用 registry writer，也没有执行 runtime
+preflight、formal holdout 或运行推理。
+
+完整身份、权限和重算结果见
+`../reports/D4_V4_PERSISTED_CANDIDATE_IMMUTABILITY_REVIEW_20260729.md`。该审查关闭
+clean build 与 D4 artifact review 缺口，不改变模型算法、门限、投影器或准入状态。
+
 ## 2026-07-29 v4 observable-group 置信校准实现
 
 v4 actor 训练继续把 frame 转为同键 \(R_0\) 可执行签名记录。安全 transfer target 是
@@ -53,7 +75,8 @@ treatment 同时区别于前两者，配额净和为 0，owner、epoch 和 lease
 `training_domain_smoke_only=true`，并将独立泛化证据和正式验证声明固定为 false。
 manifest 重算 `confidence_margin_above_threshold=effective_confidence-0.60`，要求其
 有限且为正。本轮裕量约 0.002367，属于薄裕量，不能作为准入证据。专项 42/42、D4 全量
-825/825 通过。本阶段没有写候选、registry 或权限字段。
+825/825 通过。该只读校准阶段没有写候选；后续 clean build 和 D4 落盘复核状态见本文件
+首节。registry 和权限字段仍未开放。
 
 ## 2026-07-29 规划资格和执行权限实现
 

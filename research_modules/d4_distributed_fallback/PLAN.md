@@ -1,5 +1,35 @@
 # D4 分布式协同与降级接管计划
 
+## 2026-07-29 v4 落盘候选审查计划
+
+### 已完成
+
+- clean commit `fd857457...7f848` 已把 observable-group 数据构建为落盘
+  development/shadow 候选。
+- 现有 reviewer 已重算 manifest、179 个 artifact、bundle/model、数据与 split、外部
+  evidence、训练摘要和 intervention gate，全部内容绑定一致。
+- 离线 development loader 成功；默认 loader 以 `v4_candidate_unregistered` 失败关闭。
+- 从冻结 TRAIN/VALIDATION payload 重新计算 Actor 类别平衡、置信类别平衡、可辨识性和
+  门限指标，结果与训练摘要完全一致。TRAIN 非零/零 edge 为 `72/3848`。
+- 70/15/15 个 TRAIN/VALIDATION/TEST seed 仍由完整 manifest 绑定。候选只复制
+  140/30 个 TRAIN/VALIDATION episode payload，30 个 TEST episode payload 未复制。
+- fixture、权限、admission、preflight、holdout 和 v3 树边界均通过审查。审查报告绑定
+  manifest 内容 `4f3e9735...7e116`、模型 `33a28060...b9fe5` 和数据
+  `b31fc43f...7fb8c`。
+
+### 当前 P1
+
+1. D4 落盘候选构建和不可变制品审查已经关闭。v4 registry 摘要仍为空，默认运行加载
+   继续拒绝。
+2. D6 独立审计、正式 holdout、runtime preflight、main 准入决策尚未开展。
+3. D3 successor、运行 ACK、D7/物理窗口、独立双臂非退化、扰动场景和正收益仍缺少证据。
+
+### 下一步
+
+1. main/D6 以审查报告中的完整 SHA-256 作为唯一输入身份开展独立离线审计。
+2. 在另行批准前保持 formal holdout、preflight、assist、authority 和 registry 全部关闭。
+3. 任何后续制品身份不一致时终止评估，不从本次 training-domain smoke 推导准入。
+
 ## 2026-07-29 v4 observable-group 置信校准计划
 
 ### 已完成
@@ -41,21 +71,16 @@
 
 ### 当前 P1
 
-1. development fixture 的 TRAIN 域 smoke 阻塞已在只读完整链中关闭。仍需从 clean
-   commit 独立构建 v4
-   候选，并保存训练摘要、数据身份、源码摘要和版本化夹具审计。本阶段没有候选目录，
-   不能用于登记。
-2. clean 制品仍需 D4 不可变 review、main 准入决策和 D6 独立审计。v4 五项注册摘要保持
-   空值，全部生产权限保持 false。
+1. development fixture 的 TRAIN 域 smoke 阻塞已关闭，clean 候选和 D4 不可变 review
+   已由本文件首节记录。
+2. main 准入决策和 D6 独立审计仍未完成。v4 五项注册摘要保持空值，全部生产权限保持
+   false。
 3. D3 successor、运行 ACK、D7/物理窗口、独立双臂非退化、正收益和扰动场景均未开始。
 
 ### 下一步
 
-1. 由 main 在 clean checkout 下使用同一数据和固定配置运行正式 builder；要求复现
-   Actor/置信四类计数及夹具置信度、OOD、投影和非零差异审计。任一项不复现时删除暂存
-   输出，保持未登记和规则回退。
-2. clean build 通过后由 D4 执行只读不可变 review，再交 main/D3/D6 完成后继、配对和
-   收益证据。任一链路不完整时继续使用 v3/确定性规则。
+1. clean build 和 D4 只读不可变 review 已完成；后续复核必须使用首节冻结的内容身份。
+2. 由 main/D3/D6 完成后继、配对和收益证据。任一链路不完整时继续使用 v3/确定性规则。
 
 ## 2026-07-29 规划资格解耦计划
 
@@ -115,12 +140,12 @@
 
 ### 当前 P1
 
-1. main 已提供外部组合数据并完成只读训练机制验证，但 TRAIN 存在 10 个同输入异标签
-   冲突键。该数据未通过 confidence 可辨识性门，不能进入 clean candidate build。
-2. 尚未从 clean commit 完成 v4 候选构建、正负置信度验收、不可变 artifact review 和登记。
-   注册 SHA 保持空值，不得从失败原型回填。
-3. 只读 actor 已在 train/validation 同时形成区别于同键 R0 的双类命中，但 confidence
-   未通过固定门。该结果不能替代 clean candidate 或运行采用证据。
+1. 旧组合数据的 10 个同输入异标签冲突键属于历史失败输入。新 observable-group 数据
+   冲突为 0，并已完成 clean candidate build。
+2. v4 候选构建、正负置信度验收和 D4 不可变 artifact review 已完成。registry 仍为空，
+   不得从候选或失败原型回填。
+3. Actor 和 confidence 已在冻结 train/validation 上通过既定门；该结果仍不能替代
+   正式 holdout、独立泛化或运行采用证据。
 4. D3 尚未消费 v4 treatment 并形成可归因的严格后继计划，也没有 successor ACK、
    D7/物理窗口和完整执行映射。
 5. 独立 control/treatment episode、D6 非退化和正收益、扰动场景以及正式 holdout 均未
@@ -128,12 +153,10 @@
 
 ### 下一步
 
-1. 由 main 从统一 runtime bus 导出无在线真值、来源 clean、内容寻址的数据；每个 train
-   和 validation split 同时包含合法跨区差异与 no-op 负例，test payload 封存不读。
-2. 在 clean commit 的独立输出目录运行 v4 builder。任何数据治理、正负校准、分布外、
-   投影或 fixture 差异失败均终止构建，不进入 registry。
-3. D4 独立 review 构建产物及全部 SHA。只有 review、专项回归和 main 准入评审通过后，
-   才能另行登记新 candidate ID；不得覆盖 v3。
+1. 外部数据导出、clean build 和 D4 artifact review 已完成，身份以首节和不可变审查
+   报告为准。
+2. 后续由 main/D6 执行独立评估。只有正式 holdout、preflight、跨模块证据和 main 准入
+   决策全部通过后，才能另行讨论登记；不得覆盖 v3。
 4. 登记后由 main/D3 运行独立双臂 episode，验证可执行 successor 与实际绑定，再交 D6
    评估非退化和收益。证据不足时保持规则回退。
 
