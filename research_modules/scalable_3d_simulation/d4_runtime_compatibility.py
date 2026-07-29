@@ -42,7 +42,7 @@ from .orchestrator import run_episode
 
 
 D4_RUNTIME_COMPATIBILITY_PREFLIGHT_SCHEMA_VERSION = (
-    "scalable3d-d4-runtime-compatibility-preflight-v1"
+    "scalable3d-d4-runtime-compatibility-preflight-v2"
 )
 DEFAULT_FORMAL_SEED_REGISTRY = (
     Path(__file__).with_name("configs")
@@ -166,6 +166,9 @@ def _resolve_d4_model_input(
         "validation_action_inconsistent_threshold_pass_count": (
             manifest.validation_action_inconsistent_threshold_pass_count
         ),
+        "runtime_confidence_gate_mode": (
+            manifest.runtime_confidence_gate_mode
+        ),
         "read_only_shadow": manifest.read_only_shadow,
         "runtime_preflight_completed": manifest.runtime_preflight_completed,
         "formal_evaluation_authorized": (
@@ -189,6 +192,14 @@ def assess_d4_runtime_compatibility(
 
     selected = thresholds or D4RuntimeCompatibilityThresholds()
     frame_values = tuple(frames)
+    metadata = dict(bundle_metadata or {})
+    runtime_gate_manifest = metadata.get("runtime_confidence_gate")
+    runtime_gate_expected = isinstance(runtime_gate_manifest, Mapping)
+    expected_runtime_gate_sha256 = (
+        str(runtime_gate_manifest.get("content_sha256", ""))
+        if runtime_gate_expected
+        else None
+    )
     feature_rows = {
         "node": _empty_feature_rows(
             NODE_FEATURE_NAMES,
@@ -206,6 +217,17 @@ def assess_d4_runtime_compatibility(
     model_evaluated_count = 0
     formal_decision_changed_count = 0
     gate_disagreement_count = 0
+    runtime_gate_diagnostic_count = 0
+    runtime_gate_diagnostic_missing_count = 0
+    runtime_gate_raw_inference_count = 0
+    runtime_gate_applied_count = 0
+    runtime_gate_action_consistent_count = 0
+    runtime_gate_candidate_permitted_count = 0
+    runtime_gate_rule_fallback_count = 0
+    runtime_gate_content_mismatch_count = 0
+    runtime_gate_formal_decision_mismatch_count = 0
+    runtime_gate_candidate_permission_disagreement_count = 0
+    runtime_gate_truth_identifier_use_count = 0
     fallback_reasons: Counter[str] = Counter()
     recommendation_sources: Counter[str] = Counter()
     per_frame: list[dict[str, Any]] = []
@@ -256,6 +278,108 @@ def assess_d4_runtime_compatibility(
         )
         if model_evaluated:
             model_evaluated_count += 1
+        runtime_gate_diagnostic = getattr(
+            advice,
+            "runtime_confidence_gate_diagnostic",
+            None,
+        )
+        diagnostic_payload = (
+            runtime_gate_diagnostic.to_dict()
+            if runtime_gate_diagnostic is not None
+            and callable(
+                getattr(runtime_gate_diagnostic, "to_dict", None)
+            )
+            else None
+        )
+        if runtime_gate_diagnostic is not None:
+            runtime_gate_diagnostic_count += 1
+            raw_inference_executed = bool(
+                getattr(
+                    runtime_gate_diagnostic,
+                    "model_raw_inference_executed",
+                    False,
+                )
+            )
+            runtime_gate_applied = bool(
+                getattr(runtime_gate_diagnostic, "gate_applied", False)
+            )
+            action_consistent_value = getattr(
+                runtime_gate_diagnostic,
+                "action_consistent",
+                None,
+            )
+            candidate_permitted = bool(
+                getattr(
+                    runtime_gate_diagnostic,
+                    "candidate_permitted_after_gate",
+                    False,
+                )
+            )
+            rule_fallback_due_to_gate = bool(
+                getattr(
+                    runtime_gate_diagnostic,
+                    "rule_fallback_due_to_gate",
+                    False,
+                )
+            )
+            runtime_gate_raw_inference_count += int(
+                raw_inference_executed
+            )
+            runtime_gate_applied_count += int(runtime_gate_applied)
+            runtime_gate_action_consistent_count += int(
+                action_consistent_value is True
+            )
+            runtime_gate_candidate_permitted_count += int(
+                candidate_permitted
+            )
+            runtime_gate_rule_fallback_count += int(
+                rule_fallback_due_to_gate
+            )
+            runtime_gate_truth_identifier_use_count += int(
+                getattr(
+                    runtime_gate_diagnostic,
+                    "truth_identifier_use_count",
+                    0,
+                )
+            )
+            observed_gate_sha256 = str(
+                getattr(
+                    runtime_gate_diagnostic,
+                    "gate_content_sha256",
+                    "",
+                )
+            )
+            if (
+                runtime_gate_expected
+                and observed_gate_sha256
+                != expected_runtime_gate_sha256
+            ):
+                runtime_gate_content_mismatch_count += 1
+            diagnostic_formal_digest = getattr(
+                runtime_gate_diagnostic,
+                "formal_decision_digest",
+                None,
+            )
+            advice_formal_digest = getattr(
+                advice,
+                "formal_decision_digest_before",
+                None,
+            )
+            if (
+                runtime_gate_applied
+                and diagnostic_formal_digest != advice_formal_digest
+            ):
+                runtime_gate_formal_decision_mismatch_count += 1
+            if candidate_permitted != model_evaluated:
+                runtime_gate_candidate_permission_disagreement_count += 1
+        else:
+            raw_inference_executed = False
+            runtime_gate_applied = False
+            action_consistent_value = None
+            candidate_permitted = False
+            rule_fallback_due_to_gate = False
+            if runtime_gate_expected:
+                runtime_gate_diagnostic_missing_count += 1
         unchanged = bool(
             getattr(advice, "formal_decision_unchanged", False)
         )
@@ -278,6 +402,22 @@ def assess_d4_runtime_compatibility(
                 "recommendation_source": source,
                 "model_evaluated": model_evaluated,
                 "formal_decision_unchanged": unchanged,
+                "runtime_confidence_gate_diagnostic": (
+                    diagnostic_payload
+                ),
+                "runtime_gate_raw_inference_executed": (
+                    raw_inference_executed
+                ),
+                "runtime_gate_applied": runtime_gate_applied,
+                "runtime_gate_action_consistent": (
+                    action_consistent_value
+                ),
+                "runtime_gate_candidate_permitted": (
+                    candidate_permitted
+                ),
+                "runtime_gate_rule_fallback": (
+                    rule_fallback_due_to_gate
+                ),
             }
         )
 
@@ -295,7 +435,45 @@ def assess_d4_runtime_compatibility(
         < selected.minimum_in_distribution_fraction
     ):
         blockers.append("runtime_feature_distribution_mismatch")
-    if (
+    if runtime_gate_expected:
+        if runtime_gate_diagnostic_missing_count:
+            blockers.append(
+                "runtime_confidence_gate_diagnostic_missing"
+            )
+        if (
+            runtime_gate_raw_inference_count
+            < selected.minimum_model_evaluated_frame_count
+        ):
+            blockers.append("no_raw_model_inference")
+        if (
+            runtime_gate_applied_count
+            < selected.minimum_model_evaluated_frame_count
+        ):
+            blockers.append("runtime_confidence_gate_not_applied")
+        if (
+            runtime_gate_candidate_permitted_count
+            < selected.minimum_model_evaluated_frame_count
+        ):
+            blockers.append(
+                "no_candidate_permitted_after_runtime_gate"
+            )
+        if runtime_gate_content_mismatch_count:
+            blockers.append(
+                "runtime_confidence_gate_content_mismatch"
+            )
+        if runtime_gate_formal_decision_mismatch_count:
+            blockers.append(
+                "runtime_confidence_gate_formal_decision_mismatch"
+            )
+        if runtime_gate_candidate_permission_disagreement_count:
+            blockers.append(
+                "runtime_confidence_gate_permission_disagreement"
+            )
+        if runtime_gate_truth_identifier_use_count:
+            blockers.append(
+                "runtime_confidence_gate_truth_use_nonzero"
+            )
+    elif (
         model_evaluated_count
         < selected.minimum_model_evaluated_frame_count
     ):
@@ -307,7 +485,6 @@ def assess_d4_runtime_compatibility(
     if int(online_truth_use_count) != 0:
         blockers.append("online_truth_use_nonzero")
 
-    metadata = dict(bundle_metadata or {})
     feature_diagnostics = {
         group: _finalize_feature_rows(rows)
         for group, rows in feature_rows.items()
@@ -348,6 +525,43 @@ def assess_d4_runtime_compatibility(
         "in_distribution_fraction": in_distribution_fraction,
         "nonfinite_frame_count": nonfinite_frame_count,
         "model_evaluated_frame_count": model_evaluated_count,
+        "runtime_confidence_gate_expected": runtime_gate_expected,
+        "runtime_confidence_gate_expected_content_sha256": (
+            expected_runtime_gate_sha256
+        ),
+        "runtime_confidence_gate_diagnostic_frame_count": (
+            runtime_gate_diagnostic_count
+        ),
+        "runtime_confidence_gate_diagnostic_missing_frame_count": (
+            runtime_gate_diagnostic_missing_count
+        ),
+        "runtime_confidence_gate_raw_model_inference_frame_count": (
+            runtime_gate_raw_inference_count
+        ),
+        "runtime_confidence_gate_applied_frame_count": (
+            runtime_gate_applied_count
+        ),
+        "runtime_confidence_gate_action_consistent_frame_count": (
+            runtime_gate_action_consistent_count
+        ),
+        "runtime_confidence_gate_candidate_permitted_frame_count": (
+            runtime_gate_candidate_permitted_count
+        ),
+        "runtime_confidence_gate_rule_fallback_frame_count": (
+            runtime_gate_rule_fallback_count
+        ),
+        "runtime_confidence_gate_content_mismatch_count": (
+            runtime_gate_content_mismatch_count
+        ),
+        "runtime_confidence_gate_formal_decision_mismatch_count": (
+            runtime_gate_formal_decision_mismatch_count
+        ),
+        "runtime_confidence_gate_candidate_permission_disagreement_count": (
+            runtime_gate_candidate_permission_disagreement_count
+        ),
+        "runtime_confidence_gate_truth_identifier_use_count": (
+            runtime_gate_truth_identifier_use_count
+        ),
         "formal_decision_changed_count": formal_decision_changed_count,
         "ood_gate_disagreement_count": gate_disagreement_count,
         "fallback_reason_counts": dict(sorted(fallback_reasons.items())),
@@ -374,7 +588,25 @@ def _apply_candidate_runtime_gate(
     """Keep raw bundle compatibility separate from candidate permission."""
 
     result = dict(compatibility)
-    raw_model_count = int(result["model_evaluated_frame_count"])
+    runtime_gate_expected = bool(
+        result.get("runtime_confidence_gate_expected", False)
+    )
+    raw_model_count = int(
+        result.get(
+            "runtime_confidence_gate_raw_model_inference_frame_count",
+            result["model_evaluated_frame_count"],
+        )
+        if runtime_gate_expected
+        else result["model_evaluated_frame_count"]
+    )
+    gate_permitted_count = int(
+        result.get(
+            "runtime_confidence_gate_candidate_permitted_frame_count",
+            result["model_evaluated_frame_count"],
+        )
+        if runtime_gate_expected
+        else result["model_evaluated_frame_count"]
+    )
     result["raw_bundle_model_evaluated_frame_count"] = raw_model_count
     if candidate is None:
         result.update(
@@ -382,6 +614,9 @@ def _apply_candidate_runtime_gate(
             candidate_scope_compatible=None,
             candidate_confidence_calibration_accepted=None,
             candidate_permitted_model_evaluated_frame_count=None,
+            candidate_runtime_confidence_gate_bound=(
+                runtime_gate_expected
+            ),
             candidate_blockers=[],
         )
         return result
@@ -423,9 +658,43 @@ def _apply_candidate_runtime_gate(
         or any(value is not False for value in permission_values.values())
     ):
         candidate_blockers.append("candidate_permission_boundary_crossed")
+    minimum_model_count = int(
+        result["thresholds"]["minimum_model_evaluated_frame_count"]
+    )
+    if runtime_gate_expected:
+        if int(
+            result[
+                "runtime_confidence_gate_diagnostic_missing_frame_count"
+            ]
+        ):
+            candidate_blockers.append(
+                "candidate_runtime_confidence_gate_diagnostic_missing"
+            )
+        if int(
+            result["runtime_confidence_gate_applied_frame_count"]
+        ) < minimum_model_count:
+            candidate_blockers.append(
+                "candidate_runtime_confidence_gate_not_applied"
+            )
+        if gate_permitted_count < minimum_model_count:
+            candidate_blockers.append(
+                "candidate_runtime_confidence_gate_no_permitted_execution"
+            )
+        if any(
+            int(result[name])
+            for name in (
+                "runtime_confidence_gate_content_mismatch_count",
+                "runtime_confidence_gate_formal_decision_mismatch_count",
+                "runtime_confidence_gate_candidate_permission_disagreement_count",
+                "runtime_confidence_gate_truth_identifier_use_count",
+            )
+        ):
+            candidate_blockers.append(
+                "candidate_runtime_confidence_gate_evidence_invalid"
+            )
 
     candidate_permitted_count = (
-        raw_model_count if not candidate_blockers else 0
+        gate_permitted_count if not candidate_blockers else 0
     )
     result.update(
         candidate_gate_available=True,
@@ -433,6 +702,9 @@ def _apply_candidate_runtime_gate(
         candidate_applicable_region_count=applicable_region_count,
         observed_region_counts=observed_region_counts,
         candidate_confidence_calibration_accepted=calibration_accepted,
+        candidate_runtime_confidence_gate_bound=(
+            runtime_gate_expected
+        ),
         candidate_permitted_model_evaluated_frame_count=(
             candidate_permitted_count
         ),
@@ -440,12 +712,7 @@ def _apply_candidate_runtime_gate(
         paired_development_rollout_allowed=bool(
             result["runtime_distribution_compatible"]
             and not candidate_blockers
-            and candidate_permitted_count
-            >= int(
-                result["thresholds"][
-                    "minimum_model_evaluated_frame_count"
-                ]
-            )
+            and candidate_permitted_count >= minimum_model_count
         ),
     )
     return result
@@ -551,6 +818,28 @@ def run_d4_runtime_compatibility_preflight(
             and frame.recommendation.recommendation.source.value == "learned"
             for frame in frame_values
         )
+        case_gate_diagnostics = tuple(
+            frame.recommendation.runtime_confidence_gate_diagnostic
+            for frame in frame_values
+            if frame.recommendation.runtime_confidence_gate_diagnostic
+            is not None
+        )
+        case_gate_raw_inference_count = sum(
+            diagnostic.model_raw_inference_executed
+            for diagnostic in case_gate_diagnostics
+        )
+        case_gate_applied_count = sum(
+            diagnostic.gate_applied
+            for diagnostic in case_gate_diagnostics
+        )
+        case_gate_permitted_count = sum(
+            diagnostic.candidate_permitted_after_gate
+            for diagnostic in case_gate_diagnostics
+        )
+        case_gate_rule_fallback_count = sum(
+            diagnostic.rule_fallback_due_to_gate
+            for diagnostic in case_gate_diagnostics
+        )
         truth_count = int(result.summary["online_truth_use_count"])
         online_truth_use_count += truth_count
         cases.append(
@@ -565,6 +854,21 @@ def run_d4_runtime_compatibility_preflight(
                 "duration_s": config.duration_s,
                 "d4_frame_count": len(frame_values),
                 "model_evaluated_frame_count": case_model_count,
+                "runtime_confidence_gate_diagnostic_frame_count": (
+                    len(case_gate_diagnostics)
+                ),
+                "runtime_confidence_gate_raw_model_inference_frame_count": (
+                    case_gate_raw_inference_count
+                ),
+                "runtime_confidence_gate_applied_frame_count": (
+                    case_gate_applied_count
+                ),
+                "runtime_confidence_gate_candidate_permitted_frame_count": (
+                    case_gate_permitted_count
+                ),
+                "runtime_confidence_gate_rule_fallback_frame_count": (
+                    case_gate_rule_fallback_count
+                ),
                 "fallback_reason_counts": dict(sorted(case_fallbacks.items())),
                 "online_truth_use_count": truth_count,
                 "finite_state": bool(result.summary["finite_state"]),
@@ -777,8 +1081,10 @@ def _render_chinese_report(payload: Mapping[str, Any]) -> str:
         (
             f"共检查 {compatibility['frame_count']} 个 D4 区域快照，"
             f"分布内快照 {compatibility['in_distribution_frame_count']} 个，"
-            "原始模型前向有效执行 "
+            "原始模型推理 "
             f"{compatibility['raw_bundle_model_evaluated_frame_count']} 次，"
+            "运行时一致性门应用 "
+            f"{compatibility['runtime_confidence_gate_applied_frame_count']} 次，"
             "候选门控许可执行 "
             f"{compatibility['candidate_permitted_model_evaluated_frame_count']} 次。"
         ),
@@ -814,12 +1120,24 @@ def _render_chinese_report(payload: Mapping[str, Any]) -> str:
                 f"{100.0 * compatibility['in_distribution_fraction']:.1f}% |"
             ),
             (
-                "| 原始模型前向有效执行数 | "
+                "| 原始模型推理数 | "
                 f"{compatibility['raw_bundle_model_evaluated_frame_count']} |"
+            ),
+            (
+                "| 运行时一致性门应用数 | "
+                f"{compatibility['runtime_confidence_gate_applied_frame_count']} |"
+            ),
+            (
+                "| 门控动作一致数 | "
+                f"{compatibility['runtime_confidence_gate_action_consistent_frame_count']} |"
             ),
             (
                 "| 候选门控许可执行数 | "
                 f"{compatibility['candidate_permitted_model_evaluated_frame_count']} |"
+            ),
+            (
+                "| 门控拒绝规则回退数 | "
+                f"{compatibility['runtime_confidence_gate_rule_fallback_frame_count']} |"
             ),
             (
                 "| 非有限特征帧数 | "
@@ -856,7 +1174,7 @@ def _render_chinese_report(payload: Mapping[str, Any]) -> str:
             "- 数据来自三维质点主运行时的匿名在线状态，真值不进入 D4 控制输入。",
             "- 预检沿用模型清单中的特征边界和 D4 默认越界余量。",
             "- 确定性资源投影、版本门控和规则回退保持不变。",
-            "- 裸模型前向结果与候选级执行许可分开记录。",
+            "- 原始模型推理、运行时一致性门应用、门后许可和规则回退分开记录。",
             "- 结果不回答策略收益和部署适用性。",
             "",
         ]

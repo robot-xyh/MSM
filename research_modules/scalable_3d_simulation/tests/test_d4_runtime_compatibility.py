@@ -10,6 +10,7 @@ from research_modules.d4_distributed_fallback.d4_distributed_fallback import (
     RegionFeatureBounds,
     RegionResourceEdge,
     RegionResourceNode,
+    RegionResourceRuntimeConfidenceGateDiagnostic,
     RegionResourceSnapshot,
     RegionalAuthorityLayer,
     snapshot_to_region_graph,
@@ -88,6 +89,9 @@ def _frame(
     snapshot: RegionResourceSnapshot,
     *,
     fallback_reason: str | None = None,
+    runtime_gate_diagnostic: (
+        RegionResourceRuntimeConfidenceGateDiagnostic | None
+    ) = None,
 ) -> SimpleNamespace:
     fallback_used = fallback_reason is not None
     recommendation = SimpleNamespace(
@@ -107,6 +111,33 @@ def _frame(
             fallback_reason=fallback_reason,
             recommendation=recommendation,
             formal_decision_unchanged=True,
+            formal_decision_digest_before=None,
+            runtime_confidence_gate_diagnostic=(
+                runtime_gate_diagnostic
+            ),
+        ),
+    )
+
+
+def _runtime_gate_diagnostic(
+    *,
+    candidate_permitted: bool,
+    gate_sha256: str = "b" * 64,
+) -> RegionResourceRuntimeConfidenceGateDiagnostic:
+    return RegionResourceRuntimeConfidenceGateDiagnostic(
+        model_raw_inference_executed=True,
+        gate_applied=True,
+        action_consistent=candidate_permitted,
+        raw_confidence=0.90,
+        effective_confidence=0.90 if candidate_permitted else 0.59,
+        candidate_permitted_after_gate=candidate_permitted,
+        rule_fallback_due_to_gate=not candidate_permitted,
+        gate_content_sha256=gate_sha256,
+        formal_decision_digest=None,
+        fallback_reason=(
+            None
+            if candidate_permitted
+            else "runtime_rule_action_consistency_gate_rejected"
         ),
     )
 
@@ -133,6 +164,191 @@ def test_in_distribution_model_frame_passes_development_preflight() -> None:
     assert result["model_evaluated_frame_count"] == 1
     assert result["blockers"] == []
     assert result["assist_or_strategy_claim_granted"] is False
+
+
+def test_runtime_gate_diagnostic_separates_raw_and_permitted_execution() -> None:
+    snapshot = _snapshot()
+    bounds = RegionFeatureBounds.from_graphs(
+        (snapshot_to_region_graph(snapshot),)
+    )
+    diagnostic = _runtime_gate_diagnostic(candidate_permitted=True)
+    result = assess_d4_runtime_compatibility(
+        (_frame(snapshot, runtime_gate_diagnostic=diagnostic),),
+        feature_bounds=bounds,
+        model_version="test-model",
+        model_sha256="a" * 64,
+        thresholds=D4RuntimeCompatibilityThresholds(
+            minimum_frame_count=1,
+            minimum_in_distribution_fraction=1.0,
+            minimum_model_evaluated_frame_count=1,
+        ),
+        bundle_metadata={
+            "runtime_confidence_gate": {
+                "content_sha256": diagnostic.gate_content_sha256,
+            }
+        },
+    )
+
+    assert result["runtime_distribution_compatible"] is True
+    assert (
+        result[
+            "runtime_confidence_gate_raw_model_inference_frame_count"
+        ]
+        == 1
+    )
+    assert result["runtime_confidence_gate_applied_frame_count"] == 1
+    assert (
+        result[
+            "runtime_confidence_gate_candidate_permitted_frame_count"
+        ]
+        == 1
+    )
+    assert (
+        result["runtime_confidence_gate_rule_fallback_frame_count"]
+        == 0
+    )
+    assert result["blockers"] == []
+    assert result["frames"][0][
+        "runtime_confidence_gate_diagnostic"
+    ] == diagnostic.to_dict()
+    candidate_result = _apply_candidate_runtime_gate(
+        result,
+        candidate={
+            "applicable_region_count": 8,
+            "confidence_calibration_accepted": True,
+            "read_only_shadow": True,
+            "permissions": {
+                "schema": "test-permissions-v1",
+                "assist_enabled": False,
+                "control_enabled": False,
+            },
+        },
+        cases=({"region_count": 8},),
+    )
+    assert candidate_result[
+        "candidate_runtime_confidence_gate_bound"
+    ] is True
+    assert (
+        candidate_result["raw_bundle_model_evaluated_frame_count"]
+        == 1
+    )
+    assert (
+        candidate_result[
+            "candidate_permitted_model_evaluated_frame_count"
+        ]
+        == 1
+    )
+    assert candidate_result["candidate_blockers"] == []
+    assert candidate_result["paired_development_rollout_allowed"] is True
+
+
+def test_runtime_gate_rejection_keeps_raw_execution_visible() -> None:
+    snapshot = _snapshot()
+    bounds = RegionFeatureBounds.from_graphs(
+        (snapshot_to_region_graph(snapshot),)
+    )
+    diagnostic = _runtime_gate_diagnostic(candidate_permitted=False)
+    result = assess_d4_runtime_compatibility(
+        (
+            _frame(
+                snapshot,
+                fallback_reason=(
+                    "runtime_rule_action_consistency_gate_rejected"
+                ),
+                runtime_gate_diagnostic=diagnostic,
+            ),
+        ),
+        feature_bounds=bounds,
+        model_version="test-model",
+        model_sha256="a" * 64,
+        thresholds=D4RuntimeCompatibilityThresholds(
+            minimum_frame_count=1,
+            minimum_in_distribution_fraction=1.0,
+            minimum_model_evaluated_frame_count=1,
+        ),
+        bundle_metadata={
+            "runtime_confidence_gate": {
+                "content_sha256": diagnostic.gate_content_sha256,
+            }
+        },
+    )
+
+    assert (
+        result[
+            "runtime_confidence_gate_raw_model_inference_frame_count"
+        ]
+        == 1
+    )
+    assert result["runtime_confidence_gate_applied_frame_count"] == 1
+    assert (
+        result[
+            "runtime_confidence_gate_candidate_permitted_frame_count"
+        ]
+        == 0
+    )
+    assert (
+        result["runtime_confidence_gate_rule_fallback_frame_count"]
+        == 1
+    )
+    assert result["runtime_distribution_compatible"] is False
+    assert result["blockers"] == [
+        "no_candidate_permitted_after_runtime_gate"
+    ]
+    candidate_result = _apply_candidate_runtime_gate(
+        result,
+        candidate={
+            "applicable_region_count": 8,
+            "confidence_calibration_accepted": True,
+            "read_only_shadow": True,
+            "permissions": {
+                "schema": "test-permissions-v1",
+                "assist_enabled": False,
+                "control_enabled": False,
+            },
+        },
+        cases=({"region_count": 8},),
+    )
+    assert candidate_result["candidate_blockers"] == [
+        "candidate_runtime_confidence_gate_no_permitted_execution"
+    ]
+    assert (
+        candidate_result[
+            "candidate_permitted_model_evaluated_frame_count"
+        ]
+        == 0
+    )
+    assert candidate_result["paired_development_rollout_allowed"] is False
+
+
+def test_runtime_gate_manifest_requires_matching_diagnostic() -> None:
+    snapshot = _snapshot()
+    bounds = RegionFeatureBounds.from_graphs(
+        (snapshot_to_region_graph(snapshot),)
+    )
+    result = assess_d4_runtime_compatibility(
+        (_frame(snapshot),),
+        feature_bounds=bounds,
+        model_version="test-model",
+        model_sha256="a" * 64,
+        thresholds=D4RuntimeCompatibilityThresholds(
+            minimum_frame_count=1,
+            minimum_in_distribution_fraction=1.0,
+            minimum_model_evaluated_frame_count=1,
+        ),
+        bundle_metadata={
+            "runtime_confidence_gate": {
+                "content_sha256": "b" * 64,
+            }
+        },
+    )
+
+    assert result["runtime_distribution_compatible"] is False
+    assert result["blockers"] == [
+        "runtime_confidence_gate_diagnostic_missing",
+        "no_raw_model_inference",
+        "runtime_confidence_gate_not_applied",
+        "no_candidate_permitted_after_runtime_gate",
+    ]
 
 
 def test_feature_ood_is_reported_without_widening_model_bounds() -> None:
