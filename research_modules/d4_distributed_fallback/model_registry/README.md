@@ -4,6 +4,19 @@
 和 development/shadow 影子诊断。登记不表示模型通过运行准入，也不授予默认 runtime、
 assist、assignment、takeover、coalition commit 或 control 权限。
 
+## v3 隔离 development pairing 读取边界
+
+`region_resource_a2_8region_runtime_action_readiness_shadow_v3` 已有 D4 专用只读 loader
+供 development control/treatment pairing 使用。loader 固定核验候选 manifest 文件哈希
+`5e575ec4...59c3`、内容身份 `7978aec0...ada2`、bundle manifest
+`9f3bfb1d...238d`、model state `ace5df6d...7f52d` 和运行门
+`77972834...6872`，并验证 8-region、策略/模型版本及全部关闭权限。
+
+该读取路径不改写本目录文件。它只服务 seeds 2003-2012 的隔离 development treatment，
+不把本目录的 `runtime_preflight_completed=false` 或 `formal_holdout_evaluated=false`
+改为 true，不开放 assist、assignment、takeover、coalition、control、physical 或
+runtime ACK。
+
 ## region_resource_a2_8region_runtime_action_readiness_shadow_v3
 
 该目录是 detached clean worktree commit
@@ -28,9 +41,11 @@ formal evaluation 未授权，assist、assignment、takeover、coalition commit�
 physical 和 runtime ACK 权限全部为 false。main 后续从 clean commit `83b8869...0226`
 完成外部单 seed development preflight：20v20/8-region seed 2001 和
 200v200/8-region seed 2002 均为 3/3 分布内、3/3 门后许可；5v5/2-region seed 2000
-按 8-region 适用域预期拒绝。该外部证据不改写本目录的
-`runtime_preflight_completed=false`。目录不得改写；多 seed、配对非退化、收益和正式
-holdout 状态继续由外部审计记录。
+按 8-region 适用域预期拒绝。随后 seeds 2003-2012 的名义多 seed 预检中，20v20/8-region
+和 200v200/8-region 各有 30/30 帧完成原始推理、运行门和门后许可，异常与回退均为 0。
+两份 JSON SHA-256 为 `5f97c818...53db9`、`77a3ef45...d6cf4`。该外部证据不改写本目录的
+`runtime_preflight_completed=false`。目录不得改写；扰动多 seed、同键配对非退化、收益
+和正式 holdout 状态继续由外部审计记录。
 
 ## region_resource_a2_8region_runtime_action_readiness_shadow_v2
 

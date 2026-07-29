@@ -1,19 +1,125 @@
 # D4 分布式协同与降级接管算法及实施方案
 
+## 2026-07-29 v2b 运行审计判定
+
+最终审计使用两个相互独立的 episode。control 和 treatment 共享冻结的 seed、初态、场景
+参数、通信与故障配置，但拥有独立 world、模块栈、总线和日志。treatment 仅在冻结帧执行
+一次 readiness v3 候选评价；通过身份、运行门、安全投影和 1.5 秒有效期检查后，advisory
+才可在下一周期送入 D3。普通 assist 桥未参与。
+
+审计将候选状态写成两个独立判定：
+
+\[
+C_{\mathrm{runtime}} =
+I_{\mathrm{raw}}\land I_{\mathrm{gate}}\land I_{\mathrm{projection}}
+\land I_{\mathrm{isolated\ adoption}},
+\]
+
+\[
+C_{\mathrm{promotion}} =
+C_{\mathrm{runtime}}\land I_{\mathrm{identifiable\ action}}
+\land I_{\mathrm{complete\ chain}}\land I_{\mathrm{positive\ benefit}}.
+\]
+
+其中可辨识动作要求候选经过确定性投影后形成 D3 能执行且能与规则臂区分的区域动作；完整
+链要求该动作绑定严格后继计划、development ACK、D7 指令及物理窗口；正收益由 D6 在同键
+规则基线上独立计算。运行兼容不能直接设置模型晋级。
+
+seeds 2003-2012 的 \(C_{\mathrm{runtime}}\) 为 10/10。D3 后继、development ACK 和
+producer 物理摘要为 1/10，另外 9/10 返回
+`regional_hint_no_executable_successor`。D6 对候选动作的可辨识判定为 0/10。seed 2007
+的完整 episode 可重放，但 candidate 与规则臂的 D3 可执行 successor 字段以及
+source/successor 的资源—目标、联盟绑定完全相同，不能把计划升版本身当作学习动作。
+该 seed 的 19 条 D7 控制绑定中 18 条具有物理窗口；`GT3D-000004` 因身份映射不可用而
+缺失。该身份链由 D2/main 另行审计，D4 不补造 truth。
+
+结果层中，control/treatment 的拦截数均为 0，10 个 seed 的最小距离逐项相同。有界非退化
+只对这两个已声明指标可用且为 true。正收益因 3.2 秒内无拦截、最小距离没有严格改善、
+可辨识动作缺失和同链覆盖不完整而保持 unavailable/false。因此
+\(C_{\mathrm{promotion}}=0\)。
+
+实现约束保持不变：所有生产权限字段为 false，候选继续
+`development/shadow`，普通 `assist_eligible` 不开放。后续应通过新 development 候选在
+现有投影和安全门内产生合法动作，再重新运行配对审计；不得修改 PNG、D3/D6 或 main
+逻辑，也不得以人工 ACK、版本升高或时间相邻替代动作归因。本节记录的是三维质点集成审计，
+不代表 AirSim 或实飞结果。
+
+## 2026-07-29 v3 隔离配对算法
+
+新接口使用独立 development schema，输入清单固定为 seeds 2003-2012。每个 seed 建立
+control 和 treatment 两个 arm specification；两者的场景配置、初态、通信日程、故障
+日程及区域快照谱系哈希必须完全相同。旧 paired spec 继续固定正式保留 seeds 1000-1019，
+旧 evidence 默认建议有效期仍为 1.0 秒。
+
+v3 loader 从候选根目录开始验证以下身份链：
+
+1. 候选目录名、manifest 文件 SHA-256 和 manifest 内容 SHA-256；
+2. manifest 所列全部 artifact 文件、bundle manifest 和 model state SHA-256；
+3. 候选 schema、策略名称、模型版本、8-region 适用域及 development/shadow 生命周期；
+4. 内嵌运行门 SHA-256、确定性投影配置和规则策略配置；
+5. assist、assignment、takeover、coalition、control、physical、runtime ACK 和 formal
+   evaluation 权限均为 false。
+
+运行阈值不从命令行重配。固定值为：
+
+\[
+T_{\mathrm{ttl}}=1.5\ \mathrm{s},\quad
+c_{\min}=0.60,\quad
+m_{\mathrm{ood}}=0.05,\quad
+r_{\min}=0.10,\quad
+n_{\mathrm{reserve}}\geq1.
+\]
+
+模型推理超时为 50 毫秒。候选原始建议先检查有限值、模型身份、8-region scope 和特征
+分布。随后调用 bundle 内嵌一致性门。候选与规则建议都使用同一投影器和同一 formal
+decision；比较项包括区域集合、归一化资源配额误差、预备比例误差、侦察优先级误差、
+保持/重规划布尔状态及转移多重集。连续量最大误差门限为 0.10。动作不一致时：
+
+\[
+c_{\mathrm{effective}}=\min(c_{\mathrm{raw}},0.59)<c_{\min}.
+\]
+
+因此动作不一致不能通过候选门。低置信、分布外、超时、非有限、合同/身份不符也进入相同
+失败关闭路径。通过运行门后，候选原始建议再次进入 D4 确定性安全投影；投影通过且 advisory
+在 `snapshot_timestamp + 1.5 s` 前可消费，才形成下一周期隔离采用。
+
+`RegionResourceV3IsolatedPairedAdvisor.advise_pair` 返回
+`RegionResourceV3IsolatedPairedDecision`。每臂提供实际选中的 recommendation、
+advisory contract 和 paired arm evidence。treatment 另外给出：
+
+- `raw_inference_completed`；
+- `runtime_gate_applied` 与 `runtime_gate_passed`；
+- `projection_passed`；
+- `next_cycle_isolated_adoption`；
+- `isolated_treatment_influence_allowed` 与实际 adopted 状态。
+
+main 只能把 `next_cycle_isolated_adoption=true` 的 advisory 送入独立 treatment 的下一轮
+D3。该接口不设置普通 advisor 的 `assist_eligible`，不产生生产 ACK，也不改变降级状态、
+owner、epoch、lease 或联盟提交状态。
+
 ## 2026-07-29 clean development preflight
 
 main 在 clean commit `83b8869...0226` 上从固定 v3 registry 加载模型。兼容性判定同时要求：
 
 \[
-N_{\mathrm{frame}}\geq 2,\qquad
+N_{\mathrm{frame}}\geq N_{\min},\qquad
 \frac{N_{\mathrm{in\mbox{-}distribution}}}{N_{\mathrm{frame}}}\geq0.80,
 \qquad N_{\mathrm{model\ evaluated}}\geq1.
 \]
+
+单 seed 适用域检查取 \(N_{\min}=2\)，名义 10-seed 批次取 \(N_{\min}=20\)。每个 case
+运行 2.2 秒。批次使用 seeds 2003-2012，与训练 0-99 和正式保留 1000-1019 无交集。
 
 20v20/8-region seed 2001 和 200v200/8-region seed 2002 均有 3 帧。每组
 `raw inference/gate applied/action consistent/candidate permitted=3/3/3/3`，规则回退、
 在线 truth、gate truth、非有限值、context/formal/permission mismatch 和 formal decision
 变化均为 0。两组 blocker 为空，进入受控 paired development rollout 的前置门。
+
+名义多 seed 中，20v20/8-region/recon2 与 200v200/8-region/recon8 各产生 30 帧。
+两档的分布内、原始推理、门应用、动作一致和门后许可均为 30/30；规则回退、在线 truth、
+gate truth、非有限值、context/formal/permission mismatch 和 formal decision changed
+均为 0，blocker 为空。JSON SHA-256 分别为 `5f97c818...53db9` 和
+`77a3ef45...d6cf4`。
 
 5v5/2-region seed 2000 的 3 帧均被适用域和 OOD 门拒绝。`distance_log` 与
 `transfer_time_log` 各有 6/6 个边值超过训练上界，原始推理、门应用和候选许可均为 0。
@@ -21,8 +127,9 @@ N_{\mathrm{frame}}\geq 2,\qquad
 阈值实现。
 
 preflight 只读取 shadow 建议，不生成 D3 后继计划、运行 ACK、联盟提交或收益。下一阶段
-需要多 development seed，并把候选 episode 与同键确定性规则 episode 分开运行，随后检查
-时延、物理结果可用性和非退化。正式 holdout 仍关闭。
+需要通信退化、中心/二级失效和 readiness 转换等扰动多 seed，并把候选 episode 与唯一
+同键确定性规则 episode 分开运行，随后检查可辨识干预、时延、物理结果可用性和非退化。
+正式 holdout 仍关闭。
 
 ## 2026-07-29 readiness v3 实现
 
@@ -62,8 +169,8 @@ main 已在 clean commit `4ba2c8a...4114` 构建 v3。D4 review loader 核对后
 
 2026-07-29 v3/v2 registry 联合专项 13/13、D4 全量 754/754 passed；v2 registry 文件树
 摘要 `324a5118...5010` 未改变，旧 v1/v2 兼容测试通过。后续单 seed 8-region main
-preflight 已通过，2-region 负例按适用域拒绝；多 seed、收益和正式评价仍未完成，全部
-运行权限为 false。
+preflight 已通过，2-region 负例按适用域拒绝；名义 10-seed 兼容性也已闭合，扰动、
+配对收益和正式评价仍未完成，全部运行权限为 false。
 
 ## 2026-07-28 readiness v2 实施状态
 

@@ -1,5 +1,12 @@
 # D4 文档索引
 
+2026-07-29 新增 readiness v3 隔离 development pairing。新 schema 固定 seeds
+2003-2012，旧 formal paired schema 继续固定 1000-1019。只读 loader 验证 v3 registry
+身份链、8-region scope、`TTL=1.5` 投影和内嵌运行一致性门。main-facing advisor 返回
+control/treatment 的实际建议、advisory、完整 evidence 和 raw/gate/projection/adoption
+分层状态，不进入普通 assist 桥。任一门失败时 treatment 规则回退；全部生产权限为 false。
+具体原理、接口和后续 main 编排要求见本目录两份主文档及 `../PLAN.md`。
+
 2026-07-28 已新增 8-region 复合候选。候选用运行数据提供特征几何、动作课程提供动作配方，
 按数字 seed 0-99 做 70/15/15 全局原子切分，1000-1019 使用数为 0。候选专用置信度头已
 训练，但 validation 中 51 个动作不一致样本仍越过固定 0.60，因此清单与 shadow failure

@@ -1,15 +1,37 @@
 # D4 M 对 N 分布式联盟形成与降级接管调研
 
+## 2026-07-29 v2b 审计后的联盟边界
+
+readiness v3 在 seeds 2003-2012 上完成 10/10 原始推理、运行门、安全投影和隔离采用，
+但没有形成可辨识的 M 对 N 联盟动作。D3 后继、development ACK 和 producer 物理摘要只
+覆盖 seed 2007；其余 9/10 为 `regional_hint_no_executable_successor`，候选可辨识动作
+为 0/10。
+
+seed 2007 的 advisory、后继计划、ACK 和 D7 指令可以重放，物理映射为 18/19。
+candidate 与规则臂的 D3 可执行 successor 字段以及 source/successor 的资源—目标和联盟
+绑定相同，因此该链不证明联盟成员选择、增减、重构或提交由学习候选触发。
+`GT3D-000004` 的身份映射缺口由 D2/main 另行审计，D4 不补造 truth。开发 ACK 也不产生
+required-member ACK、原子 commit 或生产控制权限。
+
+当前 M 对 N 结论保持不变：确定性 owner/version/epoch/lease、成员确认和故障围栏继续
+控制联盟；学习候选只留在 development shadow。正收益为 unavailable/false，所有联盟、
+接管、分配、控制和模型晋级权限为 false，普通 assist 不开放。后续只有在候选形成可辨识
+联盟相关区域动作、完整成员与物理证据并通过同键收益审计后，才可重新评估晋级。
+
 ## 2026-07-29 readiness v3 preflight 与联盟边界
 
-20v20 和 200v200 的单 seed 8-region preflight 均通过运行门，但只产生 shadow 区域建议。
-`candidate_permitted_after_gate=3/3` 和
+20v20 和 200v200 的单 seed 8-region preflight 均通过运行门。随后 seeds 2003-2012 的
+名义预检在两档规模各形成 30/30 次原始推理、门应用、动作一致和门后许可，回退、真值、
+安全异常及 blocker 均为 0。JSON 哈希分别为 `5f97c818...53db9` 和
+`77a3ef45...d6cf4`。这些结果只产生 shadow 区域建议。
+
+`candidate_permitted_after_gate=30/30` 和
 `paired_development_rollout_allowed=true` 不等于 D3 后继计划、成员 ACK、原子 commit、
 接管或物理执行。5v5 的 2-region 输入在模型推理前回退，也没有形成联盟证据。
 
-下一阶段需要多 development seed，并为候选臂和同键规则臂分别形成独立计划、ACK 与物理
-窗口，才能检查 M 对 N 联盟非退化和收益。缺任一证据时结果保持 unavailable，全部联盟和
-控制权限保持 false。
+下一阶段需要通信和节点故障等扰动多 seed，并为候选臂和唯一同键规则臂分别形成独立区域
+干预、D3 后继计划、ACK 与物理窗口，才能检查 M 对 N 联盟非退化和收益。缺任一证据时
+结果保持 unavailable，全部联盟和控制权限保持 false。
 
 ## 2026-07-29 readiness v3 与联盟边界
 
@@ -20,8 +42,9 @@ v2 preflight 的 3/3 配置不匹配回退没有形成区域干预、后继计�
 
 v3 已从 clean commit `4ba2c8a...4114` 构建并逐字节登记。validation 门后 293/344 通过，
 动作不一致通过 0；v3/v2 registry 联合专项 13/13、D4 全量 754/754 passed。后续单 seed
-8-region preflight 已通过，但没有形成 M 对 N 联盟证据。全部联盟、接管、分配和控制权限
-仍为 false，M 对 N 路径继续使用既有版本、epoch、lease 和 required-member ACK 门控。
+和名义 10-seed 8-region preflight 已通过，但没有形成 M 对 N 联盟证据。全部联盟、接管、
+分配和控制权限仍为 false，M 对 N 路径继续使用既有版本、epoch、lease 和 required-member
+ACK 门控。
 
 ## 2026-07-28 readiness v2 与联盟权限边界
 

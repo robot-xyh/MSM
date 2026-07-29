@@ -1,15 +1,59 @@
 # D4 分布式协同与降级接管综述及子方案
 
-## 2026-07-29 readiness v3 运行评审
+## 2026-07-29 D6 v2b 最终评审
+
+D6 已完成 readiness v3 的 10-seed 隔离双臂审计和 seed 2007 完整 episode 复核。场景
+固定为 20 目标、20 资源、2 个侦察节点、8 个区域和 3.2 秒，seeds 为 2003-2012。
+原始推理、运行门、安全投影和隔离采用均为 10/10，说明 D4 候选与统一三维运行链兼容。
+该证据不是 AirSim 或实飞结果。
+
+D3 后继、development ACK 和 producer 物理摘要只覆盖 1/10；其余 9/10 为
+`regional_hint_no_executable_successor`。候选可辨识动作是 0/10。seed 2007 的
+advisory、后继、ACK 和 D7 指令可以重放，19 条 D7 控制绑定中 18 条可关联物理窗口。
+candidate 与规则臂的 D3 可执行 successor 字段以及 source/successor 的资源—目标和联盟
+绑定相同，因此不能把该后继解释为学习动作。`GT3D-000004` 的身份映射缺口由 D2/main
+另行审计，D4 不补造 truth。
+
+有界非退化只对已声明的拦截数和最小距离 available/true。两臂没有拦截，逐 seed 最小
+距离相同，正收益为 unavailable/false。评审结论是“运行兼容通过、模型收益与晋级未通过”。
+全部生产权限继续为 false，候选保留在 development shadow，普通 assist 不开放，规则
+回退保持。当前没有新增 D4 P0；P1 集中在可辨识区域动作、完整物理映射、扰动场景覆盖和
+正收益证据。
+
+## 2026-07-29 readiness v3 隔离配对评审
+
+D4 已新增独立 `development-v3` control/treatment 合同，固定 seeds 2003-2012。旧配对
+schema 继续绑定正式保留 seeds 1000-1019，未把 development pairing 标成 formal
+holdout。v3 loader 验证 candidate manifest 文件和内容身份、全部登记制品、bundle、
+model state、策略/模型版本、8-region scope 及内嵌运行一致性门。
+
+main-facing 接口返回两臂实际 selected recommendation、advisory contract、完整 paired
+evidence 和四阶段状态：raw inference、runtime gate、projection、next-cycle isolated
+adoption。固定阈值为 `TTL=1.5`、置信度 0.60、OOD 余量 0.05、预备比例 0.10、预备资源
+1、推理超时 50 毫秒。任一身份、scope、置信度、OOD、超时、非有限、动作一致性、投影或
+消费检查失败，treatment 选择确定性规则。
+
+该接口与普通 assist 桥分离，不设置 `assist_eligible`。production runtime ACK、assist、
+assignment、degradation、takeover、coalition commit 和 control 权限固定为 false。
+当前关闭的是“v3 候选不能进入隔离双臂运行合同”的 P1 接口缺口。统一三维两臂 episode、
+D3 successor、隔离消费证据、物理窗口和 D6 非退化/收益仍待 main 集成。2026-07-29
+定向回归 52/52、D4 全量 769/769 passed；仅有既有 Matplotlib `Axes3D` 环境警告。
+
+## 2026-07-29 readiness v3 名义多 seed 运行评审
 
 main 从 clean commit `83b8869...0226` 加载固定 v3 registry。20v20/8-region seed 2001
 和 200v200/8-region seed 2002 各 3 帧，均为 3/3 分布内、3/3 原始推理、3/3 门应用、
 3/3 动作一致、3/3 候选许可，规则回退和所有安全异常为 0。两组满足 0.80 分布内比例和
 至少 1 次模型评价的开发验收门。
 
-5v5/2-region seed 2000 在 3 帧内预期失败关闭，边距离与转移时间对数越界，候选适用域不
-兼容。该结果不否定 8-region 正例。当前允许开始受控 paired development rollout，但尚无
-多 seed、同键规则非退化、时延、收益或正式 holdout 结论，全部权限继续关闭。
+名义预检使用 seeds 2003-2012，每 case 2.2 秒。20v20/recon2 与 200v200/recon8 各有
+10 cases、30 frames；分布内、原始推理、门应用、动作一致和门后许可均为 30/30，回退、
+真值、安全异常和 blocker 均为 0。两档 JSON 哈希分别为 `5f97c818...53db9` 和
+`77a3ef45...d6cf4`。seeds 与训练 0-99、正式保留 1000-1019 无交集。
+
+5v5/2-region seed 2000 的预期拒绝仍是独立适用域结论。名义 10-seed 兼容性已经闭合，
+但尚无扰动多 seed、同键规则非退化、可辨识干预、D3 后继、ACK、物理窗口、时延、收益或
+正式 holdout 结论，全部权限继续关闭。
 
 ## 2026-07-29 readiness v3 评审
 
@@ -31,7 +75,8 @@ main 已从 clean commit `4ba2c8a...4114` 构建 v3，D4 独立 review 后将 8 
 
 v3/v2 registry 联合专项 13/13、D4 全量 754/754 passed，v2 registry 字节保持不变。
 后续单 seed 8-region runtime preflight 已通过，2-region 负例按适用域拒绝；正式评价和
-全部运行权限仍为 false。多 seed 与 paired 非退化是下一阶段。
+全部运行权限仍为 false。后续名义 10-seed 兼容性也已闭合，扰动与 paired 非退化是
+下一阶段。
 
 ## 2026-07-28 readiness v2 登记评审
 

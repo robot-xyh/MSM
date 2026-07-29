@@ -1,6 +1,105 @@
 # D4 分布式降级与接管实验报告
 
-## 2026-07-29 readiness v3 clean development preflight
+## 2026-07-29 D6 v2b 隔离双臂审计
+
+### 场景与验收
+
+本轮使用统一三维质点 development episode，不是 AirSim 或实飞。场景为名义
+20 目标、20 资源、2 个侦察节点、8 个区域，窗口 3.2 秒，seeds 为 2003-2012。运行兼容
+验收要求每个 seed 完成原始推理、运行门、安全投影和隔离采用，在线真值使用为 0，全部
+生产权限保持 false。模型晋级还要求可辨识候选动作、完整同链物理映射和可用的正收益。
+
+### 汇总结果
+
+| 指标 | 结果 | 判定 |
+| --- | ---: | --- |
+| 原始推理 / 运行门 / 安全投影 / 隔离采用 | 10/10 | 运行兼容通过 |
+| D3 后继 / development ACK / producer 物理摘要 | 1/10 | 覆盖不足 |
+| `regional_hint_no_executable_successor` | 9/10 | 失败关闭 |
+| 可辨识候选动作 | 0/10 | 未通过 |
+| 在线真值使用 | 0 | 通过 |
+| 配对非退化 | available / true | 仅限拦截数和最小距离 |
+| 正收益 | unavailable / false | 未通过 |
+| 生产权限 | 全部 false | 规则回退 |
+
+seed 2007 是唯一形成后继、development ACK 和 producer 物理摘要的 case。control 与
+treatment 各有 4 条 ACK 和 77 条 binding。D4 advisory、D3 后继、ACK 和 D7 指令可按同一
+谱系重放；首次发布与 evaluation refresh 保持同一严格签名、authority epoch 和 lease。
+19 条 D7 控制绑定中 18 条具有物理窗口，`INT-0004 / GT3D-000004` 因
+`identity_mapping_unavailable` 缺少映射。该缺口由 D2/main 另行审计，D4 不补造
+truth。
+
+candidate 与规则臂的 D3 可执行 successor 字段相同，source 与 successor 的资源—目标
+绑定及联盟绑定也没有变化。计划升版和开发 ACK 因而只证明隔离接线可以工作，不能归因于
+学习候选。10 个 seed 的两臂拦截数均为 0，最小距离逐 seed 完全相同。有界非退化为
+true，但没有严格改善。3.2 秒窗口、动作不可辨识和物理链不完整共同使正收益保持
+unavailable/false。
+
+### 当前结论
+
+readiness v3 的 development 运行兼容性已经验证。模型收益和晋级没有通过。候选继续
+development shadow，不开放普通 assist；生产分配、降级、接管、联盟提交、控制和模型
+晋级权限全部为 false。运行路径保持确定性规则回退。下一轮应先形成投影后仍可由 D3 执行
+且与规则臂不同的区域动作，再补齐同链物理窗口并重复 D6 配对审计。
+
+## 2026-07-29 v3 隔离配对接口验证
+
+本轮完成 D4 模块内接口和回归验证，未启动统一三维 control/treatment episode。测试使用
+登记的 v3 registry 和 8-region 合同，development inventory 固定为 seeds 2003-2012。
+旧正式保留 inventory 仍为 1000-1019。
+
+专项用例覆盖以下路径：
+
+- 自包含 registry 正常加载，候选 manifest、bundle、model state、策略版本和运行门身份
+  一致；
+- v3 `TTL=1.5`、最低置信度 0.60、分布外余量 0.05、预备比例 0.10 和预备资源 1 不可
+  重配；
+- manifest、model state、策略版本和 region scope 篡改或不匹配时失败关闭；
+- 原始推理、动作一致性门、投影、下一周期隔离采用四阶段分别记录；
+- 动作不一致、超时、分布外和非有限输出选择确定性规则；
+- control/treatment 结果及 specification 支持 JSON round-trip；
+- 旧 v1/v2 配对 schema、1000-1019 清单和默认 `TTL=1.0` 回归不变。
+
+定向集合结果为 52/52 passed，D4 全量为 769/769 passed。全量测试只有既有 Matplotlib
+`Axes3D` 环境警告，没有测试失败。
+
+接口验证不提供场景收益数据。测试中的 passing candidate 用于检查状态转换和序列化；登记
+模型另有实际推理用例，确认调用 bundle 内嵌运行门，并按真实门结果采用或回退。当前可以
+确认 loader、门控、投影、advisory 和隔离 adoption 合同已接通。尚未确认 D3 后继计划、
+隔离消费 ACK、物理窗口、两臂非退化或收益。
+
+所有输出权限字段保持 false。`next_cycle_isolated_adoption=true` 只允许 main 在独立
+treatment episode 的下一周期使用该 advisory；它不是生产 runtime ACK，也不开放 assist、
+assignment、degradation、takeover、coalition commit 或 control。
+
+## 2026-07-29 readiness v3 名义多 seed preflight
+
+main 从 clean commit `83b8869b49c4ac26b6a5b6fb336dfe9af6960226` 加载固定 v3
+registry，对 seeds 2003-2012 运行名义 development preflight。seeds 不属于训练 0-99，
+也不与正式保留 1000-1019 重叠。每个 case 为 2.2 秒；每档批次门限为累计至少 20 帧、
+分布内比例不低于 0.80、至少 1 帧完成模型评价。
+
+| 场景 | recon | cases / frames | 分布内 | raw / gate / consistent / permitted | 回退 / 安全异常 |
+| --- | ---: | ---: | ---: | --- | --- |
+| 20v20 / 8-region | 2 | 10 / 30 | 30/30 | 30 / 30 / 30 / 30 | 0 / 0 |
+| 200v200 / 8-region | 8 | 10 / 30 | 30/30 | 30 / 30 / 30 / 30 | 0 / 0 |
+
+安全异常统计覆盖 online truth、gate truth、nonfinite、context/formal/permission mismatch
+和 formal decision changed。两档 blocker、candidate blocker 和 fallback reason 均为空，
+`paired_development_rollout_allowed=true`。
+
+| 制品 | SHA-256 |
+| --- | --- |
+| 20v20 JSON | `5f97c81802dcd0cb3dddfa5ba85728c3cca47c728da8a79d4c7de9d085c53db9` |
+| 200v200 JSON | `77a3ef455a9f155b30d8cf7f598121e4a8b66a17c6c2a2e0bac814ccf65d6cf4` |
+| 两档中文报告 | `a37c16341eab4cc6c43cb883e2bb10f7e325ca5e7234bbac1bf5ac2aa26648b0` |
+
+两份中文报告使用同一模板文本，因此文件哈希相同；不同规模、侦察节点数和 case 仍由各自
+JSON 保存。本批关闭名义 10-seed 运行兼容性，只证明固定候选在两档名义输入上完成原始
+推理和运行门检查。未形成实际区域干预、D3 后继计划、ACK、物理窗口、执行时延、规则基线
+非退化或收益。正式 holdout 与全部权限继续关闭。
+
+## 2026-07-29 readiness v3 单 seed development preflight
 
 main 从 clean commit `83b8869b49c4ac26b6a5b6fb336dfe9af6960226` 加载固定 v3
 registry。三组场景均运行 2.2 秒并产生 3 帧。验收阈值为至少 2 帧、分布内比例不低于
@@ -22,9 +121,9 @@ registry。三组场景均运行 2.2 秒并产生 3 帧。验收阈值为至少 
 `distance_log` 与 `transfer_time_log` 各有 6/6 个边值越界。其 JSON SHA-256 为
 `06458d5e...3ff`。exit 2 表示预期失败关闭，不是 v3 在 8-region 正例中的兼容性失败。
 
-本批闭合单 seed 8-region 运行兼容性，不提供多 seed 稳定性、执行时延、相对规则收益、
-实际接管或正式 holdout 证据。paired rollout 许可只是下一项开发试验入口。registry 内
-`runtime_preflight_completed=false` 和全部权限字段保持不变。
+本批闭合单 seed 8-region 运行兼容性。后续名义 10-seed 结果见上一节；单 seed 结果自身
+不提供执行时延、相对规则收益、实际接管或正式 holdout 证据。paired rollout 许可只是
+开发试验入口。registry 内 `runtime_preflight_completed=false` 和全部权限字段保持不变。
 
 ## 2026-07-29 readiness v3 构建与登记
 
@@ -68,8 +167,8 @@ main 在 detached clean worktree commit
 `324a5118...5010`。
 
 上述结果是 shadow 候选构建和软件回归证据，不是 AirSim 性能或正式准入证据。后续单
-seed 8-region preflight 已通过，2-region 负例按适用域拒绝；多 seed、配对非退化、收益
-和正式 holdout 仍未完成。全部权限为 false。
+seed 8-region preflight 已通过，2-region 负例按适用域拒绝，名义 10-seed 兼容性也已
+闭合；扰动多 seed、配对非退化、收益和正式 holdout 仍未完成。全部权限为 false。
 
 ## 2026-07-28 readiness v2 构建与登记
 

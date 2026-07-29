@@ -57,11 +57,17 @@ from .regional_failover import REGIONAL_FAILOVER_SCHEMA, RegionalFailoverDecisio
 
 
 REGION_RESOURCE_PAIRED_SPEC_SCHEMA = "d4-region-resource-paired-intervention-spec-v1"
+REGION_RESOURCE_V3_DEVELOPMENT_PAIRED_SPEC_SCHEMA = (
+    "d4-region-resource-v3-development-paired-spec-v1"
+)
 REGION_RESOURCE_PAIRED_ARM_EVIDENCE_SCHEMA_V1 = (
     "d4-region-resource-paired-arm-evidence-v1"
 )
 REGION_RESOURCE_PAIRED_ARM_EVIDENCE_SCHEMA = (
     "d4-region-resource-paired-arm-evidence-v2"
+)
+REGION_RESOURCE_PAIRED_DEVELOPMENT_ARM_EVIDENCE_SCHEMA = (
+    "d4-region-resource-paired-development-arm-evidence-v1"
 )
 REGION_RESOURCE_PAIRED_MANIFEST_SCHEMA = (
     "d4-region-resource-paired-intervention-manifest-v1"
@@ -73,6 +79,7 @@ REGION_RESOURCE_COALITION_FENCE_VERSION = "d4-coalition-lease-epoch-ack-fence-v1
 REGION_RESOURCE_RULE_POLICY_NAME = "d4-region-resource-rule"
 REGION_RESOURCE_RULE_POLICY_VERSION = "v1"
 REGION_RESOURCE_RESERVED_EVALUATION_SEEDS = tuple(range(1000, 1020))
+REGION_RESOURCE_PAIRED_DEVELOPMENT_SEEDS = tuple(range(2003, 2013))
 REGION_RESOURCE_FROZEN_DEVELOPMENT_BUNDLE_ID = "region_resource_bc_900_20260720"
 REGION_RESOURCE_FROZEN_DEVELOPMENT_MODEL_VERSION = (
     "d4-region-bc-900-development-v1"
@@ -525,7 +532,15 @@ class RegionResourcePairedArmEvidence:
     schema: str = REGION_RESOURCE_PAIRED_ARM_EVIDENCE_SCHEMA
 
     def __post_init__(self) -> None:
-        if self.schema != REGION_RESOURCE_PAIRED_ARM_EVIDENCE_SCHEMA:
+        seed_inventory = {
+            REGION_RESOURCE_PAIRED_ARM_EVIDENCE_SCHEMA: (
+                REGION_RESOURCE_RESERVED_EVALUATION_SEEDS
+            ),
+            REGION_RESOURCE_PAIRED_DEVELOPMENT_ARM_EVIDENCE_SCHEMA: (
+                REGION_RESOURCE_PAIRED_DEVELOPMENT_SEEDS
+            ),
+        }
+        if self.schema not in seed_inventory:
             raise ValueError("unsupported paired arm evidence schema")
         arm = (
             self.arm
@@ -533,7 +548,7 @@ class RegionResourcePairedArmEvidence:
             else RegionResourcePairedArm(str(self.arm))
         )
         object.__setattr__(self, "arm", arm)
-        if not self.arm_id or int(self.seed) not in REGION_RESOURCE_RESERVED_EVALUATION_SEEDS:
+        if not self.arm_id or int(self.seed) not in seed_inventory[self.schema]:
             raise ValueError("paired arm evidence identity or seed is invalid")
         for name in (
             "specification_sha256",
@@ -1326,6 +1341,14 @@ class RegionResourcePairedInterventionExecutor:
             and candidate_projection_passed
             and next_cycle_passed
         )
+        evidence_schema = REGION_RESOURCE_PAIRED_ARM_EVIDENCE_SCHEMA
+        if (
+            getattr(self.specification, "schema", "")
+            == REGION_RESOURCE_V3_DEVELOPMENT_PAIRED_SPEC_SCHEMA
+        ):
+            evidence_schema = (
+                REGION_RESOURCE_PAIRED_DEVELOPMENT_ARM_EVIDENCE_SCHEMA
+            )
         return RegionResourcePairedArmEvidence(
             arm_id=arm_spec.arm_id,
             arm=normalized_arm,
@@ -1367,6 +1390,7 @@ class RegionResourcePairedInterventionExecutor:
             ),
             projection_notes=projection_notes,
             rejection_reasons=_unique(rejections),
+            schema=evidence_schema,
         )
 
 

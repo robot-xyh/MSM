@@ -1,5 +1,30 @@
 # D4 AirSim Episode 集成计划
 
+## 2026-07-29 v3 隔离配对编排接口
+
+D4 已提供 `RegionResourceV3IsolatedPairedAdvisor`，供 main 在统一三维 episode 状态机中
+建立独立 control/treatment 分支。该接口不接普通 `advisor.advise(...)` 的 assist 桥，
+也不通过设置 `assist_eligible=true` 绕过 shadow 边界。
+
+main 应为 seeds 2003-2012 冻结同一场景配置、初态、通信日程、故障日程和区域快照谱系，
+分别重置并运行两臂。每次调用返回：
+
+- control 和 treatment 实际选中的区域资源建议；
+- 两臂可序列化的 advisory contract；
+- 完整 paired arm evidence；
+- v3 candidate/spec/scope 身份；
+- raw inference、runtime gate、projection 和 next-cycle isolated adoption 状态；
+- 全关闭的生产 ACK、assist、降级、接管、联盟提交和控制权限。
+
+treatment 只有在 `next_cycle_isolated_adoption=true` 时可把 advisory 送入该隔离 episode
+的下一轮 D3 hint。main 仍需生成 D3 successor plan，并把隔离消费证据、物理窗口和结果
+availability 交给 D6。preflight 的门后许可不能直接触发 treatment 采用。
+
+首批建议复用名义预检场景：20v20/8-region/recon2 和
+200v200/8-region/recon8，seeds 2003-2012。随后增加通信退化、中心失效、二级失效和
+readiness 转换。正式保留 seeds 1000-1019 不进入本轮 development pairing；正式
+holdout 需另行授权并继续使用旧冻结 inventory。
+
 ## 2026-07-29 readiness v3 preflight 结果与集成计划
 
 main 已从 clean commit `83b8869...0226` 和固定 v3 registry 完成三组单 seed development
@@ -7,14 +32,22 @@ preflight。20v20/8-region seed 2001、侦察节点 2 与 200v200/8-region seed 
 侦察节点 8 均在 3 帧内完成 3 次原始推理、3 次门应用和 3 次候选许可，无回退、真值或
 安全异常。两组达到分布内比例 0.80 和至少 1 次模型评价的验收条件。
 
+同一候选随后完成 seeds 2003-2012 的名义多 seed 预检。每 case 2.2 秒；每档批次门限为
+累计至少 20 帧、分布内比例至少 0.80、模型评价至少 1 帧。20v20/8-region/recon2 与
+200v200/8-region/recon8 各有 10 cases、30 frames，分布内、原始推理、门应用、动作一致
+和门后许可均为 30/30；回退、真值、非有限值、三类 mismatch 与 formal decision changed
+均为 0，blocker 为空。两档 JSON SHA-256 分别为 `5f97c818...53db9` 和
+`77a3ef45...d6cf4`。
+
 5v5/2-region seed 2000、侦察节点 2 在 3 帧内按适用域失败关闭。主要 OOD 为边距离和转移
 时间对数。该场景用于检查 2-region 拒绝，不纳入 8-region 兼容性失败分母。后续 AirSim
 若仍以 2-region 生产快照，应继续规则回退，或单独设计 2-region adapter/候选。
 
-下一阶段不直接进入正式 AirSim 控制。main 先在三维质点环境扩展 20v20/200v200 多
-development seed，再对每个 seed 运行候选 shadow 与同键规则基线的独立 episode。日志需
-保留原始推理、门诊断、D3 后继计划、ACK、物理窗口、时延和结果 availability。D6 只有在
-两臂均有同键结果时计算非退化和收益。完成前，AirSim 正式评价和全部权限保持关闭。
+上述证据来自三维质点 development preflight，不是 AirSim 物理结果。下一阶段不直接进入
+正式 AirSim 控制。main 先运行通信退化、中心/二级失效和 readiness 转换等扰动多 seed，
+再对每个同键场景运行候选 shadow 与唯一规则基线的独立 episode。日志需保留可辨识区域
+干预、D3 后继计划、ACK、物理窗口、时延和结果 availability。D6 只有在两臂均有同键结果
+时计算非退化和收益。完成前，AirSim 正式评价和全部权限保持关闭。
 
 ## 2026-07-28 readiness v2 preflight 接口
 

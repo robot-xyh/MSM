@@ -1,6 +1,88 @@
 # D4 分布式协同与降级接管计划
 
-## 2026-07-29 readiness v3 preflight 后计划
+## 2026-07-29 D6 v2b 审计后计划
+
+### 已完成
+
+- main 已按相同 seed、初态和外生配置运行独立 control/treatment episode，D6 已完成
+  seeds 2003-2012 的 v2b 配对审计。场景为 20 目标、20 资源、2 个侦察节点、8 个区域，
+  时长 3.2 秒。
+- 10/10 seed 均完成原始推理、运行门、安全投影和隔离采用；在线真值使用为 0。D4
+  development 隔离接口的运行兼容性已经闭合。
+- 1/10 seed 形成 D3 后继、development ACK 和 producer 物理摘要；其余 9/10 为
+  `regional_hint_no_executable_successor`。
+- seed 2007 的 advisory、后继计划、ACK 和 D7 指令可重放，物理窗口映射为 18/19。
+  candidate 与规则臂的 D3 可执行 successor 字段、资源—目标和联盟绑定相同。
+- D6 对已声明拦截数和最小距离给出有界非退化 `available=true`、结果 true。该结论只
+  表示两臂在 3.2 秒窗口内没有变差，不表示学习候选产生收益。
+
+### 当前 P1
+
+- **候选动作可辨识性。** 10/10 均未形成可归因的 D3 可执行动作。后续候选必须在现有
+  确定性投影、安全约束和运行门内产生非空且合法的区域动作；不得通过放宽权限门或普通
+  assist 人工制造采用。
+- **完整物理映射。** seed 2007 仍有 1/19 D7 控制绑定因身份映射不可用而缺少物理窗口。
+  缺口对象为 `GT3D-000004`，由 D2/main 另行审计；D4 不补造 truth，也不把 18/19
+  解释为完整执行证据。
+- **收益与晋级。** 两臂均无拦截且逐 seed 最小距离相同，正收益为
+  unavailable/false。候选保持 development shadow，普通 assist 和全部生产权限继续关闭。
+- **覆盖范围。** 当前 compact 10-seed 制品没有为每个 seed 嵌入完整 ACK/D7 payload；
+  通信退化、中心/二级失效、readiness 转换和正式 holdout 仍未形成可审计结果。
+
+### 下一阶段验收
+
+1. 保持 v3 identity、8-region scope、`TTL=1.5` 和全部安全门不变，先生成至少一个与规则
+   臂不同、经过投影后仍可由 D3 执行的区域动作。
+2. 对该动作保存 advisory、严格后继计划、development ACK、D7 绑定和完整物理窗口，并
+   保证 source/successor 的差异可由候选动作解释。
+3. 用独立同键规则 episode 做 D6 审计。可辨识动作、完整同链映射和正收益三项任一缺失，
+   晋级结果继续为 unavailable/false。
+4. development 条件闭合后再单独规划正式 holdout；本轮不开放普通 assist 或生产运行。
+
+以下同日章节保留接口接线和 preflight 的阶段记录；当前状态以本节为准。
+
+## 2026-07-29 v3 隔离配对接线后计划
+
+### 已完成
+
+- 新增独立 `development-v3` 配对 schema，固定 seeds 2003-2012；旧 v1 spec 和 arm
+  evidence 继续只接受正式保留 seeds 1000-1019，未把 development 结果标成 formal
+  holdout 或 unseen reserved。
+- 新增 v3 registry loader，验证候选 manifest 文件哈希、内容身份、全部登记制品、
+  bundle manifest、model state、策略/模型版本、8-region scope、development/shadow
+  生命周期和全关闭权限。
+- 固定运行合同为 `TTL=1.5`、置信度 0.60、分布外余量 0.05、预备比例 0.10、预备资源
+  1、推理超时 50 毫秒，并复用候选内嵌确定性规则动作一致性门。
+- 新增 main-facing isolated paired advisor。输出实际 selected recommendation、
+  advisory contract、完整两臂 evidence，以及 raw inference、runtime gate、
+  projection、next-cycle isolated adoption 四阶段状态。
+- 低置信、分布外、超时、非有限、动作不一致、scope/合同/身份不匹配均失败关闭到规则。
+  preflight 许可不进入 adoption，普通 assist 路径和全部生产权限保持关闭。
+
+### 当前 P1
+
+- main 需要用统一三维 episode 状态机分别运行 control 和 treatment，保证同 seed、同场景
+  配置、同初态、同通信/故障日程和同区域快照谱系。
+- treatment 只有在 `next_cycle_isolated_adoption=true` 时可把隔离 advisory 送入下一周期
+  D3 hint；不得设置 `assist_eligible=true`，不得生成生产 runtime ACK。
+- 仍需采集实际区域干预、D3 后继计划、隔离消费证据、物理窗口和 D6 同键非退化/收益。
+  任一链节缺失时结果保持 unavailable。
+- 通信退化、中心/二级失效和 readiness 转换的 development 配对尚未运行；正式
+  1000-1019 holdout 仍未授权。
+
+### main 调用顺序
+
+1. 为 seeds 2003-2012 生成 truth-free `RegionResourcePairedInputBinding`，建立固定 v3
+   development specification。
+2. 从登记候选根目录构造 `RegionResourceV3IsolatedPairedAdvisor`；loader 不就绪时整个
+   treatment 保持规则回退。
+3. 每个 episode/frame 调用 `advise_pair`。control 与 treatment 必须接收相同 binding 和
+   snapshot，分开保存两臂 selected recommendation、advisory 和 evidence。
+4. main 只在 treatment 的运行门、投影和下一周期隔离采用均通过时，把该 advisory 注入
+   独立 treatment 的下一轮 D3；control 始终使用规则建议。
+5. D6 完成同键结果审计后再评估非退化和收益。不得由 D4 预检或接口测试推导收益。
+
+## 2026-07-29 readiness v3 名义多 seed preflight 后计划
 
 ### 已完成
 
@@ -15,25 +97,34 @@
   规则回退及全部安全异常为 0，允许进入 paired development rollout。
 - 5v5 的 2-region 输入按候选适用域预期拒绝，0/3 分布内且模型未推理。主要 OOD 为边
   `distance_log` 和 `transfer_time_log`。该结果不计入 8-region blocker。
+- main 使用同一 clean commit、固定候选和每 case 2.2 秒配置，完成 seeds 2003-2012 的
+  名义 10-seed 预检。两档批次门限为累计至少 20 帧、分布内比例至少 0.80、模型评价至少
+  1 帧；实际每档均为 10 cases、30 frames。
+- 20v20/8-region/recon2 与 200v200/8-region/recon8 的分布内、原始推理、门应用、动作
+  一致和门后许可均为 30/30。回退、真值、非有限值、三类 mismatch 和 formal decision
+  changed 均为 0；blocker 为空。JSON 哈希分别为 `5f97c818...53db9` 和
+  `77a3ef45...d6cf4`。
+- seeds 2003-2012 与训练 0-99、正式保留 1000-1019 无交集。名义多 seed 兼容性已闭合，
+  但没有生成实际采用、后继计划、ACK、物理结果或收益证据。
 
 ### 当前 P1
 
-- 20v20 和 200v200 尚需运行多个 development seed，覆盖 nominal、通信退化、中心失效、
-  二级失效和 readiness 转换，统计门后许可、回退及配置 mismatch 分布。
+- 对通信退化、中心失效、二级失效和 readiness 转换运行扰动多 development seed，统计
+  门后许可、规则回退、配置 mismatch 和降级状态覆盖。
 - 在冻结候选下执行受控 paired rollout，使用同键、独立 episode 的确定性规则基线，验证
-  安全非退化、运行时延和结果收益。`paired_development_rollout_allowed=true` 只允许开始
-  该开发试验，不代表收益已经通过。
-- 正式 holdout、正式 seed 和 formal evaluation 尚未启动。不得根据三个单 seed、
-  9 个 frame 开放 assist、assignment、takeover、coalition、control 或 physical 权限。
+  可辨识区域干预、D3 后继计划、ACK、物理窗口、安全非退化、运行时延和结果收益。
+  `paired_development_rollout_allowed=true` 只允许开始该开发试验，不代表收益已经通过。
+- D6 尚未形成同键两臂的非退化与收益审计。正式 holdout、正式 seed 和 formal evaluation
+  尚未启动，不得根据名义 10-seed 的 60 个 frame 开放任何运行权限。
 - 2-region 支持属于独立 adapter/候选范围，当前 v3 明确不支持，不作为 8-region P1。
 
 ### main 后续步骤
 
-1. 冻结候选、三份 preflight 配置和验收阈值，注册 20v20/200v200 多 development seed。
-2. 对每个 seed 分别运行候选 shadow 与同键规则基线的独立 episode，保存建议、后继计划、
-   ACK、物理窗口、时延和结果可用性。
-3. 汇总候选采用率、规则回退、非退化和收益；缺同键基线或物理结果时保持 unavailable。
-4. 多 seed development 通过后再单独规划 formal holdout，不回看正式结果调参。
+1. 冻结候选、场景配置和验收阈值，注册通信与节点失效等扰动 development seeds。
+2. 为每个同键场景分别运行候选 shadow 和唯一规则基线的独立 episode，保存区域干预、
+   D3 后继、ACK、物理窗口、时延和结果 availability。
+3. 由 D6 汇总非退化和收益；缺同键基线、可辨识干预或物理结果时保持 unavailable。
+4. 扰动与 paired development 通过后再单独规划 formal holdout，不回看正式结果调参。
 
 ## 2026-07-28 readiness v2 登记后状态
 

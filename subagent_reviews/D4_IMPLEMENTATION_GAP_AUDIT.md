@@ -1,19 +1,77 @@
 # D4 实现差距审计：分布式协同与降级接管
 
-## 2026-07-29 readiness v3 preflight 后 GAP
+## 2026-07-29 D6 v2b 审计后 GAP
+
+- **无新增 P0。** D4 v3 身份、运行门、安全投影、隔离采用和失败关闭合同均按设计工作。
+  10/10 seed 完成 raw/gate/projection/adoption，在线真值使用为 0。
+- **已关闭 P1：统一双臂运行接线。** main 已对 seeds 2003-2012 运行独立
+  control/treatment episode，D6 已完成 v2b 配对审计。该项只关闭运行兼容和证据接线，
+  不关闭模型收益或生产准入。
+- **开放 P1：可辨识候选动作。** D3 后继、development ACK 和 producer 物理摘要为
+  1/10；9/10 为 `regional_hint_no_executable_successor`。D6 判定可辨识候选动作
+  0/10。seed 2007 虽可重放，但 candidate 与规则臂的 D3 可执行 successor 字段以及
+  source/successor 的资源—目标和联盟绑定相同，学习动作无法归因。
+- **开放 P1：完整执行映射。** seed 2007 的 D7 控制绑定到物理窗口为 18/19，仍有一条
+  `GT3D-000004` 为 `identity_mapping_unavailable`。该项由 D2/main 另行审计，D4 不
+  补造 truth。compact 10-seed 制品也未为每个 seed 嵌入完整 ACK/D7 payload，不能形成
+  10-seed 全链覆盖。
+- **开放 P1：收益与晋级。** 有界非退化仅对拦截数和最小距离
+  `available=true`；两臂无拦截且逐 seed 最小距离相同。正收益
+  `unavailable/false`，模型晋级不通过。
+- **开放 P1：扰动和正式范围。** 通信退化、中心/二级失效、readiness 转换及正式
+  holdout 尚未形成同键可审计结果。2-region 仍不在 v3 的 8-region 适用域内。
+- **权限边界。** 候选继续 development shadow；普通 assist、生产 ACK、分配、降级、
+  接管、联盟提交、控制、物理和模型晋级权限全部 false。在线路径保持规则回退。
+
+本轮验收阈值分为两级。运行兼容要求 10/10 完成四阶段处理、truth=0 且生产权限全关，
+已经满足；晋级要求可辨识动作、完整同链物理证据和正收益同时成立，当前未满足。后续不得
+通过放宽 D4 安全门、人工生成 ACK 或把计划升版本身计为动作来关闭这些 GAP。
+
+## 2026-07-29 v3 隔离配对接线后 GAP
+
+- **已关闭 P1：v3 候选配对加载与身份链。** 新 loader 从自包含 registry 验证 manifest
+  文件/内容哈希、artifact inventory、bundle manifest、model state、策略/模型版本、
+  8-region scope 和运行门合同。identity、scope 或制品不匹配时 treatment 规则回退。
+- **已关闭 P1：development 与 formal inventory 分离。** 新 schema 只接受 seeds
+  2003-2012；旧 v1 spec/evidence 继续只接受 1000-1019。旧默认 `TTL=1.0` 未修改，v3
+  固定使用候选内嵌 `TTL=1.5`。
+- **已关闭 P1：隔离运行采用阶段。** main-facing decision 明确区分原始推理、运行一致
+  性门、确定性投影和下一周期隔离采用，返回实际 selected recommendation、advisory 和
+  完整 arm evidence。preflight 许可不能直接形成 adoption。
+- **安全回退。** 最低置信度 0.60、OOD 余量 0.05、预备比例 0.10、预备资源 1 和推理
+  超时 50 毫秒固定。低置信、OOD、超时、非有限、动作不一致、合同/身份、投影或消费失败
+  均选择确定性规则。
+- **权限。** 新接口不设置 `assist_eligible`，production runtime ACK、assist、
+  assignment、degradation、takeover、coalition commit 和 control 权限固定为 false。
+- **验证。** 2026-07-29 targeted 52/52、D4 全量 769/769 passed；仅有既有
+  Matplotlib `Axes3D` 环境警告。
+- **仍开放 P1：main 统一配对运行。** 尚未把 D4 decision 接入统一三维 episode 的独立
+  treatment 下一周期，也没有 D3 successor、隔离消费证据、物理窗口和 D6 同键非退化/
+  收益。通信退化、中心/二级失效和 readiness 转换的配对多 seed 仍待运行。
+- **正式评价仍关闭。** 本轮不使用 1000-1019，不形成 formal holdout、unseen reserved、
+  production adoption 或收益结论。
+
+## 2026-07-29 readiness v3 名义多 seed preflight 后 GAP
 
 - **已关闭 P1：单 seed 8-region 运行兼容性。** clean commit `83b8869...0226` 下，
   20v20/8-region seed 2001 和 200v200/8-region seed 2002 各 3 帧，分布内、raw
   inference、gate applied、action consistent 和 candidate permitted 均为 3/3，规则回退
   和 blocker 为 0。验收阈值为分布内比例至少 0.80、至少 1 次模型评价；实际均通过。
+- **已关闭 P1：名义 10-seed 运行兼容性。** seeds 2003-2012 与训练 0-99、正式保留
+  1000-1019 无交集。每 case 2.2 秒；20v20/8-region/recon2 与
+  200v200/8-region/recon8 各 10 cases、30 frames。批次门限为累计至少 20 帧、分布内
+  比例至少 0.80、模型评价至少 1 帧；两档实际均为 30/30 分布内、30/30 原始推理、
+  30/30 门应用、30/30 动作一致和 30/30 门后许可。
 - **安全审计。** 两组 finite=true，online truth、gate truth、nonfinite、
-  context/formal/permission mismatch 和 formal decision changed 均为 0。固定候选身份未变。
+  context/formal/permission mismatch、formal decision changed、规则回退均为 0，
+  blocker/candidate blocker 为空。固定候选身份未变。20v20 与 200v200 JSON SHA-256
+  分别为 `5f97c818...53db9`、`77a3ef45...d6cf4`。
 - **不支持范围。** 5v5/2-region seed 2000 的 3 帧按 8-region 适用域失败关闭，主要 OOD
   为 `distance_log` 和 `transfer_time_log`。该负例不列为 8-region blocker。2-region
   支持需要独立 adapter/候选。
-- **仍开放 P1。** 20v20/200v200 多 development seed；受控 paired rollout；同键规则
-  基线非退化；运行时延、物理结果和收益；正式 holdout。当前 6 个正例 frame 不足以证明
-  稳定性或收益。
+- **仍开放 P1。** 通信退化、中心/二级失效和 readiness 转换等扰动多 seed；v3 与唯一
+  同键规则基线的独立 episode 配对；可辨识区域干预、D3 后继、ACK、物理窗口、运行时延、
+  D6 非退化/收益和正式 holdout。名义 60 个 frame 不足以证明这些能力。
 - **权限。** `paired_development_rollout_allowed=true` 只开放下一项开发比较，不开放
   assist、assignment、takeover、coalition、control、physical 或 formal evaluation。
   registry 内 `runtime_preflight_completed=false` 保持不变。
@@ -40,11 +98,11 @@
   Brier 0.056837453793788656；在线 truth、test、calibration 和 reserved 使用均为 0。
 - **验证。** 2026-07-29 v3/v2 registry 联合专项 13/13、D4 全量 754/754 passed；仅有
   既有 Matplotlib `Axes3D` 环境警告。
-- **后续状态。** 单 seed 8-region development preflight 已闭合；2-region 按适用域拒绝。
-  当前剩余项见上一节，不再把 2-region 记为 8-region blocker。
+- **后续状态。** 单 seed 与名义 10-seed 8-region development preflight 已闭合；
+  2-region 按适用域拒绝。当前剩余项见上一节，不再把 2-region 记为 8-region blocker。
 - **P0 与权限。** 无新增运行级 P0。v3 已 clean-build/登记并完成 8-region 单 seed
-  development preflight，正式评价仍关闭；assist、assignment、takeover、coalition、
-  control、physical 和 runtime ACK 全部 false。
+  与名义 10-seed development preflight，正式评价仍关闭；assist、assignment、takeover、
+  coalition、control、physical 和 runtime ACK 全部 false。
 
 ## 2026-07-28 readiness v2 登记后 GAP
 
