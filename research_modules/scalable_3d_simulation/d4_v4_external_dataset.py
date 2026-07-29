@@ -37,11 +37,16 @@ from research_modules.d4_distributed_fallback.d4_distributed_fallback.region_res
     load_region_learning_dataset_splits,
     stage_region_learning_episode,
 )
+from research_modules.d4_distributed_fallback.d4_distributed_fallback.region_resource_learning import (
+    recommendation_to_policy_target,
+    snapshot_to_region_graph,
+)
 from research_modules.d4_distributed_fallback.d4_distributed_fallback.region_resource_v4_shadow_candidate import (
     REGION_RESOURCE_V4_INTERVENTION_GATE,
     RegionResourceV4BuildConfig,
     RegionResourceV4ExternalDatasetEvidence,
     _audit_external_dataset_governance,
+    _v4_confidence_observable_key,
     evaluate_v4_intervention_invariants,
 )
 
@@ -120,6 +125,16 @@ class D4V4ExternalDatasetExportConfig:
         return asdict(self)
 
 
+@dataclass(frozen=True)
+class _ExternalFrameLabelOption:
+    frame_key: tuple[str, int]
+    split: RegionLearningSplit
+    observable_key_sha256: str
+    r0_target_sha256: str
+    positive_target_sha256: str | None
+    positive_recommendation: RegionResourceRecommendation | None
+
+
 def export_d4_v4_external_runtime_dataset(
     source_dataset_dir: str | Path | Sequence[str | Path],
     output_dir: str | Path,
@@ -189,7 +204,7 @@ def export_d4_v4_external_runtime_dataset(
         _RULE_CONFIG,
         projector=projector,
     )
-    selected = _select_positive_frames(
+    selected, observable_label_audit = _select_positive_frames(
         episodes,
         seed_split=seed_split,
         positive_counts={
@@ -326,6 +341,8 @@ def export_d4_v4_external_runtime_dataset(
             "generation": {
                 "same_key_r0_negative_labels": True,
                 "bounded_one_resource_transfer_positive_labels": True,
+                "model_observable_group_labels": True,
+                "observable_label_audit": observable_label_audit,
                 "deterministic_projection_required": True,
                 "v4_intervention_invariants_required": True,
                 "generated_by_v4_builder": False,
@@ -368,8 +385,16 @@ def export_d4_v4_external_runtime_dataset(
                     record["split"] == split_name
                     for record in positive_records
                 )
-                for split_name in ("train", "validation")
+                for split_name in ("train", "validation", "test")
             },
+            "selected_positive_observable_key_count": (
+                observable_label_audit[
+                    "selected_positive_observable_key_count"
+                ]
+            ),
+            "observable_label_audit_sha256": observable_label_audit[
+                "content_sha256"
+            ],
             "test_payload_read_by_v4_builder": False,
             "truth_identifier_use_count": 0,
             "production_permission_available": False,
@@ -393,12 +418,11 @@ def _select_positive_frames(
     positive_counts: Mapping[RegionLearningSplit, int],
     projector: DeterministicResourceProjector,
     rule_policy: RuleRegionResourcePolicy,
-) -> dict[tuple[str, int], RegionResourceRecommendation]:
-    selected: dict[tuple[str, int], RegionResourceRecommendation] = {}
-    count_by_split = {
-        RegionLearningSplit.TRAIN: 0,
-        RegionLearningSplit.VALIDATION: 0,
-    }
+) -> tuple[
+    dict[tuple[str, int], RegionResourceRecommendation],
+    dict[str, Any],
+]:
+    groups: dict[str, list[_ExternalFrameLabelOption]] = {}
     for episode in sorted(
         episodes,
         key=lambda item: (
@@ -408,23 +432,90 @@ def _select_positive_frames(
         ),
     ):
         split = seed_split[int(episode.source.seed)]
-        if (
-            split not in count_by_split
-            or count_by_split[split] >= positive_counts[split]
-        ):
-            continue
         for frame in episode.frames:
-            candidate = _safe_transfer_alternative(
+            graph = snapshot_to_region_graph(frame.snapshot, device="cpu")
+            observable_key = _v4_confidence_observable_key(graph)
+            r0 = rule_policy.recommend(frame.snapshot)
+            positive = _safe_transfer_alternative(
                 frame.snapshot,
                 projector=projector,
                 rule_policy=rule_policy,
             )
-            if candidate is None:
-                continue
-            selected[
-                (episode.source.identity_sha256, int(frame.frame_index))
-            ] = candidate
-            count_by_split[split] += 1
+            option = _ExternalFrameLabelOption(
+                frame_key=(
+                    episode.source.identity_sha256,
+                    int(frame.frame_index),
+                ),
+                split=split,
+                observable_key_sha256=observable_key,
+                r0_target_sha256=_policy_target_sha256(
+                    frame.snapshot,
+                    graph,
+                    r0,
+                ),
+                positive_target_sha256=(
+                    _policy_target_sha256(
+                        frame.snapshot,
+                        graph,
+                        positive,
+                    )
+                    if positive is not None
+                    else None
+                ),
+                positive_recommendation=positive,
+            )
+            groups.setdefault(observable_key, []).append(option)
+
+    r0_conflicts: list[str] = []
+    positive_target_conflicts: list[str] = []
+    positive_unavailable_keys: list[str] = []
+    eligible_positive_keys: list[str] = []
+    for observable_key, options in sorted(groups.items()):
+        if len({option.r0_target_sha256 for option in options}) != 1:
+            r0_conflicts.append(observable_key)
+        positive_targets = {
+            option.positive_target_sha256
+            for option in options
+            if option.positive_target_sha256 is not None
+        }
+        if any(
+            option.positive_recommendation is None for option in options
+        ):
+            positive_unavailable_keys.append(observable_key)
+        elif len(positive_targets) != 1:
+            positive_target_conflicts.append(observable_key)
+        else:
+            eligible_positive_keys.append(observable_key)
+    if r0_conflicts:
+        raise D4V4ExternalDatasetExportError(
+            "d4_v4_observable_r0_target_conflict:"
+            f"keys={len(r0_conflicts)}"
+        )
+
+    selected_keys: list[str] = []
+    count_by_split = {
+        RegionLearningSplit.TRAIN: 0,
+        RegionLearningSplit.VALIDATION: 0,
+    }
+    for observable_key in eligible_positive_keys:
+        options = groups[observable_key]
+        contribution = {
+            split: sum(option.split == split for option in options)
+            for split in count_by_split
+        }
+        if not any(
+            count_by_split[split] < positive_counts[split]
+            and contribution[split] > 0
+            for split in count_by_split
+        ):
+            continue
+        selected_keys.append(observable_key)
+        for split in count_by_split:
+            count_by_split[split] += contribution[split]
+        if all(
+            count_by_split[split] >= positive_counts[split]
+            for split in count_by_split
+        ):
             break
     missing = [
         split.value
@@ -433,9 +524,87 @@ def _select_positive_frames(
     ]
     if missing:
         raise D4V4ExternalDatasetExportError(
-            "d4_v4_safe_positive_unavailable:" + ",".join(missing)
+            "d4_v4_safe_positive_unavailable:"
+            + ",".join(missing)
+            + f":eligible_keys={len(eligible_positive_keys)}"
         )
-    return selected
+
+    selected_key_set = frozenset(selected_keys)
+    selected = {
+        option.frame_key: option.positive_recommendation
+        for observable_key in selected_keys
+        for option in groups[observable_key]
+        if option.positive_recommendation is not None
+    }
+    selected_count_by_split = {
+        split.value: sum(
+            option.split == split
+            for observable_key in selected_keys
+            for option in groups[observable_key]
+        )
+        for split in RegionLearningSplit
+    }
+    class_by_observable_key = {
+        observable_key: observable_key in selected_key_set
+        for observable_key in groups
+    }
+    if len(class_by_observable_key) != len(groups):
+        raise D4V4ExternalDatasetExportError(
+            "d4_v4_observable_label_inventory_mismatch"
+        )
+    audit_content = {
+        "schema": "scalable3d-d4-v4-observable-label-audit-v1",
+        "model_input_key_scope": (
+            "node_features_edge_features_edge_index_shape_dtype_values"
+        ),
+        "observable_key_uses_source_seed_episode_or_target": False,
+        "positive_count_semantics": "minimum_by_split",
+        "observable_key_count": len(groups),
+        "eligible_positive_observable_key_count": len(
+            eligible_positive_keys
+        ),
+        "selected_positive_observable_key_count": len(selected_keys),
+        "selected_positive_record_count_by_split": selected_count_by_split,
+        "r0_target_conflicting_key_count": len(r0_conflicts),
+        "positive_target_conflicting_key_count": len(
+            positive_target_conflicts
+        ),
+        "positive_unavailable_key_count": len(positive_unavailable_keys),
+        "mixed_positive_negative_observable_key_count": 0,
+        "test_label_used_for_model_fit": False,
+        "validation_or_test_label_used_for_weight_fit": False,
+    }
+    return selected, {
+        **audit_content,
+        "content_sha256": _canonical_sha256(audit_content),
+    }
+
+
+def _policy_target_sha256(
+    snapshot: Any,
+    graph: Any,
+    recommendation: RegionResourceRecommendation,
+) -> str:
+    target = recommendation_to_policy_target(
+        snapshot,
+        graph,
+        recommendation,
+    )
+    content = {
+        "node_continuous": _tensor_content(target.node_continuous),
+        "node_binary": _tensor_content(target.node_binary),
+        "edge_continuous": _tensor_content(target.edge_continuous),
+    }
+    return _canonical_sha256(content)
+
+
+def _tensor_content(value: Any) -> dict[str, Any]:
+    tensor = value.detach().cpu()
+    return {
+        "shape": list(tensor.shape),
+        "dtype": str(tensor.dtype),
+        "values": tensor.tolist(),
+    }
 
 
 def _resolve_source_roots(

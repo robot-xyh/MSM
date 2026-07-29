@@ -9,19 +9,27 @@ import pytest
 
 from research_modules.d4_distributed_fallback.d4_distributed_fallback.region_resource import (
     RuleRegionResourcePolicy,
+    split_scenario_seed_groups,
 )
 from research_modules.d4_distributed_fallback.d4_distributed_fallback.region_resource_dataset import (
     RegionLearningEpisodeSource,
     RegionLearningFrame,
     RegionLearningReward,
+    RegionLearningSplit,
     RegionLearningTarget,
     RegionLearningTargetKind,
     finalize_region_learning_dataset,
+    load_region_learning_dataset,
+    load_region_learning_dataset_splits,
     stage_region_learning_episode,
+)
+from research_modules.d4_distributed_fallback.d4_distributed_fallback.region_resource_learning import (
+    snapshot_to_region_graph,
 )
 from research_modules.d4_distributed_fallback.d4_distributed_fallback.region_resource_v4_shadow_candidate import (
     RegionResourceV4BuildConfig,
     _load_external_dataset_for_v4,
+    _v4_confidence_observable_key,
     build_region_resource_v4_development_fixture,
 )
 from research_modules.scalable_3d_simulation import d4_v4_external_dataset
@@ -40,6 +48,7 @@ def _source_dataset(
     *,
     seed_count: int = 12,
     scenario_id: str = "external-runtime-fixture",
+    observable_seed_aliases: dict[int, int] | None = None,
 ) -> Path:
     staging = tmp_path / "source-staging"
     dataset = tmp_path / "source-dataset"
@@ -58,14 +67,34 @@ def _source_dataset(
         frames = []
         for frame_index in range(2):
             timestamp_s = 0.5 * frame_index
+            observable_seed = (observable_seed_aliases or {}).get(
+                seed,
+                seed,
+            )
+            base_snapshot = build_region_resource_v4_development_fixture(
+                seed=seed,
+                timestamp_s=timestamp_s,
+            )
             snapshot = replace(
-                build_region_resource_v4_development_fixture(
-                    seed=seed,
-                    timestamp_s=timestamp_s,
-                ),
+                base_snapshot,
                 snapshot_id=f"external-{seed}-{frame_index}",
                 scenario_id=source.scenario_id,
                 scenario_version=source.scenario_version,
+                regions=tuple(
+                    replace(
+                        region,
+                        d1_uncertainty=(
+                            region.d1_uncertainty
+                            + 0.01 * observable_seed
+                            + 0.001 * frame_index
+                        ),
+                    )
+                    if region_index == 0
+                    else region
+                    for region_index, region in enumerate(
+                        base_snapshot.regions
+                    )
+                ),
             )
             recommendation = policy.recommend(snapshot)
             frames.append(
@@ -167,6 +196,17 @@ def test_external_export_passes_v4_governance(
     )
     assert derivation["generation"]["generated_by_v4_builder"] is False
     assert derivation["generation"]["truth_identifier_use_count"] == 0
+    label_audit = derivation["generation"]["observable_label_audit"]
+    assert label_audit["mixed_positive_negative_observable_key_count"] == 0
+    assert label_audit["selected_positive_record_count_by_split"] == {
+        "test": 0,
+        "train": 2,
+        "validation": 1,
+    }
+    assert (
+        label_audit["observable_key_uses_source_seed_episode_or_target"]
+        is False
+    )
     assert summary["production_permission_available"] is False
 
 
@@ -223,7 +263,7 @@ def test_external_export_combines_distinct_source_datasets(
         },
     )
     output = tmp_path / "external-output"
-    export_d4_v4_external_runtime_dataset(
+    summary = export_d4_v4_external_runtime_dataset(
         (first, second),
         output,
         repository_root=tmp_path,
@@ -237,3 +277,113 @@ def test_external_export_combines_distinct_source_datasets(
     assert derivation["source"]["dataset_count"] == 2
     assert derivation["source"]["episode_count"] == 24
     assert derivation["output"]["episode_count"] == 24
+    label_audit = derivation["generation"]["observable_label_audit"]
+    assert label_audit["mixed_positive_negative_observable_key_count"] == 0
+    assert label_audit["selected_positive_record_count_by_split"] == {
+        "test": 0,
+        "train": 2,
+        "validation": 2,
+    }
+    assert summary["positive_record_count_by_split"] == {
+        "test": 0,
+        "train": 2,
+        "validation": 2,
+    }
+
+
+def test_external_export_propagates_one_label_across_train_validation_key(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    prototype = _source_dataset(tmp_path / "prototype")
+    prototype_loaded = load_region_learning_dataset(prototype)
+    config = replace(
+        _config(),
+        train_positive_frame_count=1,
+        validation_positive_frame_count=1,
+    )
+    split = split_scenario_seed_groups(
+        [episode.source for episode in prototype_loaded.episode_records],
+        train_fraction=config.train_fraction,
+        validation_fraction=config.validation_fraction,
+        split_seed=config.split_seed,
+        minimum_unique_seeds=config.minimum_unique_seeds,
+        minimum_unseen_seeds=config.minimum_unseen_seeds,
+    )
+    train_seed = int(split.train_seeds[0])
+    validation_seed = int(split.validation_seeds[0])
+    source = _source_dataset(
+        tmp_path / "aliased",
+        observable_seed_aliases={validation_seed: train_seed},
+    )
+    monkeypatch.setattr(
+        d4_v4_external_dataset,
+        "_clean_repository_identity",
+        lambda _root: {
+            "git_commit": _COMMIT,
+            "source_worktree_dirty": False,
+            "exporter_sha256": "b" * 64,
+        },
+    )
+    original_safe_transfer = (
+        d4_v4_external_dataset._safe_transfer_alternative
+    )
+
+    def _only_aliased_pair(snapshot, **kwargs):
+        if int(snapshot.seed) not in {train_seed, validation_seed}:
+            return None
+        return original_safe_transfer(snapshot, **kwargs)
+
+    monkeypatch.setattr(
+        d4_v4_external_dataset,
+        "_safe_transfer_alternative",
+        _only_aliased_pair,
+    )
+    output = tmp_path / "external-output"
+    export_d4_v4_external_runtime_dataset(
+        source,
+        output,
+        repository_root=tmp_path,
+        config=config,
+    )
+
+    derivation = json.loads(
+        (output / "source_derivation_manifest.json").read_text(
+            encoding="utf-8"
+        )
+    )
+    positive_records = derivation["positive_records"]
+    assert {record["split"] for record in positive_records} == {
+        "train",
+        "validation",
+    }
+    positive_frame_keys = {
+        (
+            record["source_identity_sha256"],
+            int(record["frame_index"]),
+        )
+        for record in positive_records
+    }
+    loaded = load_region_learning_dataset_splits(
+        output / "dataset",
+        splits=(
+            RegionLearningSplit.TRAIN,
+            RegionLearningSplit.VALIDATION,
+        ),
+    )
+    positive_observable_keys = {
+        _v4_confidence_observable_key(
+            snapshot_to_region_graph(frame.snapshot, device="cpu")
+        )
+        for episode in loaded.episode_records
+        for frame in episode.frames
+        if (
+            episode.source.identity_sha256,
+            int(frame.frame_index),
+        )
+        in positive_frame_keys
+    }
+    assert len(positive_observable_keys) == 1
+    label_audit = derivation["generation"]["observable_label_audit"]
+    assert label_audit["selected_positive_observable_key_count"] == 1
+    assert label_audit["mixed_positive_negative_observable_key_count"] == 0
