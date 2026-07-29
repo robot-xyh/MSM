@@ -15,15 +15,22 @@
 - **开发 fixture**：五 seed 临时 clean Git 仓库完成真实 CLI 构建/加载，目录为 3 train、
   1 validation、1 untouched test；validation 非有限输出为 0。该 fixture 不是当前分支
   clean-lineage 实物，不进入正式分母。
-- **当前实物状态**：当前项目 worktree 存在本任务改动和三份未跟踪背景资料，入口返回
-  `source_worktree_dirty`。没有伪造 clean 结论，也没有生成当前分支模型。
+- **当前实物状态**：先前 dirty 主工作区按预期返回 `source_worktree_dirty`，没有伪造 clean
+  结论。main 提交后，已从 clean commit `b0d498d9...` 构建并 review-only 复核当前谱系
+  development/shadow 实物。候选 manifest 文件为 `7cc10ad7...de64`，权重为
+  `fd1b9c4c...0047`，source identity 为 `b81780ce...dfdf`。
+- **实际模型开发诊断**：不读取 test/calibration/reserved seed，不修改门限。train 为
+  168/180 安全非零、12/180 与基线相同；validation 为 54/60 安全非零、6/60 与基线相同。
+  两组资源不可行、门控回退、身份错配和非有限输出均为 0。结果只属于已见开发分布。
 - **权限**：A2 admission、assist、authority、assignment、takeover、coalition commit、
   control、actual adoption 和 benefit 全部为 false。
-- **验证**：2026-07-28，新增专项 **8/8 passed**，D4 全量 **697/697 passed**；未运行
-  AirSim、900-cell 或正式多 seed。
-- **仍开放 P1**：main 提交后在独立 clean checkout 执行严格 rebuild；冻结实物后再完成至少
-  20 个正式未见 seed 的非零实际模型干预、D3 严格后继计划、runtime/owner/coalition ACK、
-  确认后物理窗口、独立 same-key R0 和 D6 配对非退化。不得回看结果修改候选。
+- **验证**：2026-07-28，实际 build 与 review-only 通过；新增专项 **8/8 passed**，D4
+  全量 **697/697 passed**。未运行 AirSim、900-cell 或正式多 seed。
+- **已关闭 P1 子项**：当前谱系 clean-lineage 实物缺失；当前谱系实际模型是否在开发分布
+  全 no-op。
+- **仍开放 P1**：冻结上述身份后完成至少 20 个正式未见 seed 的非零实际模型干预、D3 严格
+  后继计划、runtime/owner/coalition ACK、确认后物理窗口、独立 same-key R0 和 D6 配对
+  非退化。不得回看正式结果修改候选或门限。
 - **P0**：无新增 P0；现有确定性降级和全部权限门未改变。
 
 ## 2026-07-27 A2 实际策略干预诊断 GAP 更新
@@ -42,8 +49,9 @@
   确定性投影将请求压回受保护基线。低置信、OOD、owner/lease/epoch、动作掩码和模型输出
   非有限拒绝均为 0。
 - **证据边界**：候选 manifest SHA-256、模型 manifest/权重、数据集 SHA-256、逐 seed
-  分母和分类摘要已经绑定。候选 implementation lineage 与当前代码不一致；历史非零观察为
-  true，当前谱系开发证据为 false，不构成 runtime adoption、系统收益或正式 holdout。
+  分母和分类摘要已经绑定。该候选 implementation lineage 与当前代码不一致，只保留为历史
+  非零观察；当前谱系开发证据已由 2026-07-28 首节另行闭合。两者均不构成 runtime
+  adoption、系统收益或正式 holdout。
 - **失败关闭补强**：未知区域动作、非有限配额、模型 manifest 错绑，以及缺失/错误
   plan version、epoch、lease、ACK 均失败关闭，不进入 76 个安全非零计数。
 - **权限**：assist、assignment、center replan、secondary takeover、coalition commit、
@@ -52,7 +60,7 @@
   76/420 安全非零、344/420 资源不可行，每个 seed 21 个样本，稳定摘要一致。紧凑审计位于
   `research_modules/d4_distributed_fallback/reports/region_resource_a2_actual_policy_calibration_20260727_v1/`。
   未运行 AirSim、正式 900-cell 或大写盘实验。
-- **剩余 P1**：重新生成当前实现谱系候选；不使用 calibration/保留 seed 调参；在至少
+- **剩余 P1**：当前谱系实物已经生成，不再使用 calibration/保留 seed 调参；仍需在至少
   20 个正式未见 seed 中形成非零候选、严格 D3 后继计划、owner/coalition ACK、物理窗口、
   独立同键 R0 和 D6 非退化审计。完成前不得开放任何权限。
 - **P0**：无新增 P0。

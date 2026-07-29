@@ -1,6 +1,6 @@
 # D4 分布式协同与降级接管
 
-## 2026-07-28 A2 当前实现谱系候选
+## 2026-07-28 A2 当前实现谱系实物
 
 D4 新增独立的当前谱系候选构建与复核入口。入口先检查整个 Git 工作区必须干净，再绑定当前
 提交、树对象、区域策略/数据集/模型/训练/候选构建五个实现文件摘要。构建只读取既有
@@ -15,16 +15,27 @@ validation。数据集 test payload、旧 calibration 和 seed 1000-1019 的读�
 
 五 seed 临时开发夹具已通过真实 CLI 构建和加载：3 train、1 validation、1 untouched test，
 验证非有限输出为 0。该夹具只证明软件入口可用，明确标记 development/shadow；A2 准入、
-实际采用、收益、分配、接管、联盟提交和控制权限全部为 false。当前项目工作区存在未提交
-改动和三份未跟踪背景资料，实测按预期返回 `source_worktree_dirty`，因此没有生成当前分支
-clean-lineage 实物。
+实际采用、收益、分配、接管、联盟提交和控制权限全部为 false。此前主工作区的严格检查按
+预期返回 `source_worktree_dirty`，没有用该工作区伪造 clean 结论。
 
-2026-07-28 新增专项 **8/8 passed**，D4 全量 **697/697 passed**。提交后的严格重建命令和
-边界见
-`reports/D4_A2_CURRENT_LINEAGE_CANDIDATE_DIAGNOSTIC_20260728.md`。当前剩余 P1 是在独立
-干净 checkout 生成实物，并另行完成至少 20 个正式未见 seed 的实际非零干预、严格后继计划、
-ACK、物理窗口、同键 R0 和 D6 非退化审计；不得使用旧 calibration 或正式保留 seed 回调
-候选。
+main 提交后，D4 已从独立 clean checkout
+`b0d498d9e76e19e9045e127b6dae26ea164b3fa4` 执行实际构建和 `review-only`。候选
+manifest 文件 SHA-256 为 `7cc10ad7...de64`，模型权重为 `fd1b9c4c...0047`，数据集和
+split 分别为 `7e17aba7...2d7f0`、`b413fa81...0c16`，源码身份为
+`b81780ce...dfdf`。复核确认 clean lineage、bundle 可加载、validation 60 个样本均为
+有限输出，test/calibration/reserved seed 使用数为 0。
+
+固定门限的 train/validation 开发诊断直接调用实际模型。训练集 180 个样本中 168 个为安全
+非零动作、12 个与基线相同；验证集 60 个样本中 54 个为安全非零动作、6 个与基线相同。
+两组资源不可行、模型身份错配、非有限输出和候选门回退均为 0。训练集参与参数更新，验证集
+参与模型选择，因此这些结果只证明当前谱系 development 模型没有在已见开发分布上退化为
+全 no-op，不属于正式未见 seed、准入、实际采用或收益证据。
+
+2026-07-28 新增专项 **8/8 passed**，D4 全量 **697/697 passed**。构建命令、完整摘要和
+证据边界见 `reports/D4_A2_CURRENT_LINEAGE_CANDIDATE_DIAGNOSTIC_20260728.md`。当前剩余
+P1 是冻结该实物后完成至少 20 个正式未见 seed 的实际非零干预、严格 D3 后继计划、
+runtime/owner/coalition ACK、确认后物理窗口、独立同键 R0 和 D6 配对非退化审计。不得
+回看正式结果调参或放宽门限。
 
 ## 2026-07-27 A2 实际模型干预诊断
 
@@ -49,11 +60,12 @@ Sigmoid 输出严格正值，整数向上取整后会请求至少 1 个备用资
 拒绝均为 0。
 
 该结果关闭“历史 development 模型是否能在互斥开发校准样本上产生非零动作”的诊断缺口，
-不关闭当前谱系开发证据、正式采用和收益 P1。候选清单以 SHA-256
-`d3c96f0...36a2` 显式锚定；其实现谱系与当前代码不一致，必须重新生成当前谱系候选后才能
-进入后续评审。校准种子不能用于正式阈值调节；seed 1000-1019 使用数仍为 0。严格后继计划、
-owner/coalition ACK、物理窗口、独立同键 R0 和 D6 非退化审计尚未形成。assist、assignment、
-failover、control、正式证据、实际安全采用和系统收益权限全部为 false。
+当时不关闭当前谱系开发证据、正式采用和收益 P1。候选清单以 SHA-256
+`d3c96f0...36a2` 显式锚定，其实现谱系与当前代码不一致。当前谱系实物与非零开发诊断现已
+由本文件首节补齐；该历史 calibration 结果仍不能并入当前候选或用于调节门限。
+seed 1000-1019 使用数仍为 0。严格后继计划、owner/coalition ACK、物理窗口、独立同键 R0
+和 D6 非退化审计尚未形成。assist、assignment、failover、control、正式证据、实际安全
+采用和系统收益权限全部为 false。
 
 实现入口为 `region_resource_actual_policy_diagnostic.py`，命令入口为
 `scripts/run_region_resource_actual_policy_diagnostic.py`。紧凑审计结果位于

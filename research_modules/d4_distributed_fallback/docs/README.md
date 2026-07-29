@@ -6,8 +6,11 @@ train 更新参数、validation 早停和选模，test payload、旧 calibration
 worktree、谱系变化、切分重叠、非有限输出、权限字段为 true 和制品篡改均失败关闭。
 
 五 seed 临时 clean Git fixture 已完成真实 CLI 构建和加载，结果为 development/shadow，
-全部权限 false。当前项目工作区为 dirty，因此没有生成当前分支 clean-lineage 实物。新增
-专项 **8/8 passed**，D4 全量 **697/697 passed**。详细审计和提交后 clean rebuild 命令见
+全部权限 false。随后已在 clean commit `b0d498d9...` 执行实际 build 和 review-only，
+生成当前谱系 development/shadow 实物。实际模型在 train 180 个样本和 validation 60 个
+样本中分别形成 168 和 54 个安全非零动作，其余 12 和 6 个样本与基线相同；两组资源
+不可行、非有限输出和门控回退均为 0。该结果只属于已见开发分布，不是正式未见 seed、
+准入、采用或收益。新增专项 **8/8 passed**，D4 全量 **697/697 passed**。完整摘要见
 `../reports/D4_A2_CURRENT_LINEAGE_CANDIDATE_DIAGNOSTIC_20260728.md`。
 
 2026-07-27 新增实际区域策略 calibration-only 诊断。实际 development 模型在 20 个互斥

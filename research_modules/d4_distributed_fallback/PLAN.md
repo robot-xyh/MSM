@@ -14,28 +14,35 @@
   manifest。权限字段、非有限输出、切分重叠和内容篡改均失败关闭。
 - 已用五 seed 临时 clean Git fixture 完成真实 CLI 构建、磁盘加载和复核。结果只属于
   development/shadow 软件诊断，不是正式 A2 证据。
+- 已在独立 clean checkout `b0d498d9e76e19e9045e127b6dae26ea164b3fa4` 用默认冻结配置
+  构建当前谱系实物，并再次通过 `review-only`。候选 manifest、权重、数据集、split 和
+  source identity 均已内容寻址。
+- 已在不读取 test/calibration/reserved seed、不修改门限的条件下，对实际模型执行
+  train/validation 开发诊断。结果分别为 168/180 和 54/60 安全非零动作；其余 12 和
+  6 个样本与基线相同，资源不可行、非有限输出、身份错配和门控回退均为 0。
 
 ### 当前状态
 
-当前项目工作区包含本任务代码改动和三份未跟踪背景资料，clean-lineage 入口返回
-`source_worktree_dirty`。本轮不生成伪 clean 候选。main 完成提交后，应在独立干净 checkout
-按 `reports/D4_A2_CURRENT_LINEAGE_CANDIDATE_DIAGNOSTIC_20260728.md` 的命令执行 rebuild
-和 review。
+当前谱系 development/shadow 实物已经生成，模型权重保留在 Git 忽略的 `outputs/`。源码
+身份绑定 clean commit `b0d498d9...`；后续源码提交不会被解释为同一候选。训练和验证诊断
+均属于已见开发分布，不能替代正式未见 seed。A2 admission、assist、authority、
+assignment、takeover、coalition commit、control、actual adoption 和 benefit 仍全部为
+false。
 
 ### 下一步
 
-1. main 在干净源码树生成当前谱系 development/shadow bundle，并记录源码提交、候选
-   manifest 文件摘要和权重摘要。
-2. 冻结该候选后，使用至少 20 个从未进入训练、验证或历史 calibration 的正式 seed。
-3. treatment 必须由实际模型形成可辨识非零区域干预，不能使用规则派生 development
+1. main 冻结候选 manifest 文件摘要 `7cc10ad7...de64`、权重
+   `fd1b9c4c...0047` 和 clean commit，不再修改候选或门限。
+2. 使用至少 20 个从未进入训练、验证或历史 calibration 的正式 seed。
+3. treatment 必须由该冻结实际模型形成可辨识非零区域干预，不能使用规则派生 development
    adapter 冒充模型动作。
 4. 继续闭合 D3 严格后继计划、runtime ACK、owner/coalition ACK、确认后物理窗口、独立
    same-key R0 和 D6 非退化审计。
 5. 完成前保持 A2 admission、assist、authority、assignment、takeover、coalition commit
    和 control 全部为 false。
 
-验证日期为 2026-07-28。新增专项 **8/8 passed**，D4 全量 **697/697 passed**；未运行
-AirSim 或正式多随机种子实验。
+验证日期为 2026-07-28。构建和 review-only 均通过；新增专项 **8/8 passed**，D4 全量
+**697/697 passed**。本轮没有运行 AirSim 或正式多随机种子实验。
 
 ## 2026-07-27 A2 实际模型诊断与后续校准计划
 
@@ -60,15 +67,16 @@ AirSim 或正式多随机种子实验。
 nominal/全承诺资源状态会系统性压掉备用比例建议。受控
 `ConstrainedDevelopmentRegionResourceAdapter` 继续只作链路探针，不能替代本次模型证据。
 
-后续 P1 顺序为：
+该节记录 2026-07-27 历史候选的后续判断。第 1 项现已由本文件首节关闭，不再重跑历史
+calibration：
 
-1. 用当前实现谱系重新生成候选制品；现有候选因 implementation lineage mismatch 只能用于
-   开发诊断。
-2. 在 train/validation 内处理全承诺资源下的零备用动作表达，可研究显式零动作头或
+1. 当前实现谱系候选已经重新生成并冻结；旧候选仍只用于历史开发诊断。
+2. 如未来修改模型，在新的 train/validation 周期内处理全承诺资源下的零备用动作表达，
+   可研究显式零动作头或
    feasibility-aware mask；不得用校准或 seed 1000-1019 调门限。
-3. 重新运行独立 calibration split，要求至少一个实际模型非零动作、固定门不降低、资源
-   无操作原因分布可解释。
-4. 之后才在至少 20 个正式未见 seed 上生成严格后继计划、owner/coalition ACK、物理窗口和
+3. 当前冻结候选直接进入至少 20 个正式未见 seed 的影子评价，不再使用历史 calibration
+   调参。
+4. 在正式未见 seed 上生成严格后继计划、owner/coalition ACK、物理窗口和
    独立同键 R0，并交由 D6 做非退化审计。
 
 本轮专项 **10/10 passed**，D4 全量 **689/689 passed**。候选清单 SHA-256、模型

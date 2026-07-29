@@ -68,8 +68,25 @@ NaN、无穷值、未知文件、哈希变化、额外字段或权限字段为 t
 切分为 3 train、1 validation 和 1 untouched test。两 epoch 模型可从磁盘重新加载，
 validation 非有限输出为 0，所有权限为 false。
 
-该临时仓库只用于证明 builder/loader/reviewer 的行为。当前项目工作区为 dirty，本轮没有
-生成当前分支 clean-lineage 模型。提交后的严格命令见
+该临时仓库只用于证明 builder/loader/reviewer 的行为。main 提交后，实际构建从独立
+clean checkout `b0d498d9...` 运行，使用 60 个 train seed、20 个 validation seed，
+留下 20 个 test seed 未读取。训练样本为 180，validation 样本为 60；60 epoch 中最佳
+epoch 为 60，最佳 validation loss 为 `0.2042998969554901`。这些数值是开发训练记录，不是
+正式性能指标。
+
+构建完成后先执行独立 `review-only`，再使用既有单样本实际策略诊断函数遍历已加载的
+train/validation，不调用 calibration 批次入口。固定 `minimum_confidence=0.60`、
+`ood_margin=0.05` 和功能性分类时延覆盖，未修改任何门限。分类结果为：
+
+| 切分 | 样本 | 门通过 | 安全非零 | 与基线相同 | 资源不可行 | 非有限 |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: |
+| train | 180 | 180 | 168 | 12 | 0 | 0 |
+| validation | 60 | 60 | 54 | 6 | 0 | 0 |
+
+训练和验证的原始可执行动作签名分别为 11 和 10，模型身份错配均为 0。该诊断证明实际
+development 模型可产生经过确定性投影和 D3 消费检查的非零动作。它没有读取 test、历史
+calibration 或 seed 1000-1019，也没有生成后继计划、ACK、物理窗口、准入或收益。完整
+命令、摘要和权限状态见
 `../reports/D4_A2_CURRENT_LINEAGE_CANDIDATE_DIAGNOSTIC_20260728.md`。
 
 ## 2026-07-27 实际策略干预诊断实现

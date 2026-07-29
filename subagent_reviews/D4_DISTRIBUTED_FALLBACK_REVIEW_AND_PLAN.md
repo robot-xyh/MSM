@@ -9,13 +9,18 @@ validation，test episode payload、旧 calibration 与 seed 1000-1019 均不进
 
 纯 Python 临时 clean Git fixture 已证明正式 CLI 能生成可加载候选。八项专项覆盖正向
 构建以及 dirty、lineage mismatch、split overlap、permission escalation、artifact
-tampering 和 nonfinite output。D4 全量为 **697/697 passed**。当前真实工作区为 dirty，
-因此 current-lineage artifact 仍不存在；提交后的 clean rebuild 命令已写入模块专项报告。
+tampering 和 nonfinite output。D4 全量为 **697/697 passed**。
 
-后续顺序固定为：main 提交并建立 clean checkout，D4 命令生成并复核候选，main 冻结候选
-身份，随后才安排至少 20 个正式未见 seed。正式试验不得使用历史 calibration 或保留 seed
-调参，也不得用 development rule adapter 代表模型动作。严格后继计划、ACK、物理窗口、
-same-key R0 和 D6 非退化未闭合前，全部学习与运行权限保持 false。
+main 提交后，D4 已从 clean commit `b0d498d9...` 生成并 review-only 复核当前谱系实物。
+manifest 文件、权重、数据集、split 和 source identity 分别为 `7cc10ad7...de64`、
+`fd1b9c4c...0047`、`7e17aba7...2d7f0`、`b413fa81...0c16` 和
+`b81780ce...dfdf`。固定门限开发诊断得到 train 168/180、validation 54/60 个安全非零
+实际模型动作；其余样本与基线相同，资源不可行和门控回退为 0。
+
+当前谱系实物和开发态非零动作两个子项已关闭。后续先冻结该身份，再安排至少 20 个正式未见
+seed。正式试验不得使用历史 calibration 或保留 seed 调参，也不得用 development rule
+adapter 代表模型动作。严格后继计划、ACK、物理窗口、same-key R0 和 D6 非退化未闭合前，
+全部学习与运行权限保持 false。
 
 ## 2026-07-27 A2 实际模型诊断评审
 

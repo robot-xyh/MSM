@@ -2,14 +2,15 @@
 
 ## 2026-07-28 当前谱系 A2 候选与联盟边界
 
-当前谱系候选构建器已经补齐，但当前分支实物尚未生成。五 seed 临时 fixture 只证明模型可
-构建和加载；它没有 D3 后继计划、联盟成员 ACK、原子提交或物理窗口，不能形成 M 对 N 联盟
-证据。
+当前谱系候选构建器和 clean-lineage 实物均已形成。实物绑定 clean commit
+`b0d498d9...` 和权重 `fd1b9c4c...0047`，train/validation 开发诊断分别得到 168/180、
+54/60 个安全非零实际模型动作。该实物没有 D3 后继计划、联盟成员 ACK、原子提交或物理
+窗口，不能形成 M 对 N 联盟证据。
 
 新 manifest 的 takeover、coalition commit、assignment 和 control 权限固定为 false。
-后续即使 clean rebuild 成功，候选也只能进入 shadow。多成员 treatment 仍须每个必要成员
-绑定同一 owner/plan/version/epoch/lease 的实际 ACK，并在确认后形成物理窗口；缺任一成员
-或发生网络分区时继续失败关闭。
+候选仍只能进入 shadow。多成员 treatment 仍须每个必要成员绑定同一
+owner/plan/version/epoch/lease 的实际 ACK，并在确认后形成物理窗口；缺任一成员或发生
+网络分区时继续失败关闭。
 
 ## 2026-07-27 区域策略实际动作边界
 
@@ -18,9 +19,9 @@
 发生在资源已全部承诺时。该批没有形成联盟成员选择、required-member ACK、原子 commit 或
 物理执行，不能作为 M 对 N 联盟采用证据。
 
-候选 manifest、模型权重、数据集和逐 seed 分母已经绑定，两次重跑稳定得到 76/344；当前
-候选实现谱系与代码不一致，当前谱系开发证据为 false，seed 1000-1019 未使用。区域建议
-仍不能指定 target/member，
+候选 manifest、模型权重、数据集和逐 seed 分母已经绑定，两次重跑稳定得到 76/344；该
+历史候选实现谱系与代码不一致。当前谱系开发证据已由 2026-07-28 首节独立形成，两者都没有
+使用 seed 1000-1019。区域建议仍不能指定 target/member，
 也不能绕过中心、二级或 distributed 的 owner/version/epoch/lease 和联盟门。专项 10/10，
 D4 全量 **689/689 passed**；中心重规划、二级接管、联盟提交、assignment、failover、
 control 和 benefit 均为 false。

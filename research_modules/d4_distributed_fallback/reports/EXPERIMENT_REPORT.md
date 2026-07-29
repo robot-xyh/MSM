@@ -1,8 +1,8 @@
 # D4 分布式降级与接管实验报告
 
-## 2026-07-28 当前谱系候选软件诊断
+## 2026-07-28 当前谱系候选构建与复核
 
-本轮没有运行 AirSim 或正式多 seed。验证对象是当前谱系候选 builder、loader 和 reviewer。
+本轮没有运行 AirSim 或正式多 seed。先验证当前谱系候选 builder、loader 和 reviewer。
 临时 clean Git fixture 使用五个 seed：3 个训练、1 个验证、1 个未触碰测试。训练 2 个
 epoch 后模型包可从磁盘加载，validation 非有限输出为 0；test payload、旧 calibration 和
 seed 1000-1019 使用数均为 0。
@@ -10,9 +10,28 @@ seed 1000-1019 使用数均为 0。
 负例覆盖 dirty worktree、后续干净源码提交、split overlap、权限改写、配置篡改和非有限
 推理。全部负例失败关闭。新增专项 **8/8 passed**，D4 全量 **697/697 passed**。
 
-当前项目工作区不满足 clean-lineage 条件，因此没有形成当前分支候选实物。上述五 seed 结果
-只证明软件构建和复核路径，不是 A2 准入、实际采用、系统收益、接管、分配或控制证据。正式
-试验仍需提交后 clean rebuild，再冻结候选并运行至少 20 个未见 seed。
+main 分批提交后，D4 从 clean checkout commit
+`b0d498d9e76e19e9045e127b6dae26ea164b3fa4` 运行默认冻结配置。实际候选构建成功，
+随后 `review-only` 独立复核通过。
+
+| 项目 | 结果 |
+| --- | --- |
+| 候选 manifest 文件 SHA-256 | `7cc10ad770bd95fcb813dbf3d16b17040ec5f41f80fe0dc53e3e291a32f4de64` |
+| 模型权重 SHA-256 | `fd1b9c4cf7580083fadc04a70b87aa6439930eba764a970279611ccc57f30047` |
+| 数据集 SHA-256 | `7e17aba7911602c1b9e9f5b917aea97f1eeec478f03963b119fbcfc8de299e72` |
+| split SHA-256 | `b413fa810ae426ad143b713afac2c7a3366fae123e397054dbb9b0449d7b0c16` |
+| source identity SHA-256 | `b81780cece11c792acb3113af2d4be48a19b51c0337a67c926b388197d09dfdf` |
+| train / validation 样本 | 180 / 60 |
+| validation 非有限输出 | 0 |
+| test / calibration / reserved 使用 | 0 / 0 / 0 |
+| 生命周期 / 最高模式 | development / shadow |
+| 全部运行权限 | false |
+
+固定门限的实际模型诊断只遍历 train 和 validation。train 为 168/180 安全非零、12/180
+与基线相同；validation 为 54/60 安全非零、6/60 与基线相同。两组门控回退、资源不可行、
+模型身份错配和非有限输出均为 0。训练和验证均属于候选开发过程，不能作为正式未见 seed。
+该结果关闭“当前谱系实物未生成”和“当前谱系模型是否全 no-op”两个开发子项，不关闭 A2
+准入、实际采用、系统收益、接管、分配或控制 P1。
 
 ## 2026-07-27 A2 实际模型校准诊断
 
