@@ -1,0 +1,28 @@
+{
+  "committed_training_implementation_files": {
+    "research_modules/d4_distributed_fallback/d4_distributed_fallback/region_resource.py": "15eb26f8ac7323347d63df244212f0469783454bf7ac01384628d3a8ea5a0a5e",
+    "research_modules/d4_distributed_fallback/d4_distributed_fallback/region_resource_current_lineage_candidate.py": "956ce5ccfee586329b8c2638e82cd2862ca661f24107b0cb253c80b4d724eceb",
+    "research_modules/d4_distributed_fallback/d4_distributed_fallback/region_resource_dataset.py": "171a462da4f288e53812572e55ee3c52aaba66730634c6d129e26b1d235a281e",
+    "research_modules/d4_distributed_fallback/d4_distributed_fallback/region_resource_eight_region_candidate.py": "b26e04ffe6446b5c4e003d68291fc26b90a0398b4c0b09dfa9dde8cd27007b5d",
+    "research_modules/d4_distributed_fallback/d4_distributed_fallback/region_resource_learning.py": "3675381ce387a927b13db426c89b4553431ff4b4a06de7aa3eee659cf7b49d7a"
+  },
+  "committed_training_implementation_sha256": "4947a11161762c94c24a4832a207369d917e4a99b50d94aca8d2a03bc2088579",
+  "content_sha256": "0fcf08672abd7b1743ee670ce4230994264240043d98f94cf7cc7b3069ae6d60",
+  "git_commit": "4ba2c8a649dab157d55a2dd7817d5a8ded494114",
+  "git_tree": "56f938ea95186bfe4ec3af5bc688291d1944acd3",
+  "readiness_source_contract": {
+    "dataset_audit_file_sha256": "c7d4f339de46b7c35785b057013f6adf22667d0d7fc94a06fa00ff09783ec63d",
+    "dataset_sha256": "34244f1fe4f15cf82ff144e6c6cb5cabedccf5ba7f7880adcd2b820b681c9c56",
+    "generation_summary_file_sha256": "48434358e524db55e740bdae18fa909f6eb12c98afa95290c228136656a63870",
+    "manifest_file_sha256": "a1056c721be0c49066912f51e9f1ce0b4eebfac0e832da47a912f9573a22f0c2",
+    "source_git_commit": "9a1f6fc97e86a7e0204b5fbb0d92e4fd13e3c763"
+  },
+  "repository_tracked_dirty": false,
+  "schema": "d4-region-resource-eight-region-readiness-source-v3",
+  "source_identity_sha256": "e260ff2f69660142985569a73634920700325dbd6282b7e76e78a8a6562214ef",
+  "training_core_matches_commit": true,
+  "view_builder_content_addressed": true,
+  "view_builder_file": "research_modules/d4_distributed_fallback/d4_distributed_fallback/region_resource_eight_region_candidate.py",
+  "view_builder_file_sha256": "b26e04ffe6446b5c4e003d68291fc26b90a0398b4c0b09dfa9dde8cd27007b5d",
+  "view_recipe": "runtime-eight-region-geometry-plus-curriculum-action-plus-authentic-runtime-readiness-main-projection-contract-v3"
+}
