@@ -1,5 +1,39 @@
 # D4 实现差距审计：分布式协同与降级接管
 
+## 2026-07-29 v4 框架修订后 GAP
+
+- **无新增 P0。** v4 已恢复 main/v3 的投影参数 0.10/1/1.5 秒和规则参数
+  2.0/0.5/0.05。v3 registry 文件树摘要保持
+  `07c770b05ffc70f190cd8b45d762d579857747e0efb12b472a2354ee5aeaa93a`。
+- **已关闭 P1 子项：v4 builder 可放宽安全外壳。** v4 不再使用 0/0 备用参数，也不接受
+  投影裁剪后的非法原始动作。过容量、过期、分布外、低置信和动作不一致均规则回退。
+- **已关闭 P1 子项：非同键 R0。** v4 使用与 main/v3 相同的规则实例和
+  `transfer_pressure_margin=0.05`。invariant 会重算同一 snapshot/formal decision 的
+  R0；策略身份、载荷或 fallback 字段被替换均按 `r0_same_key_baseline_mismatch` 拒绝。
+- **已关闭 P1 子项：builder 内生 dirty 数据。** 36 episode 内生路径已删除。builder
+  必须接收外部内容寻址数据和来源证据，并拒绝 dirty episode、零值来源 SHA、builder
+  自生成来源、seed 库不足、test/holdout 参与及缺少动作多样性。
+- **已关闭 P1 子项：置信度全正校准。** train 与 validation 都必须同时含安全可执行差异
+  正例和 no-op 负例。模型目标不一致、无可执行差异及投影裁剪进入负因统计；任一 split
+  全正或全负均终止构建。
+- **已关闭 P1 子项：未登记候选可误入 runtime。** 五项 v4 注册摘要均为显式 `None`。
+  默认 runtime loader 拒绝未登记候选，builder 也拒绝向 `model_registry` 输出。全部
+  assist、assignment、degradation、takeover、coalition、control、physical 和 runtime
+  ACK 权限为 false。
+- **失败原型状态。** 先前 v4 原型不满足安全和数据来源要求，制品目录已删除，哈希未登记。
+  其动作和置信度不作为 implemented/tested 候选能力，也不进入 D3/D6 结果。
+- **验证。** 2026-07-29 v4 专项 11/11、D4 全量 780/780 通过；仅有既有 Matplotlib
+  `Axes3D` 环境警告。验证对象是 builder/framework 和受控 fixture，不是 AirSim、
+  clean-build 模型或实飞证据。
+- **开放 P1：真实数据与 clean build。** main runtime 数据集、外部来源制品 SHA、
+  clean commit 构建、正负校准结果、模型/manifest/数据集不可变登记均未完成。
+- **开放 P1：模型可执行差异。** 8 区域受控 fixture 使用 21 资源、19 条绑定，源区
+  2 个未承诺资源允许安全转移 1 个；该结果只证明合同可表达差异。尚无真实训练模型通过
+  相同门控并形成区别于同键 R0 的动作。
+- **开放 P1：后继和收益。** D3 successor、新目标实际绑定、ACK、D7/物理窗口、独立
+  双臂 episode、D6 非退化/正收益、扰动多 seed 和正式 holdout 均未完成。证据形成前
+  admission 保持 closed，rule fallback required。
+
 ## 2026-07-29 D6 v2b 审计后 GAP
 
 - **无新增 P0。** D4 v3 身份、运行门、安全投影、隔离采用和失败关闭合同均按设计工作。

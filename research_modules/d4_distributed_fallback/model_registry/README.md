@@ -4,6 +4,14 @@
 和 development/shadow 影子诊断。登记不表示模型通过运行准入，也不授予默认 runtime、
 assist、assignment、takeover、coalition commit 或 control 权限。
 
+## v4 未登记状态
+
+`region_resource_a2_executable_transfer_shadow_v4` 当前只有 builder 和测试框架，没有
+登记目录或模型。首版失败原型已删除，五项注册摘要保持显式未登记。v4 builder 在该状态下
+拒绝向 `model_registry` 输出，默认 runtime loader 也拒绝未登记候选。后续只有在真实
+main runtime 数据、clean build、独立 review 和准入评审完成后，才能使用新的不可变身份
+登记；不得覆盖下列 v3/v2/v1 目录。
+
 ## v3 隔离 development pairing 读取边界
 
 `region_resource_a2_8region_runtime_action_readiness_shadow_v3` 已有 D4 专用只读 loader

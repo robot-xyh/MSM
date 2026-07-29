@@ -1,5 +1,62 @@
 # D4 分布式协同与降级接管算法及实施方案
 
+## 2026-07-29 v4 builder 实施
+
+v4 构建入口接收三个必需输入：输出目录、外部 `RegionLearningDataset` 和外部来源证据。
+输出目录在未登记阶段不得位于 `model_registry`。来源证据绑定数据集 SHA-256、split
+SHA-256、main runtime 或独立数据生产制品 SHA-256、来源类型、无在线真值声明和 clean
+状态。全零摘要、dirty 来源或声明由 v4 builder 自生成时立即拒绝。
+
+构建流程如下：
+
+1. 解析完整数据 manifest，只加载 train 和 validation episode；test/holdout payload
+   不读取。
+2. 检查三个 seed 分区均达到配置下限，train/validation episode 的 commit 与配置摘要
+   完整，数据清单没有 truth 字段。
+3. 对每个 train 和 validation frame 使用固定 0.10/1/1.5 投影器重算同键 R0。每个
+   split 必须同时有合法跨区差异和 no-op，且差异通过资源守恒、转移容量、权威版本和
+   配额净流检查。
+4. 只用 train 更新图网络动作参数，只用 validation 早停选模。test 不用于梯度、选模、
+   阈值或诊断。
+5. 冻结动作网络，构造正负置信度记录。模型必须匹配外部正例的可执行签名才能得到正标签；
+   no-op、目标签名不匹配、投影裁剪和动作不一致得到负标签。
+6. train 与 validation 均具正负标签后拟合置信度头。validation 中负例越过 0.60 或
+   不一致样本越过门限时，构建失败。
+7. 保存 development/shadow bundle、数据 manifest、train/validation episode、训练摘要、
+   外部来源证据和独立 intervention gate。test episode 不复制。
+8. 用固定受控 fixture 检查模型在完整安全外壳后是否形成区别于 source 和 R0 的可执行
+   签名。没有差异时删除临时目录并失败关闭。
+
+制品 reviewer 重算文件清单、bundle 和数据绑定，重新执行外部数据治理检查，并确认
+`runtime_confidence_gate=None`、`action_diversity_sufficient=true`、正式 holdout 数为
+0、策略能力声明为 false。当前五项注册摘要均为 `None`。默认
+`RegionResourceV4CandidateLoader` 因 `v4_candidate_unregistered` 拒绝运行加载；只有未来
+独立准入流程固化全部摘要后才能改变这一状态。
+
+## 2026-07-29 安全投影和回退
+
+候选投影后的转移集合记为 \(E_L\)，区域配额记为 \(q_i\)。v4 要求：
+
+\[
+\sum_i q_i=0,\qquad
+q_i=\sum_{e\rightarrow i}n_e-\sum_{e\leftarrow i}n_e,
+\]
+
+其中每条边本轮最多转移 1 个资源，总转移量不超过资源总数的 10%。源区转移后的资源必须
+同时覆盖既有承诺和固定备用下限。owner、owner layer、plan id/version、epoch 与 lease
+逐区域保持不变。`hold` 和 `request_replan` 与同键 R0 不一致时拒绝；未知区域、边身份
+错误、过期 lease、联盟确认缺失和 formal decision 不一致也拒绝。
+
+投影器出现任何裁剪记录都视为原始动作非法，不能用“投影后合法”掩盖过容量提议。运行评价
+还检查 0.05 分布外余量、0.60 最低置信度和 250 毫秒 development 推理上限。任一条件
+失败，treatment advisory 与 control advisory 的可执行签名保持一致，权限字段全部为
+false。
+
+2026-07-29 专项测试共 11 项，覆盖安全配置、同键 R0、21 资源/19 绑定 fixture、外部数据
+正负治理、dirty/全正拒绝、来源摘要、v3 登记树、未登记 runtime 拒绝以及 OOD、过期、
+过容量和低置信规则回退。D4 全量 780 项通过。该结果验证代码框架，没有生成或登记 v4
+模型，也没有运行 AirSim。
+
 ## 2026-07-29 v2b 运行审计判定
 
 最终审计使用两个相互独立的 episode。control 和 treatment 共享冻结的 seed、初态、场景

@@ -1,5 +1,12 @@
 # D4 文档索引
 
+2026-07-29 已补充 v4 外部数据候选框架。首版放宽备用资源、压制规则 R0 和内生 dirty
+数据的原型已删除且未登记。当前 builder 固定 main/v3 安全合同，只接受外部内容寻址、
+在线无真值且来源 clean 的数据；train/validation 都必须含合法跨区正例与 no-op 负例，
+test/holdout payload 不读取。专项 11/11、D4 全量 780/780 通过。当前没有 v4 模型，
+真实数据、clean build、登记、D3 successor 和收益仍为 P1。原理与实现细节见本目录两份
+主文档及 `../PLAN.md`。
+
 2026-07-29 新增 readiness v3 隔离 development pairing。新 schema 固定 seeds
 2003-2012，旧 formal paired schema 继续固定 1000-1019。只读 loader 验证 v3 registry
 身份链、8-region scope、`TTL=1.5` 投影和内嵌运行一致性门。main-facing advisor 返回

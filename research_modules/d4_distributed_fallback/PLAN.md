@@ -1,5 +1,48 @@
 # D4 分布式协同与降级接管计划
 
+## 2026-07-29 v4 框架收口计划
+
+### 已完成
+
+- 删除未登记 v4 原型制品。原型的 0/0 备用参数、10.0 规则压力门限和 builder 内生
+  dirty 数据不再保留为候选证据，v3 registry 未修改。
+- v4 投影恢复 main/v3 的 0.10 最小备用比例、1 个最小备用资源和 1.5 秒有效期；同键
+  R0 恢复规则权重 2.0/0.5/0.05，不允许通过压制规则动作制造差异。
+- 受控 fixture 调整为 8 区域、21 资源、19 条绑定。源区保留 2 个未承诺资源，转移
+  1 个后仍满足 1 个备用资源要求。fixture 已验证合法 treatment 与真正 R0 的可执行
+  签名不同，但没有声称学习模型已经形成该动作。
+- builder 改为强制接收外部内容寻址 `RegionLearningDataset` 和来源证据。train 与
+  validation 才能加载负载；test/holdout 不读取。dirty、缺来源 SHA、来源由 v4 builder
+  生成、seed 库不足、动作无多样性和正负校准不完整均失败关闭。
+- v4 注册摘要为显式未登记。未登记制品不得写入 `model_registry`，默认 runtime loader
+  拒绝加载；development、shadow、admission closed 和 rule fallback 边界保持。
+- 2026-07-29 专项 11/11、D4 全量 780/780 通过。专项覆盖安全配置、同键 R0、外部数据
+  治理、正负样本、v3 树摘要、未登记拒绝和 OOD/过期/非法/低置信回退。
+
+### 当前 P1
+
+1. main 尚未导出满足 v4 数据合同的真实 runtime frame 数据集及来源制品 SHA。当前没有
+   可供 clean build 的输入。
+2. 尚未从 clean commit 完成 v4 训练、正负置信度校准、不可变 artifact review 和登记。
+   注册 SHA 保持空值，不得从失败原型回填。
+3. 尚未证明学习模型在安全投影后形成区别于同键 R0 的动作。受控 fixture 只证明合同允许
+   一个安全差异。
+4. D3 尚未消费 v4 treatment 并形成可归因的严格后继计划，也没有 successor ACK、
+   D7/物理窗口和完整执行映射。
+5. 独立 control/treatment episode、D6 非退化和正收益、扰动场景以及正式 holdout 均未
+   开始，所有生产权限继续关闭。
+
+### 下一步
+
+1. 由 main 从统一 runtime bus 导出无在线真值、来源 clean、内容寻址的数据；每个 train
+   和 validation split 同时包含合法跨区差异与 no-op 负例，test payload 封存不读。
+2. 在 clean commit 的独立输出目录运行 v4 builder。任何数据治理、正负校准、分布外、
+   投影或 fixture 差异失败均终止构建，不进入 registry。
+3. D4 独立 review 构建产物及全部 SHA。只有 review、专项回归和 main 准入评审通过后，
+   才能另行登记新 candidate ID；不得覆盖 v3。
+4. 登记后由 main/D3 运行独立双臂 episode，验证可执行 successor 与实际绑定，再交 D6
+   评估非退化和收益。证据不足时保持规则回退。
+
 ## 2026-07-29 D6 v2b 审计后计划
 
 ### 已完成

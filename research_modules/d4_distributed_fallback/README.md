@@ -1,5 +1,32 @@
 # D4 分布式协同与降级接管
 
+## 2026-07-29 v4 外部数据候选框架
+
+D4 已完成新的 v4 development/shadow 候选构建框架，但当前没有可登记的 v4 模型。
+先前原型使用最小备用比例 0、最小备用资源 0、规则压力门限 10.0，并由 builder 内生生成
+36 个 dirty episode。该组合改变了 main/v3 安全外壳，也不能证明数据来自真实运行链。
+原型制品已从 `model_registry` 删除，注册 SHA-256 保持显式未登记；原型结果不进入
+候选、运行或收益证据。
+
+修订后的 v4 固定复用 main/v3 合同：最小备用比例 0.10、最小备用资源 1、建议有效期
+1.5 秒，规则权重为 2.0/0.5/0.05。受控归因 fixture 使用 8 个区域、21 个资源和
+19 条既有绑定。源区有 2 个未承诺资源，同键规则 R0 不发生转移；合法 treatment 转移
+1 个资源后仍保护 1 个备用资源。该 fixture 只验证安全投影、同键比较和可执行签名框架，
+没有训练模型，也没有证明 D3 已绑定新增目标。
+
+builder 不再生成训练 episode。调用方必须提供外部、内容寻址、在线无真值的
+`RegionLearningDataset` 以及独立来源证据。构建路径只读取 train 和 validation 负载，
+test/正式 holdout 仅保留 manifest 绑定且不读取。dirty episode、零值来源摘要、缺少
+train/validation/test seed、缺少跨区动作、train 或 validation 全正、缺少 no-op 负例、
+不安全差异和 builder 自生成来源均失败关闭。置信度头的 train 与 validation 都必须同时
+含正负样本；no-op、模型目标不一致和投影裁剪均作为负因记录。
+
+未登记 v4 不能由默认 runtime loader 加载，不能写入 `model_registry`，全部生产权限保持
+false。2026-07-29 v4 专项测试 11/11、D4 全量 780/780 通过；v3 登记树摘要仍为
+`07c770b0...a93a`。当前开放 P1 是采集真实 main runtime 数据、从 clean commit 构建、
+独立 review 和不可变登记，然后验证 D3 successor、双臂非退化与收益。上述工作完成前，
+运行路径继续使用既有 v3/确定性规则。
+
 ## 2026-07-29 D6 v2b 最终审计状态
 
 D6 已对 readiness v3 的隔离双臂 development 制品完成 10-seed 配对审计，并对
