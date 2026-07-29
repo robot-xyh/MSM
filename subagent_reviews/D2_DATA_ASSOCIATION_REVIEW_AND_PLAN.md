@@ -1592,3 +1592,46 @@ formal eligible 和 generation verified；三项 skip 为 0、pending 为空、f
 当前可用空间只比 20 GiB 运行下限多约 65 MB。main 在完整单元边界停止新任务符合分片
 合同。正式工作下一步是先解决存储，再沿同一 source 和 plan 完成剩余 765 个单元；禁止
 与旧 `2c7b425` 的 895 个通过项拼接。
+
+## 48. 2026-07-29 seed 2007 物理窗口身份评审
+
+### 48.1 证据
+
+后继计划 `d3-plan-3529e5a66440:v2` 在 `[1.0,2.0)` 秒对
+`INT-0004/GT3D-000004` 发布非 hold D7 指令。D2 在该时段保持 GT4 confirmed。离线
+evaluation 的 available 锚点在 `0.833472220197 s` 和 `1.236148794089 s`，两者都唯一
+映射 `TGT-0004`。中间 `1.035192721089 s` 是一次 unmatched coast，逐帧原因仅为
+`track_not_assigned_in_frame`。
+
+GT4 全 episode 的 available truth 集合只有 `TGT-0004`，其他航迹没有声明该 truth；
+ambiguous 和 uncommitted 数为 0。coast 帧的 identity commitment 为 committed，
+source observations 为空，在线 truth 使用为 0。目标在物理 truth state 中未失活。
+
+### 48.2 判断
+
+评审不接受通过复制上一帧谱系、删除 unmatched 行、在线补 truth ID 或修改
+`global_track_id` 获得 19/19。D2 的逐帧 unavailable 是正确的证据边界：无量测帧不能
+伪装成直接身份观测。
+
+评审将 18/19 定位为 D6-owned P1。D6 目前未利用 D2 v2 已提供的持续 committed 状态和
+双锚一致证据，只要窗口中存在 unavailable 就整体拒绝。main 在线 producer 和 D2 数据
+合同不缺修复所需字段。
+
+### 48.3 给 main 的动作
+
+main 应只派 D6 修改离线 runtime outcome join，增加严格、版本化的 bounded coast
+bridge。条件固定为同 global track、同 truth、前后 available 锚、gap 仅
+confirmed/unmatched、承诺持续 committed、无歧义和竞争声明、锚距不超过 `0.9 s`。
+bridge 必须保持 evaluator-only 和 `online_exposure_allowed=false`。
+
+D6 完成后使用同一 seed 2007 落盘输入重放。验收是 19/19 物理状态窗可审计、原始
+source hashes 不变、在线 truth 使用为 0、生产权限仍关闭。若 D6 不实现该 bridge，
+当前 18/19 必须继续作为正确的 unavailable 报告，不能在 D2 侧掩盖。
+
+### 48.4 D2 范围
+
+D2 本轮不改 tracker、GNN/Hungarian、identity commitment、mapping evaluator 或测试
+基线。`AIRSIM_INTEGRATION_PLAN.md` 已检查，本次没有 AirSim 话题、适配器、时间戳、
+坐标系或运行方式变化，不修改。`D2_M_TO_N_TRACK_FUSION_REVIEW.md` 已检查，本项是单
+episode 离线物理窗口消费，不改变 M-to-N 关联或融合结论。D2 loader、全量
+`305 passed, 1 warning`、`py_compile` 和 scoped `git diff --check` 已通过。

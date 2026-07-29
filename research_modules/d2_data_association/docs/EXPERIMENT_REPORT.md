@@ -1603,3 +1603,47 @@ D6 v10 对三项正式准入为 3/3。原失败 5v5 seeds 1008/1018 尚未在该
 运行，因此当前结论是 3/5 原失败项正式闭合、完整 R0 仍开放。可用磁盘只比 20 GiB
 运行下限多约 65 MB，main 已停止启动新单元。该批次是三维质点正式证据，不是 AirSim
 或实飞结果。
+
+## 三十八、seed 2007 物理窗口身份专项（2026-07-29）
+
+### 38.1 输入
+
+本次只读审计使用 readiness-v3 seed 2007 treatment full-chain 已落盘制品。D2 identity
+manifest 报告 13 帧、259 条 evidence record、351 条 truth label，evaluation schema 为
+`d2.scalable3d_identity_evaluation.v2`，在线 truth isolation 为 true。D6 后继计划窗口
+为 `[1.0,2.0)` 秒，计划版本是 `d3-plan-3529e5a66440:v2`。
+
+### 38.2 结果
+
+| 项目 | 结果 |
+| --- | --- |
+| D7 非 hold 绑定 | 19 |
+| 可用物理状态窗 | 18 |
+| 唯一缺失绑定 | `INT-0004/GT3D-000004` |
+| D2 航迹状态 | confirmed |
+| 前一 available 锚 | `0.833472220197 s -> TGT-0004` |
+| coast 帧 | `1.035192721089 s`，unmatched |
+| coast 映射原因 | `track_not_assigned_in_frame` |
+| 后一 available 锚 | `1.236148794089 s -> TGT-0004` |
+| GT4 available truth 集合 | `{TGT-0004}` |
+| 其他航迹声明 TGT-0004 | 0 |
+| GT4 ambiguous / uncommitted | 0 / 0 |
+| coast 身份承诺 | committed |
+| 在线 truth 使用 | 0 |
+
+radar 在 `0.8 s` 没有产生 `TGT-0004` 的观测标签，D2 因而对该航迹执行一次
+prediction-only coast。D2 仍发布 confirmed 航迹和规范 ID，但没有为该帧伪造
+source observation。
+
+### 38.3 判定
+
+D2 逐帧失败关闭结果正确，不修改代码。D6 当前把窗口内单个
+`track_not_assigned_in_frame` 扩展成整段 `identity_mapping_unavailable`，因此缺少一个
+物理状态窗。该项定为 D6-owned P1 离线评估覆盖缺口，不是 D2 P0，也不是目标失活或
+D3/D7 绑定错误。
+
+D6 可在同一落盘输入上增加严格的双锚 bounded coast bridge。bridge 必须验证同航迹、
+同真值、confirmed/unmatched、持续 committed、无歧义、无竞争声明和 `0.9 s` 时间窗，
+且只用于离线评估。缺任一证据继续 unavailable。本轮没有启动 AirSim，也没有产生新
+仿真结果。D2 evaluation loader 已校验来源哈希和 13 帧内部合同；D2 全量为
+`305 passed, 1 warning in 29.38s`，验收阈值为零失败。

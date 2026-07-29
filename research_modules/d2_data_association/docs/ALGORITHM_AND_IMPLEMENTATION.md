@@ -2332,3 +2332,69 @@ replay-coast 宽限期，按既有失败关闭规则增加 miss 并清零 consec
 eligible 和 generation verified 门，skip 为 0、pending 为空、failure reason 为空。
 seeds 1008/1018 尚未重跑，因此只关闭 3/5 原失败项。可用空间只比 20 GiB 运行下限多
 约 65 MB，运行已停止，完整 900-cell R0 仍开放。
+
+## 三十九、物理窗口中的有界 coast 身份证据
+
+### 39.1 当前逐帧算法
+
+D2 离线评估只把 created 或 matched 帧的本帧实际接受观测映射到真值。若航迹在帧
+\(k\) 仅做 coast，则
+
+\[
+a_k=\mathrm{unmatched},\qquad
+\mathcal{O}_k=\varnothing,\qquad
+m_k=\mathrm{unavailable}.
+\]
+
+其中 \(a_k\) 是关联状态，\(\mathcal{O}_k\) 是本帧来源观测集合，\(m_k\) 是离线逐帧
+mapping。即使规范身份承诺 \(c_k=\mathrm{committed}\)，D2 也不把旧观测复制到
+\(\mathcal{O}_k\)。该限制防止 replay 伪装成 fresh observation。
+
+seed 2007 的 `GT3D-000004` 在 \(t_g=1.035192721089\) 秒满足上述条件。前后直接证据为
+
+\[
+(t_b,q_b)=(0.833472220197,\mathrm{TGT\mbox{-}0004}),
+\qquad
+(t_a,q_a)=(1.236148794089,\mathrm{TGT\mbox{-}0004}).
+\]
+
+该航迹其余 12 个 available frame 的 \(q\) 均为 `TGT-0004`，没有其他 global track
+声明该 truth，且整个 episode 的 ambiguous 和 uncommitted 数均为 0。
+
+### 39.2 D6 建议桥接判据
+
+物理结果联接属于离线评估。若 D6 需要在执行窗口
+\(W=[t_s,t_e)\) 内跨越无量测 gap \(G\)，建议使用以下合取门：
+
+\[
+B(G)=
+\mathbf{1}[q_b=q_a]
+\mathbf{1}[g_b=g_a]
+\mathbf{1}[\Delta t_{ba}\le T_{\mathrm{lineage}}]
+\mathbf{1}[\forall k\in G,\ a_k=\mathrm{unmatched}]
+\mathbf{1}[\forall k\in G,\ c_k=\mathrm{committed}]
+\mathbf{1}[\mathcal{A}_G=\varnothing]
+\mathbf{1}[\mathcal{C}_G=\varnothing].
+\]
+
+\(g_b,g_a\) 是前后锚点的 `global_track_id`，\(q_b,q_a\) 是离线真值，
+\(T_{\mathrm{lineage}}\) 取 evaluation 中冻结的 `0.9 s`；\(\mathcal{A}_G\) 表示
+ambiguous/uncommitted/其他 unavailable 原因，\(\mathcal{C}_G\) 表示同一真值的竞争
+global track 声明。只有 \(B(G)=1\) 才能在 D6 内生成
+`bounded_committed_coast_bridge_v1`。输出仍须标记
+`online_exposure_allowed=false`。
+
+该判据是给 D6 的消费接口，不改变 D2 的逐帧 mapping。D6 不能简单删除 unavailable
+行，也不能只看前后 truth 相等；生命周期进入 lost/dropped、承诺撤回、存在歧义、
+竞争声明、超出时间窗或缺少任一锚点时必须失败关闭。
+
+### 39.3 seed 2007 断点
+
+D6 当前 `_identity_mapping_for_window()` 收集 `[1.0,2.0)` 内的所有 D2 mapping，只要
+存在一个非 available 项，就返回 `d2_mapping_unavailable_in_window`。随后
+`_state_window()` 因缺少 `truth_target_id` 返回 `identity_mapping_unavailable`。这使
+`INT-0004/GT3D-000004` 成为 19 条非 hold 指令中唯一缺少物理状态窗的绑定。
+
+D2 evaluation v2 已提供实施上述桥接所需的数据，main 无需修改在线 producer。直接
+owner 是 D6 的离线窗口消费逻辑。本轮不修改 D2 代码、GNN/Hungarian、claim ledger、
+身份承诺或 `global_track_id`。

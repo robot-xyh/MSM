@@ -1542,3 +1542,53 @@ resolved watermark 与 actual consumption 分开；不能仅把 finalize skip �
 2026-07-25 验证结果：D2 replay-coast 专项 `5 passed`，D2 全量
 `305 passed, 1 warning`，main hotfix 五 seed 定向测试 `5 passed`；`py_compile` 和
 scoped `git diff --check` 通过。未启动 AirSim。
+
+## 2026-07-29 seed 2007 物理窗口身份 GAP
+
+### P0 状态
+
+无新增 D2 P0。`GT3D-000004` 在线航迹、规范 ID、协方差、D3 计划绑定、D7 指令和运行
+确认均存在，在线 truth 使用为 0。D2 不需要补 ID、改写 `global_track_id` 或放宽逐帧
+identity mapping。
+
+### 已核实事实
+
+- readiness-v3 treatment 的 `d3-plan-3529e5a66440:v2` 有 19 条非 hold 指令；
+- `INT-0004/GT3D-000004` 是唯一 `identity_mapping_unavailable`；
+- D2 evaluation v2 中，GT4 的 12 个 available frame 全部唯一映射到 `TGT-0004`；
+- 唯一 unavailable frame 为 `1.035192721089 s` 的 confirmed/unmatched coast，原因仅
+  `track_not_assigned_in_frame`；
+- 前后锚点为 `0.833472220197 s` 和 `1.236148794089 s`，均映射 `TGT-0004`；
+- GT4 ambiguous、uncommitted、竞争 truth claim 和在线 truth 使用均为 0；
+- 目标在 truth state 中持续 active，不属于目标失活或未分配的合理 unavailable。
+
+### 根因和 owner
+
+D2 unmatched 帧不携带本帧 source observation 是正确合同。复制历史谱系会把 coast
+伪装成新量测，破坏 claim/replay 审计。D2 evaluation 已保留逐帧 mapping、
+identity commitment、前后锚点和冻结的 `0.9 s` lineage window。
+
+直接断点是 D6 `runtime_plan_outcome_join` 的窗口策略：窗口内任一 unavailable mapping
+都会阻断整个 truth mapping，尚未实现 evaluator-only 的 bounded committed coast
+bridge。该项为 **D6-owned P1**，不是 D2 数据合同遗漏，也不是 main 在线 producer
+缺字段。main/scalable3d 无需重新生成在线 ID；只需在 D6 修复后对原制品重放。
+
+### 精确关闭条件
+
+main 应下发 D6 专项，在不读取在线 truth 的前提下：
+
+1. 从 D2 evaluation v2 读取前后 available 锚和嵌入的 identity evidence records；
+2. 只桥接同一 global track、同一 truth、confirmed/unmatched、
+   `track_not_assigned_in_frame` 的 gap；
+3. 要求 gap 内 commitment 持续 committed，无 ambiguity lease、recovery blocker、
+   ambiguous/uncommitted 或竞争 truth claim；
+4. 要求锚点间隔不超过 evaluation 的 lineage window；
+5. 输出 bridge policy、锚点、gap 帧、谱系哈希和
+   `online_exposure_allowed=false`；
+6. 任一条件不满足继续 unavailable；
+7. 对 seed 2007 原输入重放后，19 条窗口应全部可审计，同时 online truth use、
+   global ID rewrite 和 production authority 保持 0/false。
+
+D2 本轮不改代码。该 P1 只有在 D6 测试和同输入重放通过后才能关闭。2026-07-29
+D2 loader、`py_compile`、scoped `git diff --check` 均通过，D2 全量为
+`305 passed, 1 warning in 29.38s`。

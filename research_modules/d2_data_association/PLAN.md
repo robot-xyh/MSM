@@ -1659,3 +1659,48 @@ D2 owner 快照确认五例累计 hits、last update time、track key 和 canoni
    skip=0、pending empty、failure reason empty；
 6. 5v5 seeds 1008/1018 尚未正式重跑，完整 R0 不关闭；
 7. 可用空间只比 20 GiB 下限多约 65 MB，运行已停止，等待存储解阻。
+
+## 40. seed 2007 物理窗口身份映射审计
+
+### 40.1 已完成复核
+
+2026-07-29 对 readiness-v3 seed 2007 treatment full-chain 做只读审计。后继计划
+`d3-plan-3529e5a66440:v2` 在 `[1.0, 2.0)` 秒执行 19 条非 hold D7 绑定，只有
+`INT-0004/GT3D-000004` 返回 `identity_mapping_unavailable`。
+
+D2 evaluation v2 的该航迹共有 13 个持久化 frame。12 个 available frame 全部唯一映射
+到 `TGT-0004`；唯一 unavailable frame 位于 `1.035192721089 s`，association state 为
+unmatched、lifecycle 为 confirmed、原因为 `track_not_assigned_in_frame`。前后 available
+锚点分别为 `0.833472220197 s` 和 `1.236148794089 s`，均指向 `TGT-0004`。没有 ambiguous、
+uncommitted、竞争真值声明或在线 truth 使用。
+
+### 40.2 D2 决定
+
+D2 不修改在线 tracker、逐帧 truth mapping 或 identity commitment。unmatched coast
+没有本帧接受观测，`source_observations` 必须为空；复制历史谱系会制造重复证据。逐帧
+mapping 继续以 `track_not_assigned_in_frame` 失败关闭。
+
+该断点不是 D2 producer 丢字段。evaluation v2 已携带前后 mapping、逐帧 evidence record、
+identity commitment 和 `lineage_time_window_s=0.9`。直接根因是 D6 runtime outcome join
+尚未区分“身份歧义/未提交”与“已提交航迹的一帧无量测 coast”，并把后者扩大为整个执行
+窗口 unavailable。
+
+### 40.3 后续消费合同
+
+main 应把修复任务交给 D6。D6 可增加 evaluator-only 的
+`bounded_committed_coast_bridge_v1`，但必须同时满足：
+
+1. gap 前后存在同一 `global_track_id` 的 available mapping；
+2. 两个锚点只指向同一 `truth_target_id`；
+3. gap 内 mapping 只允许 confirmed/unmatched 且 reason 精确为
+   `track_not_assigned_in_frame`；
+4. gap 内 identity commitment 持续 committed，无 active ambiguity lease、recovery
+   blocker、uncommitted 或 ambiguous 状态；
+5. 同期没有其他 global track 声明该 truth；
+6. 锚点间隔不超过 evaluation 中冻结的 lineage window；
+7. 输出标记 `online_exposure_allowed=false`，只用于离线物理结果联接。
+
+缺任一条件时保持 unavailable。D6 修复后由 main 对同一落盘输入重放，不得修改源
+episode、在线 D2 JSONL、truth sidecar 或规范 `global_track_id`。本项为 D6-owned P1，
+D2 无新增 P0/P1 代码任务。2026-07-29 的 D2 evaluation loader、全量
+`305 passed, 1 warning`、全部 Python `py_compile` 和 scoped `git diff --check` 均通过。

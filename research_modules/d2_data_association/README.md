@@ -1234,3 +1234,40 @@ SHA-256 为
 才能按同一 source 和 plan 继续其余 765 个单元。2026-07-25 D2
 全量回归为 `305 passed, 1 warning in 29.45s`，main hotfix 定向测试为
 `5 passed, 66 deselected in 3.51s`。
+
+## 2026-07-29 seed 2007 物理窗口身份映射审计
+
+readiness-v3 seed 2007 的 treatment full-chain 在 `1.0 s` 发布
+`d3-plan-3529e5a66440:v2`。该计划产生 19 条非 hold D7 指令，其中
+`INT-0004 -> GT3D-000004` 是唯一没有物理状态窗的绑定。D2 在线记录在同一时刻仍发布
+`GT3D-000004`，航迹为 confirmed；D3、D7 和运行确认中的资源、航迹及计划版本完全一致。
+
+D2 离线身份制品给出以下连续证据：
+
+- `0.833472220197 s`：`GT3D-000004 -> TGT-0004`，状态 available；
+- `1.035192721089 s`：一次 radar 漏检后的 confirmed/unmatched coast，逐帧映射按合同为
+  unavailable，原因为 `track_not_assigned_in_frame`；
+- `1.236148794089 s`：同一 `GT3D-000004 -> TGT-0004` 恢复为 available；
+- 整个 episode 的 available 锚点只指向 `TGT-0004`，无其他航迹声明该真值，ambiguous
+  和 uncommitted 数均为 0；
+- unmatched 帧的身份承诺仍为 committed，在线真值使用为 0，目标在真值状态中持续
+  active。
+
+D2 在 unmatched 帧不复制上一帧观测谱系。该行为防止把 prediction-only coast 伪装成
+新量测，也避免重复 claim、虚增 hit 或用离线真值补在线身份。当前 D2 逐帧 mapping
+保持 unavailable 是正确的失败关闭语义，不应改为 available。
+
+18/19 的直接断点位于 D6 的窗口消费策略。D6 当前只要窗口中出现任一 unavailable
+mapping，就把整个窗口置为 `identity_mapping_unavailable`，尚未实现离线、有界、双锚
+一致的 coast bridge。D2 v2 制品已经提供实现该策略所需的前后锚点、逐帧 association
+state、lifecycle、identity commitment、谱系哈希和配置时间窗，不需要 main 在线补
+truth ID，也不需要改写 `global_track_id`。
+
+该项定为 D6-owned P1 评估覆盖缺口，不是 D2 P0。D6 后续只有在前后 available 锚点属于
+同一航迹和同一真值、中间仅含 confirmed/unmatched 的
+`track_not_assigned_in_frame`、承诺持续 committed、无歧义或竞争声明、且锚点间隔不
+超过冻结的 `0.9 s` 时，才可生成 evaluator-only 的 bounded coast bridge。任一条件
+不满足必须继续 unavailable。D2 在线关联器、GNN/Hungarian、身份承诺、航迹生命周期和
+全局 ID 均未修改。2026-07-29 验证中，D2 loader 通过 evaluation SHA-256 和内部合同
+重算；D2 全量为 `305 passed, 1 warning in 29.38s`，warning 仅为本机 Matplotlib
+`Axes3D` 导入冲突。

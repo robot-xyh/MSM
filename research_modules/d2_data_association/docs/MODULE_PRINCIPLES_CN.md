@@ -1714,3 +1714,24 @@ clean source commit `0d2da25` 的 seed 1000 只读复算中，严格 IDSW 保持
    seeds 1000、1005、1009 为 3/3 clean-formal 且 generation verified；seeds
    1008/1018 未运行。只有同一 plan 的 900/900 完成并由 D6 汇总通过，才可关闭完整
    R0。当前磁盘只比 20 GiB 下限多约 65 MB，停止运行不改变已完成单元的证据等级。
+
+## 三十九、无量测 coast 与离线窗口映射原则（2026-07-29）
+
+1. **状态延续不等于新增身份观测**：confirmed 航迹在单帧漏检时可以 prediction-only
+   coast，但该帧没有新接受的观测谱系。D2 必须保留空 `source_observations`，不能复制
+   上一帧谱系来制造 available mapping。
+2. **身份承诺与逐帧真值映射分层**：coast 期间 identity commitment 可以保持 committed；
+   逐帧离线 mapping 仍因 `track_not_assigned_in_frame` 为 unavailable。前者表示规范身份
+   未被歧义撤回，后者表示该帧没有直接量测证据，两者不能相互替代。
+3. **有界桥接只能离线执行**：D6 可以使用 D2 v2 制品中的前后唯一锚点、承诺状态和
+   lineage window 做 evaluator-only bridge。bridge 不得进入在线 D2、D3、D5 或 D7，
+   不得向在线消息暴露 truth ID。
+4. **双锚一致不足以单独放行**：还必须验证 gap 内只有 confirmed/unmatched 的
+   `track_not_assigned_in_frame`、无 ambiguous/uncommitted、无竞争真值声明、承诺持续
+   committed，且锚点间隔不超过冻结预算。
+5. **消费者不得静默忽略 unavailable**：D6 若实现 bridge，必须输出 bridge policy、
+   前后锚时刻、gap frame、来源谱系和失败原因。条件不全时继续
+   `identity_mapping_unavailable`。
+6. **seed 2007 结论边界**：`GT3D-000004` 的 12 个 available frame 均映射
+   `TGT-0004`，唯一 gap 为 `1.035192721089 s`；该单 seed 证据只定位 18/19 物理窗口
+   断点，不构成在线身份性能或 AirSim 结论。
