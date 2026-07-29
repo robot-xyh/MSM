@@ -3343,3 +3343,39 @@ generation contract 均为 `verified`：D1 最终代次等于 D2 最终消费代
 
 收到上述输入后只运行既有审计，不再扩展算法。正式制品缺失前，D6 不声明学习采用、非退化或
 晋级。
+
+## 24. D4 规划专用区域建议链（2026-07-29）
+
+### 已完成
+
+1. 新增最小独立审计器，直接消费 D3 plan、D4 advice、main consumption 和 D3 successor
+   在线记录，不依赖 D3/D4 运行时实现，也不读取在线真值。
+2. 复用 runtime plan outcome join 的规范绑定集合，允许 M 对 N 的多资源同目标，拒绝同一
+   资源重复绑定。
+3. 严格核对 advisory/source plan、consumption/advisory、successor/source/advisory 的计划
+   编号、版本和 metadata。仅升版、续租或 metadata 刷新不计干预。
+4. 对 `advisory-v2` 强制规划与执行权限分离。消费可进入下一轮规划，五类执行权限必须全部为
+   false；规划专用区域还必须处于 replan eligible 且未被故障代际围栏阻断。
+5. 分别输出合同链、真实绑定干预、同键 R0、非退化和模型收益 availability。单 episode 的
+   source/successor 改善只标为 `descriptive_source_successor`。
+6. 增加故障代际负例。最新 fault-fenced 建议没有 transfer、没有 consumption、没有 successor
+   时记录安全围栏通过，不计模型性能失败。
+7. 接入 scalable 3D 离线报告 v11，并增加中文区域规划链表。
+
+### 当前证据
+
+20 对 20、8 区域、seed 29 正例为 `17 -> 18` assignments、`3 -> 2` unassigned，
+`online_truth_use_count=0`。合同链和真实绑定干预可用，描述性非退化为 true；同键 R0 和模型
+收益不可用。`t=2.0 s` 中心故障负例为 `fault_generation_fence_verified`，安全违规为 0。
+两项均为内存只读三维质点探针，不是 AirSim、实飞或模型性能实验。
+
+### 后续计划
+
+1. main 持久化与 treatment 完全同键、独立执行的 R0 episode，并由现有严格学习采纳审计
+   验证 comparison key、来源提交、外生配置和随机计划。
+2. D4 v4 只有在注册后才能作为 learned treatment。规则建议器正例继续只用于合同回归。
+3. 至少完成独立多 seed 配对后，再报告模型非退化、置信区间和收益；单 seed 不晋级。
+4. 保留 fault-generation、owner、epoch、lease、reserve 和执行权限门，不为获得正例放宽。
+
+验收测试：专项 `6 passed`，D6 全量 `1202 passed, 1 warning in 106.92s`。AirSim 集成计划
+已检查；本次没有消息接口、AirSim episode 或硬件适配变化，无需修改。

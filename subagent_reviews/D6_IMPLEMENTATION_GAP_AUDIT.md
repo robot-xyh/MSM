@@ -2968,3 +2968,35 @@ plan/merge、实际绑定 bundle 根目录和可选预期设备。因此正式 s
 模型准入均为 unavailable。该项属于待运行证据，不是 D6 解析器代码 P0。
 
 当前无新增 D6-owned P0。D6 审计器完成后仍不拥有模型晋级权，不修改默认控制路径。
+
+## 2026-07-29 D4 区域规划链 GAP 更新
+
+### 已关闭的 D6-owned P1
+
+1. 已有 D4 advice、consumption 和 D3 plan 分散指标，缺少跨消息严格连接的问题已关闭。
+   新审计器核对 advisory id、source plan、successor plan、版本和 metadata。
+2. “计划升版是否等于干预”的判定缺口已关闭。只有绑定集合或目标覆盖变化才计真实干预。
+3. 规划权限与执行权限混淆的评估缺口已关闭。planning replan 可用时五类执行权限必须全部
+   为 false。
+4. fault-generation 负例被误计为模型失败的口径缺口已关闭。无 transfer、无 consumption、
+   无 successor 的围栏事件单列为 safety pass。
+5. scalable 3D 离线报告已升级到 v11，并输出 chain、binding、R0、non-degradation、
+   model benefit 和 fault fence 的独立 availability。
+
+实际 main 探针结果为：20 对 20、8 区域、seed 29 正例 `17 -> 18` assignments、
+`3 -> 2` unassigned，合同链和真实绑定均通过；故障负例
+`fault_generation_fence_verified`，安全违规为 0；两项在线真值使用均为 0。
+
+### 仍开放的 P1 证据
+
+1. seed 29 没有独立持久化的 same-key R0 paired episode。当前 non-degradation 仅为
+   source/successor 描述性结果。
+2. 正例使用测试专用 rule advisor。D4 v4 未注册，也没有 learned treatment episode，因此
+   model benefit unavailable。
+3. 尚未形成多 seed、置信区间、不同规模和物理结果证据。单 seed 合同正例不能用于模型晋级。
+4. main 需把 advisory -> consumption -> successor -> binding 链作为正式 episode 制品
+   持久化，再由 D6 严格学习采纳审计与同键 R0 配对。
+
+当前无新增 D6-owned P0。专项 `6 passed`，D6 全量
+`1202 passed, 1 warning in 106.92s`。AirSim 文档已检查；本次接口仅消费既有在线消息，
+不改变 AirSim 集成计划。

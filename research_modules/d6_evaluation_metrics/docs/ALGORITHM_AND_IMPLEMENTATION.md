@@ -5571,3 +5571,75 @@ SHA256SUMS
 merge checksum、progress/checkpoint、episode tree 篡改，重复或 lineage 错配 R0，
 D3/D4/D5 主动视觉仅加载、shadow 和零采用，C1/F1 缺任一必要组件，以及 D5 图模型零候选边。
 该模块只生成审计证据，不授予模型晋级或控制权限。
+
+## 24. 区域规划链审计
+
+### 24.1 输入与规范绑定
+
+`audit_regional_planning_chain()` 读取三类在线记录：
+
+```text
+modules.d3.assignment_plan
+modules.d4.region_resource_advice
+modules.d4.region_resource_consumption
+```
+
+输入可以是持久化字典，也可以是具有同名属性的运行时消息对象。审计只读取上述 D3/D4
+payload；出现 truth、actor 或仿真实体身份字段时失败关闭。绑定集合调用
+`canonical_assignment_binding_set()` 生成：
+
+\[
+B(P)=\{(resource\_id, global\_track\_id)\}
+\]
+
+同一资源不能重复出现。同一目标允许多个资源绑定，因此该定义不假设资源数等于目标数。
+
+### 24.2 合同连接
+
+建议必须只引用一个 source plan。消费记录中的 advisory 必须与此前 D4 发布内容一致。
+successor 的计划编号和版本必须与消费记录一致，并满足：
+
+\[
+plan\_id_{next}\ne plan\_id_{source},\qquad
+version_{next}>version_{source}
+\]
+
+后继 metadata 还要同时绑定 source plan、advisory 和 successor 自身。规划专用消费要求
+`consumable` 与 `planning_replan_eligible` 为 true，execution、assignment、coalition、
+takeover、control 五类执行权限均为 false。规划专用接收区域的 authority capabilities 必须
+允许 replan，四类区域执行权限为 false，`fault_generation_fenced=false`。
+
+### 24.3 真实干预与描述性非退化
+
+定义：
+
+\[
+\Delta B^+=B_{next}\setminus B_{source},\qquad
+\Delta B^-=B_{source}\setminus B_{next}
+\]
+
+只要新增绑定、删除绑定、新覆盖目标或丢失目标中任一集合非空，才存在真实绑定干预。版本递增
+但四个集合全空时，状态为 `contract_chain_without_real_intervention`。
+
+没有独立同键 R0 时，描述性非退化使用 source 作为参照。后继 assignments 不减少、
+unassigned 不增加且不丢失既有目标覆盖时，`non_degraded=true`，作用域标为
+`descriptive_source_successor`。提供独立 R0 evidence 后，参照改为该 R0，作用域标为
+`independent_same_key_r0_pair`。这两种结果都不直接产生模型收益。
+
+### 24.4 模型收益和故障围栏
+
+区域规划链审计不授予模型收益。建议来源不是 learned、缺独立同键 R0，或缺严格学习采纳证据
+时，`model_benefit_available=false` 并输出 blocker。正式收益仍由现有学习作用域和严格 A2
+配对审计负责。
+
+无成功消费时，审计检查最新 D4 建议的 authority capabilities 或
+`fault_fence_active/formal_d4_execution_fenced` 投影拒绝码。该建议没有 transfer、没有
+planning-only region、没有同编号消费和后继时，输出
+`fault_generation_fence_verified`。该结论只表示旧代际建议被阻断。
+
+### 24.5 离线接线
+
+scalable 3D 离线评估 v11 将审计结果写入 `d4_planning_chain_*` 字段，并在中文报告中单列
+chain、authority、binding、assignment/unassigned、R0、model benefit、fault fence、
+blocker 和 violation。安全 violation 进入 episode failure reasons；同键 R0 和模型收益
+blocker 不作为运行安全失败。

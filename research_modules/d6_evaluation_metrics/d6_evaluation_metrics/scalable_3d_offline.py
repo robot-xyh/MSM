@@ -50,12 +50,13 @@ from .observation_truth_sidecar import (
     SCALABLE_3D_OFFLINE_TRUTH_SCHEMA_V2,
     audit_observation_truth_sidecar,
 )
+from .regional_planning_chain_audit import audit_regional_planning_chain
 
 
 SCALABLE_3D_OFFLINE_EVALUATION_SCHEMA_VERSION = (
-    "d6-scalable3d-offline-evaluation-v10"
+    "d6-scalable3d-offline-evaluation-v11"
 )
-SCALABLE_3D_OFFLINE_EVALUATION_DATE = "2026-07-25"
+SCALABLE_3D_OFFLINE_EVALUATION_DATE = "2026-07-29"
 SCALABLE_3D_SCHEMA_REGISTRY_VERSION = "d6-scalable3d-schema-registry-v2"
 SCALABLE_3D_STAGE_TIMING_SCHEMA_VERSION = "scalable3d-stage-timings-v2"
 SCALABLE_3D_CURRENT_SCHEMA_REGISTRY = {
@@ -471,6 +472,12 @@ def evaluate_scalable_3d_episode(episode_dir: str | Path) -> dict[str, Any]:
     _extract_d4_metrics(row, ordered_online)
     _extract_d4_region_advice_metrics(row, ordered_online)
     _extract_d4_region_consumption_metrics(row, ordered_online, summary)
+    regional_planning_chain = audit_regional_planning_chain(ordered_online)
+    row.update(regional_planning_chain.to_scalable_3d_metrics())
+    row["_failure_reasons"].extend(
+        f"d4_planning_chain:{code}"
+        for code in regional_planning_chain.safety_violation_codes
+    )
     _extract_d5_metrics(row, ordered_online)
     active_vision_evidence = evaluate_active_vision_runtime_evidence(
         ordered_online,
@@ -1069,6 +1076,83 @@ def render_scalable_3d_offline_markdown(
                     row, "d4_advice_missing_version_evidence_count"
                 ),
                 invalid=_fmt_available(row, "d4_advice_invalid_publication_count"),
+            )
+        )
+
+    lines.extend(
+        [
+            "",
+            "## D4 区域规划链",
+            "",
+            "该审计连接 D4 规划专用建议、main 消费记录和 D3 严格后继计划。真实干预必须改变资源到全局航迹的绑定集合或目标覆盖；单纯升版、续租或元数据刷新不计入。",
+            "source/successor 的分配数和未分配数只形成描述性非退化。缺少独立同键 R0 时不形成因果收益；规则建议器的正例始终不记为学习模型收益。故障代际围栏阻断建议消费时只记录安全围栏通过，不记为模型性能失败。",
+            "",
+            "| seed | status | chain | authority safe | real binding | assignment source/successor/delta | unassigned source/successor/delta | non-degradation scope/result | same-key R0 | model benefit | fault fence | blockers | violations |",
+            "| ---: | --- | :---: | :---: | :---: | --- | --- | --- | :---: | :---: | --- | --- | --- |",
+        ]
+    )
+    for row in rows:
+        lines.append(
+            "| {seed} | {status} | {chain} | {authority} | {binding} | "
+            "{source_assignment}/{successor_assignment}/{assignment_delta} | "
+            "{source_unassigned}/{successor_unassigned}/{unassigned_delta} | "
+            "{scope}/{non_degraded} | {r0} | {benefit} | {fence_available}/{fence_passed} | "
+            "{blockers} | {violations} |".format(
+                seed=_fmt(row.get("seed")),
+                status=_fmt(row.get("d4_planning_chain_status")),
+                chain=_fmt(
+                    row.get("d4_planning_chain_contract_chain_available")
+                ),
+                authority=_fmt(
+                    row.get("d4_planning_chain_planning_only_authority_safe")
+                ),
+                binding=_fmt(
+                    row.get(
+                        "d4_planning_chain_real_binding_intervention_available"
+                    )
+                ),
+                source_assignment=_fmt(
+                    row.get("d4_planning_chain_source_assignment_count")
+                ),
+                successor_assignment=_fmt(
+                    row.get("d4_planning_chain_successor_assignment_count")
+                ),
+                assignment_delta=_fmt(
+                    row.get("d4_planning_chain_assignment_count_delta")
+                ),
+                source_unassigned=_fmt(
+                    row.get("d4_planning_chain_source_unassigned_count")
+                ),
+                successor_unassigned=_fmt(
+                    row.get("d4_planning_chain_successor_unassigned_count")
+                ),
+                unassigned_delta=_fmt(
+                    row.get("d4_planning_chain_unassigned_count_delta")
+                ),
+                scope=_fmt(
+                    row.get("d4_planning_chain_non_degradation_scope")
+                ),
+                non_degraded=_fmt(
+                    row.get("d4_planning_chain_non_degraded")
+                ),
+                r0=_fmt(row.get("d4_planning_chain_same_key_r0_available")),
+                benefit=_fmt(
+                    row.get("d4_planning_chain_model_benefit_available")
+                ),
+                fence_available=_fmt(
+                    row.get(
+                        "d4_planning_chain_fault_generation_fence_evidence_available"
+                    )
+                ),
+                fence_passed=_fmt(
+                    row.get("d4_planning_chain_fault_generation_fence_passed")
+                ),
+                blockers=_fmt(
+                    row.get("d4_planning_chain_blocker_codes_json")
+                ),
+                violations=_fmt(
+                    row.get("d4_planning_chain_safety_violation_codes_json")
+                ),
             )
         )
 

@@ -1137,6 +1137,18 @@ def _assignment_bindings(
     return result
 
 
+def canonical_assignment_binding_set(
+    plan: Mapping[str, Any],
+) -> frozenset[tuple[str, str]]:
+    """Return the strict resource-to-track binding set used by runtime joins.
+
+    The validator preserves M-to-N semantics: one target may have multiple
+    resources, while one resource cannot appear in multiple bindings.
+    """
+
+    return frozenset(_assignment_bindings(plan))
+
+
 def _validate_ack_authority(
     ack: Mapping[str, Any],
     metadata: Mapping[str, Any],
@@ -2942,6 +2954,7 @@ __all__ = [
     "RUNTIME_PLAN_OUTCOME_JOIN_SCHEMA_VERSION",
     "RuntimePlanOutcomeJoinError",
     "RuntimePlanOutcomeJoinInputs",
+    "canonical_assignment_binding_set",
     "evaluate_runtime_plan_outcomes",
     "load_runtime_plan_outcome_join_inputs",
     "render_runtime_plan_outcome_join_markdown",

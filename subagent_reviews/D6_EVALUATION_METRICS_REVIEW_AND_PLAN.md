@@ -2850,3 +2850,27 @@ scope merge、R0 对照和实际 bundle 根目录。它复核计划、分片、c
 三个单组件空采用、C1/F1 必要组件缺失和 D5 零候选边作直接断言。缺 R0 或 lineage 不可比时
 `non_degraded=None`。评审不接受把该合同测试写成 d59352b 的正式性能证据。main 实物输入
 尚未提供，当前不形成学习准入或模型晋级结论。
+
+## 2026-07-29 D4 区域规划链独立评审
+
+评审接受新增的最小只读审计接口。接口没有扩展 D4 决策权，也没有导入 D3/D4 控制实现。
+规范绑定复用 runtime plan outcome join，模型收益继续由 strict learning adoption audit
+负责。
+
+评审接受以下结论：
+
+1. seed 29 的 source/advisory/consumption/successor 标识和版本严格连接。
+2. 规划专用消费的五类执行权限全部为 false，区域 replan capability 未越权。
+3. successor 相对 source 存在真实新绑定和新目标覆盖，assignment `17 -> 18`，
+   unassigned `3 -> 2`。
+4. 在线真值使用为 0，合同与安全 violation 为 0。
+5. `t=2.0 s` 故障帧没有 transfer、消费或后继，故障代际围栏通过，不能记为模型性能失败。
+
+评审不接受以下扩展结论：
+
+1. source/successor 的改善不是独立同键 R0 比较，只能写为描述性非退化。
+2. 正例建议来源是 rule，不能算 D4 v4 或学习模型收益。
+3. 单 seed、内存质点探针不代表 AirSim、物理拦截、多规模或工程实时性能。
+
+专项测试 `6 passed`，D6 全量 `1202 passed, 1 warning in 106.92s`。下一步由 main 持久化
+独立同键 R0 和注册后的 learned treatment，多 seed 完成后再由 D6 评估模型非退化与收益。

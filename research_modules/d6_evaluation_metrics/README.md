@@ -3692,3 +3692,39 @@ optional expected preflight device
 tree 篡改，重复或错配 R0，D3/D4/D5 主动视觉空采用，C1/F1 缺必要组件，以及 D5 零候选边。
 warning 为既有 Matplotlib `Axes3D` 导入提示。正式 d59352b 学习作用域及其 R0 制品尚未在
 本任务中提供，因此当前只有审计能力证据，没有模型非退化或晋级结论。
+
+## D4 区域规划链审计（2026-07-29）
+
+D6 新增独立只读接口 `audit_regional_planning_chain()`。接口消费 episode 在线消息或同结构
+记录，连接以下四段证据：
+
+```text
+D3 source plan
+  -> D4 advisory-v2
+  -> main consumption
+  -> D3 strict successor
+```
+
+绑定集合沿用运行时结果连接器的严格口径：资源只能出现在一个绑定中，同一
+`global_track_id` 可以由多个资源合法引用。后继计划必须具有新计划编号、递增版本，并由
+metadata 同时指向源计划、建议编号和自身后继编号。规划专用消费允许
+`consumable=true` 和 `planning_replan_eligible=true`，五类执行权限必须全部为 false。
+
+审计结果分别给出合同链、真实绑定干预、独立同键 R0、非退化和模型收益的 availability。
+绑定或目标覆盖发生变化才算真实干预。source/successor 的分配数和未分配数只形成描述性
+非退化；它不替代独立同键 R0。规则建议器即使形成正例也不会被记为学习模型收益。
+
+main 的 20 对 20、8 区域、seed 29、3.2 秒只读探针得到 source v1
+`17 assignments / 3 unassigned`，D4 建议从 `region-000` 向 `region-001` 转移 1 个资源，
+successor v2 为 `18 assignments / 2 unassigned`。合同链、规划权限封闭和真实绑定变化均
+通过，在线真值使用为 0。独立同键 R0 未提供，建议来源为 rule，因此模型收益保持
+unavailable。
+
+同一 seed 的 2.2 秒故障探针在 `t=2.0 s` 注入中心故障。最新建议无 transfer、无 consumption
+和无后继，显式 `fault_fence_active/formal_d4_execution_fenced` 拒绝码通过安全审计。该结果
+计为故障代际围栏通过，不计模型性能失败。
+
+离线评估 schema 升级为 `d6-scalable3d-offline-evaluation-v11`，逐 episode CSV、聚合输入和
+中文报告均携带上述分层字段。专项测试 `6 passed`；D6 全量回归
+`1202 passed, 1 warning in 106.92s`。warning 为既有 Matplotlib `Axes3D` 环境提示。本轮
+没有启动 AirSim，也没有形成多 seed、同键 R0 或学习模型收益证据。

@@ -511,10 +511,17 @@ from .runtime_plan_outcome_join import (
     RUNTIME_PLAN_OUTCOME_JOIN_SCHEMA_VERSION,
     RuntimePlanOutcomeJoinError,
     RuntimePlanOutcomeJoinInputs,
+    canonical_assignment_binding_set,
     evaluate_runtime_plan_outcomes,
     load_runtime_plan_outcome_join_inputs,
     render_runtime_plan_outcome_join_markdown,
     write_runtime_plan_outcome_join_report,
+)
+from .regional_planning_chain_audit import (
+    REGIONAL_PLANNING_CHAIN_AUDIT_SCHEMA_VERSION,
+    REGIONAL_PLANNING_SAME_KEY_R0_SCHEMA_VERSION,
+    RegionalPlanningChainAuditResult,
+    audit_regional_planning_chain,
 )
 from .paired_isolated_physical import (
     D4_ISOLATED_PHYSICAL_ADOPTION_SCHEMA,
@@ -1121,6 +1128,11 @@ __all__ = [
     "RUNTIME_PLAN_OUTCOME_JOIN_SCHEMA_VERSION",
     "RuntimePlanOutcomeJoinError",
     "RuntimePlanOutcomeJoinInputs",
+    "canonical_assignment_binding_set",
+    "REGIONAL_PLANNING_CHAIN_AUDIT_SCHEMA_VERSION",
+    "REGIONAL_PLANNING_SAME_KEY_R0_SCHEMA_VERSION",
+    "RegionalPlanningChainAuditResult",
+    "audit_regional_planning_chain",
     "evaluate_runtime_plan_outcomes",
     "load_runtime_plan_outcome_join_inputs",
     "load_d5_clean_graph_evidence_inputs",
