@@ -1,37 +1,28 @@
 # D4 分布式协同与降级接管综述及子方案
 
-## 2026-07-29 v4 类别平衡评审
+## 2026-07-29 v4 observable-group 置信校准评审
 
 本轮只评审 v4 训练机制，不形成正式候选。外部组合数据的 train 有 60 个安全可执行差异
 正例和 290 个 no-op 负例，3920 条有向边目标中 71 条非零。D4 在 v4 私有路径使用
 train-only 有界权重：正 frame 权重 4.833333，非零 edge 权重封顶为 32，负 frame 和
 零 edge 权重为 1。通用行为克隆语义未修改。
 
-checkpoint 不再按总体 no-op loss 决定。validation 必须先同时命中正负两类，再按较低
-类别命中率、平衡命中率、固定 train 权重 loss、直接投影拒绝和较早 epoch 排序。最佳
-epoch 150 的 train 命中为 59/60、278/290，validation 为 14/15、58/60。直接投影拒绝
-均为 0；两个 split 各有 2 条投影后干预不变量拒绝，记录已保留在负因清单。
+新 observable-group 数据 SHA 为 `b31fc43f...7fb8c`，272 个模型输入键没有混标或
+target conflict。actor 最佳 epoch 107，train 正/负命中为 58/60、276/290，
+validation 为 13/15、58/60。两个 split 各有 2 条投影后干预不变量拒绝，记录已保留。
 
-confidence 只从 train 计算权重。正/负标签为 59/291，正类权重 4.932203；13 条动作
-不一致负例权重封顶为 8。固定 0.60 门未调整。train 的
-positive/negative/inconsistent/executable 通过数为 59/11/11/70，validation 为
-14/1/1/15。validation 仍有 1 条不合格样本越门，评审结论为 actor 类别平衡有效、
-confidence 未验收、构建失败关闭。
+confidence 只从 train 计算权重。正/负标签为 58/292；正类权重 5.034483，16 条动作
+不一致负例权重上限 8，14 条可执行错误负例权重为 20.857143、上限 32。置信头结构不变。
+损失使用固定 0.60 门及 0.20 对数几率平方间隔，全批学习率为 0.003。
 
-结构复核定位到 target 可辨识性问题。validation seed 90、frame 2 与 train seeds 2、46
-具有完全相同的在线图输入和 actor 输出，validation target 要求 no-op，train target
-要求 transfer。TRAIN 全量审计发现 229 个在线图键中 10 个存在正负冲突，覆盖 22 条
-记录（12 正、10 负）。180 个 confidence epoch 没有产生通过固定门的 checkpoint。
-
-评审决定不提高 hard-negative 权重，也不更换损失强行压低该样本。相同在线输入无法稳定
-映射到两个相反标签。v4 新增 TRAIN-only 在线图指纹门，冲突时输出内容寻址诊断并失败
-关闭。指纹只使用 forward 可见的节点特征、边特征、边索引及其 shape/dtype 和架构；
-节点/边身份、seed、episode、target 或来源身份均不读取，validation/test 不参与审计或
-拟合。后续需要外部数据 owner 统一同键 target，或补充真实在线可获得的决策上下文。
+checkpoint 必须在 train 和 validation 同时满足正类与可执行通过数大于 0、负类与动作
+不一致通过数为 0。完整复跑有 8 个 epoch 合格，最长连续 7 个。最佳 epoch 66 的
+positive/negative/inconsistent/executable 计数为 train `12/0/0/12`、validation
+`4/0/0/4`。validation 只做 checkpoint 与验收，test payload 不读取或拟合。
 
 当前证据仅为内存训练和只读数据验证。正式 clean build、候选制品、不可变 review、D6
 审计、D3 successor、物理结果和收益均未完成。v4 未登记，全部生产权限为 false；v3
-身份和 registry 保持不变。专项 25/25、D4 全量 808/808 通过。
+身份和 registry 保持不变。专项 32/32、D4 全量 815/815 通过。
 
 ## 2026-07-29 规划权限解耦评审
 
@@ -71,10 +62,10 @@ test/holdout 参与、动作多样性不足和投影裁剪均失败关闭。未�
 `None`，默认 runtime loader 直接拒绝。2026-07-29 专项 11/11、D4 全量 780/780 通过，
 v3 文件树摘要仍为 `07c770b0...a93a`。
 
-该阶段评审结论是“v4 builder/framework 可保留，v4 候选不存在”。后续外部组合数据
-只读训练已证明 actor 可形成双类命中，但 confidence 仍未通过固定门，当前状态以本文件
-首节为准。开放 P1 包括 clean build、不可变登记、D3 successor、独立双臂非退化和
-正收益。AirSim 与实验结果未受本轮代码变化影响。
+该阶段评审结论是“v4 builder/framework 可保留，v4 候选不存在”。后续 observable-group
+数据只读训练已证明 actor 可形成双类命中，confidence 也已形成固定门合格 checkpoint；
+当前状态以本文件首节为准。开放 P1 包括 clean build、不可变登记、D3 successor、独立
+双臂非退化和正收益。AirSim 与既有物理实验结果未受本轮代码变化影响。
 
 ## 2026-07-29 D6 v2b 最终评审
 

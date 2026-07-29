@@ -1,45 +1,34 @@
 # D4 分布式协同与降级接管
 
-## 2026-07-29 v4 类别平衡与只读组合数据验证
+## 2026-07-29 v4 类别平衡与置信校准验证
 
-D4 已在 v4 专用训练路径加入训练集类别平衡，未修改通用行为克隆接口。训练集的安全
-可执行差异正样本与 no-op 负样本分别为 60/290，正样本权重按
-`min(negative/positive, 8)` 得到 4.833333，负样本权重固定为 1。3920 条有向边目标中
-非零/零边为 71/3849，非零边权重按 `min(zero/nonzero, 32)` 截断为 32，零边权重固定
-为 1。权重来源、原始计数、封顶状态和训练标签清单摘要写入训练摘要；validation 和 test
-参与权重拟合的计数均为 0。
+v4 actor 继续使用 TRAIN-only frame/edge 类别平衡，通用行为克隆接口未修改。新外部数据
+`b31fc43f...7fb8c` 已按置信模型真实可见的三个张量分组标注；TRAIN 350 帧、
+VALIDATION 75 帧，272 个模型输入键的混标、同键规则目标冲突和正目标冲突均为 0。
+actor 最佳 epoch 为 107。train 正/负命中为 58/60、276/290，validation 为
+13/15、58/60；两个 split 均有 2 条投影后干预不变量拒绝，记录没有被过滤。
 
-checkpoint 选择首先要求 validation 同时命中正、负两类，然后依次比较较低类别命中率、
-平衡命中率、使用固定训练权重计算的 validation loss、直接投影拒绝数和 epoch。只读调用
-外部组合数据后，最佳 epoch 为 150。actor 在 train 命中 59/60 个正例和 278/290 个
-负例，在 validation 命中 14/15 个正例和 58/60 个负例；直接投影拒绝均为 0，干预
-不变量拒绝在两个 split 中各 2 条。模型已摆脱全 no-op。
+冻结 actor 后，confidence 的 train 正/负标签为 58/292。16 条动作不一致负例中有
+14 条为“可执行但错误”的硬负例。正类权重为 `292/58=5.034483`，动作不一致权重上限
+为 8，硬负例权重为 `292/14=20.857143`、上限 32，普通负例权重为 1。全部计数和权重
+只由 TRAIN 计算；VALIDATION 只参与固定 checkpoint 选择，test payload 不读取。
 
-置信度头同样只从 train 计算有界权重。其正/负标签为 59/291，正类权重 4.932203；
-13 条动作不一致负例的权重按上限 8 截断，普通负例权重为 1。固定 0.60 门下，train 的
-positive/negative/inconsistent/executable 通过数为 59/11/11/70，validation 为
-14/1/1/15。validation 仍有 1 条负类且不一致样本越门，现有
-`positive>0、negative=0、inconsistent=0、executable>0` 合同未通过，流程正确失败关闭。
+v4 置信头仍为原线性头。专用损失围绕固定 0.60 门构造 0.20 对数几率间隔，并对越过间隔
+的误差取平方；采用 0.003 学习率和固定全批训练，不修改 0.60 门。checkpoint 必须同时
+满足 TRAIN/VALIDATION 的正类通过数大于 0、负类和动作不一致通过数为 0、可执行通过数
+大于 0，再比较较低类别命中率、平衡命中率、固定 TRAIN 权重下的 validation loss 和
+epoch。全 no-op checkpoint 不能因总体 loss 较低而胜出。
 
-逐样本复核确认该假阳性不是投影或安全不变量问题。validation seed 90、frame 2 的完整
-在线图输入与 train seeds 2、46 的两个正例逐值相同，但外部 target 分别要求 no-op 和
-transfer。confidence head 对三条记录必然产生相同输出。对全部 TRAIN confidence 记录
-生成不含 seed、episode、target 和来源身份的在线图指纹后，350 条记录形成 229 个键；
-其中 10 个键同时含正、负标签，共 22 条记录（12 正、10 负）。该数据不存在只依赖在线
-输入的确定性分类函数。
+只读复跑得到 8 个合格 epoch，最长连续 7 个。最佳 epoch 66 的
+positive/negative/inconsistent/executable 通过数在 train 为 `12/0/0/12`，validation
+为 `4/0/0/4`。TRAIN 可辨识性审计冲突为 0，`validation_weight_fit_count=0`，
+`test_payload_fit_count=0`。投影或干预拒绝负例继续保留在
+`negative_reason_inventory`。
 
-v4 现已增加 TRAIN-only 可辨识性审计。审计只绑定 confidence forward 实际消费的
-`node_features`、`edge_features`、`edge_index`，并同时绑定张量 shape、dtype 和固定
-图网络架构。节点/边身份元数据不进入指纹。审计记录冲突键、记录下标、正负计数和内容
-SHA-256；validation/test 标签使用数固定为 0。存在任一同输入异标签时，即使后续固定
-训练能产生较低 loss，也以
-`v4_confidence_train_observable_label_conflict` 失败关闭，不允许偶然 validation 过门
-形成候选。0.60 门、训练权重、投影器和运行权限均未改变。
-
-本阶段只完成训练机制、单元测试和组合数据只读验证。没有生成 clean candidate，没有写入
+本阶段只完成训练机制、测试和新组合数据只读验证。没有生成 clean candidate，没有写入
 registry，也没有完成不可变 review、D6 独立审计、D3 successor、物理结果或收益评价。
 v4 仍为 unregistered、development/shadow only，全部生产权限为 false；v3 未修改。
-2026-07-29 v4 专项 25/25、D4 全量 808/808 通过。
+2026-07-29 v4 专项 32/32、D4 全量 815/815 通过。
 
 ## 2026-07-29 区域规划资格与执行权限
 

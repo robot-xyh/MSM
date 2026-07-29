@@ -10,7 +10,7 @@ from __future__ import annotations
 from dataclasses import asdict, dataclass, field
 from hashlib import sha256
 import json
-from math import ceil, isclose, isfinite
+from math import ceil, isclose, isfinite, log
 from pathlib import Path
 import random
 import shutil
@@ -94,10 +94,13 @@ REGION_RESOURCE_V4_CLASS_BALANCE_SCHEMA = (
     "d4-region-resource-v4-train-only-class-balance-v1"
 )
 REGION_RESOURCE_V4_CONFIDENCE_BALANCE_SCHEMA = (
-    "d4-region-resource-v4-train-only-confidence-balance-v1"
+    "d4-region-resource-v4-train-only-confidence-balance-v2"
 )
 REGION_RESOURCE_V4_CONFIDENCE_IDENTIFIABILITY_SCHEMA = (
     "d4-region-resource-v4-train-only-confidence-identifiability-v1"
+)
+REGION_RESOURCE_V4_CONFIDENCE_LOSS_SCHEMA = (
+    "d4-region-resource-v4-fixed-threshold-logit-margin-v1"
 )
 REGION_RESOURCE_V4_CANDIDATE_FILENAME = "v4_shadow_candidate_manifest.json"
 REGION_RESOURCE_V4_CONFIG_FILENAME = "training_config.json"
@@ -137,6 +140,8 @@ _V4_RULE_CONFIG = RuleRegionResourcePolicyConfig(
 _V4_INFERENCE_TIMEOUT_S = 0.250
 _V4_POSITIVE_SAMPLE_WEIGHT_CAP = 8.0
 _V4_NONZERO_EDGE_WEIGHT_CAP = 32.0
+_V4_CONFIDENCE_HARD_NEGATIVE_WEIGHT_CAP = 32.0
+_V4_CONFIDENCE_LOGIT_MARGIN = 0.20
 _V4_ZERO_TARGET_TOLERANCE = 1.0e-12
 
 
@@ -540,18 +545,25 @@ class RegionResourceV4ConfidenceBalance:
     target_positive_count: int
     target_negative_count: int
     inconsistent_negative_count: int
+    executable_negative_count: int
     ordinary_negative_count: int
     raw_positive_sample_ratio: float
     raw_inconsistent_negative_ratio: float
+    raw_executable_negative_ratio: float
     positive_sample_weight: float
     inconsistent_negative_weight: float
+    executable_negative_weight: float
     negative_sample_weight: float
     positive_sample_weight_cap: float = _V4_POSITIVE_SAMPLE_WEIGHT_CAP
     inconsistent_negative_weight_cap: float = (
         _V4_POSITIVE_SAMPLE_WEIGHT_CAP
     )
+    executable_negative_weight_cap: float = (
+        _V4_CONFIDENCE_HARD_NEGATIVE_WEIGHT_CAP
+    )
     positive_sample_weight_clipped: bool = False
     inconsistent_negative_weight_clipped: bool = False
+    executable_negative_weight_clipped: bool = False
     weight_source_split: str = RegionLearningSplit.TRAIN.value
     validation_weight_fit_count: int = 0
     test_payload_weight_fit_count: int = 0
@@ -567,6 +579,7 @@ class RegionResourceV4ConfidenceBalance:
             "target_positive_count",
             "target_negative_count",
             "inconsistent_negative_count",
+            "executable_negative_count",
             "ordinary_negative_count",
             "validation_weight_fit_count",
             "test_payload_weight_fit_count",
@@ -585,6 +598,8 @@ class RegionResourceV4ConfidenceBalance:
             or self.target_negative_count
             != self.inconsistent_negative_count
             + self.ordinary_negative_count
+            or self.executable_negative_count
+            > self.inconsistent_negative_count
         ):
             raise ValueError(
                 "v4 confidence balance requires positive and negative "
@@ -601,11 +616,14 @@ class RegionResourceV4ConfidenceBalance:
         for name in (
             "raw_positive_sample_ratio",
             "raw_inconsistent_negative_ratio",
+            "raw_executable_negative_ratio",
             "positive_sample_weight",
             "inconsistent_negative_weight",
+            "executable_negative_weight",
             "negative_sample_weight",
             "positive_sample_weight_cap",
             "inconsistent_negative_weight_cap",
+            "executable_negative_weight_cap",
         ):
             value = float(getattr(self, name))
             if not isfinite(value) or value <= 0.0:
@@ -620,6 +638,10 @@ class RegionResourceV4ConfidenceBalance:
             or not isclose(
                 self.inconsistent_negative_weight_cap,
                 _V4_POSITIVE_SAMPLE_WEIGHT_CAP,
+            )
+            or not isclose(
+                self.executable_negative_weight_cap,
+                _V4_CONFIDENCE_HARD_NEGATIVE_WEIGHT_CAP,
             )
             or not isclose(self.negative_sample_weight, 1.0)
         ):
@@ -637,6 +659,15 @@ class RegionResourceV4ConfidenceBalance:
         expected_inconsistent_weight = min(
             raw_inconsistent_ratio,
             _V4_POSITIVE_SAMPLE_WEIGHT_CAP,
+        )
+        raw_executable_ratio = (
+            self.target_negative_count / self.executable_negative_count
+            if self.executable_negative_count
+            else 1.0
+        )
+        expected_executable_weight = min(
+            raw_executable_ratio,
+            _V4_CONFIDENCE_HARD_NEGATIVE_WEIGHT_CAP,
         )
         if not isclose(
             self.raw_positive_sample_ratio,
@@ -674,6 +705,24 @@ class RegionResourceV4ConfidenceBalance:
             raise ValueError(
                 "v4 confidence inconsistent-negative weight was altered"
             )
+        if not isclose(
+            self.raw_executable_negative_ratio,
+            raw_executable_ratio,
+            rel_tol=1.0e-12,
+            abs_tol=1.0e-12,
+        ):
+            raise ValueError(
+                "v4 confidence raw executable-negative ratio was altered"
+            )
+        if not isclose(
+            self.executable_negative_weight,
+            expected_executable_weight,
+            rel_tol=1.0e-12,
+            abs_tol=1.0e-12,
+        ):
+            raise ValueError(
+                "v4 confidence executable-negative weight was altered"
+            )
         if self.positive_sample_weight_clipped is not bool(
             raw_ratio > _V4_POSITIVE_SAMPLE_WEIGHT_CAP
         ):
@@ -686,6 +735,14 @@ class RegionResourceV4ConfidenceBalance:
         ):
             raise ValueError(
                 "v4 confidence inconsistent-negative clipping status mismatch"
+            )
+        if self.executable_negative_weight_clipped is not bool(
+            self.executable_negative_count > 0
+            and raw_executable_ratio
+            > _V4_CONFIDENCE_HARD_NEGATIVE_WEIGHT_CAP
+        ):
+            raise ValueError(
+                "v4 confidence executable-negative clipping status mismatch"
             )
         _require_sha256(
             self.train_label_inventory_sha256,
@@ -736,8 +793,9 @@ class RegionResourceV4BuildConfig:
     max_grad_norm: float = 1.0
     early_stopping_patience: int = 45
     confidence_epochs: int = 180
-    confidence_batch_size: int = 16
-    confidence_learning_rate: float = 1.0e-2
+    confidence_batch_size: int = 512
+    confidence_learning_rate: float = 3.0e-3
+    confidence_logit_margin: float = _V4_CONFIDENCE_LOGIT_MARGIN
     torch_num_threads: int = 1
     created_at_utc: str = "2026-07-29T00:00:00Z"
     candidate_id: str = REGION_RESOURCE_V4_CANDIDATE_ID
@@ -772,6 +830,7 @@ class RegionResourceV4BuildConfig:
             "weight_decay",
             "max_grad_norm",
             "confidence_learning_rate",
+            "confidence_logit_margin",
         ):
             value = float(getattr(self, name))
             if not isfinite(value) or value < 0.0:
@@ -780,6 +839,10 @@ class RegionResourceV4BuildConfig:
             self.learning_rate <= 0.0
             or self.max_grad_norm <= 0.0
             or self.confidence_learning_rate <= 0.0
+            or not isclose(
+                self.confidence_logit_margin,
+                _V4_CONFIDENCE_LOGIT_MARGIN,
+            )
         ):
             raise ValueError("v4 training rates are invalid")
         if not self.created_at_utc:
@@ -2973,6 +3036,9 @@ def _derive_v4_confidence_balance(
     inconsistent_negative_count = sum(
         not record[1] and not record[2] for record in records
     )
+    executable_negative_count = sum(
+        not record[1] and record[3] for record in records
+    )
     ordinary_negative_count = (
         negative_count - inconsistent_negative_count
     )
@@ -2984,6 +3050,11 @@ def _derive_v4_confidence_balance(
     raw_inconsistent_ratio = (
         negative_count / inconsistent_negative_count
         if inconsistent_negative_count
+        else 1.0
+    )
+    raw_executable_ratio = (
+        negative_count / executable_negative_count
+        if executable_negative_count
         else 1.0
     )
     label_inventory = [
@@ -3001,9 +3072,11 @@ def _derive_v4_confidence_balance(
         target_positive_count=positive_count,
         target_negative_count=negative_count,
         inconsistent_negative_count=inconsistent_negative_count,
+        executable_negative_count=executable_negative_count,
         ordinary_negative_count=ordinary_negative_count,
         raw_positive_sample_ratio=raw_ratio,
         raw_inconsistent_negative_ratio=raw_inconsistent_ratio,
+        raw_executable_negative_ratio=raw_executable_ratio,
         positive_sample_weight=min(
             raw_ratio,
             _V4_POSITIVE_SAMPLE_WEIGHT_CAP,
@@ -3011,6 +3084,10 @@ def _derive_v4_confidence_balance(
         inconsistent_negative_weight=min(
             raw_inconsistent_ratio,
             _V4_POSITIVE_SAMPLE_WEIGHT_CAP,
+        ),
+        executable_negative_weight=min(
+            raw_executable_ratio,
+            _V4_CONFIDENCE_HARD_NEGATIVE_WEIGHT_CAP,
         ),
         negative_sample_weight=1.0,
         positive_sample_weight_clipped=bool(
@@ -3020,6 +3097,11 @@ def _derive_v4_confidence_balance(
             inconsistent_negative_count > 0
             and raw_inconsistent_ratio
             > _V4_POSITIVE_SAMPLE_WEIGHT_CAP
+        ),
+        executable_negative_weight_clipped=bool(
+            executable_negative_count > 0
+            and raw_executable_ratio
+            > _V4_CONFIDENCE_HARD_NEGATIVE_WEIGHT_CAP
         ),
         train_label_inventory_sha256=_canonical_sha256(label_inventory),
     )
@@ -3158,6 +3240,204 @@ def _audit_v4_confidence_identifiability(
     }
 
 
+def _v4_confidence_sample_weights(
+    records: Sequence[
+        tuple[Any, bool, bool, bool, tuple[str, ...]]
+    ],
+    *,
+    balance: RegionResourceV4ConfidenceBalance,
+) -> tuple[float, ...]:
+    """Apply fixed TRAIN-derived weights to any audited split."""
+
+    weights: list[float] = []
+    for record in records:
+        if (
+            len(record) != 5
+            or type(record[1]) is not bool
+            or type(record[2]) is not bool
+            or type(record[3]) is not bool
+        ):
+            raise RegionResourceV4CandidateError(
+                "v4_confidence_weight_record_invalid"
+            )
+        if record[1]:
+            weight = balance.positive_sample_weight
+        elif record[3]:
+            weight = max(
+                balance.inconsistent_negative_weight
+                if not record[2]
+                else balance.negative_sample_weight,
+                balance.executable_negative_weight,
+            )
+        elif not record[2]:
+            weight = balance.inconsistent_negative_weight
+        else:
+            weight = balance.negative_sample_weight
+        if not isfinite(float(weight)) or float(weight) <= 0.0:
+            raise RegionResourceV4CandidateError(
+                "v4_confidence_sample_weight_invalid"
+            )
+        weights.append(float(weight))
+    return tuple(weights)
+
+
+def _v4_confidence_margin_loss(
+    model: SharedRegionGraphActorCritic,
+    records: Sequence[
+        tuple[Any, bool, bool, bool, tuple[str, ...]]
+    ],
+    *,
+    balance: RegionResourceV4ConfidenceBalance,
+    logit_margin: float,
+) -> Any:
+    """Return a weighted squared hinge around the immutable runtime gate."""
+
+    _require_torch()
+    if (
+        not records
+        or not isfinite(float(logit_margin))
+        or not isclose(float(logit_margin), _V4_CONFIDENCE_LOGIT_MARGIN)
+    ):
+        raise RegionResourceV4CandidateError(
+            "v4_confidence_logit_margin_invalid"
+        )
+    probabilities = torch.stack(
+        [model(record[0]).confidence for record in records]
+    ).reshape(-1)
+    if not bool(torch.isfinite(probabilities).all().item()):
+        raise RegionResourceV4CandidateError(
+            "v4_confidence_probability_nonfinite"
+        )
+    epsilon = torch.finfo(probabilities.dtype).eps
+    logits = torch.logit(
+        probabilities.clamp(min=epsilon, max=1.0 - epsilon)
+    )
+    threshold = REGION_RESOURCE_RUNTIME_CONFIDENCE_GATE_FIXED_THRESHOLD
+    threshold_logit = log(threshold / (1.0 - threshold))
+    positive_floor = threshold_logit + float(logit_margin)
+    negative_ceiling = threshold_logit - float(logit_margin)
+    targets = torch.tensor(
+        [record[1] for record in records],
+        dtype=torch.bool,
+        device=logits.device,
+    )
+    violations = torch.where(
+        targets,
+        torch.relu(positive_floor - logits),
+        torch.relu(logits - negative_ceiling),
+    )
+    sample_weights = torch.tensor(
+        _v4_confidence_sample_weights(records, balance=balance),
+        dtype=logits.dtype,
+        device=logits.device,
+    )
+    denominator = sample_weights.sum()
+    loss = (sample_weights * violations.square()).sum() / denominator
+    if not bool(torch.isfinite(loss).item()):
+        raise RegionResourceV4CandidateError(
+            "v4_confidence_fit_loss_nonfinite"
+        )
+    return loss
+
+
+def _v4_confidence_gate_accepted(metrics: Mapping[str, Any]) -> bool:
+    return bool(
+        int(metrics["target_positive_count"]) > 0
+        and int(metrics["target_negative_count"]) > 0
+        and int(metrics["positive_threshold_pass_count"]) > 0
+        and int(metrics["negative_threshold_pass_count"]) == 0
+        and int(metrics["inconsistent_threshold_pass_count"]) == 0
+        and int(metrics["executable_threshold_pass_count"]) > 0
+    )
+
+
+def _v4_confidence_threshold_counts(
+    train_metrics: Mapping[str, Any],
+    validation_metrics: Mapping[str, Any],
+) -> str:
+    return (
+        f"train_positive={train_metrics['positive_threshold_pass_count']},"
+        f"train_negative={train_metrics['negative_threshold_pass_count']},"
+        "train_inconsistent="
+        f"{train_metrics['inconsistent_threshold_pass_count']},"
+        "train_executable="
+        f"{train_metrics['executable_threshold_pass_count']},"
+        "validation_positive="
+        f"{validation_metrics['positive_threshold_pass_count']},"
+        "validation_negative="
+        f"{validation_metrics['negative_threshold_pass_count']},"
+        "validation_inconsistent="
+        f"{validation_metrics['inconsistent_threshold_pass_count']},"
+        "validation_executable="
+        f"{validation_metrics['executable_threshold_pass_count']}"
+    )
+
+
+def _v4_confidence_checkpoint_selection_key(
+    train_metrics: Mapping[str, Any],
+    validation_metrics: Mapping[str, Any],
+    *,
+    weighted_validation_loss: float,
+    epoch: int,
+) -> tuple[int, int, int, float, float, int, float, int]:
+    """Rank fixed-gate checkpoints without fitting on validation labels."""
+
+    if not isfinite(float(weighted_validation_loss)):
+        raise RegionResourceV4CandidateError(
+            "v4_confidence_checkpoint_loss_nonfinite"
+        )
+    if type(epoch) is not int or epoch <= 0:
+        raise RegionResourceV4CandidateError(
+            "v4_confidence_checkpoint_epoch_invalid"
+        )
+
+    split_rates: list[tuple[float, float]] = []
+    dual_class_splits = 0
+    for metrics in (train_metrics, validation_metrics):
+        positive_count = int(metrics["target_positive_count"])
+        negative_count = int(metrics["target_negative_count"])
+        if positive_count <= 0 or negative_count <= 0:
+            raise RegionResourceV4CandidateError(
+                "v4_confidence_checkpoint_requires_two_classes"
+            )
+        positive_pass = int(metrics["positive_threshold_pass_count"])
+        negative_false_pass = int(metrics["negative_threshold_pass_count"])
+        negative_hit = negative_count - negative_false_pass
+        positive_rate = positive_pass / positive_count
+        negative_rate = negative_hit / negative_count
+        split_rates.append((positive_rate, negative_rate))
+        dual_class_splits += int(positive_pass > 0 and negative_hit > 0)
+
+    all_rates = tuple(rate for pair in split_rates for rate in pair)
+    false_positive_count = sum(
+        int(metrics["negative_threshold_pass_count"])
+        for metrics in (train_metrics, validation_metrics)
+    )
+    both_accepted = bool(
+        _v4_confidence_gate_accepted(train_metrics)
+        and _v4_confidence_gate_accepted(validation_metrics)
+    )
+    return (
+        int(both_accepted),
+        int(_v4_confidence_gate_accepted(validation_metrics)),
+        dual_class_splits,
+        min(all_rates),
+        sum(all_rates) / len(all_rates),
+        -false_positive_count,
+        -float(weighted_validation_loss),
+        -epoch,
+    )
+
+
+def _v4_longest_true_run(values: Sequence[bool]) -> int:
+    longest = 0
+    current = 0
+    for value in values:
+        current = current + 1 if value else 0
+        longest = max(longest, current)
+    return longest
+
+
 def _fit_confidence_head(
     model: SharedRegionGraphActorCritic,
     loaded: LoadedRegionLearningDataset,
@@ -3166,6 +3446,7 @@ def _fit_confidence_head(
     projector: DeterministicResourceProjector,
     rule_policy: RuleRegionResourcePolicy,
 ) -> dict[str, Any]:
+    _require_torch()
     train_records = _confidence_records(
         model,
         loaded,
@@ -3192,82 +3473,19 @@ def _fit_confidence_head(
             )
     identifiability = _audit_v4_confidence_identifiability(train_records)
     balance = _derive_v4_confidence_balance(train_records)
-    for parameter in model.parameters():
-        parameter.requires_grad_(False)
-    for parameter in model.confidence_head.parameters():
-        parameter.requires_grad_(True)
-    optimizer = torch.optim.Adam(
-        model.confidence_head.parameters(),
-        lr=config.confidence_learning_rate,
-    )
-    order = list(range(len(train_records)))
-    randomizer = random.Random(config.random_seed + 401)
-    history: list[float] = []
-    for _ in range(config.confidence_epochs):
-        randomizer.shuffle(order)
-        weighted = 0.0
-        fitted_weight = 0.0
-        for offset in range(0, len(order), config.confidence_batch_size):
-            indices = order[offset : offset + config.confidence_batch_size]
-            optimizer.zero_grad()
-            probabilities = torch.stack(
-                [
-                    model(train_records[index][0]).confidence
-                    for index in indices
-                ]
-            )
-            targets = torch.tensor(
-                [float(train_records[index][1]) for index in indices],
-                dtype=probabilities.dtype,
-                device=probabilities.device,
-            )
-            sample_weights = torch.tensor(
-                [
-                    balance.positive_sample_weight
-                    if train_records[index][1]
-                    else balance.inconsistent_negative_weight
-                    if not train_records[index][2]
-                    else balance.negative_sample_weight
-                    for index in indices
-                ],
-                dtype=probabilities.dtype,
-                device=probabilities.device,
-            )
-            squared_error = (probabilities - targets).square()
-            denominator = sample_weights.sum()
-            loss = (squared_error * sample_weights).sum() / denominator
-            if not bool(torch.isfinite(loss).item()):
-                raise RegionResourceV4CandidateError(
-                    "v4_confidence_fit_loss_nonfinite"
-                )
-            loss.backward()
-            optimizer.step()
-            batch_weight = float(denominator.detach().cpu())
-            weighted += float(loss.detach().cpu()) * batch_weight
-            fitted_weight += batch_weight
-        history.append(weighted / fitted_weight)
-    for parameter in model.parameters():
-        parameter.requires_grad_(True)
-    model.eval()
-    train_metrics = _confidence_metrics(model, train_records)
-    validation_metrics = _confidence_metrics(model, validation_records)
-    threshold_counts = (
-        f"train_positive={train_metrics['positive_threshold_pass_count']},"
-        f"train_negative={train_metrics['negative_threshold_pass_count']},"
-        "train_inconsistent="
-        f"{train_metrics['inconsistent_threshold_pass_count']},"
-        "train_executable="
-        f"{train_metrics['executable_threshold_pass_count']},"
-        "validation_positive="
-        f"{validation_metrics['positive_threshold_pass_count']},"
-        "validation_negative="
-        f"{validation_metrics['negative_threshold_pass_count']},"
-        "validation_inconsistent="
-        f"{validation_metrics['inconsistent_threshold_pass_count']},"
-        "validation_executable="
-        f"{validation_metrics['executable_threshold_pass_count']}"
-    )
+    if len(train_records) > config.confidence_batch_size:
+        raise RegionResourceV4CandidateError(
+            "v4_confidence_full_batch_capacity_exceeded:"
+            f"train={len(train_records)},"
+            f"capacity={config.confidence_batch_size}"
+        )
     if not identifiability["accepted"]:
+        train_metrics = _confidence_metrics(model, train_records)
+        validation_metrics = _confidence_metrics(model, validation_records)
+        threshold_counts = _v4_confidence_threshold_counts(
+            train_metrics,
+            validation_metrics,
+        )
         raise RegionResourceV4CandidateError(
             "v4_confidence_train_observable_label_conflict:"
             f"keys={identifiability['conflicting_key_count']},"
@@ -3279,16 +3497,147 @@ def _fit_confidence_head(
             f"audit={identifiability['content_sha256']},"
             f"{threshold_counts}"
         )
-    if (
-        validation_metrics["positive_threshold_pass_count"] <= 0
-        or validation_metrics["negative_threshold_pass_count"] > 0
-        or validation_metrics["inconsistent_threshold_pass_count"] > 0
-        or validation_metrics["executable_threshold_pass_count"] <= 0
+
+    parameter_grad_state = {
+        name: parameter.requires_grad
+        for name, parameter in model.named_parameters()
+    }
+    for parameter in model.parameters():
+        parameter.requires_grad_(False)
+    for parameter in model.confidence_head.parameters():
+        parameter.requires_grad_(True)
+    optimizer = torch.optim.Adam(
+        model.confidence_head.parameters(),
+        lr=config.confidence_learning_rate,
+    )
+    best_key: tuple[int, int, int, float, float, int, float, int] | None = None
+    best_state: dict[str, Any] | None = None
+    best_epoch = 0
+    best_validation_loss = float("inf")
+    history: list[dict[str, Any]] = []
+    try:
+        for epoch in range(1, config.confidence_epochs + 1):
+            model.train()
+            optimizer.zero_grad(set_to_none=True)
+            train_loss_tensor = _v4_confidence_margin_loss(
+                model,
+                train_records,
+                balance=balance,
+                logit_margin=config.confidence_logit_margin,
+            )
+            train_loss_tensor.backward()
+            for parameter in model.confidence_head.parameters():
+                if parameter.grad is None or not bool(
+                    torch.isfinite(parameter.grad).all().item()
+                ):
+                    raise RegionResourceV4CandidateError(
+                        "v4_confidence_fit_gradient_nonfinite"
+                    )
+            optimizer.step()
+
+            model.eval()
+            train_metrics = _confidence_metrics(model, train_records)
+            validation_metrics = _confidence_metrics(
+                model,
+                validation_records,
+            )
+            with torch.no_grad():
+                validation_loss = float(
+                    _v4_confidence_margin_loss(
+                        model,
+                        validation_records,
+                        balance=balance,
+                        logit_margin=config.confidence_logit_margin,
+                    ).cpu()
+                )
+            selection_key = _v4_confidence_checkpoint_selection_key(
+                train_metrics,
+                validation_metrics,
+                weighted_validation_loss=validation_loss,
+                epoch=epoch,
+            )
+            checkpoint_accepted = bool(selection_key[0])
+            history.append(
+                {
+                    "epoch": epoch,
+                    "train_weighted_logit_margin_loss": float(
+                        train_loss_tensor.detach().cpu()
+                    ),
+                    "validation_train_weighted_logit_margin_loss": (
+                        validation_loss
+                    ),
+                    "train_positive_threshold_pass_count": (
+                        train_metrics["positive_threshold_pass_count"]
+                    ),
+                    "train_negative_threshold_pass_count": (
+                        train_metrics["negative_threshold_pass_count"]
+                    ),
+                    "train_inconsistent_threshold_pass_count": (
+                        train_metrics["inconsistent_threshold_pass_count"]
+                    ),
+                    "train_executable_threshold_pass_count": (
+                        train_metrics["executable_threshold_pass_count"]
+                    ),
+                    "validation_positive_threshold_pass_count": (
+                        validation_metrics["positive_threshold_pass_count"]
+                    ),
+                    "validation_negative_threshold_pass_count": (
+                        validation_metrics["negative_threshold_pass_count"]
+                    ),
+                    "validation_inconsistent_threshold_pass_count": (
+                        validation_metrics[
+                            "inconsistent_threshold_pass_count"
+                        ]
+                    ),
+                    "validation_executable_threshold_pass_count": (
+                        validation_metrics["executable_threshold_pass_count"]
+                    ),
+                    "fixed_gate_checkpoint_accepted": checkpoint_accepted,
+                }
+            )
+            if best_key is None or selection_key > best_key:
+                best_key = selection_key
+                best_epoch = epoch
+                best_validation_loss = validation_loss
+                best_state = {
+                    name: value.detach().cpu().clone()
+                    for name, value in model.confidence_head.state_dict().items()
+                }
+    finally:
+        for name, parameter in model.named_parameters():
+            parameter.requires_grad_(parameter_grad_state[name])
+    if best_state is None or best_key is None:
+        raise RegionResourceV4CandidateError(
+            "v4_confidence_fit_produced_no_checkpoint"
+        )
+    model.confidence_head.load_state_dict(best_state, strict=True)
+    model.eval()
+    train_metrics = _confidence_metrics(model, train_records)
+    validation_metrics = _confidence_metrics(model, validation_records)
+    threshold_counts = _v4_confidence_threshold_counts(
+        train_metrics,
+        validation_metrics,
+    )
+    if not bool(
+        _v4_confidence_gate_accepted(train_metrics)
+        and _v4_confidence_gate_accepted(validation_metrics)
     ):
         raise RegionResourceV4CandidateError(
             "v4_confidence_validation_gate_not_accepted:"
             f"{threshold_counts}"
         )
+    accepted_epochs = tuple(
+        bool(item["fixed_gate_checkpoint_accepted"]) for item in history
+    )
+    threshold = REGION_RESOURCE_RUNTIME_CONFIDENCE_GATE_FIXED_THRESHOLD
+    threshold_logit = log(threshold / (1.0 - threshold))
+    sample_weights = _v4_confidence_sample_weights(
+        train_records,
+        balance=balance,
+    )
+    threshold_counts = (
+        _v4_confidence_threshold_counts(train_metrics, validation_metrics)
+    )
     return {
         "target_definition": (
             "1 only when the frozen actor matches an external truth-free "
@@ -3301,14 +3650,49 @@ def _fit_confidence_head(
         "validation_sample_count": len(validation_records),
         "class_balance": balance.to_dict(),
         "identifiability_audit": identifiability,
+        "loss_schema": REGION_RESOURCE_V4_CONFIDENCE_LOSS_SCHEMA,
+        "loss_definition": (
+            "TRAIN-derived bounded sample weights times squared logit hinge "
+            "distance from the immutable 0.60 gate with a 0.20 margin"
+        ),
+        "fixed_threshold_logit": threshold_logit,
+        "positive_logit_floor": (
+            threshold_logit + config.confidence_logit_margin
+        ),
+        "negative_logit_ceiling": (
+            threshold_logit - config.confidence_logit_margin
+        ),
+        "full_batch_train_sample_count": len(train_records),
+        "full_batch_capacity": config.confidence_batch_size,
+        "train_sample_weight_minimum": min(sample_weights),
+        "train_sample_weight_maximum": max(sample_weights),
+        "checkpoint_selection_rule": (
+            "require fixed-gate acceptance on TRAIN and VALIDATION; then "
+            "maximize the lower positive-recall/negative-specificity class "
+            "rate and balanced class rate; minimize false-positive passes "
+            "and fixed TRAIN-weighted validation margin loss; prefer the "
+            "earlier epoch"
+        ),
+        "best_epoch": best_epoch,
+        "best_validation_train_weighted_logit_margin_loss": (
+            best_validation_loss
+        ),
+        "accepted_checkpoint_epoch_count": sum(accepted_epochs),
+        "longest_consecutive_accepted_checkpoint_epochs": (
+            _v4_longest_true_run(accepted_epochs)
+        ),
+        "best_checkpoint_fixed_gate_accepted": bool(best_key[0]),
         "history": history,
         "train": train_metrics,
         "validation": validation_metrics,
+        "final_threshold_counts": threshold_counts,
         "fixed_minimum_confidence": (
             REGION_RESOURCE_RUNTIME_CONFIDENCE_GATE_FIXED_THRESHOLD
         ),
         "confidence_head_only_parameter_update": True,
         "actor_frozen_during_confidence_fit": True,
+        "confidence_gradient_clipping_applied": False,
+        "train_weight_fit_count": len(train_records),
         "validation_weight_fit_count": 0,
         "test_payload_fit_count": 0,
         "truth_identifier_use_count": 0,
@@ -3402,6 +3786,10 @@ def _confidence_metrics(
         tuple[Any, bool, bool, bool, tuple[str, ...]]
     ],
 ) -> dict[str, Any]:
+    if not records:
+        raise RegionResourceV4CandidateError(
+            "v4_confidence_metrics_records_unavailable"
+        )
     probabilities: list[float] = []
     for graph, _, _, _, _ in records:
         with torch.no_grad():
@@ -3428,6 +3816,15 @@ def _confidence_metrics(
         ),
         "inconsistent_threshold_pass_count": sum(
             is_pass and not record[2]
+            for is_pass, record in zip(passed, records, strict=True)
+        ),
+        "projection_rejected_record_count": sum(
+            "actor_projection_clipped_or_rejected" in record[4]
+            for record in records
+        ),
+        "projection_rejected_threshold_pass_count": sum(
+            is_pass
+            and "actor_projection_clipped_or_rejected" in record[4]
             for is_pass, record in zip(passed, records, strict=True)
         ),
         "executable_threshold_pass_count": sum(

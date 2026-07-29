@@ -1,6 +1,6 @@
 # D4 分布式协同与降级接管计划
 
-## 2026-07-29 v4 类别平衡阶段计划
+## 2026-07-29 v4 observable-group 置信校准计划
 
 ### 已完成
 
@@ -12,44 +12,35 @@
 - validation checkpoint 选择优先保证正负两类均有命中，再最大化较低类别命中率和平衡
   命中率；同分时比较固定训练权重下的 validation loss、直接投影拒绝数和较早 epoch。
 - actor 审计保留全部记录。直接投影拒绝与投影后干预不变量拒绝分开统计，并写入负因清单。
-- confidence head 增加训练集专用有界权重。正类和动作不一致负类分别按训练集比例计算，
-  上限均为 8；普通负类为 1。固定 0.60 门和负类/不一致必须零越门的条件未修改。
-- 外部组合数据只读复核得到 actor train 正/负命中 59/60、278/290，validation 为
-  14/15、58/60；直接投影拒绝均为 0，干预不变量拒绝各 2。最佳 epoch 为 150。
-- confidence 阈值通过数在 train 为 59/11/11/70，在 validation 为 14/1/1/15，顺序为
-  positive/negative/inconsistent/executable。validation 仍有 1 条负类且不一致样本越过
-  0.60，训练链按合同失败关闭。
-- 已对 TRAIN confidence 输入执行精确可辨识性审计。350 条记录的 229 个在线图键中，
-  10 个键同时具有正、负标签，共 22 条记录（12 正、10 负）。validation 假阳性与 train
-  的两个正例使用完全相同的在线图，差异只存在于外部 target。
-- 新增 TRAIN-only 在线图指纹门。指纹只包含 confidence forward 消费的三个张量及其
-  shape/dtype 和固定架构，不含节点/边身份、seed、episode、target 或来源身份；冲突时
-  输出内容寻址的计数和固定门诊断，并以
-  `v4_confidence_train_observable_label_conflict` 失败关闭。validation/test 标签不参与
-  审计或拟合。
-- 专项 25/25、D4 全量 808/808 通过；未修改通用行为克隆、v3 registry、v4 注册常量或
-  生产权限。
+- 新 observable-group 数据的 272 个模型输入键不存在混标或 target conflict。actor
+  最佳 epoch 107；train 正/负命中 58/60、276/290，validation 为 13/15、58/60。
+- confidence 使用 TRAIN-only 有界权重。train 标签为 58/292；正类权重 5.034483，
+  16 条动作不一致负例权重上限为 8，14 条可执行错误硬负例权重为 20.857143、上限 32。
+- v4 私有损失采用固定 0.60 门的对数几率作为中心，并设置 0.20 平方间隔。置信头仍是
+  原线性 head；学习率固定 0.003，使用完整 TRAIN 批次。validation 不参与梯度、权重、
+  门限或间隔计算。
+- checkpoint 必须在 train/validation 同时满足
+  positive>0、negative=0、inconsistent=0、executable>0。全 no-op checkpoint 不参与
+  合格选择；合格项再按类别命中率、固定 TRAIN 权重 validation loss 和 epoch 排序。
+- 只读完整复跑形成 8 个合格 epoch，最长连续 7 个。最佳 epoch 66 的四类通过数为
+  train `12/0/0/12`、validation `4/0/0/4`。validation 权重拟合和 test payload
+  读取/拟合均为 0。
+- 专项 32/32、D4 全量 815/815 通过；通用行为克隆、v3、投影器、registry、固定
+  0.60 门和全部生产权限未修改。
 
 ### 当前 P1
 
-1. 当前首要 blocker 是外部组合数据的 TRAIN 标签不可辨识。相同在线输入被同时标为
-   transfer 正例和 no-op 负例；增加权重、替换损失或延长训练不能生成可靠区分。
-2. 需要从 clean commit 独立构建 v4 候选，并保存本次训练摘要、数据身份和全部源码摘要。
-   当前数据未通过可辨识性门，本阶段只读验证没有候选目录，不能用于登记。
-3. clean 制品仍需 D4 不可变 review、main 准入决策和 D6 独立审计。v4 五项注册摘要保持
+1. 需要从 clean commit 独立构建 v4 候选，并保存本次训练摘要、数据身份和全部源码摘要。
+   本阶段只读验证没有候选目录，不能用于登记。
+2. clean 制品仍需 D4 不可变 review、main 准入决策和 D6 独立审计。v4 五项注册摘要保持
    空值，全部生产权限保持 false。
-4. D3 successor、运行 ACK、D7/物理窗口、独立双臂非退化、正收益和扰动场景均未开始。
+3. D3 successor、运行 ACK、D7/物理窗口、独立双臂非退化、正收益和扰动场景均未开始。
 
 ### 下一步
 
-1. 由外部数据 owner 重新生成 target：同一在线图键必须使用同一确定性 target，或者把
-   真正决定 transfer/no-op 的可在线获得上下文字段加入正式 snapshot schema。seed、
-   episode 或未来结果不能作为补充分辨特征。
-2. 新数据先运行 TRAIN 可辨识性审计，再执行 actor/confidence 只读训练。test 继续封存，
-   validation 只做固定门验收，不能反推训练权重、参数或阈值。
-3. 只有可辨识性和 confidence 合同都通过后，才由 main 在 clean checkout 下运行正式
-   builder；失败时不保留候选、不写 registry。
-4. clean build 通过后由 D4 执行只读不可变 review，再交 main/D3/D6 完成后继、配对和
+1. 由 main 在 clean checkout 下使用同一数据和固定配置运行正式 builder；任何指标不复现
+   时删除暂存输出，保持未登记和规则回退。
+2. clean build 通过后由 D4 执行只读不可变 review，再交 main/D3/D6 完成后继、配对和
    收益证据。任一链路不完整时继续使用 v3/确定性规则。
 
 ## 2026-07-29 规划资格解耦计划

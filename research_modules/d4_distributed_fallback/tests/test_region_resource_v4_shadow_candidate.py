@@ -52,9 +52,14 @@ from d4_distributed_fallback.region_resource_v4_shadow_candidate import (
     _V4_PROJECTION,
     _V4_RULE_CONFIG,
     _audit_v4_confidence_identifiability,
+    _confidence_metrics,
+    _confidence_records,
     _derive_v4_actor_class_balance,
     _derive_v4_confidence_balance,
+    _v4_confidence_checkpoint_selection_key,
+    _v4_confidence_margin_loss,
     _fit_confidence_head,
+    _v4_confidence_sample_weights,
     _load_external_dataset_for_v4,
     _v4_confidence_observable_key,
     _v4_actor_metrics,
@@ -577,6 +582,7 @@ def test_v4_confidence_balance_is_train_only_bounded_and_content_bound() -> None
     assert balance.target_positive_count == 1
     assert balance.target_negative_count == 20
     assert balance.inconsistent_negative_count == 1
+    assert balance.executable_negative_count == 1
     assert balance.ordinary_negative_count == 19
     assert balance.raw_positive_sample_ratio == 20.0
     assert balance.positive_sample_weight == 8.0
@@ -584,6 +590,9 @@ def test_v4_confidence_balance_is_train_only_bounded_and_content_bound() -> None
     assert balance.raw_inconsistent_negative_ratio == 20.0
     assert balance.inconsistent_negative_weight == 8.0
     assert balance.inconsistent_negative_weight_clipped is True
+    assert balance.raw_executable_negative_ratio == 20.0
+    assert balance.executable_negative_weight == 20.0
+    assert balance.executable_negative_weight_clipped is False
     assert balance.negative_sample_weight == 1.0
     assert balance.weight_source_split == "train"
     assert balance.validation_weight_fit_count == 0
@@ -607,12 +616,35 @@ def test_v4_confidence_balance_is_train_only_bounded_and_content_bound() -> None
             positive_sample_weight=float("inf"),
             content_sha256="",
         )
+    with pytest.raises(
+        ValueError,
+        match="executable-negative weight was altered",
+    ):
+        replace(
+            balance,
+            executable_negative_weight=19.0,
+            content_sha256="",
+        )
     with pytest.raises(ValueError, match="fit from TRAIN only"):
         replace(
             balance,
             test_payload_weight_fit_count=1,
             content_sha256="",
         )
+
+    capped = _derive_v4_confidence_balance(
+        (
+            (None, True, True, True, ()),
+            (None, False, False, True, ("hard-negative",)),
+            *(
+                (None, False, True, False, ("ordinary-negative",))
+                for _ in range(39)
+            ),
+        )
+    )
+    assert capped.raw_executable_negative_ratio == 40.0
+    assert capped.executable_negative_weight == 32.0
+    assert capped.executable_negative_weight_clipped is True
 
 
 @pytest.mark.parametrize(
@@ -631,6 +663,116 @@ def test_v4_confidence_balance_rejects_nontrain_weight_source(
         match="v4_confidence_weights_train_split_only",
     ):
         _derive_v4_confidence_balance(records, split=split)
+
+
+@pytest.mark.parametrize(
+    "records",
+    (
+        ((None, False, True, False, ("no-op",)),),
+        ((None, True, True, True, ()),),
+    ),
+)
+def test_v4_confidence_balance_fails_closed_without_both_classes(
+    records: tuple[tuple[object, bool, bool, bool, tuple[str, ...]], ...],
+) -> None:
+    with pytest.raises(
+        RegionResourceV4CandidateError,
+        match="requires_positive_and_negative_train_labels",
+    ):
+        _derive_v4_confidence_balance(records)
+
+
+def test_v4_confidence_validation_weights_reuse_train_only_balance() -> None:
+    train_records = (
+        (None, True, True, True, ()),
+        (None, False, False, True, ("hard-negative",)),
+        *((None, False, True, False, ()) for _ in range(7)),
+    )
+    balance = _derive_v4_confidence_balance(train_records)
+    validation_records = (
+        *((None, True, True, True, ()) for _ in range(10)),
+        (None, False, False, True, ("hard-negative",)),
+    )
+
+    weights = _v4_confidence_sample_weights(
+        validation_records,
+        balance=balance,
+    )
+
+    assert weights[:10] == (8.0,) * 10
+    assert weights[-1] == 8.0
+    assert balance.validation_weight_fit_count == 0
+    assert balance.test_payload_weight_fit_count == 0
+
+
+def test_v4_confidence_margin_is_bound_to_fixed_point_six_gate() -> None:
+    torch = pytest.importorskip("torch")
+    threshold_logit = torch.logit(torch.tensor(0.60))
+    records = (
+        (
+            torch.sigmoid(threshold_logit + 0.20),
+            True,
+            True,
+            True,
+            (),
+        ),
+        (
+            torch.sigmoid(threshold_logit - 0.20),
+            False,
+            True,
+            False,
+            (),
+        ),
+    )
+    balance = _derive_v4_confidence_balance(records)
+    model = lambda probability: SimpleNamespace(confidence=probability)
+
+    loss = _v4_confidence_margin_loss(
+        model,
+        records,
+        balance=balance,
+        logit_margin=0.20,
+    )
+
+    assert float(loss) == pytest.approx(0.0, abs=1.0e-12)
+    with pytest.raises(
+        RegionResourceV4CandidateError,
+        match="v4_confidence_logit_margin_invalid",
+    ):
+        _v4_confidence_margin_loss(
+            model,
+            records,
+            balance=balance,
+            logit_margin=0.10,
+        )
+
+
+def test_v4_confidence_checkpoint_rejects_all_noop_preference() -> None:
+    all_noop = {
+        "target_positive_count": 4,
+        "target_negative_count": 8,
+        "positive_threshold_pass_count": 0,
+        "negative_threshold_pass_count": 0,
+        "inconsistent_threshold_pass_count": 0,
+        "executable_threshold_pass_count": 0,
+    }
+    accepted = {
+        **all_noop,
+        "positive_threshold_pass_count": 2,
+        "executable_threshold_pass_count": 2,
+    }
+
+    assert _v4_confidence_checkpoint_selection_key(
+        accepted,
+        accepted,
+        weighted_validation_loss=1.0,
+        epoch=20,
+    ) > _v4_confidence_checkpoint_selection_key(
+        all_noop,
+        all_noop,
+        weighted_validation_loss=0.0,
+        epoch=1,
+    )
 
 
 def test_v4_confidence_identifiability_detects_exact_train_collision(
@@ -868,6 +1010,56 @@ def test_v4_actor_audit_retains_projection_rejected_records(
             "actor_projection_clipped_or_rejected"
         ]
         == len(train_records)
+    )
+
+
+@pytest.mark.parametrize(
+    "split",
+    (RegionLearningSplit.TRAIN, RegionLearningSplit.VALIDATION),
+)
+def test_v4_confidence_audit_retains_projection_rejected_records(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    split: RegionLearningSplit,
+) -> None:
+    pytest.importorskip("torch")
+    dataset, _ = _dataset(tmp_path)
+    loaded, _, _ = _actor_records(dataset)
+    projector, rule_policy = _policies()
+    monkeypatch.setattr(
+        LearnedRegionResourcePolicy,
+        "recommend_raw",
+        lambda _self, snapshot: _transfer_proposal(
+            snapshot,
+            count=2,
+        ),
+    )
+    config = _small_config()
+    model = SharedRegionGraphActorCritic(
+        hidden_dim=config.hidden_dim,
+        message_passing_steps=config.message_passing_steps,
+    )
+
+    records = _confidence_records(
+        model,
+        loaded,
+        split=split,
+        projector=projector,
+        rule_policy=rule_policy,
+    )
+    metrics = _confidence_metrics(model, records)
+
+    assert len(records) > 0
+    assert all(
+        "actor_projection_clipped_or_rejected" in record[4]
+        for record in records
+    )
+    assert metrics["projection_rejected_record_count"] == len(records)
+    assert (
+        metrics["negative_reason_inventory"][
+            "actor_projection_clipped_or_rejected"
+        ]
+        == len(records)
     )
 
 

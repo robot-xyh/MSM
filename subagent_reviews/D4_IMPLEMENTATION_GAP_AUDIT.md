@@ -1,6 +1,6 @@
 # D4 实现差距审计：分布式协同与降级接管
 
-## 2026-07-29 v4 类别平衡与置信门 GAP
+## 2026-07-29 v4 observable-group 置信门 GAP
 
 - **无新增 P0。** projector、同键 R0、0.10 备用比例、1 个备用资源、单边最多 1、
   transfer 总上限、0.60 置信门、OOD、fixture 和全部权限边界均未修改。v4 未登记，
@@ -14,34 +14,32 @@
 - **已关闭 D4 内 P1：拒绝样本被过滤。** train/validation 中直接投影拒绝和投影后干预
   不变量拒绝均保留并进入负因清单。当前只读结果直接投影拒绝为 0/0，干预不变量拒绝为
   2/2。
-- **只读证据。** actor train 正/负命中 59/60、278/290，validation 为
-  14/15、58/60，最佳 epoch 150。test episode 加载数和 test 权重拟合数均为 0。
-- **已实现但未关闭 P1：confidence 类别平衡。** train confidence 正/负标签为 59/291，
-  正类权重 4.932203；13 条不一致负例权重按上限 8 截断，普通负例为 1。validation/test
-  不参与拟合权重。
-- **当前 blocker。** 固定 0.60 门下 train 的
-  positive/negative/inconsistent/executable 通过数为 59/11/11/70，validation 为
-  14/1/1/15。validation 仍有 1 条负类且不一致样本越门，既有零容忍条件未通过，流程
-  正确失败关闭。
-- **已关闭 D4 内 P1：confidence 假阳性原因不可审计。** 新增 TRAIN-only 在线图指纹
-  审计。350 条 TRAIN confidence 记录形成 229 个图键，其中 10 个键同时含正、负标签，
-  覆盖 22 条记录（12 正、10 负）。指纹只绑定三个模型输入张量及 shape、dtype、架构，
-  不含节点/边身份、seed、episode、target、来源身份或未来结果；validation/test 标签
-  使用数为 0。
-- **可复现结构原因。** validation seed 90、frame 2 与 train seeds 2、46 的完整在线
-  图输入相同，但外部 target 分别要求 no-op 和 transfer。180 个固定 confidence epoch
-  均保持 validation 14/1/1/15，未出现可接受 checkpoint。该冲突不能通过类别权重或损失
-  调整稳健解决。
+- **只读 Actor 证据。** 新数据 SHA 为 `b31fc43f...7fb8c`。actor 最佳 epoch 107；
+  train 正/负命中 58/60、276/290，validation 为 13/15、58/60。test episode 加载数
+  和 test 权重拟合数均为 0。
+- **已关闭 D4 内 P1：confidence 硬负例被总体 loss 掩盖。** train confidence 标签为
+  58/292。正类权重 5.034483；16 条不一致负例使用上限 8；14 条“可执行但错误”负例
+  使用 TRAIN 比例 `292/14=20.857143`，上限 32；普通负例为 1。
+- **已关闭 D4 内 P1：固定门 checkpoint 不稳定。** v4 线性置信头采用固定 0.60 门、
+  0.20 对数几率平方间隔和 0.003 学习率的完整 TRAIN 批次。8 个 epoch 通过全部固定
+  门，最长连续 7 个；最佳 epoch 66 的 train 四类计数为 `12/0/0/12`，validation 为
+  `4/0/0/4`。
+- **已关闭 D4 内 P1：confidence 假阳性原因不可审计。** TRAIN-only 在线图指纹只绑定
+  三个模型输入张量及 shape、dtype、架构，不含节点/边身份、seed、episode、target、
+  来源身份或未来结果。旧数据的 350 条记录曾形成 229 个键和 10 个冲突键；该门促使
+  外部导出器修正分组标注。
+- **可辨识性 blocker 已由新数据消除。** 272 个 confidence 模型输入键中，混标、同键
+  R0 target conflict 和 positive target conflict 均为 0。旧数据的 10 个冲突键仍作为
+  历史失败证据，不再代表本次输入。
 - **新增失败关闭门。** 任一 TRAIN 同输入异标签冲突都会触发
   `v4_confidence_train_observable_label_conflict`，错误包含冲突计数、审计 SHA-256 和
   固定门计数。冲突记录不删除，0.60 门不调整。
 - **开放 P1。** clean candidate build、候选制品、不可变 review、registry、D6 独立
   审计、D3 successor、D7/物理窗口、双臂非退化与收益均未完成。当前只可声明训练机制
   和只读组合数据验证完成。
-- **开放 P1：重新生成可辨识数据。** 同一在线图键必须使用同一确定性 target，或在
-  snapshot 中增加真实在线可用的决策上下文。不得用 seed、episode 或 future outcome
-  区分标签。新数据通过 TRAIN 可辨识性审计前不启动 clean build。
-- **验证。** 2026-07-29 v4 专项 25/25、D4 全量 808/808 通过；仅有既有 Matplotlib
+- **泄漏边界。** 所有权重、间隔和梯度仅来自 TRAIN。validation 仅用于 checkpoint
+  排序和固定门验收；`validation_weight_fit_count=0`、`test_payload_fit_count=0`。
+- **验证。** 2026-07-29 v4 专项 32/32、D4 全量 815/815 通过；仅有既有 Matplotlib
   `Axes3D` 环境警告。
 
 ## 2026-07-29 规划资格与执行权限 GAP
@@ -90,11 +88,11 @@
 - **验证。** 2026-07-29 v4 专项 11/11、D4 全量 780/780 通过；仅有既有 Matplotlib
   `Axes3D` 环境警告。验证对象是 builder/framework 和受控 fixture，不是 AirSim、
   clean-build 模型或实飞证据。
-- **开放 P1：clean build。** 外部组合数据和来源证据已用于只读训练机制验证，但
-  confidence 尚未通过固定门。clean commit 构建、模型/manifest/数据集不可变登记均未完成。
-- **部分关闭 P1：模型可执行差异。** 只读 actor 已在 train/validation 形成双类命中，
-  证明学习模型不再全 no-op；confidence 仍失败，且没有 clean candidate、运行采用或
-  successor，因此该项不能按正式候选能力关闭。
+- **开放 P1：clean build。** 新 observable-group 数据已在只读训练中通过 confidence
+  固定门，但 clean commit 构建、模型/manifest/数据集不可变登记仍未完成。
+- **部分关闭 P1：模型可执行差异。** 只读 actor 和 confidence 已分别形成双类命中及
+  固定门合格 checkpoint；仍没有 clean candidate、运行采用或 successor，因此该项不能
+  按正式候选能力关闭。
 - **开放 P1：后继和收益。** D3 successor、新目标实际绑定、ACK、D7/物理窗口、独立
   双臂 episode、D6 非退化/正收益、扰动多 seed 和正式 holdout 均未完成。证据形成前
   admission 保持 closed，rule fallback required。

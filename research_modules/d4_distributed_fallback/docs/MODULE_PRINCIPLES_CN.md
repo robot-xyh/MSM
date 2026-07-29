@@ -1,6 +1,6 @@
 # 分布式协同与降级接管模块原理（模块编号 D4）
 
-## 2026-07-29 v4 类别平衡原理
+## 2026-07-29 v4 observable-group 置信校准原理
 
 v4 正样本表示外部 target 在同一快照和同键规则基线 \(R_0\) 下形成安全可执行差异，
 no-op 表示负样本。训练集正、负样本数记为 \(N_+\) 和 \(N_-\)。正样本权重为
@@ -19,56 +19,40 @@ w_e^+=\min\left(\frac{E_0}{E_+},32\right),\qquad w_e^0=1.
 模型选择和审计，test payload 不加载。权重对象绑定训练标签清单摘要；非有限值、篡改、
 缺少任一类别或试图用 validation/test 拟合权重时立即拒绝。
 
-checkpoint 选择使用字典序规则。首先要求 validation 同时存在 actor 正类命中和负类命中，
-然后最大化较低类别命中率与两类平均命中率。仍同分时，依次最小化固定 train 权重计算的
-validation loss、直接投影拒绝数，并选择较早 epoch。该规则避免总体 no-op loss 把全
-no-op 模型选为最佳模型。
+checkpoint 选择使用字典序规则，先要求 validation 同时命中正负两类，再比较较低类别
+命中率、平衡命中率、固定 train 权重 loss 和 epoch。新数据的 actor 最佳 epoch 107，
+train 正/负命中 58/60、276/290，validation 为 13/15、58/60。拒绝记录没有被过滤。
 
-组合数据 train 含 60 个正例、290 个负例，以及 71 条非零边、3849 条零边。因此
-\(w_+=4.833333\)，\(w_e^+=32\)。最佳 epoch 150 的 actor 在 train 命中
-59/60、278/290，在 validation 命中 14/15、58/60。两个 split 的直接投影拒绝均为 0，
-投影后干预不变量拒绝各为 2。拒绝记录没有被过滤，继续进入负因清单。
-
-冻结 actor 后，confidence 正类表示 actor 精确匹配外部安全差异 target。train 的
-confidence 正/负标签为 59/291；正类权重为 4.932203。13 条动作不一致负例单独加权，
-按上限 8 截断，普通负类权重为 1。validation/test 不参与权重计算。固定 0.60 门仍要求
-正类和可执行差异至少有一条通过，负类和动作不一致样本通过数必须为 0。实际 validation
-通过数为 14/1/1/15，因此 confidence 未验收，整个构建流程失败关闭。
-
-该假阳性对应 validation seed 90、frame 2。它与 train seeds 2、46 的完整在线图输入
-相同，模型的节点表示、边表示和 actor 输出也相同；外部 target 在 validation 要求 no-op，
-在两个 train 样本中要求 transfer。设在线输入为 \(g\)，confidence 标签为 \(y\)，数据
-同时包含
-
-\[
-(g,y=1),\qquad(g,y=0).
-\]
-
-任意确定性在线置信函数 \(c(g)\) 对两条记录输出相同。调整类别权重、损失形式或训练轮数
-不能同时满足两种标签。扫描全部 180 个 confidence epoch 也没有出现满足固定门的
-checkpoint。
-
-为防止模型偶然过门，v4 对 TRAIN 中 confidence forward 实际消费的张量生成内容指纹
+置信可辨识性键为
 
 \[
 k(g)=H(\mathcal{A},X_V,X_E,A,S,D),
 \]
 
-其中 \(\mathcal{A}\) 是固定图网络架构，\(X_V\) 和 \(X_E\) 是节点与边特征，\(A\) 是
-边索引，\(S\) 和 \(D\) 是三个张量的 shape 与 dtype。节点名称、边名称和 edge reference
-等身份元数据不进入 forward，也不进入指纹。指纹同样不含 seed、episode、target、来源
-身份或未来结果。相同指纹同时出现正、负标签时，数据集在当前模型输入下不可辨识。组合
-数据的 350 条 TRAIN confidence 记录形成
-229 个指纹，其中 10 个冲突指纹覆盖 22 条记录（12 正、10 负）。审计内容摘要为
-`d8a844c6...0825`，validation/test 标签使用数为 0。
+其中 \(\mathcal{A}\) 是固定图网络架构，\(X_V\)、\(X_E\)、\(A\) 分别是节点特征、边特征
+和边索引，\(S,D\) 表示 shape 与 dtype。节点或边身份、seed、episode、target 和来源
+身份不进入键。新 observable-group 数据形成 272 个键，混标和 target conflict 均为 0。
 
-该门不会删除冲突样本，也不会把 target 注入模型特征。冲突数据继续完成固定诊断计数后
-失败关闭。后续数据必须统一同键 target，或显式增加真实运行时可获得、能够决定
-transfer/no-op 的上下文；不能使用 seed 或 episode 身份修补标签。
+冻结 actor 后，confidence train 标签为 58 正、292 负。14 条“可执行但错误”负例是
+安全门最危险的样本，其 TRAIN-only 权重为
 
-这些结果只证明类别平衡机制可以使 actor 摆脱全 no-op，并证明置信门仍能阻断不合格模型。
-它们不构成 clean candidate、登记、D3 后继、D6 非退化或收益证据。v4 的生产权限继续为
-false，v3 不受影响。
+\[
+w_{\mathrm{hard}}
+=\min\left(\frac{292}{14},32\right)
+=20.857143.
+\]
+
+正类权重为 5.034483，16 条动作不一致负例使用上限 8，普通负例为 1。validation/test
+不参与权重计算。
+
+固定置信门 \(p_0=0.60\) 转成 logit 中心 \(z_0=\log(p_0/(1-p_0))\)。训练设置
+0.20 间隔：正类向 \(z_0+0.20\) 推进，负类向 \(z_0-0.20\) 推进，只累计边界内侧的
+平方距离。该目标直接对应运行门，不改变 0.60。模型仍使用原线性 confidence head。
+
+完整复跑有 8 个合格 epoch，最长连续 7 个。最佳 epoch 66 的
+positive/negative/inconsistent/executable 计数为 train `12/0/0/12`、validation
+`4/0/0/4`。这些结果只证明训练机制和固定门验收在该只读数据上成立；clean candidate、
+登记、D3 后继、D6 审计和收益仍未完成。生产权限继续为 false，v3 不受影响。
 
 ## 2026-07-29 规划资格模型
 

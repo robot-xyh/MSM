@@ -1,5 +1,20 @@
 # D4 分布式降级与接管实验报告
 
+## 2026-07-29 v4 observable-group 只读置信校准
+
+本轮只读加载外部数据 `b31fc43f...7fb8c`，不调用候选 writer。数据含 TRAIN 350 帧和
+VALIDATION 75 帧；test payload 读取和拟合均为 0。actor 最佳 epoch 107，train 正/负
+命中 58/60、276/290，validation 为 13/15、58/60。
+
+confidence train 标签为 58 正、292 负。14 条可执行错误硬负例的 TRAIN-only 权重为
+20.857143，上限 32。原线性 head 使用固定 0.60 门、0.20 对数几率平方间隔和 0.003
+学习率。完整复跑有 8 个合格 epoch，最长连续 7 个；最佳 epoch 66 的四类通过数为
+train `12/0/0/12`、validation `4/0/0/4`。
+
+本结果只证明训练机制和 validation 固定门验收。没有 clean candidate、不可变 review、
+registry 登记、D3 successor、D6 独立审计、运行采用或收益证据。v4 全部生产权限仍为
+false，v3 和固定 0.60 门未修改。专项 32/32、D4 全量 815/815 通过。
+
 ## 2026-07-29 D6 v2b 隔离双臂审计
 
 ### 场景与验收
