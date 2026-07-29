@@ -4094,3 +4094,51 @@ fault generation fence 直接抛出 stale rejection，不会刷新或延长租�
 A2 普通重规划负例同步 R0 的 owner、epoch 和 lease 后再构造不可区分候选。候选只复制
 assignment 而保留不同 authority 时，不再被错误视为与 R0 相同。专项结果为 A2
 `16 passed`、区域提示/身份/围栏 `51 passed`，D3 全量 `618 passed, 1 skipped`。
+
+## 72. 规划专用区域转移的因果合同测试（2026-07-29）
+
+专项直接调用现有 `AssignmentPlanner.plan()`，没有建立测试专用求解器。执行顺序为：
+
+```text
+source = plan(input_0, publish=true)
+R0 = plan(input_1, previous_plan=source, hint=None, publish=false)
+treatment = plan(
+    input_1,
+    previous_plan=source,
+    regional_planning_hint=validated_hint,
+    publish=true,
+)
+```
+
+`input_1` 对 R0 和 treatment 完全相同。B 区原资源变为 unavailable；A 区允许向 B 区
+新增转移一个未承诺资源；C 区进入 hold 并保留仍然 hard-safe 的来源绑定。提示仍受统一
+center owner、source epoch、10 秒 lease、配额守恒、来源承诺、reserve 和可达性检查。
+
+测试先提取业务绑定集合，再读取公开执行签名：
+
+```text
+source bindings    = {T-A->R-A0, T-B->R-B0, T-C->R-C0}
+R0 bindings        = {T-A->R-A0, T-C->R-C1}
+treatment bindings = {T-A->R-A0, T-B->R-A1, T-C->R-C0}
+
+unassigned(source, R0, treatment) = ({}, {T-B}, {})
+assignment_count                 = (3, 2, 3)
+version                          = (1, 2-candidate, 2-published)
+```
+
+验收同时要求：
+
+```text
+execution_signature(treatment) != execution_signature(source)
+execution_signature(treatment) != execution_signature(R0)
+treatment_bindings - source_bindings == {T-B->R-A1}
+covered_targets(treatment) - covered_targets(R0) == {T-B}
+treatment.previous_plan_id == source.plan_id
+```
+
+这些断言把计划身份推进与真实业务变化分开。R0 的版本 2 只表示它是 source 的下一代
+候选，`plan_published=false`；treatment 也是 source 的下一代候选，并以
+`plan_published=true` 成为严格后继。两者不是版本 2 和版本 3 的串行关系。
+
+区域提示文件 `34 passed`，D3 全量为 `618 passed, 1 skipped`。本项未发现规划器实现
+缺陷，因此只增强测试和证据文档。

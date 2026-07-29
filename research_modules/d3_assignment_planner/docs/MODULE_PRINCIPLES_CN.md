@@ -1933,3 +1933,27 @@ reserve ratio 是新增转移的安全余量；没有具体备用 roster 时，�
 权限字段，不修改租约截止时间。租约到期、owner 明确失活、同身份代次篡改或故障代次围栏
 均阻断刷新。A2 候选和同输入规则基线只有在相同权限作用域下执行签名相同，才能判定为
 不可区分。
+
+## 区域转移的三臂因果原则（2026-07-29）
+
+区域提示形成新计划不等于形成可归因干预。D3 使用 source、同输入 R0 和 treatment 三份
+计划分离普通输入变化与区域提示作用。R0 与 treatment 必须读取相同航迹、资源、时刻和
+source plan；R0 不带区域提示且不发布，treatment 才消费经过来源、owner、epoch、lease、
+reserve、可达性和转移额度验证的提示。
+
+因果判断同时检查规范执行签名和业务绑定。至少满足：
+
+\[
+\operatorname{Sig}(T)\ne\operatorname{Sig}(S),\qquad
+\operatorname{Sig}(T)\ne\operatorname{Sig}(R_0)
+\]
+
+并且 treatment 相对 source 或 R0 存在真实 target-resource 新绑定、目标覆盖变化、
+未分配库存变化或联盟执行变化。只改变计划号、版本、租约文本或审计 metadata 不构成
+intervention。R0 可以因资源失效等普通输入变化形成自己的下一版本候选，但因
+`publish=False` 不推进当前发布谱系。
+
+严格 treatment 必须以 `source.version+1` 发布，并由 `previous_plan_id` 指回 source。
+同一版本号的未发布 R0 与已发布 treatment 是并列候选，不是两个连续版本。后续消费者只能
+采用已发布 treatment；R0 只用于反事实审计。该规则不授予 D4 assignment、coalition、
+takeover 或 control execution authority。

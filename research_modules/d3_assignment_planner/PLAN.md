@@ -2352,3 +2352,42 @@ A2 successor 专项 `16 passed`；区域提示、身份和围栏组合 `51 passe
 
 `docs/AIRSIM_INTEGRATION_PLAN.md` 已检查。本项不改变 AirSim DTO、settings 或 episode
 接口，因此不修改。M-to-N 调度专项不受影响。
+
+## 65. 规划专用区域转移因果合同（2026-07-29）
+
+### 已完成
+
+1. [x] 在 D3 区域提示专项中用同一 planner、同一下一周期输入和同一 source plan 构造
+   source、未发布同输入 R0 和已发布 treatment。
+2. [x] 使用公开 `AssignmentPlan.execution_signature()` 比较三份计划，不以
+   `plan_id`、版本、租约或审计 metadata 的变化代替执行干预。
+3. [x] 明确断言三份计划的 target-resource 绑定集合、assignment 数量、未分配目标集合、
+   `previous_plan_id`、版本连续性和发布状态。
+4. [x] 证明 treatment 相对 source 新增 `T-B->R-A1`，相对 R0 恢复 `T-B` 目标覆盖；
+   source/R0/treatment 分别为 `3/2/3` 条 assignment，未分配集合分别为
+   `空/{T-B}/空`。
+5. [x] 保持 center owner、source epoch、10 秒 lease、跨区许可 1、区域 hold、来源承诺、
+   reserve、可达性和 stale plan 门限；未改变 Hungarian、需求槽、迟滞或安全回退。
+6. [x] 接收 main 的 20v20、8 区域、seed 29 集成上下文：17 条绑定经一次合法规划转移
+   形成 18 条严格后继绑定，未分配目标由 3 降到 2，在线真值为 0，D4 各执行权限为 false。
+7. [x] main 已将 seed 29 正例固化到永久 module-stack 回归，并增加中心在 `t=2.0`
+   发生 fault generation 变化时阻断规划专用转移的负例。
+8. [x] main 两项专项测试通过；scalable world 与 module stack 全量 `100 passed`，
+   D4 全量 `794 passed`。
+
+### 验收
+
+区域提示专项 `34 passed`。D3 全量收集 619 项，结果为
+`618 passed, 1 skipped`；唯一跳过是可选 OR-Tools，另有既有 Matplotlib 三维导入警告。
+本项没有修改 D3 生产实现。
+
+### 后续
+
+1. [ ] D6 在保持同输入 R0 的条件下审计 advisory、D3 消费、严格后继和真实新 binding
+   的完整链路。
+2. [ ] D4 v4 仍未注册。只有 clean、truth-free 候选及独立配对多 seed 证据完成后，才能
+   评估模型相对规则基线的收益；当前合同正例不能替代该证据。
+
+`docs/AIRSIM_INTEGRATION_PLAN.md` 已检查。本项没有 AirSim DTO、settings、episode 或控制
+接口变化，因此不修改。M-to-N 专项也已检查；本项没有需求槽、联盟规模、成员角色或到达
+调度变化，因此不修改。

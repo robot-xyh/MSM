@@ -1919,3 +1919,42 @@ same-identity evaluation refresh，完整 episode 成功写盘，online truth �
 同步 R0 权属后，仍以 `a2_effect_not_distinct_from_r0` 拒绝普通重规划误归因。A2 专项
 `16 passed`，区域提示/身份/围栏组合 `51 passed`，D3 全量
 `618 passed, 1 skipped`。该结果验证运行合同，不代表物理收益或 A2 策略性能。
+
+## 区域转移三臂因果试验（2026-07-29）
+
+### 条件
+
+试验使用 D3 自有的三区域确定性夹具。source 在版本 1 发布。下一周期保持相同目标输入，
+将 B 区原资源置为不可用，保留 A 区一个可转移资源，并改变 C 区两个资源的相对成本。
+同一 planner 先生成不带区域提示且不发布的 R0，再从同一 source 消费一份合法规划提示。
+提示允许 A 向 B 转移一个资源，并要求 C 区 hold。
+
+### 结果
+
+| 计划 | 版本与发布状态 | 绑定集合 | 数量 | 未分配 |
+|---|---|---|---:|---|
+| source | v1，已发布 | `T-A->R-A0`、`T-B->R-B0`、`T-C->R-C0` | 3 | 空 |
+| 同输入 R0 | v2 候选，未发布 | `T-A->R-A0`、`T-C->R-C1` | 2 | `T-B` |
+| treatment | v2 严格后继，已发布 | `T-A->R-A0`、`T-B->R-A1`、`T-C->R-C0` | 3 | 空 |
+
+treatment 的 `execution_signature()` 同时区别于 source 和 R0。相对 source 的新增绑定为
+`T-B->R-A1`，相对 R0 新增覆盖目标 `T-B`。treatment 的前序计划精确指向 source，owner、
+epoch、lease、转移额度、hold 和硬安全门均通过。
+
+main 已把 20v20、8 区域、seed 29 固化为永久跨模块正例。source 为 17 条 assignment、
+3 个未分配目标；一次 `region-000 -> region-001`、数量 1 的规划转移后，后继为 18 条
+assignment、2 个未分配目标，计划版本由 1 递增到 2。在线真值使用为 0，D4 的四类执行
+权限均为 false。配套负例在 `t=2.0` 注入中心 fault generation 变化，规划专用转移被
+阻断。main 两项专项测试通过；scalable world 与 module stack 全量 `100 passed`，D4
+全量 `794 passed`。
+
+### 判断
+
+D3 已证明该类区域提示可以产生可辨识的严格后继，且变化落实到新绑定和目标覆盖。模块
+证据没有依赖计划号或 metadata 刷新。main 的永久正例与故障代际负例已关闭该链路的
+跨模块接线和失败关闭验证。单 seed 仍不能证明 v4 学习候选收益，也不能替代 D6 同键
+多 seed 非退化或物理结果。
+
+区域提示专项 `34 passed`，D3 全量收集 619 项，结果为
+`618 passed, 1 skipped`。唯一跳过是可选 OR-Tools；既有 Matplotlib 三维导入警告不影响
+结果。

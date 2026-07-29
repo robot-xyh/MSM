@@ -1832,3 +1832,41 @@ D4、D6 后续统计。owner 活性和 fault generation 变化必须继续通过
 fence 输入；D3 不从无提示状态自行推断外部节点健康。
 
 AirSim 集成计划已检查；无 DTO、settings 或控制接口变化，不修改。M-to-N 专项不受影响。
+
+## 61. 规划专用区域转移因果审计 GAP 更新（2026-07-29）
+
+### 已关闭的 D3 P1
+
+区域提示已有严格后继合同，但原专项没有在一个测试中完整列出 source、同输入 R0 和
+treatment 的规范执行签名、绑定集合、assignment 数量与未分配库存，存在把身份刷新误报
+为 intervention 的审计风险。
+
+D3 现用同一下一周期输入和同一 source plan 构造三臂。source 为 3 条绑定；未发布 R0
+因 B 区资源不可用降为 2 条，`T-B` 未分配；treatment 消费一个合法 A 到 B 转移后恢复
+3 条，并形成新绑定 `T-B->R-A1`。treatment 执行签名同时区别于 source 和 R0，目标覆盖
+相对 R0 增加 `T-B`。R0 和 treatment 都是 source 的 `version+1` 候选，只有 treatment
+发布；没有通过机械升版、lease 刷新或 metadata 变化制造干预。
+
+owner/version/epoch/lease、来源承诺、reserve、可达性、资源唯一性、hold 和 stale plan
+门限均保持。未发现 D3 实现缺陷。区域提示专项 `34 passed`，D3 全量
+`618 passed, 1 skipped`。本轮没有新增 P0。
+
+### 已完成的跨模块证据
+
+main 已在 `scalable_3d_simulation/tests/test_module_stack.py` 固化 20v20、8 区域、
+seed 29 永久正例。该正例从 17 条绑定形成 18 条严格后继绑定，未分配目标由 3 降到 2，
+在线真值为 0，D4 各执行权限为 false。配套负例在 `t=2.0` 注入中心 fault generation
+变化，并确认规划专用转移失败关闭。
+
+main 两项专项测试通过；scalable world 与 module stack 全量 `100 passed`，D4 全量
+`794 passed`。因此“固化永久正例”和“增加真实故障代际负例”不再是开放 P1。
+
+### 保持开放的跨模块 P1
+
+1. D6 需独立连接 advisory、消费、D3 successor 和新 binding，并保留同输入 R0 与
+   非退化口径。
+2. D4 v4 仍未注册，当前没有 clean truth-free 候选的独立配对多 seed 收益。模块合同
+   正例不能开放学习采用、分配执行或控制权限。
+
+AirSim 集成计划已检查；没有 DTO、settings、episode 或控制接口变化，因此不修改。
+M-to-N 专项也已检查；本项没有需求槽、联盟成员、角色或到达调度变化，因此不修改。

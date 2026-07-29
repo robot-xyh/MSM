@@ -424,12 +424,19 @@ def test_applied_hint_binds_new_execution_plan_to_uniform_authority() -> None:
 def test_nonzero_transfer_and_hold_produce_attributable_strict_successor() -> None:
     planner = _planner(source_node_id="CENTER")
     initial_tracks, initial_resources = _three_region_intervention_inputs()
-    previous = planner.plan(initial_tracks, initial_resources, timestamp=0.0)
-    assert _assignment_pairs(previous) == (
+    source = planner.plan(initial_tracks, initial_resources, timestamp=0.0)
+    source_bindings = frozenset(_assignment_pairs(source))
+    source_signature = source.execution_signature()
+    assert source_bindings == {
         ("T-A", "R-A0"),
         ("T-B", "R-B0"),
         ("T-C", "R-C0"),
-    )
+    }
+    assert len(source.assignments) == 3
+    assert set(source.unassigned_target_ids) == set()
+    assert source.version == 1
+    assert source.previous_plan_id is None
+    assert source.metadata["plan_published"] is True
 
     next_resources = (
         initial_resources[0],
@@ -438,69 +445,96 @@ def test_nonzero_transfer_and_hold_produce_attributable_strict_successor() -> No
         _resource("R-C0", "C", 2_400.0),
         _resource("R-C1", "C", 1_995.0),
     )
-    rule_baseline = planner.plan(
+    same_input_r0 = planner.plan(
         initial_tracks,
         next_resources,
         timestamp=1.0,
-        previous_plan=previous,
+        previous_plan=source,
         publish=False,
     )
-    assert ("T-B", "R-A1") not in _assignment_pairs(rule_baseline)
-    assert ("T-C", "R-C1") in _assignment_pairs(rule_baseline)
+    r0_bindings = frozenset(_assignment_pairs(same_input_r0))
+    r0_signature = same_input_r0.execution_signature()
+    assert r0_bindings == {
+        ("T-A", "R-A0"),
+        ("T-C", "R-C1"),
+    }
+    assert len(same_input_r0.assignments) == 2
+    assert set(same_input_r0.unassigned_target_ids) == {"T-B"}
+    assert same_input_r0.version == source.version + 1
+    assert same_input_r0.previous_plan_id == source.plan_id
+    assert same_input_r0.metadata["plan_published"] is False
+    assert r0_signature != source_signature
 
-    hint = _three_region_intervention_hint_mapping(previous)
-    successor = planner.plan(
+    hint = _three_region_intervention_hint_mapping(source)
+    treatment = planner.plan(
         initial_tracks,
         next_resources,
         timestamp=1.0,
-        previous_plan=previous,
+        previous_plan=source,
         regional_planning_hint=hint,
     )
 
-    assert _assignment_pairs(successor) == (
+    treatment_bindings = frozenset(_assignment_pairs(treatment))
+    treatment_signature = treatment.execution_signature()
+    assert treatment_bindings == {
         ("T-A", "R-A0"),
         ("T-B", "R-A1"),
         ("T-C", "R-C0"),
-    )
-    assert successor.plan_id != previous.plan_id
-    assert successor.version == previous.version + 1
-    assert successor.previous_plan_id == previous.plan_id
-    assert successor.metadata["execution_signature_changed"] is True
-    assert successor.metadata["regional_hint_successor_state"] == (
+    }
+    assert len(treatment.assignments) == 3
+    assert set(treatment.unassigned_target_ids) == set()
+    assert treatment.version == same_input_r0.version == source.version + 1
+    assert treatment.plan_id != source.plan_id
+    assert treatment.previous_plan_id == source.plan_id
+    assert treatment.metadata["plan_published"] is True
+    assert treatment_signature != source_signature
+    assert treatment_signature != r0_signature
+    assert treatment_bindings - source_bindings == {("T-B", "R-A1")}
+    assert treatment_bindings - r0_bindings == {
+        ("T-B", "R-A1"),
+        ("T-C", "R-C0"),
+    }
+    assert {
+        target_id for target_id, _ in treatment_bindings
+    } - {
+        target_id for target_id, _ in r0_bindings
+    } == {"T-B"}
+    assert treatment.metadata["execution_signature_changed"] is True
+    assert treatment.metadata["regional_hint_successor_state"] == (
         "successor_published"
     )
-    assert successor.metadata["regional_hint_successor_plan_available"] is True
-    assert successor.metadata["regional_hint_successor_advisory_id"] == (
+    assert treatment.metadata["regional_hint_successor_plan_available"] is True
+    assert treatment.metadata["regional_hint_successor_advisory_id"] == (
         "d4-advice-frame-0001"
     )
-    assert successor.metadata["regional_hint_successor_advisory_version"] == 1
-    assert successor.metadata["regional_hint_successor_source_plan_id"] == (
-        previous.plan_id
+    assert treatment.metadata["regional_hint_successor_advisory_version"] == 1
+    assert treatment.metadata["regional_hint_successor_source_plan_id"] == (
+        source.plan_id
     )
-    assert successor.metadata[
+    assert treatment.metadata[
         "regional_hint_successor_source_plan_version"
-    ] == previous.version
-    assert successor.metadata["regional_hint_successor_owner_layer"] == "center"
-    assert successor.metadata["regional_hint_successor_owner_id"] == "CENTER"
-    assert successor.metadata["regional_hint_successor_owner_epoch"] == (
-        previous.version
+    ] == source.version
+    assert treatment.metadata["regional_hint_successor_owner_layer"] == "center"
+    assert treatment.metadata["regional_hint_successor_owner_id"] == "CENTER"
+    assert treatment.metadata["regional_hint_successor_owner_epoch"] == (
+        source.version
     )
-    assert successor.metadata[
+    assert treatment.metadata[
         "regional_hint_successor_lease_expires_at_s"
     ] == pytest.approx(10.0)
-    assert successor.metadata["regional_hint_successor_hold_region_ids"] == (
+    assert treatment.metadata["regional_hint_successor_hold_region_ids"] == (
         "C",
     )
-    assert successor.metadata[
+    assert treatment.metadata[
         "regional_hint_successor_request_replan_region_ids"
     ] == ("A", "B", "C")
-    assert successor.metadata["regional_hint_hold_candidate_constraint_applied"] is True
-    assert successor.metadata["regional_hint_hold_source_assignment_edges"] == (
+    assert treatment.metadata["regional_hint_hold_candidate_constraint_applied"] is True
+    assert treatment.metadata["regional_hint_hold_source_assignment_edges"] == (
         ("T-C", "R-C0"),
     )
-    assert successor.metadata["regional_hint_hold_candidate_reject_count"] > 0
-    assert successor.metadata["regional_hint_actual_cross_region_resource_count"] == 1
-    assert successor.metadata["regional_hint_cross_region_limit_satisfied"] is True
+    assert treatment.metadata["regional_hint_hold_candidate_reject_count"] > 0
+    assert treatment.metadata["regional_hint_actual_cross_region_resource_count"] == 1
+    assert treatment.metadata["regional_hint_cross_region_limit_satisfied"] is True
 
 
 def test_hold_rejects_hint_when_source_assignment_is_no_longer_hard_safe() -> None:

@@ -2075,3 +2075,41 @@ seed 2007 完整 episode 验证写盘：D6 runtime join 接受 4 条 ACK、77 �
 模块验收为 A2 successor 专项 `16 passed`，区域提示/身份/围栏组合 `51 passed`，D3
 全量 `618 passed, 1 skipped`。唯一 skip 仍是可选 OR-Tools；Matplotlib 三维导入警告为
 既有环境提示。
+
+## 2026-07-29 规划专用区域转移因果审计
+
+D3 对 D4 规划专用区域转移补充了同输入三臂合同证据，未修改规划器实现。确定性夹具先
+发布 source，再以相同下一时刻航迹、资源和前序计划构造不带提示且不发布的 R0，最后消费
+合法区域提示构造 treatment。三份计划都通过规范
+`AssignmentPlan.execution_signature()` 比较，计划号、版本、租约或 metadata 刷新本身
+不作为干预。
+
+具体结果如下：
+
+- source 为版本 1，绑定集合为
+  `{T-A->R-A0, T-B->R-B0, T-C->R-C0}`，3 条 assignment，未分配集合为空；
+- 同输入 R0 为未发布的版本 2 候选，绑定集合为
+  `{T-A->R-A0, T-C->R-C1}`，2 条 assignment，未分配集合为 `{T-B}`；
+- treatment 为已发布的严格版本 2 后继，绑定集合为
+  `{T-A->R-A0, T-B->R-A1, T-C->R-C0}`，3 条 assignment，未分配集合为空。
+
+treatment 的规范执行签名同时区别于 source 和 R0。相对 source 的新增绑定为
+`T-B->R-A1`；相对 R0 新增了 `T-B` 的目标覆盖，因此该后继不是只刷新
+`plan_id/version/lease/metadata`。treatment 的 `previous_plan_id` 精确指向 source，
+owner 保持 center，authority epoch 等于 source 版本，lease 截止为 10 秒。跨区许可仍为
+1，来源绑定保护、区域 hold、资源不可用、备用余量、可达性和旧版本门限均沿用现有合同。
+
+main 已在 `scalable_3d_simulation/tests/test_module_stack.py` 固化两项跨模块回归。永久
+正例采用 20v20、8 区域、seed 29：source 17 条 assignment、3 个未分配目标；区域转移
+`region-000 -> region-001`、数量 1 后，严格后继为 18 条 assignment、2 个未分配目标，
+版本 1 递增到 2。在线真值使用为 0，D4 的 assignment、coalition、takeover 和 control
+execution authority 均为 false。永久负例在 `t=2.0` 注入中心 fault generation 变化，
+规划专用转移被阻断。
+
+main 两项专项测试通过；scalable world 与 module stack 全量 `100 passed`，D4 全量
+`794 passed`。D3 本次测试不导入 main 或 D4，因此这些结果作为已完成的跨模块合同证据，
+不扩展为 D6 同键多 seed 非退化、学习策略收益或物理结果。
+
+区域提示专项 `34 passed`，D3 全量收集 619 项，结果为
+`618 passed, 1 skipped`。唯一跳过仍为可选 OR-Tools；既有 Matplotlib `Axes3D` 环境
+警告不影响本项。

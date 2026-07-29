@@ -1822,3 +1822,30 @@ evaluation refresh，online truth=0。A2 专项 `16 passed`，区域提示/身�
 
 README、PLAN、原则、算法和实验报告已同步。AirSim 集成计划已检查，无接口变化；M-to-N
 调度文档也已检查，本项没有需求槽、联盟规模或到达调度变化，因此不修改。
+
+## 67. 规划专用区域转移因果复核（2026-07-29）
+
+本轮复核没有发现 D3 求解或发布实现缺陷。现有三区域夹具已具备 source、无提示 R0 和
+区域提示 treatment 三个候选，本次补齐同一测试内的规范执行签名和业务集合断言。
+
+source 绑定为 `{T-A->R-A0, T-B->R-B0, T-C->R-C0}`。同输入未发布 R0 在 B 区原资源
+不可用后变为 `{T-A->R-A0, T-C->R-C1}`，并将 `T-B` 放入未分配清单。treatment 在合法
+A 到 B 单资源许可和 C 区 hold 下形成
+`{T-A->R-A0, T-B->R-A1, T-C->R-C0}`。三者 assignment 数为 `3/2/3`，未分配集合为
+`空/{T-B}/空`。
+
+treatment 的执行签名同时区别于 source 和 R0。相对 source 的新增绑定是
+`T-B->R-A1`，相对 R0 新增覆盖目标是 `T-B`。R0 与 treatment 均为 source 的下一版本
+候选，R0 不发布，treatment 严格发布并精确引用 source。owner、epoch、lease、reserve、
+可达性、hold、来源承诺和 stale plan 门限未放宽。
+
+main 已把 20v20、8 区域、seed 29 固化为永久 module-stack 正例：17 条绑定增加到
+18 条、未分配 3 降到 2、版本 1 递增到 2、在线真值 0，D4 全部 execution authority
+为 false。配套负例在 `t=2.0` 注入中心 fault generation 变化并阻断规划专用转移。
+main 两项专项测试通过；scalable world 与 module stack 全量 `100 passed`，D4 全量
+`794 passed`。跨模块正向接线和故障代际失败关闭已完成，不代表 v4 学习收益。D6 同输入
+R0 和多 seed 非退化审计仍开放。
+
+区域提示专项 `34 passed`，D3 全量 `618 passed, 1 skipped`。README、PLAN、原则、算法、
+实验报告和 GAP 已同步。AirSim 集成计划与 M-to-N 专项已检查，本项没有对应接口或算法
+变化，因此不修改。
