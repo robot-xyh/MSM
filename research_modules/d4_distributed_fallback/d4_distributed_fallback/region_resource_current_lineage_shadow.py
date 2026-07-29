@@ -12,7 +12,7 @@ provide a content-addressed seed registration for every episode.
 from __future__ import annotations
 
 from collections import Counter
-from dataclasses import asdict, dataclass
+from dataclasses import asdict, dataclass, replace
 from enum import Enum
 from hashlib import sha256
 import json
@@ -39,6 +39,15 @@ from .region_resource_development_candidate import (
     REGION_RESOURCE_DEVELOPMENT_OOD_MARGIN,
     RegionResourceDevelopmentGateEvaluation,
     evaluate_region_resource_development_gate,
+)
+from .region_resource_eight_region_candidate import (
+    REGION_RESOURCE_EIGHT_REGION_CANDIDATE_ID,
+    REGION_RESOURCE_EIGHT_REGION_COUNT,
+    REGION_RESOURCE_EIGHT_REGION_MODEL_VERSION,
+    REGION_RESOURCE_EIGHT_REGION_SOURCE_FILENAME,
+    RegionResourceEightRegionCandidateError,
+    RegionResourceEightRegionCandidateManifest,
+    load_region_resource_eight_region_candidate_manifest,
 )
 from .region_resource_isolated_rollout import (
     REGION_RESOURCE_ISOLATED_LATENCY_LIMIT_MS,
@@ -110,6 +119,27 @@ FROZEN_CURRENT_LINEAGE_SOURCE_SUMMARY_FILE_SHA256 = (
 )
 FROZEN_CURRENT_LINEAGE_BUNDLE_MANIFEST_SHA256 = (
     "d9fcdb348b3de8fd139b5052a4e7123a48641975cc7dcc708701a2a72ff7ab00"
+)
+FROZEN_EIGHT_REGION_GIT_COMMIT = (
+    "0dcbe6e2afcb14ab6897eb45f0ff773e85134bdc"
+)
+FROZEN_EIGHT_REGION_MANIFEST_FILE_SHA256 = (
+    "6edde68279389857441116794e9a49f2f5808a14d5dd01630b811b6cc3bb35c4"
+)
+FROZEN_EIGHT_REGION_MANIFEST_CONTENT_SHA256 = (
+    "f427fca368f526a8f4291af0021a4842a7b445ffd3eecb4bdaeaaa64d5faa6be"
+)
+FROZEN_EIGHT_REGION_MODEL_STATE_SHA256 = (
+    "43157f4ea6cee18fe575615b03661ab806a4217c9914c351b75638ccb082b0ee"
+)
+FROZEN_EIGHT_REGION_SOURCE_IDENTITY_SHA256 = (
+    "e7dddf105a81dc3c3534a4131a2a1496ede2bfc84249fb6771739235cf2436cc"
+)
+FROZEN_EIGHT_REGION_SOURCE_SUMMARY_FILE_SHA256 = (
+    "cefe5572b6901fa9cf88b33940a7b722aaaf5be75fc2a7953dff47fc9b4aa5d3"
+)
+FROZEN_EIGHT_REGION_BUNDLE_MANIFEST_SHA256 = (
+    "08f5364d1ae5b1ef975b69491f41832895d3487ce717e6c4b46f5fa27fb0b2c2"
 )
 
 
@@ -470,8 +500,8 @@ class RegionResourceCurrentLineageShadowOODViolation:
             != REGION_RESOURCE_CURRENT_LINEAGE_SHADOW_OOD_VIOLATION_SCHEMA
         ):
             raise ValueError("unsupported shadow OOD violation schema")
-        if self.feature_scope not in {"node", "edge"}:
-            raise ValueError("OOD feature scope must be node or edge")
+        if self.feature_scope not in {"graph", "node", "edge"}:
+            raise ValueError("OOD feature scope must be graph, node, or edge")
         for name in ("entity_id", "feature_name"):
             _required_text(getattr(self, name), name)
         _nonnegative_int(self.feature_index, "feature_index")
@@ -987,6 +1017,8 @@ class RegionResourceCurrentLineageShadowAdapter:
             self._manifest,
             self._binding,
             self._policy,
+            self._applicable_region_count,
+            self._confidence_calibration_accepted,
         ) = _load_frozen_candidate(candidate_root)
         self._projector = DeterministicResourceProjector()
         self._episode_sequences: dict[str, _EpisodeSequence] = {}
@@ -1039,6 +1071,7 @@ class RegionResourceCurrentLineageShadowAdapter:
             snapshot,
             self._policy,
             margin=REGION_RESOURCE_DEVELOPMENT_OOD_MARGIN,
+            applicable_region_count=self._applicable_region_count,
         )
 
         evaluation = evaluate_region_resource_development_gate(
@@ -1052,6 +1085,42 @@ class RegionResourceCurrentLineageShadowAdapter:
         )
         raw = evaluation.recommendation
         gate = evaluation.gate
+        if (
+            self._applicable_region_count is not None
+            and snapshot.region_count != self._applicable_region_count
+        ):
+            gate = replace(
+                gate,
+                candidate_ood_passed=False,
+                gate_pass=False,
+                rule_fallback=True,
+                rejection_reasons=tuple(
+                    dict.fromkeys(
+                        (
+                            *gate.rejection_reasons,
+                            "candidate_region_count_out_of_scope",
+                        )
+                    )
+                ),
+            )
+        if (
+            self._applicable_region_count is not None
+            and not self._confidence_calibration_accepted
+        ):
+            gate = replace(
+                gate,
+                candidate_failure_gate_passed=False,
+                gate_pass=False,
+                rule_fallback=True,
+                rejection_reasons=tuple(
+                    dict.fromkeys(
+                        (
+                            *gate.rejection_reasons,
+                            "candidate_confidence_calibration_not_accepted",
+                        )
+                    )
+                ),
+            )
         if (
             raw is None
             or gate.candidate_finite is not True
@@ -1341,9 +1410,31 @@ def summarize_region_resource_current_lineage_shadow_records(
 def _load_frozen_candidate(
     candidate_root: str | Path,
 ) -> tuple[
+    RegionResourceCurrentLineageCandidateManifest
+    | RegionResourceEightRegionCandidateManifest,
+    RegionResourceCurrentLineageShadowCandidateBinding,
+    LearnedRegionResourcePolicy,
+    int | None,
+    bool,
+]:
+    root = Path(candidate_root)
+    if root.name == REGION_RESOURCE_CURRENT_LINEAGE_CANDIDATE_ID:
+        return _load_legacy_frozen_candidate(root)
+    if root.name == REGION_RESOURCE_EIGHT_REGION_CANDIDATE_ID:
+        return _load_frozen_eight_region_candidate(root)
+    raise RegionResourceCurrentLineageShadowError(
+        "frozen_candidate_registry_identity_unknown"
+    )
+
+
+def _load_legacy_frozen_candidate(
+    candidate_root: str | Path,
+) -> tuple[
     RegionResourceCurrentLineageCandidateManifest,
     RegionResourceCurrentLineageShadowCandidateBinding,
     LearnedRegionResourcePolicy,
+    None,
+    bool,
 ]:
     root = Path(candidate_root)
     try:
@@ -1439,8 +1530,130 @@ def _load_frozen_candidate(
         dataset_sha256=manifest.dataset_sha256,
         dataset_split_sha256=manifest.dataset_split_sha256,
     )
-    return manifest, binding, LearnedRegionResourcePolicy(
-        bundle.model, bundle.manifest
+    return (
+        manifest,
+        binding,
+        LearnedRegionResourcePolicy(bundle.model, bundle.manifest),
+        None,
+        True,
+    )
+
+
+def _load_frozen_eight_region_candidate(
+    candidate_root: str | Path,
+) -> tuple[
+    RegionResourceEightRegionCandidateManifest,
+    RegionResourceCurrentLineageShadowCandidateBinding,
+    LearnedRegionResourcePolicy,
+    int,
+    bool,
+]:
+    root = Path(candidate_root)
+    try:
+        manifest = load_region_resource_eight_region_candidate_manifest(
+            root,
+            expected_manifest_file_sha256=(
+                FROZEN_EIGHT_REGION_MANIFEST_FILE_SHA256
+            ),
+        )
+    except (
+        OSError,
+        ValueError,
+        RegionResourceEightRegionCandidateError,
+    ) as exc:
+        raise RegionResourceCurrentLineageShadowError(
+            f"frozen_eight_region_manifest_rejected:"
+            f"{type(exc).__name__}:{exc}"
+        ) from exc
+    if (
+        manifest.candidate_id != REGION_RESOURCE_EIGHT_REGION_CANDIDATE_ID
+        or manifest.model_version != REGION_RESOURCE_EIGHT_REGION_MODEL_VERSION
+        or manifest.content_sha256
+        != FROZEN_EIGHT_REGION_MANIFEST_CONTENT_SHA256
+        or manifest.model_state_sha256
+        != FROZEN_EIGHT_REGION_MODEL_STATE_SHA256
+        or manifest.source_identity_sha256
+        != FROZEN_EIGHT_REGION_SOURCE_IDENTITY_SHA256
+        or manifest.source_summary_file_sha256
+        != FROZEN_EIGHT_REGION_SOURCE_SUMMARY_FILE_SHA256
+        or manifest.bundle_manifest_sha256
+        != FROZEN_EIGHT_REGION_BUNDLE_MANIFEST_SHA256
+        or manifest.applicable_region_count
+        != REGION_RESOURCE_EIGHT_REGION_COUNT
+    ):
+        raise RegionResourceCurrentLineageShadowError(
+            "frozen_eight_region_candidate_identity_mismatch"
+        )
+    source_path = root / REGION_RESOURCE_EIGHT_REGION_SOURCE_FILENAME
+    try:
+        source = json.loads(source_path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError) as exc:
+        raise RegionResourceCurrentLineageShadowError(
+            f"frozen_eight_region_source_rejected:{type(exc).__name__}"
+        ) from exc
+    if (
+        not isinstance(source, dict)
+        or source.get("git_commit") != FROZEN_EIGHT_REGION_GIT_COMMIT
+        or source.get("source_identity_sha256")
+        != FROZEN_EIGHT_REGION_SOURCE_IDENTITY_SHA256
+        or _sha256_file(source_path)
+        != FROZEN_EIGHT_REGION_SOURCE_SUMMARY_FILE_SHA256
+    ):
+        raise RegionResourceCurrentLineageShadowError(
+            "frozen_eight_region_source_lineage_mismatch"
+        )
+    try:
+        bundle = load_region_resource_model_bundle(
+            root / "bundle",
+            expected_model_version=manifest.model_version,
+            expected_state_dict_sha256=manifest.model_state_sha256,
+            map_location="cpu",
+            require_training_dataset_manifest=True,
+        )
+    except Exception as exc:
+        raise RegionResourceCurrentLineageShadowError(
+            f"frozen_eight_region_bundle_rejected:"
+            f"{type(exc).__name__}:{exc}"
+        ) from exc
+    if (
+        bundle.manifest.lifecycle_stage != MODEL_LIFECYCLE_DEVELOPMENT
+        or bundle.manifest.maximum_advisor_mode != MODEL_MAXIMUM_MODE_SHADOW
+        or bundle.manifest.assist_admitted
+        or bundle.manifest.strategy_capability_claim_allowed
+        or bundle.manifest.reward_evidence_available
+        or bundle.manifest.final_holdout_seed_count != 0
+    ):
+        raise RegionResourceCurrentLineageShadowError(
+            "frozen_eight_region_permission_boundary_crossed"
+        )
+    if not all(
+        bool(parameter.detach().isfinite().all().item())
+        for parameter in bundle.model.parameters()
+    ):
+        raise RegionResourceCurrentLineageShadowError(
+            "frozen_eight_region_model_parameter_nonfinite"
+        )
+    binding = RegionResourceCurrentLineageShadowCandidateBinding(
+        candidate_id=manifest.candidate_id,
+        model_version=manifest.model_version,
+        source_git_commit=str(source["git_commit"]),
+        source_identity_sha256=manifest.source_identity_sha256,
+        candidate_manifest_file_sha256=(
+            FROZEN_EIGHT_REGION_MANIFEST_FILE_SHA256
+        ),
+        candidate_manifest_content_sha256=manifest.content_sha256,
+        source_summary_file_sha256=manifest.source_summary_file_sha256,
+        bundle_manifest_sha256=manifest.bundle_manifest_sha256,
+        model_state_sha256=manifest.model_state_sha256,
+        dataset_sha256=manifest.composite_dataset_sha256,
+        dataset_split_sha256=manifest.composite_split_sha256,
+    )
+    return (
+        manifest,
+        binding,
+        LearnedRegionResourcePolicy(bundle.model, bundle.manifest),
+        REGION_RESOURCE_EIGHT_REGION_COUNT,
+        manifest.confidence_calibration_accepted,
     )
 
 
@@ -1449,6 +1662,7 @@ def _diagnose_feature_ood(
     policy: LearnedRegionResourcePolicy,
     *,
     margin: float,
+    applicable_region_count: int | None = None,
 ) -> RegionResourceCurrentLineageShadowOODDiagnostic:
     if float(margin) != REGION_RESOURCE_DEVELOPMENT_OOD_MARGIN:
         raise RegionResourceCurrentLineageShadowError(
@@ -1457,6 +1671,34 @@ def _diagnose_feature_ood(
     graph = snapshot_to_region_graph(snapshot, device="cpu")
     bounds = policy.manifest.feature_bounds
     violations: list[RegionResourceCurrentLineageShadowOODViolation] = []
+    if (
+        applicable_region_count is not None
+        and graph.node_count != applicable_region_count
+    ):
+        accepted_minimum = applicable_region_count * (1.0 - margin)
+        accepted_maximum = applicable_region_count * (1.0 + margin)
+        direction = (
+            "below"
+            if graph.node_count < applicable_region_count
+            else "above"
+        )
+        violations.append(
+            RegionResourceCurrentLineageShadowOODViolation(
+                feature_scope="graph",
+                entity_id="regional_graph",
+                feature_name="region_count",
+                feature_index=0,
+                observed_value=float(graph.node_count),
+                training_minimum=float(applicable_region_count),
+                training_maximum=float(applicable_region_count),
+                accepted_minimum=float(accepted_minimum),
+                accepted_maximum=float(accepted_maximum),
+                direction=direction,
+                exceedance=abs(
+                    float(graph.node_count - applicable_region_count)
+                ),
+            )
+        )
     node_rows = graph.node_features.detach().cpu().tolist()
     for entity_id, values in zip(graph.node_ids, node_rows):
         violations.extend(
