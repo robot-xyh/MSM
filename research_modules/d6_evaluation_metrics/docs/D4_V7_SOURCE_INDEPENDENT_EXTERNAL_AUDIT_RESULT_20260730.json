@@ -1,0 +1,106 @@
+{
+  "admission": {
+    "admission_allowed": false,
+    "confidence_calibration_allowed": false,
+    "d3_permission_available": false,
+    "d7_permission_available": false,
+    "formal_holdout_allowed": false,
+    "rule_fallback_required": true,
+    "runtime_preflight_allowed": false
+  },
+  "audit_id": "d4-v7-source-independent-external-m16n24-20260730",
+  "audit_result_content_sha256": "80fc0d557ffaee7459989b346ed6f879d714ae2aea69748a6f4e8b6243c20be1",
+  "evaluation_disposition": "failed_closed",
+  "governance_counts": {
+    "admission_count": 0,
+    "candidate_mutation_count": 0,
+    "checkpoint_update_count": 0,
+    "confidence_calibration_count": 0,
+    "confidence_gate_application_count": 0,
+    "d4_high_level_evaluator_call_count": 0,
+    "formal_holdout_payload_read_count": 0,
+    "input_mutation_count": 0,
+    "model_fit_count": 0,
+    "prior_evaluation_payload_read_count": 0,
+    "registration_count": 0,
+    "threshold_tuning_count": 0
+  },
+  "input_tree_sha256": {
+    "candidate_v7": "7bd5419f9d071d6c801f72415a8eb36ac0e36d259187e94229959f5f21d1a667",
+    "frozen_v4": "2afd692874b91a23a5525448a0c5af98f3c2d96f0b12cebbf81a570d58d500d0",
+    "labeled_dataset": "0b88d9afbb0e0e98cb2c59dc950a98cc57c7f5d5bd22d762278fdd81ce6a9282",
+    "labeled_export": "05a375853c42a31ecf3a20b2c61d9be6f2a7932d8a5125665f04d30ebc3e6d1b",
+    "raw_source": "978f94c0165ce6f79446b601c8eddf5b2e157f641fab243582a3349250d5c9a1"
+  },
+  "output_file_sha256": {
+    "by_split_csv": "3210d4dc7d66196aebdb1ac9762f7ba0f939ddab708b5bc8efdd31a478b89907",
+    "full_summary_json": "064002af52617a8cbe35f55acf3c82c8c26b0ef0a9fbe9a5b608eae44e6ca176",
+    "recomputed_records_jsonl": "7785ded96360869edfb694c425321fa3323450cf1624607b53edf5d3eca6a5cd",
+    "report_markdown": "ba5430744f600d2e817112cb965aca33c84c6741416a482228df67216aa291eb"
+  },
+  "reconciliation": {
+    "d4_artifact_manifest_content_sha256": "e089bfcc91f9fc7dbd71ba0ffe4d73c43a31828ba80e3997c1594fadb5f2d057",
+    "d4_artifact_manifest_file_sha256": "11666fac8f575c4eb5de7c9f6df63dbc1dfffef8a1acf007b5c2bf02f061a072",
+    "d4_csv_sha256": "b8403cf34d8014b193d90f960c34e19a977e65a8b5e79e01ecc36ebdb8f42680",
+    "d4_d6_jsonl_byte_identical": true,
+    "d4_jsonl_sha256": "7785ded96360869edfb694c425321fa3323450cf1624607b53edf5d3eca6a5cd",
+    "d4_summary_claim_mismatch_count": 0,
+    "frame_record_mismatch_count": 0
+  },
+  "schema": "d6.d4-v7-source-independent-external-audit-result.v1",
+  "source": {
+    "config_file_sha256": "6e41d159451c3ab33ad4233c3c90c94e7e16ba8812bfdb7444c8961f78a211c0",
+    "exporter_git_commit": "4a83a373f4eb4e29704bb3cf9f62e3d54eee3aec",
+    "source_git_commit": "4a83a373f4eb4e29704bb3cf9f62e3d54eee3aec"
+  },
+  "split_metrics": {
+    "test": {
+      "actor_raw_residual_activation_count": 0,
+      "actor_raw_transfer_change_count": 0,
+      "false_transfer_count": 0,
+      "invariant_failure_count": 0,
+      "negative_exact_r0_count": 9,
+      "projected_exact_positive_action_count": 0,
+      "projection_rejection_count": 0,
+      "r0_action_tuple_preservation_failure_count": 0,
+      "rule_negative_count": 9,
+      "rule_positive_count": 9,
+      "sample_count": 18,
+      "wrong_direction_count": 0,
+      "wrong_edge_count": 0,
+      "wrong_quantity_count": 0
+    },
+    "train": {
+      "actor_raw_residual_activation_count": 10,
+      "actor_raw_transfer_change_count": 3,
+      "false_transfer_count": 3,
+      "invariant_failure_count": 0,
+      "negative_exact_r0_count": 63,
+      "projected_exact_positive_action_count": 0,
+      "projection_rejection_count": 0,
+      "r0_action_tuple_preservation_failure_count": 0,
+      "rule_negative_count": 66,
+      "rule_positive_count": 24,
+      "sample_count": 90,
+      "wrong_direction_count": 0,
+      "wrong_edge_count": 3,
+      "wrong_quantity_count": 0
+    },
+    "validation": {
+      "actor_raw_residual_activation_count": 0,
+      "actor_raw_transfer_change_count": 0,
+      "false_transfer_count": 0,
+      "invariant_failure_count": 0,
+      "negative_exact_r0_count": 11,
+      "projected_exact_positive_action_count": 0,
+      "projection_rejection_count": 0,
+      "r0_action_tuple_preservation_failure_count": 0,
+      "rule_negative_count": 11,
+      "rule_positive_count": 9,
+      "sample_count": 20,
+      "wrong_direction_count": 0,
+      "wrong_edge_count": 0,
+      "wrong_quantity_count": 0
+    }
+  }
+}

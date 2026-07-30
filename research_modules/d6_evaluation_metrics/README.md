@@ -1,5 +1,47 @@
 # D6 Evaluation Metrics
 
+## 2026-07-30 D4 v7 来源独立外部评价盲审
+
+D6 新增版本隔离的 v7 审计器、固定哈希配置、命令行入口和 11 项专项测试。审计器只使用
+冻结标签数据、v7 低层模型加载器、同快照确定性 R0 规则、残差边解码、确定性投影和干预
+不变量逐帧重建动作；D4 v7 高层评价器调用数为 0，D4 summary 只在重算结束后参与对账。
+
+输入为 M16N24、8 区域、64 episode、128 帧，seed 为 `5216-5279`。独立重算结果为：
+
+| split | 样本 | 规则正/负 | 原始激活 | 转移变化 | 精确正动作 | 负类精确 R0 | 错误边/虚假转移 |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| train | 90 | 24/66 | 10 | 3 | 0 | 63 | 3/3 |
+| validation | 20 | 9/11 | 0 | 0 | 0 | 11 | 0/0 |
+| test | 18 | 9/9 | 0 | 0 | 0 | 9 | 0/0 |
+
+规则正类精确动作召回为 `0/42`。聚合 actor-derived positive 分母为 3，精确命中为
+`0/3`；validation 和 test 的该分母均为 0，相关比率保持 `unavailable/null`。错误方向、
+错误数量、投影拒绝、干预不变量失败和原始 R0 完整动作元组偏差均为 0。投影后动作元组
+变化 3 帧，原因是错误转移进入投影后的配额联动。
+
+D6 重算的 JSONL 与 D4 JSONL 逐字节相同，SHA-256 均为
+`7785ded96360869edfb694c425321fa3323450cf1624607b53edf5d3eca6a5cd`。
+D4 CSV、summary、input integrity、observable overlap 和 artifact manifest 已独立核对，
+未发现字段或绑定不一致。raw source、labeled export、labeled dataset、冻结 v4 和 v7
+候选五棵输入树在审计前后保持不变；D4 评价树也未变化。
+
+模型拟合、检查点更新、阈值调整、置信校准、输入或候选修改、注册、准入、正式留出和既有
+评价 payload 读取均为 0。审计执行通过不代表候选通过：v7 结论为 `failed_closed`，
+candidate unregistered、admission closed、rule fallback required；置信校准、正式留出、
+运行预检、D3、D7、降级、接管、联盟、控制和物理权限全部为 false。
+
+完整输出位于
+`outputs/d4_v7_source_independent_external_audit_m16n24_20260730/`，跟踪版格式化报告与
+紧凑结果分别为 `docs/D4_V7_SOURCE_INDEPENDENT_EXTERNAL_AUDIT_CN.md` 和
+`docs/D4_V7_SOURCE_INDEPENDENT_EXTERNAL_AUDIT_RESULT_20260730.json`。输出目录内完整
+JSON、split CSV、逐帧 JSONL 和中文报告 SHA-256 分别为
+`064002af52617a8cbe35f55acf3c82c8c26b0ef0a9fbe9a5b608eae44e6ca176`、
+`3210d4dc7d66196aebdb1ac9762f7ba0f939ddab708b5bc8efdd31a478b89907`、
+`7785ded96360869edfb694c425321fa3323450cf1624607b53edf5d3eca6a5cd` 和
+`ba5430744f600d2e817112cb965aca33c84c6741416a482228df67216aa291eb`。
+专项测试为 `11 passed, 1 warning in 4.65s`，D6 全量回归为
+`1234 passed, 1 warning in 126.73s`。warning 是既有 Matplotlib `Axes3D` 环境提示。
+
 ## 2026-07-30 D4 v6 来源独立外部评价盲审
 
 D6 新增

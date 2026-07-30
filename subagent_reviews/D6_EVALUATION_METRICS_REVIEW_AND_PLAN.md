@@ -1,5 +1,48 @@
 # D6 系统评估指标综述及子方案
 
+## 2026-07-30 D4 v7 来源独立外部评价盲审评审
+
+评审接受 D6 的审计执行完整性，不接受 v7 候选能力通过。D6 没有调用 D4 v7 高层
+evaluator，也没有把 D4 summary 用作指标来源。128 条逐帧记录来自冻结模型、同快照
+R0、标签动作、确定性投影和干预不变量的独立重建。
+
+评审确认以下结果：
+
+1. M16N24、8 区域、64 episode、128 帧，seed `5216-5279`；
+2. train/validation/test 样本 `90/20/18`，规则正/负
+   `24/66`、`9/11`、`9/9`；
+3. 原始激活 `10/0/0`，转移变化 `3/0/0`，精确正动作 `0/0/0`；
+4. 负类精确 R0 `63/11/9`，聚合为 `83/86=0.965116`；
+5. 三次转移变化均为 train 负类错误边和虚假 transfer；
+6. 错误方向、错误数量、投影拒绝、不变量失败和原始 R0 完整动作元组偏差均为 0；
+7. 投影后动作元组变化 3 帧，来源是错误 transfer 触发的配额联动；
+8. 冻结 v4 的 251 个唯一可观测键与外部 92 个键 exact overlap 为 0；
+9. 五棵冻结输入树及 D4 评价树在审计前后未变化；
+10. 拟合、检查点、调门、校准、mutation、registration、admission、holdout 和
+    prior evaluation read 均为 0。
+
+规则正类精确动作召回有 42 个分母，结果是 `0/42`。actor-derived positive 聚合分母
+为 3，结果是 `0/3`；validation 和 test 分母为 0，对应比率保持 unavailable。两类
+分母回答不同问题，不得合并。
+
+D6 JSONL 与 D4 JSONL 逐字节 SHA-256 完全相同：
+`7785ded96360869edfb694c425321fa3323450cf1624607b53edf5d3eca6a5cd`。
+评审同时接受 D4 CSV、summary、input integrity、observable overlap 和 artifact
+manifest 的事后对账结果。上述一致性证明双方对同一冻结输入给出相同逐帧结果，不能证明
+候选动作正确。
+
+v7 的 validation/test 没有转移激活，42 个正动作全部未命中，train 还产生三次负类错误
+转移。评审结论为 `failed_closed`。candidate unregistered、admission closed、rule
+fallback required；置信校准、正式留出、运行预检、D3、D7、降级、接管、联盟、控制和
+物理权限全部关闭。
+
+下一步由 D4 另立候选并使用全新独立数据。门槛是 validation/test 出现非零且充分的精确
+正动作，同时保持零虚假 transfer、零投影拒绝、零不变量失败和零原始 R0 动作元组偏差。
+本轮 `5216-5279` 不得复用。达到该门前不得建立置信校准或读取正式 holdout。
+
+专项测试为 `11 passed, 1 warning in 4.65s`，D6 全量回归为
+`1234 passed, 1 warning in 126.73s`。warning 为既有 Matplotlib `Axes3D` 环境提示。
+
 ## 2026-07-30 D4 v6 来源独立盲审评审
 
 评审接受 D6 的独立重算和失败关闭边界。D6 固定 source、标签、冻结 v4、v6 候选和

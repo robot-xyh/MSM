@@ -1,5 +1,64 @@
 # D6 正式实验矩阵准入预检报告
 
+## D4 v7 来源独立外部评价盲审（2026-07-30）
+
+### 结论
+
+D6 对冻结候选 `region_resource_a2_rule_node_transfer_residual_shadow_v7` 完成来源独立
+只读盲审。输入为 M16N24、8 区域、64 episode、128 帧，seed 为 `5216-5279`。D6
+从冻结低层模型、同快照 R0、标签动作和投影约束逐帧重建；D4 高层 evaluator 调用数为
+0，D4 summary 未作为事实来源。
+
+规则正类精确动作命中为 `0/42`。train 的 10 次原始边激活只形成 3 次转移变化，三次
+都位于负类，均为错误边和虚假转移。validation 和 test 没有形成转移变化。聚合
+actor-derived positive 为 `0/3`，候选没有建立来源独立转移能力。
+
+评价结论为 `failed_closed`。candidate unregistered、admission closed、rule fallback
+required；置信校准、正式留出、运行预检、D3、D7、降级、接管、联盟、控制和物理权限
+全部关闭。
+
+### 独立指标
+
+| split | 样本 | 正/负 | 原始激活 | 转移变化 | 精确正动作 | 负类精确 R0 | 错误边 | 虚假转移 |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| train | 90 | 24/66 | 10 | 3 | 0 | 63 | 3 | 3 |
+| validation | 20 | 9/11 | 0 | 0 | 0 | 11 | 0 | 0 |
+| test | 18 | 9/9 | 0 | 0 | 0 | 9 | 0 | 0 |
+
+聚合负类精确 R0 为 `83/86=0.965116`。错误方向、错误数量、投影拒绝、干预不变量失败
+和原始 R0 完整动作元组偏差均为 0。投影后动作元组变化 3 帧，由三次错误转移触发配额
+联动。
+
+### 数据与完整性
+
+训练 `0-99`、正式留出 `1000-1019`、既有设计与评价
+`3000-3039,4000-4079`、pilot `5200-5215` 和本次独立评价 `5216-5279` 两两
+无交集。模型拟合、检查点更新、阈值调整、置信校准、mutation、registration、admission、
+正式留出读取和 prior evaluation payload read 均为 0。
+
+冻结 v4 train+validation 为 425 帧/251 个唯一可观测键，外部数据为
+128 帧/92 个唯一键，exact overlap 为 0。raw source、labeled export、labeled
+dataset、冻结 v4 和 v7 候选五棵输入树前后不变；D4 评价树也未变化。
+
+D4/D6 JSONL 逐字节 SHA-256 均为
+`7785ded96360869edfb694c425321fa3323450cf1624607b53edf5d3eca6a5cd`。
+D4 CSV、summary、input integrity、observable overlap 和 artifact manifest 的摘要及
+绑定核对通过，mismatch 为 0。
+
+### 输出与验证
+
+| 输出 | SHA-256 |
+| --- | --- |
+| 完整 JSON | `064002af52617a8cbe35f55acf3c82c8c26b0ef0a9fbe9a5b608eae44e6ca176` |
+| split CSV | `3210d4dc7d66196aebdb1ac9762f7ba0f939ddab708b5bc8efdd31a478b89907` |
+| 逐帧 JSONL | `7785ded96360869edfb694c425321fa3323450cf1624607b53edf5d3eca6a5cd` |
+| 中文报告 | `ba5430744f600d2e817112cb965aca33c84c6741416a482228df67216aa291eb` |
+
+命令行复跑得到相同 content SHA 和逐帧 JSONL，输出
+`sha256sum -c SHA256SUMS` 全部通过。专项测试为
+`11 passed, 1 warning in 4.65s`，D6 全量回归为
+`1234 passed, 1 warning in 126.73s`。本轮不包含 AirSim、运行时或物理收益实验。
+
 ## D4 v6 来源独立盲审（2026-07-30）
 
 ### 结论

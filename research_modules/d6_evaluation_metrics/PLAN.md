@@ -1,5 +1,59 @@
 # D6 Evaluation Metrics Plan
 
+## 2026-07-30 D4 v7 来源独立外部评价盲审
+
+### 已完成
+
+- [x] 固定 raw source、labeled export、labeled dataset、冻结 v4、v7 候选和 D4
+  评价目录及其文件树摘要；输入为 M16N24、8 区域、64 episode、128 帧、seed
+  `5216-5279`。
+- [x] 核验 source/exporter clean commit
+  `4a83a373f4eb4e29704bb3cf9f62e3d54eee3aec`、dataset/split、候选 bundle、训练
+  审计和 v4 来源绑定。
+- [x] 核验训练 `0-99`、正式留出 `1000-1019`、既有设计和评价
+  `3000-3039,4000-4079`、pilot `5200-5215` 与独立评价 `5216-5279` 两两隔离。
+- [x] 审计前后重算 raw source、labeled export、labeled dataset、冻结 v4 和 v7
+  候选五棵输入树；五棵树均未变化。D4 评价树也保持不变。
+- [x] 不调用 D4 v7 高层 evaluator，不采用其 summary 指标。D6 从冻结模型重新执行
+  图推理、残差边激活和数量解码，再运行确定性 R0、投影和干预不变量。
+- [x] 逐帧重算完整 R0 action tuple、raw activation、raw/projected transfer change、
+  exact 正动作、negative exact-R0、错误方向/数量/边、虚假 transfer 和投影拒绝。
+- [x] 独立重算 train/validation/test 样本 `90/20/18`、规则正类 `24/9/9`、负类
+  `66/11/9`、原始激活 `10/0/0`、转移变化 `3/0/0`、精确正动作 `0/0/0`、
+  负类精确 R0 `63/11/9`。
+- [x] 确认三次转移变化均为 train 负类错误边和虚假转移；错误方向、错误数量、投影
+  拒绝、不变量失败及原始 R0 动作元组偏差均为 0。
+- [x] 重算冻结 v4 train+validation 的 425 帧/251 个唯一可观测键和外部
+  128 帧/92 个唯一键，exact overlap 为 0；键不含 seed、episode、标签或真值。
+- [x] 生成 D6 JSONL，并与 D4 JSONL 做逐字节对账；两者 SHA-256 均为
+  `7785ded96360869edfb694c425321fa3323450cf1624607b53edf5d3eca6a5cd`。
+- [x] 独立核对 D4 CSV、summary、input integrity、observable overlap 和 artifact
+  manifest 的文件摘要、内容摘要与交叉绑定，mismatch 均为 0。
+- [x] 固定模型拟合、检查点更新、阈值调整、置信校准、mutation、registration、
+  admission、正式留出及 prior evaluation payload read 为 0。
+- [x] 输出完整 JSON、LF split CSV、逐帧 JSONL、中文报告、`SHA256SUMS`、跟踪版
+  紧凑结果和固定 config；不跟踪模型或大数据。
+- [x] 结论固定为 `failed_closed`。candidate unregistered、admission closed、
+  rule fallback required，全部运行权限为 false。
+- [x] 命令行实际复跑得到相同 content SHA 和逐帧 JSONL；输出目录
+  `sha256sum -c SHA256SUMS` 全部通过。
+- [x] 专项测试 `11 passed, 1 warning in 4.65s`，D6 全量回归
+  `1234 passed, 1 warning in 126.73s`；两个 Python 入口通过 `py_compile`。
+
+### 当前边界
+
+- [ ] v7 的 42 个来源独立规则正动作全部未命中，validation/test 没有产生转移变化；
+  当前候选不得冻结或进入置信校准。
+- [ ] train 的三次可执行差异全部是负类错误边，虚假 transfer 必须回到 0，才能考虑
+  下一版本评价。
+- [ ] 后续候选必须另立版本，并使用全新未见数据取得 validation/test 非零且充分的
+  精确正动作命中；本轮 `5216-5279` 已读，不得复用为下一候选的独立评价集。
+- [ ] 达到正动作和负类安全门前，不读取正式留出，不运行 runtime preflight、D3/D7
+  许可、AirSim 或物理收益评价。
+
+本轮关闭 D6 对 v7 来源、逐帧低层重算、D4/D6 JSONL 字节对账、完整 R0 动作元组、
+错误转移分类和全权限失败关闭的审计实现缺口。剩余项属于 D4 后续候选能力及跨模块准入。
+
 ## 2026-07-30 D4 v6 来源独立盲审
 
 ### 已完成

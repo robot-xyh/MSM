@@ -1,5 +1,86 @@
 # D6 系统级离线评估：算法原理与实施说明
 
+## D4 v7 来源独立外部评价盲审（2026-07-30）
+
+实现入口为
+`d6_evaluation_metrics/d4_v7_source_independent_external_audit.py`，命令行为
+`scripts/run_d4_v7_source_independent_external_audit.py`，固定配置为
+`configs/d4_v7_source_independent_external_audit_m16n24_20260730.json`。v7 使用独立
+schema、类名、输出目录和测试文件，不覆盖 v4-v6 审计。
+
+### 输入固定
+
+配置固定六类只读树：
+
+1. raw source；
+2. labeled export；
+3. labeled dataset；
+4. 冻结 v4 来源；
+5. v7 候选；
+6. D4 外部评价制品。
+
+前五项是候选审计输入，审计前后都计算完整树摘要。D4 评价树用于事后对账，也在前后复核
+中保持不变。配置同时固定 manifest、dataset、split、模型状态、训练审计、来源绑定、
+D4 JSONL/CSV/summary/integrity/overlap/artifact manifest 的文件和内容 SHA-256。
+
+### 逐帧推理
+
+每帧按以下顺序重建：
+
+1. 从冻结标签 dataset 读取快照和目标动作；
+2. 对同一快照运行确定性 R0 规则，形成基准区域动作和转移；
+3. 由冻结图构造器生成节点特征、边特征和边索引；
+4. 加载 v7 模型状态，执行一次无梯度推理；
+5. 按冻结 activation threshold 解码激活边，再将资源数量限制到边的可转移上限；
+6. 把解码结果作为 R0 转移残差，不改写原始 R0 节点动作；
+7. 运行冻结确定性投影器；
+8. 比较目标、R0、raw actor 和 projected actor 的完整动作签名；
+9. 检查干预不变量并拆分错误方向、错误数量、错误边、虚假转移和投影拒绝；
+10. 写出逐帧记录，置信 gate、admission 和全部运行权限固定为未应用或 false。
+
+D6 记录完整 R0 action tuple 的字段级差异。投影前 `actions` 必须与 R0 保持一致；投影后
+单独记录由转移守恒产生的配额联动。这样可以区分节点头越权和投影器的确定性后果。
+
+### 独立分母
+
+train/validation/test 分片从冻结 split 读取，实际帧数为 `90/20/18`。D6 独立统计：
+
+- 规则正/负：`24/66`、`9/11`、`9/9`；
+- 原始边激活：`10/0/0`；
+- 原始和投影转移变化：`3/0/0`；
+- 精确正动作：`0/0/0`；
+- 负类精确 R0：`63/11/9`；
+- 错误边和虚假转移：`3/0/0`；
+- 错误方向、错误数量、投影拒绝、不变量失败和原始 R0 元组偏差：全部为 0。
+
+规则正类精确召回为 `0/42`。actor-derived positive 聚合分母为 3，精确动作仍为
+`0/3`；validation/test 分母为 0，因此相关比率写为 `unavailable/null`。
+
+### 对账顺序
+
+D6 先将 128 条重算记录序列化为规范 JSONL，之后才读取 D4 逐帧制品。两份 JSONL 按原始
+字节计算 SHA-256，并要求逐字节相同。D4 CSV 经过传输值规范化后逐字段与 JSONL 对比。
+D4 summary 只与 D6 已生成的 split 和 aggregate 指标比较；它不参与任何分母或结论计算。
+artifact manifest 必须枚举评价目录中的全部受管制品，并同时绑定文件摘要和规范内容摘要。
+
+本轮 D4/D6 JSONL SHA-256 均为
+`7785ded96360869edfb694c425321fa3323450cf1624607b53edf5d3eca6a5cd`，
+逐帧 mismatch、CSV transport mismatch 和 summary claim mismatch 均为 0。
+
+### 治理与输出
+
+审计显式记录以下操作计数为 0：模型拟合、检查点更新、阈值调整、置信校准、置信门应用、
+输入和候选修改、注册、准入、正式留出读取、既有评价读取及 D4 高层 evaluator 调用。
+任一计数、权限或来源绑定不符合固定值都会终止审计。
+
+完整输出包含约 2.6 MB JSON、约 1.7 MB 逐帧 JSONL、split CSV、中文报告和
+`SHA256SUMS`，保留在忽略的 outputs 目录。版本控制只跟踪固定配置、实现、CLI、测试、
+紧凑结果和中文报告，不提交模型或大数据。
+
+评价门要求 validation/test 出现非零且充分的精确正动作，同时保持零虚假转移、零投影
+拒绝、零不变量失败和零原始 R0 动作元组偏差。本轮未达到该门，结论固定为
+`failed_closed`，所有权限为 false。
+
 ## D4 v6 来源独立盲审（2026-07-30）
 
 实现入口为

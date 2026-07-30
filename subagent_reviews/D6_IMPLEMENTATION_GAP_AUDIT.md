@@ -1,5 +1,48 @@
 # D6 实现差距审计
 
+## 2026-07-30 D4 v7 来源独立外部评价盲审
+
+### 已关闭的 D6-owned 子项
+
+1. D6 已建立 v7 版本隔离审计器、CLI、固定哈希 config、完整 JSON、LF split CSV、
+   逐帧 JSONL、中文报告、紧凑结果和 11 项专项测试。
+2. raw source、labeled export、labeled dataset、冻结 v4 和 v7 候选五棵输入树使用
+   D6 固定摘要，并在审计前后保持不变；D4 评价树也未变化。
+3. 审计不调用 D4 v7 高层 evaluator，不采用 D4 summary 指标。D6 只用冻结低层模型
+   加载器、R0、残差边解码、确定性投影和干预不变量重建 128 条记录。
+4. train/validation/test 的样本为 `90/20/18`，规则正/负为
+   `24/66`、`9/11`、`9/9`，原始激活为 `10/0/0`，转移变化为 `3/0/0`。
+5. 精确正动作均为 0，负类精确 R0 为 `63/11/9`。三次转移变化均为 train 负类错误
+   边和虚假 transfer；错误方向、错误数量、投影拒绝和不变量失败均为 0。
+6. 完整 R0 action tuple 已逐字段重算。原始元组偏差为 0；投影后变化 3 帧，由错误
+   transfer 进入确定性投影后的配额联动造成。
+7. 规则正类精确动作召回为可用的 `0/42`。聚合 actor-derived positive 分母为 3，
+   精确命中 `0/3`；validation/test 分母为 0，保持 `unavailable/null`。
+8. 冻结 v4 的 425 帧/251 个唯一可观测键与外部 128 帧/92 个键 exact overlap 为 0；
+   key 不含 seed、episode、标签或真值。
+9. D6 JSONL 与 D4 JSONL 逐字节 SHA-256 均为
+   `7785ded96360869edfb694c425321fa3323450cf1624607b53edf5d3eca6a5cd`。
+   D4 CSV、summary、integrity、overlap 和 artifact manifest 对账 mismatch 均为 0。
+10. 拟合、检查点、阈值、置信校准、mutation、registration、admission、正式留出、
+    prior evaluation read 和 D4 高层 evaluator call 均为 0。
+11. 候选按实际结果固定 `failed_closed`，所有权限为 false，系统继续 R0。
+12. 命令行复跑、`SHA256SUMS`、专项测试、D6 全量、`py_compile` 和限定路径
+    `git diff --check` 均已纳入验证。
+
+### 仍开放的 P1
+
+1. **来源独立精确正动作仍为零。** 42 个规则正类全部未命中，validation/test 没有
+   transfer activation。v7 不得冻结或进入置信校准。
+2. **出现负类错误转移。** train 三次可执行差异全部为错误边和虚假 transfer。后续候选
+   必须先将该项归零。
+3. **新版本和新独立数据仍需 D4 提供。** `5216-5279` 已用于本轮评价，不得复用。
+   新候选需在全新未见 validation/test 上形成非零且充分的精确正动作。
+4. **正式准入继续关闭。** 达到正动作与负类安全门前，不读取 formal holdout，不运行
+   runtime preflight、D3/D7 许可、AirSim 或物理收益评价。
+
+当前无新增 D6-owned P0。D6 对来源、逐帧低层重算、完整动作元组、D4/D6 字节对账、
+输入不可变性和失败关闭权限的实现缺口已闭合。开放项属于 D4 新候选能力和后续跨模块准入。
+
 ## 2026-07-30 D4 v6 来源独立盲审
 
 ### 已关闭的 D6-owned 子项
