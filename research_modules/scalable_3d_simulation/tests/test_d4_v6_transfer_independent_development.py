@@ -16,6 +16,12 @@ from research_modules.scalable_3d_simulation.d4_v6_transfer_independent_developm
 from research_modules.scalable_3d_simulation.models import ScenarioConfig
 
 
+V7_SEED_REGISTRY = (
+    DEFAULT_SEED_REGISTRY.parent
+    / "d4_v7_transfer_independent_seed_registry_v1.json"
+)
+
+
 def test_seed_registry_is_disjoint_and_rejects_prior_evaluation() -> None:
     payload = _load_and_validate_seed_registry(
         DEFAULT_SEED_REGISTRY,
@@ -49,6 +55,27 @@ def test_sixty_four_seeds_cover_distinct_donor_receiver_layouts() -> None:
         assert any(t < r for t, r in zip(targets, resources, strict=True))
 
 
+def test_v7_registry_and_v2_layout_are_disjoint_from_v6() -> None:
+    payload = _load_and_validate_seed_registry(
+        V7_SEED_REGISTRY,
+        seeds=tuple(range(5216, 5280)),
+    )
+    assert payload["requested_seeds"] == list(range(5216, 5280))
+    assert set(range(4016, 4080)).issubset(
+        payload["prior_design_and_evaluation_seeds"]
+    )
+    v1 = {
+        _regional_pattern(seed, layout_version="v1")
+        for seed in range(4016, 4080)
+    }
+    v2 = {
+        _regional_pattern(seed, layout_version="v2")
+        for seed in range(5216, 5280)
+    }
+    assert len(v2) == 64
+    assert not v1 & v2
+
+
 def test_development_config_is_model_free_and_truth_free(tmp_path: Path) -> None:
     options = D4V6TransferIndependentDevelopmentOptions(
         output_dir=tmp_path / "output",
@@ -73,6 +100,42 @@ def test_development_config_is_model_free_and_truth_free(tmp_path: Path) -> None
     assert config.metadata["resource_surplus_design"][
         "prior_evaluation_reuse_allowed"
     ] is False
+
+
+def test_v7_campaign_metadata_uses_registry_and_v2_layout(
+    tmp_path: Path,
+) -> None:
+    options = D4V6TransferIndependentDevelopmentOptions(
+        output_dir=tmp_path / "output",
+        seed_registry_path=V7_SEED_REGISTRY,
+        seeds=tuple(range(5216, 5224)),
+        campaign_id="d4_v7_transfer_source_independent_development",
+        layout_version="v2",
+    )
+    registry = _load_and_validate_seed_registry(
+        V7_SEED_REGISTRY,
+        seeds=options.seeds,
+    )
+    base = ScenarioConfig.from_dict(
+        json.loads(DEFAULT_CONFIG.read_text(encoding="utf-8"))
+    )
+    config = _build_development_config(
+        base,
+        options=options,
+        seed=5216,
+        scenario_family="dense_crossing",
+        seed_classes=registry,
+    )
+    assert config.metadata["dataset_purpose"].startswith("d4_v7_")
+    assert config.metadata["resource_surplus_design"]["layout_version"] == "v2"
+    assert config.metadata["resource_surplus_design"][
+        "design_pilot_seeds"
+    ] == list(range(5200, 5216))
+    assert set(range(4016, 4080)).issubset(
+        config.metadata["resource_surplus_design"][
+            "prior_evaluation_seeds"
+        ]
+    )
 
 
 def test_options_reject_wrong_scale_and_too_few_seeds(

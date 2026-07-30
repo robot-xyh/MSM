@@ -69,6 +69,25 @@ _BASE_REGION_PATTERNS = (
     ),
 )
 
+_BASE_REGION_PATTERNS_V2 = (
+    (
+        (5, 2, 2, 1, 2, 1, 2, 1),
+        (1, 5, 3, 4, 2, 4, 2, 3),
+    ),
+    (
+        (2, 5, 1, 2, 1, 2, 1, 2),
+        (4, 1, 5, 2, 4, 2, 3, 3),
+    ),
+    (
+        (1, 2, 5, 2, 2, 1, 1, 2),
+        (3, 4, 1, 5, 2, 4, 3, 2),
+    ),
+    (
+        (2, 1, 2, 5, 1, 2, 2, 1),
+        (4, 3, 4, 1, 5, 2, 2, 3),
+    ),
+)
+
 
 class D4V6TransferIndependentDevelopmentError(RuntimeError):
     """Stable failure for invalid or contaminated source generation."""
@@ -88,6 +107,8 @@ class D4V6TransferIndependentDevelopmentOptions:
     recon_count: int = 2
     region_count: int = 8
     duration_s: float = 2.0
+    campaign_id: str = "d4_v6_transfer_source_independent_development"
+    layout_version: str = "v1"
     allow_dirty: bool = False
 
     def __post_init__(self) -> None:
@@ -124,6 +145,18 @@ class D4V6TransferIndependentDevelopmentOptions:
             )
         if not math.isfinite(float(self.duration_s)) or self.duration_s <= 0.0:
             raise ValueError("duration_s must be finite and positive")
+        campaign_id = str(self.campaign_id).strip()
+        if not campaign_id or any(
+            character not in "abcdefghijklmnopqrstuvwxyz0123456789_"
+            for character in campaign_id
+        ):
+            raise ValueError(
+                "campaign_id must use lowercase ASCII letters, digits, "
+                "and underscores"
+            )
+        object.__setattr__(self, "campaign_id", campaign_id)
+        if self.layout_version not in {"v1", "v2"}:
+            raise ValueError("layout_version must be v1 or v2")
 
 
 def run_d4_v6_transfer_independent_development(
@@ -152,7 +185,7 @@ def run_d4_v6_transfer_independent_development(
     plan = {
         "schema_version": D4_V6_TRANSFER_INDEPENDENT_SOURCE_SCHEMA,
         "created_at_utc": _utc_now(),
-        "purpose": "d4_v6_transfer_source_independent_development",
+        "purpose": options.campaign_id,
         "source": {
             "git_commit": git_commit,
             "repository_dirty": repository_dirty,
@@ -200,6 +233,7 @@ def run_d4_v6_transfer_independent_development(
             options=options,
             seed=seed,
             scenario_family=family,
+            seed_classes=registry,
         )
         resolved = resolve_learning_runtime(
             config,
@@ -251,7 +285,10 @@ def run_d4_v6_transfer_independent_development(
             source,
             learning_frames,
         )
-        target_counts, resource_counts = _regional_pattern(seed)
+        target_counts, resource_counts = _regional_pattern(
+            seed,
+            layout_version=options.layout_version,
+        )
         row = {
             "sequence": sequence,
             "seed": seed,
@@ -338,6 +375,7 @@ def _build_development_config(
     options: D4V6TransferIndependentDevelopmentOptions,
     seed: int,
     scenario_family: str,
+    seed_classes: Mapping[str, Any] | None = None,
 ) -> ScenarioConfig:
     config = make_curriculum_scenario(
         scenario_family,
@@ -348,16 +386,25 @@ def _build_development_config(
         duration_s=options.duration_s,
         base=base,
     )
-    target_counts, resource_counts = _regional_pattern(seed)
+    target_counts, resource_counts = _regional_pattern(
+        seed,
+        layout_version=options.layout_version,
+    )
+    registry = dict(seed_classes or {})
+    design_pilot_seeds = list(
+        registry.get("design_pilot_seeds", range(4000, 4016))
+    )
+    prior_seeds = list(
+        registry.get(
+            "prior_design_and_evaluation_seeds",
+            range(3000, 3040),
+        )
+    )
     metadata = dict(config.metadata)
     metadata.update(
         {
-            "dataset_purpose": (
-                "d4_v6_transfer_source_independent_development"
-            ),
-            "development_data_class": (
-                "independent_nonformal_no_fit"
-            ),
+            "dataset_purpose": options.campaign_id,
+            "development_data_class": "independent_nonformal_no_fit",
             "regional_resource_locality_enforced": False,
             "regional_probe_layout_only": True,
             "resource_surplus_design": {
@@ -366,10 +413,11 @@ def _build_development_config(
                 "spare_resource_count": (
                     options.resource_count - options.target_count
                 ),
-                "design_pilot_seeds": list(range(4000, 4016)),
+                "design_pilot_seeds": design_pilot_seeds,
                 "design_pilot_excluded_from_evaluation": True,
-                "prior_evaluation_seeds": list(range(3000, 3040)),
+                "prior_evaluation_seeds": prior_seeds,
                 "prior_evaluation_reuse_allowed": False,
+                "layout_version": options.layout_version,
             },
             "regional_resource_probe": {
                 "schema": REGIONAL_RESOURCE_PROBE_SCHEMA_VERSION,
@@ -385,14 +433,15 @@ def _build_development_config(
     return replace(
         config,
         scenario_name=(
-            "d4_v6_transfer_independent_"
+            f"{options.campaign_id}_"
             f"{scenario_family}_M{options.target_count}N"
             f"{options.resource_count}_R{options.region_count}"
         ),
         scenario_version=(
-            "d4-v6-transfer-independent-"
+            f"{options.campaign_id.replace('_', '-')}-"
             f"{scenario_family}-M{options.target_count}N"
-            f"{options.resource_count}-R{options.region_count}-v1"
+            f"{options.resource_count}-R{options.region_count}-"
+            f"{options.layout_version}"
         ),
         recon_count=options.recon_count,
         region_count=options.region_count,
@@ -400,13 +449,21 @@ def _build_development_config(
     )
 
 
-def _regional_pattern(seed: int) -> tuple[tuple[int, ...], tuple[int, ...]]:
+def _regional_pattern(
+    seed: int,
+    *,
+    layout_version: str = "v1",
+) -> tuple[tuple[int, ...], tuple[int, ...]]:
     """Return 64 deterministic donor/receiver layouts before repetition."""
 
-    base_targets, base_resources = _BASE_REGION_PATTERNS[
-        int(seed) % len(_BASE_REGION_PATTERNS)
-    ]
-    block = int(seed) // len(_BASE_REGION_PATTERNS)
+    patterns = {
+        "v1": _BASE_REGION_PATTERNS,
+        "v2": _BASE_REGION_PATTERNS_V2,
+    }.get(layout_version)
+    if patterns is None:
+        raise ValueError("unsupported regional layout version")
+    base_targets, base_resources = patterns[int(seed) % len(patterns)]
+    block = int(seed) // len(patterns)
     offset = block % len(base_targets)
     targets = _rotate(base_targets, offset)
     resources = _rotate(base_resources, offset)
@@ -438,9 +495,12 @@ def _load_and_validate_seed_registry(
     seeds: Sequence[int],
 ) -> dict[str, Any]:
     payload = json.loads(path.read_text(encoding="utf-8"))
-    if not isinstance(payload, Mapping) or payload.get("schema_version") != (
-        "scalable3d-d4-v6-transfer-independent-seed-registry-v1"
-    ):
+    if not isinstance(payload, Mapping) or payload.get(
+        "schema_version"
+    ) not in {
+        "scalable3d-d4-v6-transfer-independent-seed-registry-v1",
+        "scalable3d-d4-transfer-independent-seed-registry-v2",
+    }:
         raise ValueError("unsupported v6 transfer seed registry")
     names = (
         "training_seeds",
