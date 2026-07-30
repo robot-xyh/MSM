@@ -88,7 +88,7 @@ def test_input_hash_inventory_fails_closed(tmp_path: Path) -> None:
         replace(inputs, expected_hashes=incomplete)
 
 
-def test_report_writer_preserves_unavailable_positive_denominator(
+def test_report_writer_preserves_unavailable_denominator_and_lf_csv(
     tmp_path: Path,
 ) -> None:
     result = {
@@ -190,8 +190,15 @@ def test_report_writer_preserves_unavailable_positive_denominator(
     }
     output = tmp_path / "audit"
     files = write_d4_v5_external_audit_report(output, result)
+    csv_bytes = files["csv"].read_bytes()
     csv_text = files["csv"].read_text(encoding="utf-8")
     report = files["markdown"].read_text(encoding="utf-8")
+    assert b"\r" not in csv_bytes
+    assert csv_bytes.endswith(b"\n")
+    assert all(
+        not line.rstrip(b"\n").endswith((b" ", b"\t"))
+        for line in csv_bytes.splitlines(keepends=True)
+    )
     assert "unavailable" in csv_text
     assert "正类召回不可评价" in report
     assert len(files["sha256sums"].read_text().splitlines()) == 3

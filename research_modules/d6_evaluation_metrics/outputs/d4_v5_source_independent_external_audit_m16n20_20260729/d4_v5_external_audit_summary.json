@@ -2170,7 +2170,7 @@
   },
   "audit_execution_passed": true,
   "audit_id": "d4-v5-source-independent-external-m16n20-20260729",
-  "audit_repository_head": "63987592c216fbdb7e03d77183afc6e9f15748a2",
+  "audit_repository_head": "b3147fcae56cb1ff1e67cdd1bd8dad353d567460",
   "candidate_evaluation": {
     "aggregate": {
       "actor_derived_negative_count": 63,
@@ -2330,7 +2330,7 @@
       }
     ]
   },
-  "content_sha256": "16acba58d4b045215f421940f13b57a884152d3099eb7c22b4468a4bc7afee17",
+  "content_sha256": "cb9b9e2dc9481c9ac83c55158279f5d5b3f2c5ae2d7f12043ba851ed6fbc7a06",
   "evaluated_at_utc": "2026-07-29T19:00:00-07:00",
   "input_immutability": {
     "after_sha256": {

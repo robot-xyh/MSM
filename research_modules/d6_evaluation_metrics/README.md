@@ -42,14 +42,18 @@ D7 权限测试或在线控制。
 输出位于
 `outputs/d4_v5_source_independent_external_audit_m16n20_20260729/`。JSON content/file、
 CSV、中文报告和 `SHA256SUMS` 文件 SHA-256 分别为
-`16acba58d4b045215f421940f13b57a884152d3099eb7c22b4468a4bc7afee17`、
-`4577a1c332ee5c897e37d54631627b92e1c2414a8e2f2b1b684fd6961ca04a5e`、
-`8bea57faf722343387569c350456e5fd360bd3e029150bb9b1bc74b458020f93`、
+`cb9b9e2dc9481c9ac83c55158279f5d5b3f2c5ae2d7f12043ba851ed6fbc7a06`、
+`f1f8047b2b858594425dd2e7e5e216025623e49d6e34bfe0f4aaa4790624aa6e`、
+`8e74ed1d35f75d7f7e30585a6609ed35398300d353bbcea8fd59f703eec4a7e2`、
 `7fabd3a0602a245aa644fdcc9f1582d94db5d1b81c20d954e7d379b38767426f` 和
-`248571a88077198cf802efc0d1194950c4b98b4c38fe47d260ffbae020c15cd3`。
+`33d4e867390d986ac359ae5f90981a894cdaf17a4f91773cef9d90889fd6ac82`。
+逐 split CSV 由 `DictWriter` 显式使用 LF，当前为 4 个 LF、0 个 CR，且不存在空格或制表符
+行尾。重生制品中的 `audit_repository_head` 为
+`b3147fcae56cb1ff1e67cdd1bd8dad353d567460`；冻结来源提交仍为
+`63987592c216fbdb7e03d77183afc6e9f15748a2`。
 候选状态保持 unregistered、admission closed、rule fallback required，生产、D3 和 D7
-权限继续关闭。专项测试为 `5 passed, 1 warning in 2.27s`，D6 全量回归为
-`1215 passed, 1 warning in 136.45s`。warning 是环境中的 Matplotlib `Axes3D` 多版本提示，
+权限继续关闭。专项测试为 `5 passed, 1 warning in 2.33s`，D6 全量回归为
+`1215 passed, 1 warning in 123.70s`。warning 是环境中的 Matplotlib `Axes3D` 多版本提示，
 不影响本次哈希、Torch 推理或 JSON/CSV 输出。
 
 ## 2026-07-29 D4 v5 置信校准候选独立审计

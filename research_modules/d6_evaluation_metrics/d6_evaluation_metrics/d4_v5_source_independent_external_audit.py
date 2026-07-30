@@ -1394,7 +1394,11 @@ def _write_split_csv(path: Path, result: Mapping[str, Any]) -> None:
         "nonformal_external_test_split",
     )
     with path.open("w", encoding="utf-8", newline="") as stream:
-        writer = csv.DictWriter(stream, fieldnames=fieldnames)
+        writer = csv.DictWriter(
+            stream,
+            fieldnames=fieldnames,
+            lineterminator="\n",
+        )
         writer.writeheader()
         for row in rows:
             writer.writerow(

@@ -55,6 +55,9 @@ s(h)=
 逐 split CSV 保留样本、seed、唯一键、规则安全正动作、actor-derived 正负类、有限评分、
 门通过、负类误接收、分母 availability 和规则回退。JSON 另保留完整摘要、seed 实际读取
 集合、key 重合和权限状态。
+CSV writer 保留 `newline=""` 并显式设置 `lineterminator="\n"`，由 writer 自己产生单一
+LF 行尾。测试按字节拒绝 CR、空格行尾和制表符行尾；该约束只改变序列化字节，不改变字段、
+行数或评价统计。
 
 本轮 train/validation/test 为 `43/10/10` 帧，规则安全正动作 `1/1/0`，
 actor-derived positive `0/0/0`。所有分数为 0，0.60 通过和负类误接收为 0。正类召回写

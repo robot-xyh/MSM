@@ -26,10 +26,13 @@
 - [x] 将正类召回写为 `unavailable/null`，denominator=0；负类特异度为
   `63/63=1.0`；规则回退为 `63/63`。
 - [x] 生成 JSON、逐 split CSV、中文 Markdown 和 `SHA256SUMS`，不覆盖已有目录。
+- [x] 接管 main 的 CSV 行尾紧急修复：`DictWriter` 固定
+  `lineterminator="\n"`。字节级测试要求 0 个 CR、文件以 LF 结束且各行无空格或制表符行尾；
+  重生制品为 4 个 LF、0 个 CR。
 - [x] 固定审计结论为 unregistered、admission closed、rule fallback required、
   production permissions disabled；D6 不生成权限或控制消息。
-- [x] 专项测试 `5 passed, 1 warning in 2.27s`，D6 全量回归
-  `1215 passed, 1 warning in 136.45s`；唯一 warning 与 Matplotlib `Axes3D` 环境有关。
+- [x] 专项测试 `5 passed, 1 warning in 2.33s`，D6 全量回归
+  `1215 passed, 1 warning in 123.70s`；唯一 warning 与 Matplotlib `Axes3D` 环境有关。
 
 ### 当前边界
 

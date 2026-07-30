@@ -56,16 +56,22 @@ runtime preflight、D3 successor、D7 权限和在线控制运行数均为 0。
 
 | 输出 | SHA-256 |
 | --- | --- |
-| JSON content | `16acba58d4b045215f421940f13b57a884152d3099eb7c22b4468a4bc7afee17` |
-| JSON file | `4577a1c332ee5c897e37d54631627b92e1c2414a8e2f2b1b684fd6961ca04a5e` |
-| split CSV file | `8bea57faf722343387569c350456e5fd360bd3e029150bb9b1bc74b458020f93` |
+| JSON content | `cb9b9e2dc9481c9ac83c55158279f5d5b3f2c5ae2d7f12043ba851ed6fbc7a06` |
+| JSON file | `f1f8047b2b858594425dd2e7e5e216025623e49d6e34bfe0f4aaa4790624aa6e` |
+| split CSV file | `8e74ed1d35f75d7f7e30585a6609ed35398300d353bbcea8fd59f703eec4a7e2` |
 | 中文报告 file | `7fabd3a0602a245aa644fdcc9f1582d94db5d1b81c20d954e7d379b38767426f` |
-| `SHA256SUMS` file | `248571a88077198cf802efc0d1194950c4b98b4c38fe47d260ffbae020c15cd3` |
+| `SHA256SUMS` file | `33d4e867390d986ac359ae5f90981a894cdaf17a4f91773cef9d90889fd6ac82` |
+
+逐 split CSV 固定使用 LF，实测为 4 个 LF、0 个 CR，各行没有空格或制表符行尾。JSON
+因 `audit_repository_head` 更新为
+`b3147fcae56cb1ff1e67cdd1bd8dad353d567460` 而更换摘要；冻结来源提交仍为
+`63987592c216fbdb7e03d77183afc6e9f15748a2`。除该审计实现 provenance 外，JSON 评价内容
+与上一轮一致。
 
 候选保持 unregistered、admission closed、rule fallback required。生产、D3 和 D7 权限
 均为 false。本轮不是 AirSim、实飞或生产性能实验。专项测试
-`5 passed, 1 warning in 2.27s`，D6 全量回归
-`1215 passed, 1 warning in 136.45s`。warning 为既有 Matplotlib `Axes3D` 环境提示。
+`5 passed, 1 warning in 2.33s`，D6 全量回归
+`1215 passed, 1 warning in 123.70s`。warning 为既有 Matplotlib `Axes3D` 环境提示。
 
 ## D4 v5 置信校准候选审计（2026-07-29）
 

@@ -20,6 +20,8 @@
    `0/0/0`。63 个评分均为 0，固定 0.60 门通过和负类误接收均为 0。
 7. 正类召回明确为 `unavailable/null`，denominator=0；负类特异度为 1.0；规则回退
    `63/63`。D6 未拟合、调门、改 split、补正类、运行预检或生成权限。
+8. D6 已接管逐 split CSV 行尾修复。writer 显式固定 LF；测试检查 0 个 CR、最终 LF 和
+   无空格/制表符行尾。重生 CSV 为 4 个 LF、0 个 CR，限定路径的差异检查通过。
 
 ### 仍开放的 P1
 
@@ -34,8 +36,8 @@
 当前无新增 D6-owned P0。候选继续 unregistered、admission closed、rule fallback required，
 production permissions disabled。external test 的 10 帧是非正式开发 split；main 此前读取
 10 帧和 D6 本轮读取 10 帧均已记录，正式 holdout 读取仍为 0。专项测试
-`5 passed, 1 warning in 2.27s`，D6 全量回归
-`1215 passed, 1 warning in 136.45s`。
+`5 passed, 1 warning in 2.33s`，D6 全量回归
+`1215 passed, 1 warning in 123.70s`。
 
 ## 2026-07-29 D4 v5 置信校准与记忆偏差
 

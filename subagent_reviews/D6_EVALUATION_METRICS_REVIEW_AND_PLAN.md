@@ -8,6 +8,8 @@ source/labeled/v4/v5 哈希和绑定全部通过，四类 seed 无交集。旧 v
 TRAIN+VALIDATION 的 251 个唯一可观测键与外部 41 个唯一键 exact 重合为 0。
 source、labeled export、labeled dataset、v4 actor 和 v5 calibrator 五个完整输入树在
 审计前后摘要一致，`input_mutation_count=0`；执行期任一树变化均失败关闭。
+逐 split CSV 已由 D6 owner 接管并固定 LF。重生文件为 4 个 LF、0 个 CR，没有空格或
+制表符行尾；该序列化修复不改变样本、评分、分母或准入结论。
 
 评审接受以下统计：
 
@@ -23,8 +25,8 @@ source、labeled export、labeled dataset、v4 actor 和 v5 calibrator 五个完
 
 下一步只能由 D4 形成新的冻结候选和来源独立正类分母，再交 D6 盲审。此前继续保持
 unregistered、admission closed、rule fallback required 和 production permissions
-disabled。专项测试为 `5 passed, 1 warning in 2.27s`，D6 全量回归为
-`1215 passed, 1 warning in 136.45s`。
+disabled。专项测试为 `5 passed, 1 warning in 2.33s`，D6 全量回归为
+`1215 passed, 1 warning in 123.70s`。
 
 ## 2026-07-29 D4 v5 独立评审
 
