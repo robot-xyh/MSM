@@ -1,5 +1,34 @@
 # D4 分布式协同与降级接管
 
+## 2026-07-29 v6 转移动作学习候选
+
+D4 已从冻结 v4 的 TRAIN/VALIDATION 建立版本隔离的
+`region_resource_a2_edge_transfer_shadow_v6`。v4、v5、seed 3008-3039 的来源独立
+评价和正式 holdout seed 1000-1019 均未修改或用于调参。v6 只用 TRAIN 350 帧拟合和
+派生权重；VALIDATION 75 帧只选 checkpoint；TEST、来源独立评价和正式 holdout
+payload 读取均为 0。
+
+根因审计确认 TRAIN 有 72 条正边和 3,848 条零边，正边占 1.84%。v4 的非零边权重上限
+为 32，零边有效质量仍为正边的 1.670 倍，且同一 `edge_mean` 同时承担激活、方向和
+数量。v6 增加独立边激活头、有向边排序、正边数量和转移资源数监督，节点与边权重不再
+重复放大；推理仍输出兼容的 `GraphPolicyOutput`，确定性投影和安全合同不变。
+
+固定构建的最佳 epoch 为 119。TRAIN/VALIDATION 的投影后 exact 正动作和正确有向边
+分别为 `58/60`、`13/15`，投影拒绝均为 0；负类基线动作保持为 `255/290`、
+`55/60`，低于冻结 v4 的 `276/290`、`58/60`。负类表示与 R0 无可执行差异，其中可含
+R0 自身转移。v6 只证明新训练结构可形成非退化、可重复的内部候选，不证明效果超过
+v4 或具备来源独立泛化。
+
+两次独立构建逐文件一致。候选 manifest、训练审计、模型内容和规范状态文件 SHA-256
+分别为 `f40064e7...66a83f`、`ebc1334d...4bee9a`、`c09d1719...ba9e6` 和
+`e92ea3aa...b6ea8`。v6 专项 12/12、D4 全量 855/855 通过。
+
+v6 保持 unregistered、development/shadow only、admission closed 和 rule fallback
+required。固定 0.60 门不降低；assist、assignment、degradation、takeover、
+coalition、control、physical、D3 和 D7 权限全部为 false。actor 尚未冻结，置信校准、
+全新来源独立评价、正式 holdout、runtime preflight、AirSim 和物理收益不启动。完整
+记录见 `reports/D4_V6_EDGE_TRANSFER_DEVELOPMENT_CANDIDATE_20260729.md`。
+
 ## 2026-07-29 v5 来源独立外部评价
 
 D4 已对冻结 v4 actor 和 v5 近邻置信候选完成来源独立、只读外部评价。输入固定为

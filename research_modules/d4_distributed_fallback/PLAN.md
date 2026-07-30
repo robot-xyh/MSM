@@ -1,5 +1,43 @@
 # D4 分布式协同与降级接管计划
 
+## 2026-07-29 v6 转移动作学习开发计划
+
+### 已完成
+
+- 冻结 v4/v5 和全部既有评价输入。v6 使用新 candidate/model/schema，不覆盖 v4/v5，
+  不读取 seed 3008-3039 或正式 holdout seed 1000-1019。
+- 从 TRAIN 350 帧审计得到 60/290 个正负动作和 72/3848 条正/零边。正边权重、帧权重
+  及标签库存 SHA-256 均只由 TRAIN 推导；VALIDATION 不拟合权重或超参数。
+- 新增显式边激活头、有向边排序、正边连续数量和转移资源数损失。推理仍返回共享
+  `GraphPolicyOutput`，确定性投影、owner/version/epoch/lease、备用资源、ACK 和 fault
+  fence 不变。
+- checkpoint 先比较投影后 exact 正动作、正确有向边和负类基线动作保持，再比较
+  no-transfer 偏置、投影拒绝、不变量失败和训练权重下的 VALIDATION loss。全
+  no-transfer 不能凭低 loss 被选中。
+- 固定构建最佳 epoch 119。TRAIN/VALIDATION exact 正动作和正确有向边为
+  58/60、13/15，负类基线动作保持为 255/290、55/60，投影拒绝为 0/0。
+- 候选使用规范张量流落盘。两次独立构建逐文件一致；manifest、训练审计、模型内容和
+  状态文件哈希稳定。
+- v6 专项 12/12、D4 全量 855/855 通过。AirSim 集成计划已检查，本次没有消息、节点、
+  episode 或在线 loader 变化，不修改 AirSim 计划。
+
+### 当前判断
+
+v6 已关闭“转移激活与数量无法独立监督”和“重复构建文件哈希不稳定”的开发子项。它没有
+关闭来源独立正类召回和准入 P1。内部正动作命中与 v4 相同，负类保持低于 v4；v6 actor
+不能冻结、不能接 v5 calibrator，也不能进入运行权限链路。
+
+### 下一步
+
+1. 另立后续训练版本，增加 TRAIN 内安全 transfer 正动作、困难负类、反向边和 8 区域
+   拓扑覆盖；不得用 seed 3008-3039 或正式 holdout 补分母。
+2. 优先提高负类基线动作保持，并保持 exact 正动作、有向边和零投影拒绝不退化。负类
+   表示与 R0 无可执行差异，不等于所有帧都没有转移。数据和损失权重继续只由 TRAIN
+   推导，VALIDATION 只选 checkpoint。
+3. actor 冻结后另建置信校准版本。随后由 D6 使用全新未见 development 数据盲审。
+4. 来源独立正类分母充分前，不运行正式 holdout、runtime preflight、D3 successor、
+   D7 权限、AirSim 或物理收益试验。
+
 ## 2026-07-29 v5 来源独立外部评价计划
 
 ### 已完成

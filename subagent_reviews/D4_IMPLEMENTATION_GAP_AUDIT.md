@@ -1,5 +1,37 @@
 # D4 实现差距审计：分布式协同与降级接管
 
+## 2026-07-29 v6 转移动作学习 GAP
+
+- **无新增 P0。** v4/v5、固定 0.60 门、确定性投影、owner/version/epoch/lease、
+  备用资源、ACK、联盟、控制和规则回退未修改。v6 未注册且通用运行时没有加载器。
+- **已关闭 D4 内 P1 子项：激活、方向和数量缺少分离监督。** v6 新增独立边激活头、
+  有向边排序、正边连续数量和转移资源数损失。节点与边权重不再重复放大。
+- **已关闭 D4 内 P1 子项：TRAIN 不平衡不可复核。** TRAIN 有 60/290 个正负动作和
+  72/3848 条正/零边。帧权重 4.833、边权重 53.444 和标签库存哈希均只由 TRAIN 推导；
+  VALIDATION 权重、超参数和拟合计数为 0。
+- **已关闭 D4 内 P1 子项：checkpoint 可被低 loss 的全 no-transfer 占据。** 选模先
+  要求非退化双类行为，再按投影后 exact 正动作、正确有向边、负类基线动作保持、
+  no-transfer 偏置和安全失败排序，最后才比较固定 TRAIN 权重下的 VALIDATION loss。
+- **已关闭 D4 内 P1 子项：重复构建文件哈希漂移。** v6 使用规范张量流。两次独立构建
+  逐文件一致；manifest、训练审计、模型内容和状态文件哈希稳定。
+- **内部验证结果。** TRAIN/VALIDATION exact 正动作和正确有向边为 58/60、13/15，
+  投影拒绝为 0/0。负类基线动作保持为 255/290、55/60，低于 v4 的
+  276/290、58/60。负类按“与 R0 无可执行差异”定义，不等于所有帧都无转移。
+- **P1 仍开放：困难负类和来源独立泛化。** v6 没有改善内部正动作命中，负类保持出现
+  退化。需要新的 TRAIN 版本增加安全 transfer 正动作、困难负类、反向边和 8 区域拓扑；
+  不得复用 seed 3008-3039 或正式 holdout。
+- **P1 仍开放：冻结、校准和独立评价。** v6 actor 未冻结，置信校准未开始。需要冻结
+  新 actor 后另立校准版本，再由 D6 使用全新未见 development 数据盲审。正类分母充分
+  前不得读取正式 holdout。
+- **权限。** v6 为 unregistered、development/shadow only、admission closed、
+  rule fallback required。assist、assignment、degradation、takeover、coalition、
+  control、physical、D3 和 D7 权限全部 false。
+- **验收。** v6 专项 12/12、D4 全量 855/855 通过；新增/修改 Python 通过语法检查。
+
+本轮没有改变 AirSim 消息、节点、episode 或在线运行接口，已检查
+`reports/AIRSIM_INTEGRATION_PLAN.md`，无需修改。D4 M 对 N 联盟合同也未变化，已检查
+`D4_M_TO_N_DISTRIBUTED_COALITION_REVIEW.md`，无需制造无关改动。
+
 ## 2026-07-29 v5 来源独立外部评价 GAP
 
 - **无新增 P0。** v4/v5 候选字节、固定 0.60 门、split、v3 registry、确定性投影、

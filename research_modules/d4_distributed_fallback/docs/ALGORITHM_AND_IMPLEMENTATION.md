@@ -1,5 +1,46 @@
 # D4 分布式协同与降级接管算法及实施方案
 
+## 2026-07-29 v6 转移动作学习实现
+
+v6 实现在 `region_resource_v6_transfer_candidate.py`，构建入口为
+`scripts/build_region_resource_v6_transfer_candidate.py`。候选标识为
+`region_resource_a2_edge_transfer_shadow_v6`，模型版本为
+`d4-region-resource-graph-bc-edge-transfer-v6`。代码不改 v4/v5 文件和注册常量。
+
+构建器先核验冻结 v4 manifest 文件、内容、模型、数据和 split 哈希，再只请求 TRAIN 和
+VALIDATION payload。载入记录含 TEST、seed 1000-1019 或 seed 3008-3039 时立即失败。
+TRAIN 派生帧和边权重；VALIDATION 只执行每 epoch 的投影后 checkpoint 审计。
+
+`V6EdgeTransferGraphActorCritic` 复用共享节点/边编码、消息传递和节点动作头，新增
+`edge_activation_actor`。训练接口同时返回激活 logits 和正边数量；运行兼容接口只返回
+`GraphPolicyOutput`。激活为负的边输出固定无转移值，激活为正的边输出数量头结果，并
+继续由 `LearnedRegionResourcePolicy` 和 `DeterministicResourceProjector` 解码。
+
+训练审计逐 split 记录：
+
+- 正/负动作和正/零边数量；
+- 正确 source-target 有向边；
+- 投影后 exact executable action；
+- raw/projected no-transfer bias；
+- 投影拒绝和不变量失败；
+- 边级真阳性、假阳性、假阴性和真阴性；
+- 失败原因库存及 checkpoint 选择轨迹；
+- TRAIN/VALIDATION/TEST/holdout/来源评价的读取、拟合和权重计数。
+
+候选 bundle 使用按参数名、类型、形状和原始字节排序的规范张量流。该格式不注册到通用
+运行时。两次独立构建逐文件一致，避免 PyTorch 默认序列化内部存储标识导致文件哈希
+漂移。
+
+固定构建的最佳 epoch 为 119，训练在 epoch 164 提前停止。TRAIN/VALIDATION 的 exact
+正动作和正确有向边为 58/60、13/15，负类基线动作保持为 255/290、55/60，投影拒绝为
+0/0。负类按“与 R0 无可执行差异”定义，允许 R0 自身带转移。v6 专项 12/12、D4 全量
+855/855 通过。
+
+候选 manifest 固定 `unregistered`、`admission_closed`、
+`rule_fallback_required`。0.60 置信门不降低，置信校准状态为“actor 冻结后再开始”。
+assist、assignment、degradation、takeover、coalition、control、physical、D3 和 D7
+权限全部为 false。
+
 ## 2026-07-29 v5 来源独立外部评价实现
 
 ### 输入与校验
