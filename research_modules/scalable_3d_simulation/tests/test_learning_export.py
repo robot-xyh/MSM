@@ -301,3 +301,63 @@ def test_batch_export_keeps_fault_fenced_d4_advice_out_of_teacher_targets(
         == "rule_target_projection_rejected"
         for item in frame_rows
     )
+
+
+def test_batch_export_can_stage_only_d3_without_cross_module_artifacts(
+    tmp_path,
+) -> None:
+    stack = IntegratedScalableModuleStack(
+        IntegratedStackConfig(capture_learning_artifacts=True)
+    )
+    result = run_episode(
+        _learning_config(),
+        module_stack=stack,
+    )
+    writer = BatchLearningArtifactWriter(
+        tmp_path / "d3_only",
+        components=("d3",),
+    )
+
+    row = writer.stage_episode(
+        config=result.config,
+        manifest=replace(result.manifest, repository_dirty=False),
+        artifacts=stack.learning_artifacts(),
+        offline_truth_labels=result.offline_truth_labels,
+        online_messages=result.online_messages,
+    )
+
+    assert row["learning_export_components"] == ["d3"]
+    assert row["d3_exported_frame_count"] >= 1
+    assert row["d4_captured_frame_count"] == 0
+    assert row["d5_staged_frame_count"] == 0
+    assert row["d5_active_vision_staged_frame_count"] == 0
+    assert writer._d3_staging_path.is_file()
+    assert not writer._d4_staging_root.exists()
+    assert not (writer.root / "d5_tracklet_graph").exists()
+    assert not (writer.root / "d5_active_vision").exists()
+
+
+def test_batch_export_rejects_component_change_during_resume(tmp_path) -> None:
+    stack = IntegratedScalableModuleStack(
+        IntegratedStackConfig(capture_learning_artifacts=True)
+    )
+    result = run_episode(
+        _learning_config(),
+        module_stack=stack,
+    )
+    output = tmp_path / "component_resume"
+    writer = BatchLearningArtifactWriter(output, components=("d3",))
+    writer.stage_episode(
+        config=result.config,
+        manifest=replace(result.manifest, repository_dirty=False),
+        artifacts=stack.learning_artifacts(),
+        offline_truth_labels=result.offline_truth_labels,
+        online_messages=result.online_messages,
+    )
+
+    with pytest.raises(RuntimeError, match="learning components differ"):
+        BatchLearningArtifactWriter(
+            output,
+            resume=True,
+            components=("d3", "d4"),
+        )

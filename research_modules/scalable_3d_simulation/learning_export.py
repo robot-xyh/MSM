@@ -20,6 +20,9 @@ from .module_stack import IntegratedLearningArtifacts
 
 
 LEARNING_EXPORT_SCHEMA_VERSION = "scalable3d-learning-export-v2"
+LEARNING_EXPORT_COMPONENTS = frozenset(
+    {"d3", "d4", "d5_graph", "d5_active_vision"}
+)
 
 
 class BatchLearningArtifactWriter:
@@ -31,10 +34,12 @@ class BatchLearningArtifactWriter:
         *,
         formal: bool = False,
         resume: bool = False,
+        components: Iterable[str] | None = None,
     ) -> None:
         self.root = Path(output_dir)
         self.root.mkdir(parents=True, exist_ok=True)
         self._formal = bool(formal)
+        self._components = _normalize_learning_export_components(components)
         self._staging_root = self.root / "_staging"
         self._d3_staging_path = self._staging_root / "d3_frames.jsonl"
         self._d4_staging_root = self._staging_root / "d4_region_episodes"
@@ -89,6 +94,16 @@ class BatchLearningArtifactWriter:
             episode_id = str(row["episode_id"])
             if not episode_id or episode_id in self._episode_ids:
                 raise RuntimeError("staged episode index contains duplicate episode IDs")
+            row_components = tuple(
+                row.get(
+                    "learning_export_components",
+                    sorted(LEARNING_EXPORT_COMPONENTS),
+                )
+            )
+            if row_components != self._components:
+                raise RuntimeError(
+                    "staged episode learning components differ from resume configuration"
+                )
             self._episode_ids.add(episode_id)
             self._episode_rows.append(dict(row))
             self._episode_count += 1
@@ -146,60 +161,79 @@ class BatchLearningArtifactWriter:
         if manifest.episode_id in self._episode_ids:
             raise ValueError(f"episode is already staged: {manifest.episode_id}")
 
+        records: list[Any] = []
+        unavailable: Counter[str] = Counter()
         d3_started = time.perf_counter()
-        records, unavailable = _build_d3_records(
-            config=config,
-            manifest=manifest,
-            planning_frames=artifacts.d3_planning_frames,
-        )
-        with self._d3_staging_path.open("a", encoding="utf-8") as stream:
-            for record in records:
-                stream.write(
-                    json.dumps(record.to_dict(), ensure_ascii=False, sort_keys=True) + "\n"
-                )
+        if "d3" in self._components:
+            records, unavailable = _build_d3_records(
+                config=config,
+                manifest=manifest,
+                planning_frames=artifacts.d3_planning_frames,
+            )
+            with self._d3_staging_path.open("a", encoding="utf-8") as stream:
+                for record in records:
+                    stream.write(
+                        json.dumps(
+                            record.to_dict(),
+                            ensure_ascii=False,
+                            sort_keys=True,
+                        )
+                        + "\n"
+                    )
         d3_stage_wall_s = time.perf_counter() - d3_started
         d4_started = time.perf_counter()
-        _, d4_summary = _stage_d4_learning_episode(
-            self._d4_staging_root,
-            config=config,
-            manifest=manifest,
-            frames=artifacts.d4_region_frames,
-        )
+        d4_summary = _empty_d4_stage_summary()
+        if "d4" in self._components:
+            _, d4_summary = _stage_d4_learning_episode(
+                self._d4_staging_root,
+                config=config,
+                manifest=manifest,
+                frames=artifacts.d4_region_frames,
+            )
         d4_stage_wall_s = time.perf_counter() - d4_started
         d5_graph_started = time.perf_counter()
-        _, d5_summary = _write_d5_frames(
-            self.root / "d5_tracklet_graph",
-            config=config,
-            manifest=manifest,
-            graph_frames=artifacts.d5_graph_frames,
-            offline_truth_labels=tuple(offline_truth_labels),
-            generation_config={
-                "schema_version": LEARNING_EXPORT_SCHEMA_VERSION,
-                "source": "scalable_3d_multi_seed_batch",
-                "truth_join": "offline_observation_id_to_anonymous_tracklet_v1",
-            },
-        )
+        d5_summary: Mapping[str, Any] = {"staged_frame_count": 0}
+        if "d5_graph" in self._components:
+            _, d5_summary = _write_d5_frames(
+                self.root / "d5_tracklet_graph",
+                config=config,
+                manifest=manifest,
+                graph_frames=artifacts.d5_graph_frames,
+                offline_truth_labels=tuple(offline_truth_labels),
+                generation_config={
+                    "schema_version": LEARNING_EXPORT_SCHEMA_VERSION,
+                    "source": "scalable_3d_multi_seed_batch",
+                    "truth_join": (
+                        "offline_observation_id_to_anonymous_tracklet_v1"
+                    ),
+                },
+            )
         d5_graph_stage_wall_s = time.perf_counter() - d5_graph_started
         d5_active_started = time.perf_counter()
-        _, d5_active_summary = _write_d5_active_vision_episode(
-            self.root / "d5_active_vision",
-            config=config,
-            manifest=manifest,
-            active_vision_frames=artifacts.d5_active_vision_frames,
-            online_messages=tuple(online_messages),
-            generation_config={
-                "schema_version": LEARNING_EXPORT_SCHEMA_VERSION,
-                "source": "scalable_3d_multi_seed_batch",
-                "recording_mode": "whole_episode",
-                "offline_reward_policy": "explicit_unavailable_until_d6_join",
-            },
-        )
+        d5_active_summary: Mapping[str, Any] = {"staged_frame_count": 0}
+        if "d5_active_vision" in self._components:
+            _, d5_active_summary = _write_d5_active_vision_episode(
+                self.root / "d5_active_vision",
+                config=config,
+                manifest=manifest,
+                active_vision_frames=artifacts.d5_active_vision_frames,
+                online_messages=tuple(online_messages),
+                generation_config={
+                    "schema_version": LEARNING_EXPORT_SCHEMA_VERSION,
+                    "source": "scalable_3d_multi_seed_batch",
+                    "recording_mode": "whole_episode",
+                    "offline_reward_policy": (
+                        "explicit_unavailable_until_d6_join"
+                    ),
+                },
+            )
         d5_active_stage_wall_s = time.perf_counter() - d5_active_started
         episode_row = {
             "episode_id": manifest.episode_id,
             "scenario_version": config.scenario_version,
             "seed": config.seed,
             "config_sha256": manifest.config_sha256,
+            "learning_export_components": list(self._components),
             "d3_exported_frame_count": len(records),
             "d3_unavailable_reason_counts": dict(sorted(unavailable.items())),
             "d4_captured_frame_count": int(d4_summary["captured_frame_count"]),
@@ -328,6 +362,7 @@ class BatchLearningArtifactWriter:
 
         summary = {
             "schema_version": LEARNING_EXPORT_SCHEMA_VERSION,
+            "learning_export_components": list(self._components),
             "episode_count": self._episode_count,
             "scenario_seed_group_count": len(self._seed_groups),
             "d3_frame_count": self._d3_frame_count,
@@ -554,14 +589,7 @@ def _stage_d4_learning_episode(
     """Stage one truth-free D4 episode with explicit target/reward availability."""
 
     if not frames:
-        return None, {
-            "captured_frame_count": 0,
-            "target_available_count": 0,
-            "target_unavailable_count": 0,
-            "target_unavailable_reason_counts": {},
-            "reward_available_count": 0,
-            "reward_unavailable_count": 0,
-        }
+        return None, _empty_d4_stage_summary()
     from research_modules.d4_distributed_fallback.d4_distributed_fallback import (
         RecommendationSource,
         RegionLearningEpisodeSource,
@@ -661,6 +689,36 @@ def _d4_rule_target_unavailable_reason(
         if tuple(getattr(advisory_contract, "publication_rejections", ())):
             return "rule_target_publication_rejected"
     return None
+
+
+def _empty_d4_stage_summary() -> dict[str, Any]:
+    return {
+        "captured_frame_count": 0,
+        "target_available_count": 0,
+        "target_unavailable_count": 0,
+        "target_unavailable_reason_counts": {},
+        "reward_available_count": 0,
+        "reward_unavailable_count": 0,
+    }
+
+
+def _normalize_learning_export_components(
+    components: Iterable[str] | None,
+) -> tuple[str, ...]:
+    values = (
+        LEARNING_EXPORT_COMPONENTS
+        if components is None
+        else {str(component).strip() for component in components}
+    )
+    if not values:
+        raise ValueError("at least one learning export component is required")
+    unknown = set(values) - LEARNING_EXPORT_COMPONENTS
+    if unknown:
+        raise ValueError(
+            "unsupported learning export components: "
+            + ",".join(sorted(unknown))
+        )
+    return tuple(sorted(values))
 
 
 def _write_d5_frames(
@@ -1007,6 +1065,7 @@ def _staged_d5_graph_seed_count(root: Path) -> int:
 
 __all__ = [
     "BatchLearningArtifactWriter",
+    "LEARNING_EXPORT_COMPONENTS",
     "LEARNING_EXPORT_SCHEMA_VERSION",
     "write_episode_learning_artifacts",
 ]

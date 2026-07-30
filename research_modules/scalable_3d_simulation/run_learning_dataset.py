@@ -84,6 +84,16 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
             "versioned assignment plan; disabled by default"
         ),
     )
+    parser.add_argument(
+        "--learning-components",
+        nargs="+",
+        choices=("d3", "d4", "d5_graph", "d5_active_vision"),
+        default=("d3", "d4", "d5_graph", "d5_active_vision"),
+        help=(
+            "learning datasets to stage; defaults to all components and is "
+            "frozen into the generation plan"
+        ),
+    )
     return parser.parse_args(argv)
 
 
@@ -145,6 +155,7 @@ def main(argv: list[str] | None = None) -> int:
         "cell_count": len(cells),
         "generation_seed_count": len(generation_seeds),
         "reserved_evaluation_seeds": list(reserved),
+        "learning_export_components": sorted(set(args.learning_components)),
         "d5_recon_track_cues_enabled": bool(args.d5_recon_track_cues),
         "d5_active_vision_split_preflight": {
             "test_fraction": D5_ACTIVE_VISION_TEST_FRACTION,
@@ -179,6 +190,7 @@ def main(argv: list[str] | None = None) -> int:
             output / "learning_dataset",
             formal=bool(args.formal),
             resume=True,
+            components=args.learning_components,
         )
         rows = _read_progress_rows(progress_path)
         _validate_resume_rows(
@@ -225,6 +237,7 @@ def main(argv: list[str] | None = None) -> int:
         writer = BatchLearningArtifactWriter(
             output / "learning_dataset",
             formal=bool(args.formal),
+            components=args.learning_components,
         )
         rows: list[dict[str, Any]] = []
         prior_generation_wall_s = 0.0
