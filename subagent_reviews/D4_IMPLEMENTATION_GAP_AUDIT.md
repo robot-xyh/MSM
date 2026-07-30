@@ -1,5 +1,33 @@
 # D4 实现差距审计：分布式协同与降级接管
 
+## 2026-07-30 正式 R0 联盟确认 GAP
+
+- **D4 本地无新增 P0。** 28 个 `collecting_member_acks` 失败均保持
+  `execution_allowed=false/atomic_committed=false`。成员集合、epoch、lease 和 ACK
+  校验符合合同；冻结源码与当前源码专项均为 4/4，当前 D4 全量为 903/903。
+- **main-owned P0：D3-D4 当前计划代次一致性。** 16/28 个失败及 35 个现有通过样本
+  的最后 D3 计划与最后 D4 决策不一致。main 必须在 D3 新计划产生后基于同一
+  `plan_id/plan_version/epoch` 重新运行并发布 D4；D6 必须拒绝旧 D4 提交状态替代
+  当前计划仲裁。修复前不能把正式 R0 解释为当前计划闭环。
+- **main-owned P1：ACK 事件重评。** 11 个计划对齐失败的有效必要 ACK 在最后 D4
+  决策后 0.000067-0.082041 秒到达。当前计划仍有未闭合联盟时，ACK 到达应触发 D4
+  重评，不应以中心失效为前提。
+- **main-owned P1：有界可靠重发和终止尾窗。** `00815` 在两次计划广播后仍缺当前
+  ACK。main 需为缺失成员维护固定超时/重试预算，并增加有上限的终止排空。超时仍失败
+  关闭，不改变 required 集合或 lease。
+- **main-owned P1：逐消息处置审计。** 当前聚合 dropped/pending 计数不能唯一定位
+  ACK 丢包、排队或终止未消费。日志需保存 message ID、topic、source、destination、
+  queued、dropped、delivered、pending 和 retry generation。
+- **语义与重跑。** 上述 main 修复会改变计划发布顺序、D4 最终状态及 D7 门控，必须
+  在新 clean source 下整体重跑 900 项并由 D6 独立审计，不得补算 28 项或拼接旧结果。
+  本轮诊断完成，D4 代码未变，正式结果未重跑。
+
+完整分类与复现 cell 见
+`research_modules/d4_distributed_fallback/reports/`
+`FORMAL_R0_COALITION_ACK_DIAGNOSTIC_20260730.md`。本次为统一三维质点正式 R0 诊断，
+没有 AirSim 消息或适配器变化；`reports/AIRSIM_INTEGRATION_PLAN.md` 已检查，无需
+修改。
+
 ## 2026-07-30 v7 来源独立评价 GAP
 
 - **无新增 P0。** v7 仍未注册，确定性 R0、投影、不变量、owner/version/epoch/lease、
