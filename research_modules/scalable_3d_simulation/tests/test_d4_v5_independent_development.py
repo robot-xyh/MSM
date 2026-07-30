@@ -68,13 +68,13 @@ def test_options_require_eight_unique_independent_seeds() -> None:
     with pytest.raises(ValueError, match="at least eight unique"):
         D4V5IndependentDevelopmentOptions(
             output_dir="unused",
-            seeds=(3000, 3001, 3002),
+            seeds=(3008, 3009, 3010),
         )
-    with pytest.raises(ValueError, match="20 targets"):
+    with pytest.raises(ValueError, match="16 targets"):
         D4V5IndependentDevelopmentOptions(
             output_dir="unused",
-            seeds=tuple(range(3000, 3008)),
-            target_count=19,
+            seeds=tuple(range(3008, 3016)),
+            target_count=20,
         )
 
 
@@ -84,15 +84,17 @@ def test_seed_registry_requires_disjoint_development_class(tmp_path) -> None:
         json.dumps(
             {
                 "schema_version": (
-                    "scalable3d-d4-v5-independent-development-"
-                    "seed-registry-v1"
+                    "scalable3d-d4-v5-independent-evaluation-"
+                    "seed-registry-v2"
                 ),
                 "registry_id": "fixture",
                 "training_seeds": [0, 1],
                 "formal_holdout_seeds": [1000, 1001],
-                "independent_development_seeds": list(range(3000, 3008)),
+                "design_pilot_seeds": list(range(3000, 3008)),
+                "independent_development_seeds": list(range(3008, 3016)),
                 "policy": {
                     "all_seed_classes_disjoint": True,
+                    "design_pilot_fit_allowed": False,
                     "independent_development_fit_allowed": False,
                     "formal_holdout_payload_read_allowed": False,
                     "online_truth_use_allowed": False,
@@ -103,13 +105,14 @@ def test_seed_registry_requires_disjoint_development_class(tmp_path) -> None:
     )
     result = _load_and_validate_seed_registry(
         registry,
-        seeds=tuple(range(3000, 3008)),
+        seeds=tuple(range(3008, 3016)),
     )
-    assert result["requested_seeds"] == list(range(3000, 3008))
+    assert result["requested_seeds"] == list(range(3008, 3016))
+    assert result["design_pilot_seeds"] == list(range(3000, 3008))
     with pytest.raises(ValueError, match="independent development"):
         _load_and_validate_seed_registry(
             registry,
-            seeds=(3000, 3001, 3002, 3003, 3004, 3005, 3006, 1000),
+            seeds=(3008, 3009, 3010, 3011, 3012, 3013, 3014, 1000),
         )
 
 
@@ -119,24 +122,26 @@ def test_seed_registry_rejects_overlapping_classes(tmp_path) -> None:
         json.dumps(
             {
                 "schema_version": (
-                    "scalable3d-d4-v5-independent-development-"
-                    "seed-registry-v1"
+                    "scalable3d-d4-v5-independent-evaluation-"
+                    "seed-registry-v2"
                 ),
                 "registry_id": "bad",
                 "training_seeds": [0, 1],
                 "formal_holdout_seeds": [1000],
+                "design_pilot_seeds": list(range(3000, 3008)),
                 "independent_development_seeds": [
                     0,
-                    3001,
-                    3002,
-                    3003,
-                    3004,
-                    3005,
-                    3006,
-                    3007
+                    3009,
+                    3010,
+                    3011,
+                    3012,
+                    3013,
+                    3014,
+                    3015
                 ],
                 "policy": {
                     "all_seed_classes_disjoint": True,
+                    "design_pilot_fit_allowed": False,
                     "independent_development_fit_allowed": False,
                     "formal_holdout_payload_read_allowed": False,
                     "online_truth_use_allowed": False,
@@ -148,17 +153,17 @@ def test_seed_registry_rejects_overlapping_classes(tmp_path) -> None:
     with pytest.raises(ValueError, match="must be disjoint"):
         _load_and_validate_seed_registry(
             registry,
-            seeds=(0, 3001, 3002, 3003, 3004, 3005, 3006, 3007),
+            seeds=(0, 3009, 3010, 3011, 3012, 3013, 3014, 3015),
         )
 
 
 def test_regional_patterns_preserve_inventory_and_rotate() -> None:
-    patterns = [_regional_pattern(seed) for seed in range(3000, 3040)]
+    patterns = [_regional_pattern(seed) for seed in range(3008, 3040)]
     assert len(set(patterns)) >= 16
     for targets, resources in patterns:
         assert len(targets) == 8
         assert len(resources) == 8
-        assert sum(targets) == 20
+        assert sum(targets) == 16
         assert sum(resources) == 20
         assert any(t > r for t, r in zip(targets, resources, strict=True))
         assert any(t < r for t, r in zip(targets, resources, strict=True))
@@ -167,29 +172,29 @@ def test_regional_patterns_preserve_inventory_and_rotate() -> None:
 def test_build_config_marks_nonformal_no_fit_and_regional_probe() -> None:
     options = D4V5IndependentDevelopmentOptions(
         output_dir="unused",
-        seeds=tuple(range(3000, 3008)),
+        seeds=tuple(range(3008, 3016)),
     )
     config = _build_development_config(
         ScenarioConfig(),
         options=options,
-        seed=3003,
+        seed=3011,
         scenario_family="dense_crossing",
     )
     probe = config.metadata["regional_resource_probe"]
-    assert config.target_count == 20
+    assert config.target_count == 16
     assert config.resource_count == 20
     assert config.recon_count == 2
     assert config.region_count == 8
-    assert config.seed == 3003
+    assert config.seed == 3011
     assert config.metadata["development_data_class"] == (
-        "independent_nonformal_no_fit"
+        "independent_evaluation_nonformal_no_fit"
     )
     assert config.metadata["model_fit_allowed"] is False
     assert config.metadata["formal_holdout"] is False
     assert config.metadata["regional_resource_locality_enforced"] is False
     assert config.metadata["regional_probe_layout_only"] is True
     assert probe["schema"] == REGIONAL_RESOURCE_PROBE_SCHEMA_VERSION
-    assert sum(probe["target_counts_by_region"]) == 20
+    assert sum(probe["target_counts_by_region"]) == 16
     assert sum(probe["resource_counts_by_region"]) == 20
 
 

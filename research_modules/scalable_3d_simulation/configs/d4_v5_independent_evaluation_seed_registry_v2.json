@@ -1,6 +1,6 @@
 {
-  "schema_version": "scalable3d-d4-v5-independent-development-seed-registry-v1",
-  "registry_id": "d4-v5-train-0-99-formal-1000-1019-independent-development-3000-3039-v1",
+  "schema_version": "scalable3d-d4-v5-independent-evaluation-seed-registry-v2",
+  "registry_id": "d4-v5-train-0-99-formal-1000-1019-pilot-3000-3007-independent-evaluation-3008-3039-v2",
   "training_seeds": [
     0,
     1,
@@ -125,7 +125,7 @@
     1018,
     1019
   ],
-  "independent_development_seeds": [
+  "design_pilot_seeds": [
     3000,
     3001,
     3002,
@@ -133,7 +133,9 @@
     3004,
     3005,
     3006,
-    3007,
+    3007
+  ],
+  "independent_development_seeds": [
     3008,
     3009,
     3010,
@@ -169,6 +171,7 @@
   ],
   "policy": {
     "all_seed_classes_disjoint": true,
+    "design_pilot_fit_allowed": false,
     "independent_development_fit_allowed": false,
     "formal_holdout_payload_read_allowed": false,
     "online_truth_use_allowed": false

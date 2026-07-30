@@ -29,14 +29,14 @@ from .world import REGIONAL_RESOURCE_PROBE_SCHEMA_VERSION
 
 
 D4_V5_INDEPENDENT_DEVELOPMENT_SCHEMA = (
-    "scalable3d-d4-v5-independent-development-source-v1"
+    "scalable3d-d4-v5-independent-development-source-v2"
 )
 DEFAULT_CONFIG = Path(__file__).with_name("configs") / "nominal_200v200.json"
 DEFAULT_SEED_REGISTRY = (
     Path(__file__).with_name("configs")
-    / "d4_v5_independent_development_seed_registry_v1.json"
+    / "d4_v5_independent_evaluation_seed_registry_v2.json"
 )
-DEFAULT_SEEDS = tuple(range(3000, 3040))
+DEFAULT_SEEDS = tuple(range(3008, 3040))
 DEFAULT_SCENARIO_FAMILIES = (
     "nominal",
     "dense_crossing",
@@ -46,19 +46,19 @@ DEFAULT_SCENARIO_FAMILIES = (
 
 _BASE_REGION_PATTERNS = (
     (
-        (2, 4, 2, 3, 2, 3, 2, 2),
+        (1, 3, 2, 2, 1, 3, 2, 2),
         (4, 1, 2, 3, 2, 3, 2, 3),
     ),
     (
-        (3, 2, 4, 2, 3, 2, 2, 2),
+        (2, 1, 3, 2, 2, 1, 3, 2),
         (2, 4, 1, 3, 2, 3, 3, 2),
     ),
     (
-        (4, 2, 2, 3, 2, 2, 3, 2),
+        (3, 2, 1, 2, 3, 2, 1, 2),
         (1, 3, 4, 2, 3, 2, 2, 3),
     ),
     (
-        (2, 3, 2, 4, 2, 3, 2, 2),
+        (2, 2, 1, 3, 2, 2, 3, 1),
         (3, 2, 3, 1, 4, 2, 2, 3),
     ),
 )
@@ -77,7 +77,7 @@ class D4V5IndependentDevelopmentOptions:
     seed_registry_path: Path = DEFAULT_SEED_REGISTRY
     seeds: tuple[int, ...] = DEFAULT_SEEDS
     scenario_families: tuple[str, ...] = DEFAULT_SCENARIO_FAMILIES
-    target_count: int = 20
+    target_count: int = 16
     resource_count: int = 20
     recon_count: int = 2
     region_count: int = 8
@@ -115,14 +115,14 @@ class D4V5IndependentDevelopmentOptions:
             value = int(getattr(self, name))
             if value <= 0:
                 raise ValueError(f"{name} must be positive")
-        if self.target_count != 20 or self.resource_count != 20:
+        if self.target_count != 16 or self.resource_count != 20:
             raise ValueError(
-                "v1 regional perturbation patterns require 20 targets and "
+                "v2 regional perturbation patterns require 16 targets and "
                 "20 resources"
             )
         if self.region_count != 8:
             raise ValueError(
-                "v1 regional perturbation patterns require eight regions"
+                "v2 regional perturbation patterns require eight regions"
             )
         if not math.isfinite(float(self.duration_s)) or self.duration_s <= 0.0:
             raise ValueError("duration_s must be finite and positive")
@@ -356,13 +356,22 @@ def _build_development_config(
                 "d4_v5_source_independent_development_evaluation"
             ),
             "development_data_class": (
-                "independent_nonformal_no_fit"
+                "independent_evaluation_nonformal_no_fit"
             ),
             # Keep the imbalanced physical layout while allowing D3 to produce
             # one globally feasible plan. Planning-only D4 actions are not
             # executable teacher labels under the public learning contract.
             "regional_resource_locality_enforced": False,
             "regional_probe_layout_only": True,
+            "resource_surplus_design": {
+                "target_count": options.target_count,
+                "resource_count": options.resource_count,
+                "spare_resource_count": (
+                    options.resource_count - options.target_count
+                ),
+                "design_pilot_seeds": list(range(3000, 3008)),
+                "design_pilot_excluded_from_evaluation": True,
+            },
             "regional_resource_probe": {
                 "schema": REGIONAL_RESOURCE_PROBE_SCHEMA_VERSION,
                 "target_counts_by_region": target_counts,
@@ -384,7 +393,7 @@ def _build_development_config(
         scenario_version=(
             "d4-v5-independent-development-"
             f"{scenario_family}-M{options.target_count}N"
-            f"{options.resource_count}-R{options.region_count}-v1"
+            f"{options.resource_count}-R{options.region_count}-v2"
         ),
         recon_count=options.recon_count,
         region_count=options.region_count,
@@ -402,7 +411,7 @@ def _regional_pattern(seed: int) -> tuple[tuple[int, ...], tuple[int, ...]]:
     targets = _rotate(base_targets, offset)
     resources = _rotate(base_resources, offset)
     if (
-        sum(targets) != 20
+        sum(targets) != 16
         or sum(resources) != 20
         or targets == resources
         or not any(t > r for t, r in zip(targets, resources, strict=True))
@@ -588,12 +597,15 @@ def _load_and_validate_seed_registry(
     if not isinstance(payload, Mapping):
         raise ValueError("seed registry must be a JSON object")
     if payload.get("schema_version") != (
-        "scalable3d-d4-v5-independent-development-seed-registry-v1"
+        "scalable3d-d4-v5-independent-evaluation-seed-registry-v2"
     ):
         raise ValueError("unsupported independent development seed registry")
     training = tuple(int(seed) for seed in payload.get("training_seeds", ()))
     formal = tuple(
         int(seed) for seed in payload.get("formal_holdout_seeds", ())
+    )
+    pilot = tuple(
+        int(seed) for seed in payload.get("design_pilot_seeds", ())
     )
     development = tuple(
         int(seed)
@@ -602,14 +614,19 @@ def _load_and_validate_seed_registry(
     if (
         not training
         or not formal
+        or not pilot
         or not development
         or len(set(training)) != len(training)
         or len(set(formal)) != len(formal)
+        or len(set(pilot)) != len(pilot)
         or len(set(development)) != len(development)
     ):
         raise ValueError("seed registry classes must be non-empty and unique")
-    if set(training) & set(formal) or set(training) & set(development) or (
-        set(formal) & set(development)
+    classes = (set(training), set(formal), set(pilot), set(development))
+    if any(
+        left & right
+        for index, left in enumerate(classes)
+        for right in classes[index + 1 :]
     ):
         raise ValueError("seed registry classes must be disjoint")
     requested = set(int(seed) for seed in seeds)
@@ -622,6 +639,7 @@ def _load_and_validate_seed_registry(
     if not isinstance(policy, Mapping) or (
         policy.get("all_seed_classes_disjoint") is not True
         or policy.get("independent_development_fit_allowed") is not False
+        or policy.get("design_pilot_fit_allowed") is not False
         or policy.get("formal_holdout_payload_read_allowed") is not False
         or policy.get("online_truth_use_allowed") is not False
     ):
@@ -630,6 +648,7 @@ def _load_and_validate_seed_registry(
         "registry_id": str(payload.get("registry_id", "")),
         "training_seeds": list(training),
         "formal_holdout_seeds": list(formal),
+        "design_pilot_seeds": list(pilot),
         "independent_development_seeds": list(development),
         "requested_seeds": sorted(requested),
     }

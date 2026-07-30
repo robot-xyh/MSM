@@ -44,14 +44,18 @@
     self-match 为 350/350；按 raw/latent key 留组后召回 0.965517、特异度
     0.958904、Brier 0.037610440。VALIDATION 与 TRAIN exact overlap 为 42/75，
     去重后只有 1 个正类，独立泛化不可评价。
-13. [ ] main 已完成来源独立开发集生成器、seed `3000-3039` 注册表和 8-seed
-    dirty smoke。生成器保留真实 D4 区域快照，在离线边界重算同快照确定性规则 R0，
+13. [ ] main 已完成来源独立开发集生成器和首轮 20 对 20 clean 诊断。seed
+    `3000-3007` 已固定为数据设计 pilot；正式独立评价只使用未查看的
+    `3008-3039`。生成器保留真实 D4 区域快照，在离线边界重算同快照确定性规则 R0，
     并把在线建议仅作为非 target 审计证据。smoke 的 8 个 episode、16 帧均为有限
     状态，在线真值使用为 0，16/16 安全规则标签可用；专项测试 `6 passed`，本模块
-    全量测试 `389 passed`。区域不均衡只控制三维初始布局，D3 保持全局可达，避免把
-    planning-only 建议误写成可执行教师标签。剩余工作是从 clean commit 生成正式
-    40-seed 数据，审计与既有 TRAIN/VALIDATION 的 observable key 重合、正负标签
-    分母和正式 holdout 零读取，再交 D4/D6 离线评价。
+    全量测试 `389 passed`。首轮 clean 20 对 20 数据有 40 个 episode、79 帧，但
+    只有 seed 3037 的 2 个安全正动作键，固定 split 的 validation 正类不可用。正式
+    配置据此冻结为 16 个目标、20 个资源、8 个区域，保留 4 个真实备用资源；区域
+    不均衡只控制三维初始布局，D3 保持全局可达，避免把 planning-only 建议误写成
+    可执行教师标签。剩余工作是从新 clean commit 生成 32-seed 数据，审计与既有
+    TRAIN/VALIDATION 的 observable key 重合、正负标签分母和正式 holdout 零读取，
+    再交 D4/D6 离线评价。
 14. [ ] 只有来源独立开发证据通过固定门，main 才另行决定是否运行 formal holdout 和
     runtime preflight。D3 successor、运行 ACK、完整物理窗口、非退化和收益继续后置。
 

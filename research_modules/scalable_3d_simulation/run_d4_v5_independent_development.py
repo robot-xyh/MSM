@@ -42,7 +42,7 @@ def build_parser() -> argparse.ArgumentParser:
         nargs="+",
         default=list(DEFAULT_SCENARIO_FAMILIES),
     )
-    parser.add_argument("--target-count", type=int, default=20)
+    parser.add_argument("--target-count", type=int, default=16)
     parser.add_argument("--resource-count", type=int, default=20)
     parser.add_argument("--recon-count", type=int, default=2)
     parser.add_argument("--region-count", type=int, default=8)
