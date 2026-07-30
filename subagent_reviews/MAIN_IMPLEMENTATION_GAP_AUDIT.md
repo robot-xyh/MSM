@@ -4,6 +4,59 @@
 **审计目标**：列出共识算法与计划使用的开源代码哪些已经实现，哪些没有实现，为什么没有实现，以及缺少哪些条件。
 **边界**：本文只用于科研仿真、接口补齐和后续工程排期；不涉及真实硬件、实机处置、火控或绕过授权的自动动作。
 
+## 2026-07-30 D4 v6 转移动作来源独立评价
+
+本轮没有新增运行级 P0。main 已关闭“外部正类分母不足”的数据缺口，但 v6 actor 在
+新资源规模和新区域布局上没有激活任何 transfer。该结果关闭数据与审计链，不关闭模型
+泛化 P1。
+
+1. **候选版本已经隔离。** D4 新建
+   `region_resource_a2_edge_transfer_shadow_v6`，显式分离边激活和转移数量，增加有向
+   边排序、正边数量及投影后 exact action checkpoint。v4、v5 未修改。内部
+   TRAIN/VALIDATION 正动作命中为 `58/60`、`13/15`，负类精确 R0 为 `255/290`、
+   `55/60`；内部结果没有证明性能提升。
+2. **来源和 seed 已冻结。** main 从 clean commit
+   `ed9e086ea8cf5c2138035f710cf4deb3e4a2801e` 生成 M16N24、8 区域、
+   seed `4016-4079` 的 64 个 episode 和 126 帧。训练 `0-99`、正式 holdout
+   `1000-1019`、既有设计/评价 `3000-3039` 和新设计 pilot `4000-4015` 均与本批
+   隔离。
+3. **评价分母已补齐。** exporter commit `9bdbe31` 增加默认关闭的 test 正类配额。
+   冻结标签集 train/validation/test 的规则正类为 `24/9/9`，负类为 `65/11/8`。
+   dataset SHA-256 为 `b1295091...b42c`，split SHA-256 为
+   `c767a48b...e332`。test 正类只用于评价，不参与 actor 训练、checkpoint 或阈值。
+4. **输入与旧训练零重合。** 冻结 v4 TRAIN+VALIDATION 有 251 个唯一 observable
+   key，新数据有 94 个，exact 重合为 0。键只含节点特征、边特征、边索引及张量
+   结构，不含 seed、episode、目标标识或真值。
+5. **外部正动作全部未命中。** D4 只读评价的 126 帧 raw/projected transfer 均为
+   0，规则正动作 exact hit 为 `0/42`，test 为 `0/9`。负类 exact R0 为 `77/84`；
+   15 帧节点动作改变但缺少 transfer，触发现有干预不变量。错误方向、错误数量、虚假
+   transfer 和投影拒绝均为 0，原因是 actor 没有激活任何边。
+6. **指标语义保持分离。** 规则正类召回为 `0/42=0`，可评价。actor-derived 正类
+   分母为 0，其比率保持 unavailable，不能用 0 回填。v6 没有置信校准器，未校准
+   confidence head 和固定 0.60 门均未用于准入。
+7. **D6 独立重算一致。** D6 从冻结 dataset、候选和逐帧记录重算得到 `0/42`、
+   `77/84` 和 15 帧不变量失败。D6 重算 JSONL 与 D4 JSONL 的 SHA-256 均为
+   `771826bff66d3ba601d0ffecc95f7ab9faf416826898319de7b9f1669020c7c5`。
+   source、标签、候选和评价树前后突变均为 0。
+8. **权限继续关闭。** v6 保持 unregistered、admission closed 和 rule fallback
+   required。assist、分配、降级、接管、联盟、控制、物理、D3、D7、正式 holdout 和
+   runtime preflight 权限全部关闭。
+
+当前 P1：
+
+1. 另立 actor 版本，不能原地修改 v6。新 TRAIN 数据需覆盖 M16N24/8 区域安全
+   transfer、困难负类、反向边和更多拓扑；同时恢复或提高负类精确 R0。
+2. 新 actor 冻结后，先在新的 development 数据上取得非零且充分的 exact 正动作命中，
+   再建立只用 TRAIN 拟合的置信校准器。顺序不能倒置。
+3. seed `4016-4079` 已进入 D4/D6 评价，不能作为下一候选的独立评价集。正式 holdout
+   `1000-1019` 继续不读。
+4. 来源独立 actor 门通过前，不启动 D3 successor、运行 ACK、D7 控制、物理窗口或收益
+   实验；不通过降低 0.60 门或放宽确定性安全外壳取得正结果。
+
+详细结论见
+`research_modules/scalable_3d_simulation/docs/`
+`SCALABLE_3D_D4_V6_SOURCE_INDEPENDENT_EVALUATION_20260730_CN.md`。
+
 ## 2026-07-29 D4 v5 来源独立外部评价
 
 本轮没有新增运行级 P0。main 已冻结 M16N20 来源独立数据，D4 完成候选只读评价，D6

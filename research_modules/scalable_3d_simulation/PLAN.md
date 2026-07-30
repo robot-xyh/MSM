@@ -14,13 +14,21 @@
 4. [x] dirty smoke 覆盖 seed `4016-4023` 的 8 个 episode、16 帧。有限状态、规则
    标签为 16/16；在线真值使用为 0；离线安全动作探针在 16/16 帧找到一个受约束单
    资源有向转移。专项测试 `4 passed`，本模块全量 `393 passed`。
-5. [ ] 从包含生成器的 clean commit 运行完整 seed `4016-4079`，冻结来源 manifest、
-   配置、split 和 SHA-256。不得使用 smoke 的 dirty 输出作为评价证据。
-6. [ ] 在不修改 v6 actor 的条件下导出足量正类和困难负类，由 D4 只读评价候选；
-   当前 v6 尚无置信校准器，不能以 actor 内部 TRAIN/VALIDATION 结果替代来源独立门。
-7. [ ] D6 使用同一冻结输入独立重算正类召回、负类特异度、错误方向、错误数量、
-   投影拒绝、输入突变和权限状态。正类分母充分且盲审完成前，不读取正式 holdout，
-   不启动 runtime preflight、D3 successor 或 D7 权限。
+5. [x] 从 clean commit `ed9e086ea8cf5c2138035f710cf4deb3e4a2801e` 运行完整
+   seed `4016-4079`。64 个 episode、126 帧全部有限且规则标签可用；区域布局
+   64/64 不重复，在线真值、模型拟合、既有评价和正式 holdout 读取均为 0。
+6. [x] main 从 exporter commit `9bdbe31` 冻结评价标签。规则正类按
+   train/validation/test 为 `24/9/9`，负类为 `65/11/8`；dataset 和 split
+   SHA-256 为 `b1295091...b42c`、`c767a48b...e332`。test 标签只用于评价。
+7. [x] D4 对冻结 v6 actor 做只读评价。126 帧 raw/projected transfer 均为 0，
+   规则正动作命中 `0/42`，负类精确 R0 为 `77/84`，不变量失败 15。actor-derived
+   正类分母为 0，对应比率保持 unavailable；未应用未校准 confidence 或 0.60 门。
+8. [x] D6 独立重算得到同样结果，重算 JSONL 与 D4 JSONL SHA-256 均为
+   `771826bf...20c7c5`；候选、source、标签和评价树突变均为 0。v6 不允许进入置信
+   校准、正式 holdout、runtime preflight、D3 successor 或 D7 权限。
+9. [ ] 另立 actor 版本。新 TRAIN 数据须增加 M16N24/8 区域安全转移、困难负类、
+   反向边和拓扑多样性，并保持 test/holdout 隔离。seed `4016-4079` 已被读取，
+   不得作为下一候选的来源独立评价集。
 
 ## D4 v4 外部运行与组合数据（2026-07-29）
 
