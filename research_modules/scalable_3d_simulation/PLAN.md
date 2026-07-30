@@ -44,9 +44,14 @@
     self-match 为 350/350；按 raw/latent key 留组后召回 0.965517、特异度
     0.958904、Brier 0.037610440。VALIDATION 与 TRAIN exact overlap 为 42/75，
     去重后只有 1 个正类，独立泛化不可评价。
-13. [ ] main 构造与现有 TRAIN/VALIDATION 来源独立、observable key 不重合的开发扰动
-    集，冻结生成配置、seed、标签规则和内容摘要。D6 先审计数据独立性，再离线评价 v5；
-    该阶段仍不读取正式 holdout，不登记候选。
+13. [ ] main 已完成来源独立开发集生成器、seed `3000-3039` 注册表和 8-seed
+    dirty smoke。生成器保留真实 D4 区域快照，在离线边界重算同快照确定性规则 R0，
+    并把在线建议仅作为非 target 审计证据。smoke 的 8 个 episode、16 帧均为有限
+    状态，在线真值使用为 0，16/16 安全规则标签可用；专项测试 `6 passed`，本模块
+    全量测试 `389 passed`。区域不均衡只控制三维初始布局，D3 保持全局可达，避免把
+    planning-only 建议误写成可执行教师标签。剩余工作是从 clean commit 生成正式
+    40-seed 数据，审计与既有 TRAIN/VALIDATION 的 observable key 重合、正负标签
+    分母和正式 holdout 零读取，再交 D4/D6 离线评价。
 14. [ ] 只有来源独立开发证据通过固定门，main 才另行决定是否运行 formal holdout 和
     runtime preflight。D3 successor、运行 ACK、完整物理窗口、非退化和收益继续后置。
 
