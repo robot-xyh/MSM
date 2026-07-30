@@ -1,5 +1,42 @@
 # D6 实现差距审计
 
+## 2026-07-29 D4 v5 来源独立外部评价
+
+### 已关闭的 D6 子项
+
+1. D6 已建立来源独立外部评价入口，固定 source/labeled/v4/v5 路径和 25 项摘要。source
+   commit 为 `63987592c216fbdb7e03d77183afc6e9f15748a2`，数据为 M16N20、
+   32 episode、63 帧、seed `3008-3039`。
+2. source manifest、dataset、split、source artifact、evidence、export summary、label
+   audit、v4/v5 文件树和交叉绑定均独立复核通过。
+3. source、labeled export、labeled dataset、v4 actor、v5 calibrator 五个输入树在审计
+   前后逐项复哈希且保持不变，`input_mutation_count=0`。执行期候选树突变会以固定错误码
+   失败关闭。
+4. 训练 `0-99`、formal holdout `1000-1019`、pilot `3000-3007` 和独立评价
+   `3008-3039` 两两无交集。旧 v4 test 与正式 holdout payload 读取均为 0。
+5. 旧库 425 帧/251 个唯一键，新库 63 帧/41 个唯一键，exact key 重合为 0。D6 不使用
+   seed、source、actor 或 target identity 构造 key。
+6. train/validation/test 的规则安全正动作是 `1/1/0`，冻结 actor-derived positive 是
+   `0/0/0`。63 个评分均为 0，固定 0.60 门通过和负类误接收均为 0。
+7. 正类召回明确为 `unavailable/null`，denominator=0；负类特异度为 1.0；规则回退
+   `63/63`。D6 未拟合、调门、改 split、补正类、运行预检或生成权限。
+
+### 仍开放的 P1
+
+1. **来源独立正类召回仍不可评价。** 规则层有两个安全可执行动作，冻结 actor 没有命中。
+   需要 D4 另行形成冻结、来源独立且存在 actor-derived positive 的候选与数据。D6 不允许
+   根据本轮 external test 调候选、降 0.60 门或改 split。
+2. **正式准入未开始。** positive denominator 可用前不读取 formal holdout
+   `1000-1019`，不运行 runtime preflight、D3 successor 或 D7 权限测试。
+3. **运行与收益证据缺失。** 本轮只支持来源独立负类拒绝。AirSim、物理窗口、同键 R0、
+   非退化和生产收益均未建立。
+
+当前无新增 D6-owned P0。候选继续 unregistered、admission closed、rule fallback required，
+production permissions disabled。external test 的 10 帧是非正式开发 split；main 此前读取
+10 帧和 D6 本轮读取 10 帧均已记录，正式 holdout 读取仍为 0。专项测试
+`5 passed, 1 warning in 2.27s`，D6 全量回归
+`1215 passed, 1 warning in 136.45s`。
+
 ## 2026-07-29 D4 v5 置信校准与记忆偏差
 
 ### 已关闭的 D6-owned 缺口

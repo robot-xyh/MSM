@@ -1,5 +1,72 @@
 # D6 正式实验矩阵准入预检报告
 
+## D4 v5 来源独立外部评价（2026-07-29）
+
+### 结论
+
+D6 对 clean commit
+`63987592c216fbdb7e03d77183afc6e9f15748a2` 生成的 M16N20 数据完成独立只读评价。
+输入为 32 个 episode、63 帧，seed 为 `3008-3039`。候选没有形成来源独立正类分母，
+正式准入继续关闭。
+
+旧 v4 TRAIN+VALIDATION 为 425 帧、251 个唯一 observable key。新外部数据为 63 帧、
+41 个唯一键，exact 重合为 0。train、validation、test 的唯一键分别为 30、6、5，三个
+split 之间也没有 exact key 重合。
+
+### 哈希
+
+| 制品 | SHA-256 |
+| --- | --- |
+| source manifest 文件 | `af12051917cfe9eedfc8587c953599112db62858e4b01820a16ddd5b0a10231d` |
+| labeled dataset | `ed2fd4b1a4d50ec80e5abdaa35a1470cec03d419665ae0e08b7c4339e9b8887e` |
+| labeled split | `cdaa40241195516eb1679f6ed0a8179f3d2365c9768f9ef9a44b6f85fabcefb6` |
+| source artifact 文件 | `ccf327717a293f63b5655e978202ff720f20c74bfd8ae401f2233cc590bb753a` |
+| external evidence 内容 | `1d9cfa165f4fe24fa3881d66b73c0ed14f3902dd9f901c29d29fa7d6dae60191` |
+| label audit 内容 | `8798bd28037a7c52abc972e9a13551525e68eeb590d49e497b0db6cd31800336` |
+| v4 tree | `2afd692874b91a23a5525448a0c5af98f3c2d96f0b12cebbf81a570d58d500d0` |
+| v4 actor state | `33a28060f11277a549b90d2f2f365962fec057b2bfb50a70ab5a422059cb9fe5` |
+| v5 tree | `632f066fcad363531762e6b7a1ef0f21c03b7b0d0aa3b4cd39a16e4fbbf7c273` |
+| v5 state 文件 | `d8bd543759f6e52eb62585c1bd8aa67e59e718e7b548d38cc9dd5c690a5612a3` |
+
+实际摘要与冻结预期全部一致。训练、正式 holdout、pilot 和独立评价 seed 两两无交集。
+审计开始前和全部加载、评分、observable key 重合计算结束后，source、labeled export、
+labeled dataset、v4 actor、v5 calibrator 五个完整输入树摘要逐项相同；
+`input_mutation_count=0`。专项负向测试确认审计阶段候选树发生变化时稳定失败关闭。
+
+### 分片指标
+
+| split | 样本 | 规则安全正动作 | actor-derived positive | score 范围 | 0.60 通过 | 负类误接收 | 回退 |
+| --- | ---: | ---: | ---: | --- | ---: | ---: | ---: |
+| train | 43 | 1 | 0 | 0-0 | 0 | 0 | 43 |
+| validation | 10 | 1 | 0 | 0-0 | 0 | 0 | 10 |
+| test | 10 | 0 | 0 | 0-0 | 0 | 0 | 10 |
+
+两个规则安全正动作均未被冻结 actor 以同一可执行签名输出。actor-derived positive 分母为
+0，正类召回不可评价。63 个 actor-derived negative 全部被 0.60 门拒绝，负类特异度为
+1.0。该结果只证明负类拒绝，不证明正类泛化。
+
+D6 本轮读取 external test 10 帧；main 此前也读取该 10 帧。两次读取均属于非正式外部
+test。正式 holdout `1000-1019` 的读取数为 0。模型拟合、门限调整、split 修改、正类生成、
+runtime preflight、D3 successor、D7 权限和在线控制运行数均为 0。
+
+### 输出
+
+输出目录为
+`outputs/d4_v5_source_independent_external_audit_m16n20_20260729/`。
+
+| 输出 | SHA-256 |
+| --- | --- |
+| JSON content | `16acba58d4b045215f421940f13b57a884152d3099eb7c22b4468a4bc7afee17` |
+| JSON file | `4577a1c332ee5c897e37d54631627b92e1c2414a8e2f2b1b684fd6961ca04a5e` |
+| split CSV file | `8bea57faf722343387569c350456e5fd360bd3e029150bb9b1bc74b458020f93` |
+| 中文报告 file | `7fabd3a0602a245aa644fdcc9f1582d94db5d1b81c20d954e7d379b38767426f` |
+| `SHA256SUMS` file | `248571a88077198cf802efc0d1194950c4b98b4c38fe47d260ffbae020c15cd3` |
+
+候选保持 unregistered、admission closed、rule fallback required。生产、D3 和 D7 权限
+均为 false。本轮不是 AirSim、实飞或生产性能实验。专项测试
+`5 passed, 1 warning in 2.27s`，D6 全量回归
+`1215 passed, 1 warning in 136.45s`。warning 为既有 Matplotlib `Axes3D` 环境提示。
+
 ## D4 v5 置信校准候选审计（2026-07-29）
 
 ### 结论

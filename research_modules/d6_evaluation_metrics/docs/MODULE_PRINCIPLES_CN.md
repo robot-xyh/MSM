@@ -1,5 +1,55 @@
 # D6 系统级离线评估模块原理
 
+## 来源独立正负分母（2026-07-29）
+
+D4 v5 外部评价将“规则层存在安全动作”和“冻结候选能正确输出该动作”分成两个计数。对一帧
+区域状态，D6 先由冻结规则策略得到 \(a_{R0}\)，再读取外部标签中的安全动作 \(a_s\)，最后
+计算冻结 actor 经确定性投影后的动作 \(a_\theta\)。三者都转换为 D3 实际消费的可执行签名，
+签名只保留区域配额、预备量、hold/replan 和资源转移。
+
+规则安全正动作定义为
+
+\[
+y_{\mathrm{safe}}=\mathbf{1}
+\left[\operatorname{sig}(a_s)\ne\operatorname{sig}(a_{R0})\right].
+\]
+
+候选正类还要求冻结 actor 命中同一签名并通过既有干预不变量：
+
+\[
+y_{\mathrm{actor}}=\mathbf{1}
+\left[y_{\mathrm{safe}}=1,\
+\operatorname{sig}(a_\theta)=\operatorname{sig}(a_s),\
+\operatorname{safe}(a_\theta)=1\right].
+\]
+
+因此 \(y_{\mathrm{safe}}=1\) 不会自动进入候选正类分母。本轮外部数据有两个规则安全正动作，
+冻结 actor 均未命中，故 \(\sum y_{\mathrm{actor}}=0\)。正类召回必须标记 unavailable；
+填成 0 会把“没有可评价正类”误写成“评价后全部失败”。
+
+评分仍使用冻结 v4 actor 的 24 维池化特征和 v5 的 11 近邻逆距离校准器。门限固定为 0.60。
+负类特异度可在 63 个 actor-derived negative 上计算：
+
+\[
+\mathrm{specificity}=\frac{TN}{TN+FP}=\frac{63}{63}=1.
+\]
+
+该指标只说明新数据上的负类拒绝。它不能替代正类召回，也不能触发准入。
+
+来源独立性使用可观测图键核对。键包含图架构、节点特征、边特征和边索引的形状、类型及
+数值，不包含 seed、来源、actor、目标或真值身份。旧 v4 TRAIN+VALIDATION 的 425 帧形成
+251 个唯一键；M16N20 外部 63 帧形成 41 个唯一键，exact 重合为 0。seed 类别同时隔离为
+训练 `0-99`、正式 holdout `1000-1019`、pilot `3000-3007` 和独立评价 `3008-3039`。
+
+external test 的 10 帧属于独立开发数据内部的 test split。它可用于本次冻结外部评价，但
+不能称为正式 holdout。正式 holdout 读取数单独保持为 0。候选未注册、正式正类分母不可用
+时，全部样本继续规则回退，生产权限保持关闭。
+
+只读属性由执行前后摘要共同约束。D6 在审计开始前记录 source、labeled export、labeled
+dataset、v4 actor 和 v5 calibrator 的完整树摘要，在全部加载、评分和重合计算后再次计算。
+两组摘要必须逐项相等；任何输入树变化立即失败关闭，不生成通过结论。本轮五项摘要相同，
+`input_mutation_count=0`。
+
 ## 记忆偏差与独立泛化边界（2026-07-29）
 
 D4 v5 审计将外部信任根与候选自签分开。调用方配置固定 manifest file/content、state、

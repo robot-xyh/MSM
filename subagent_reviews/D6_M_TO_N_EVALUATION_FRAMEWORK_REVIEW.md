@@ -1,5 +1,24 @@
 # D6 M 对 N 协同拦截评估框架审查
 
+## 2026-07-29 M16N20 D4 v5 来源独立评价
+
+M16N20 外部数据使用 16 个目标、20 个资源和 8 个区域，保留 4 个真实备用资源。32 个
+episode 共 63 帧，seed `3008-3039` 与 v4 训练 `0-99`、formal holdout
+`1000-1019`、pilot `3000-3007` 无交集。旧 v4 开发库的 251 个唯一 observable key 与
+新库 41 个键 exact 重合为 0。
+审计前后复算 source、labeled export、labeled dataset、v4 actor 和 v5 calibrator 五个
+完整输入树，摘要逐项一致，`input_mutation_count=0`。候选树执行期突变测试稳定拒绝。
+
+外部 train/validation/test 为 `43/10/10` 帧。规则安全正动作 `1/1/0`，冻结 actor
+命中数为 `0/0/0`。v5 评分全部为 0，固定 0.60 门没有放行任何样本，负类误接收为 0。
+该结果证明当前 M16N20 输入上的负类拒绝，不证明候选能在存在安全资源转移动作时正确输出
+动作。正类召回分母保持 unavailable。
+
+M 对 N 框架继续按实际目标和资源数统计，不把该场景写成 N 对 N。4 个备用资源改善了规则
+层安全动作可用性，但没有自动改善冻结 actor 的动作泛化。候选保持 unregistered、
+admission closed 和 rule fallback required。正式 holdout、运行预检、D3 后继、D7 权限与
+物理收益仍未进入本轮。
+
 ## 2026-07-29 20 对 20 D4 v5 记忆偏差审计
 
 D6 已对 v4 20 对 20、8 区域开发数据上构建的 v5 k=11 置信校准候选完成独立审计。

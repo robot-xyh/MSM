@@ -1,5 +1,47 @@
 # D6 Evaluation Metrics Plan
 
+## 2026-07-29 D4 v5 来源独立外部评价审计
+
+### 已完成
+
+- [x] 固定 M16N20、32 episode、63 帧的来源数据、标签数据、v4 actor 和 v5
+  calibrator 路径及摘要；来源提交为
+  `63987592c216fbdb7e03d77183afc6e9f15748a2`。
+- [x] 复核训练 `0-99`、正式 holdout `1000-1019`、pilot `3000-3007` 和独立评价
+  `3008-3039` 两两无交集；数据实际 seed 只来自 `3008-3039`。
+- [x] 独立校验 source manifest、dataset、split、source artifact、evidence、export
+  summary、label audit、v4/v5 文件树和候选交叉绑定。
+- [x] 在审计开始前和全部加载、评分、observable key 重合计算结束后，重算 source、
+  labeled export、labeled dataset、v4 actor、v5 calibrator 五个完整输入树。before/after
+  摘要一致且 `input_mutation_count=0`；新增候选树执行期突变的稳定失败关闭回归。
+- [x] 只语义读取外部 train/validation/test `43/10/10` 帧和旧 v4
+  train/validation `350/75` 帧；旧 v4 test 与正式 holdout 读取均为 0。
+- [x] 记录 main 此前 external test 读取 10 帧；该 split 明确为非正式 test，不是
+  `1000-1019` 正式 holdout。
+- [x] 在 D6 内独立实现可观测键、冻结 actor 消息传递池化、k=11 评分和动作签名匹配；
+  不调用拟合、候选构造、登记、运行时预检或控制入口。
+- [x] 重算旧库 425 帧/251 键、新库 63 帧/41 键，exact key 重合为 0。
+- [x] 重算 train/validation/test 的规则安全正动作 `1/1/0`、actor-derived positive
+  `0/0/0`、有限评分 `43/10/10`、0.60 通过 `0/0/0` 和负类误接收 `0/0/0`。
+- [x] 将正类召回写为 `unavailable/null`，denominator=0；负类特异度为
+  `63/63=1.0`；规则回退为 `63/63`。
+- [x] 生成 JSON、逐 split CSV、中文 Markdown 和 `SHA256SUMS`，不覆盖已有目录。
+- [x] 固定审计结论为 unregistered、admission closed、rule fallback required、
+  production permissions disabled；D6 不生成权限或控制消息。
+- [x] 专项测试 `5 passed, 1 warning in 2.27s`，D6 全量回归
+  `1215 passed, 1 warning in 136.45s`；唯一 warning 与 Matplotlib `Axes3D` 环境有关。
+
+### 当前边界
+
+- [ ] 冻结 actor 没有命中两个规则安全正动作，来源独立正类召回分母仍不可用。
+- [ ] 需要 D4 另行提供冻结、来源独立且能形成 actor-derived 正类分母的数据和候选；D6
+  不调整当前 actor、0.60 门、split 或标签规则。
+- [ ] 正类分母可用前不运行正式 holdout、runtime preflight、D3 successor 或 D7 权限测试。
+- [ ] 本轮只建立负类拒绝证据，不建立正类泛化、运行收益、AirSim、实飞或生产能力结论。
+
+本轮关闭 D6 对来源独立数据的哈希、seed、exact key、冻结评分、分母和回退状态审计实现
+缺口。候选准入与正类泛化保持 P1 开放。
+
 ## 2026-07-29 D4 v5 记忆偏差与泛化审计
 
 ### 已完成

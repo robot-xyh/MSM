@@ -1,0 +1,4 @@
+split,sample_count,seed_count,unique_observable_key_count,rule_safe_positive_action_count,actor_derived_positive_count,actor_derived_negative_count,actor_executable_action_count,actor_action_valid_count,score_finite_count,score_minimum,score_mean,score_maximum,fixed_gate,gate_pass_count,positive_gate_pass_count,negative_gate_pass_count,negative_rejection_count,positive_recall_availability,positive_recall,negative_specificity_availability,negative_specificity,rule_fallback_count,nonformal_external_test_split
+train,43,22,30,1,0,43,12,10,43,0.0,0.0,0.0,0.6,0,0,0,43,unavailable,,available,1.0,43,False
+validation,10,5,6,1,0,10,2,2,10,0.0,0.0,0.0,0.6,0,0,0,10,unavailable,,available,1.0,10,False
+test,10,5,5,0,0,10,2,2,10,0.0,0.0,0.0,0.6,0,0,0,10,unavailable,,available,1.0,10,True

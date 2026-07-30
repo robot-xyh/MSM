@@ -1,5 +1,57 @@
 # D6 Evaluation Metrics
 
+## 2026-07-29 D4 v5 来源独立外部评价
+
+D6 新增只读审计入口
+`d4_v5_source_independent_external_audit.py`、固定输入配置、命令行脚本和逐 split
+CSV。输入固定为 clean commit
+`63987592c216fbdb7e03d77183afc6e9f15748a2` 生成的 M16N20 数据：
+32 个 episode、63 帧、16 个目标、20 个资源，独立评价 seed 为 `3008-3039`。
+训练 seed `0-99`、正式 holdout `1000-1019`、设计 pilot `3000-3007` 和独立评价
+`3008-3039` 两两无交集。
+
+审计逐项复核 source manifest、labeled dataset/split、source artifact、external
+evidence、label audit、v4 actor 和 v5 calibrator 的文件与内容摘要。来源 manifest 文件
+SHA-256 为
+`af12051917cfe9eedfc8587c953599112db62858e4b01820a16ddd5b0a10231d`；
+labeled dataset/split 为
+`ed2fd4b1a4d50ec80e5abdaa35a1470cec03d419665ae0e08b7c4339e9b8887e` /
+`cdaa40241195516eb1679f6ed0a8179f3d2365c9768f9ef9a44b6f85fabcefb6`；
+source artifact、evidence 内容和 label audit 内容为
+`ccf327717a293f63b5655e978202ff720f20c74bfd8ae401f2233cc590bb753a`、
+`1d9cfa165f4fe24fa3881d66b73c0ed14f3902dd9f901c29d29fa7d6dae60191` 和
+`8798bd28037a7c52abc972e9a13551525e68eeb590d49e497b0db6cd31800336`。
+审计开始前及全部加载、评分和 observable key 重合计算结束后，D6 分别重算 source、
+labeled export、labeled dataset、v4 actor 和 v5 calibrator 完整文件树。五项 before/after
+摘要逐项一致，`input_mutation_count=0`；任一摘要变化均以
+`audit_input_mutated_during_execution` 失败关闭。
+
+D6 独立重建可观测图键、冻结 actor 池化特征、k=11 逆距离评分和动作签名匹配。旧 v4
+TRAIN+VALIDATION 为 425 帧、251 个唯一键；新外部数据为 63 帧、41 个唯一键，exact
+重合为 0。外部分片为 train/validation/test `43/10/10` 帧，规则安全正动作分别为
+`1/1/0`。冻结 actor 没有输出与这两个安全动作签名一致的可执行动作，因此
+actor-derived positive 为 `0/0/0`。63 个评分均有限且均为 0，固定 0.60 门通过数和负类
+误接收均为 0，规则回退为 63/63。
+
+正类召回的 actor-derived denominator 为 0，指标写为 `unavailable/null`，不写成 0。
+本轮支持来源独立负类拒绝，不支持正类泛化或准入。external test 的 10 帧是非正式开发
+test；main 此前读取 10 帧和 D6 本轮读取 10 帧均如实记录。正式 holdout
+`1000-1019` 读取为 0。没有拟合、调门、改 split、运行 runtime preflight、D3 successor、
+D7 权限测试或在线控制。
+
+输出位于
+`outputs/d4_v5_source_independent_external_audit_m16n20_20260729/`。JSON content/file、
+CSV、中文报告和 `SHA256SUMS` 文件 SHA-256 分别为
+`16acba58d4b045215f421940f13b57a884152d3099eb7c22b4468a4bc7afee17`、
+`4577a1c332ee5c897e37d54631627b92e1c2414a8e2f2b1b684fd6961ca04a5e`、
+`8bea57faf722343387569c350456e5fd360bd3e029150bb9b1bc74b458020f93`、
+`7fabd3a0602a245aa644fdcc9f1582d94db5d1b81c20d954e7d379b38767426f` 和
+`248571a88077198cf802efc0d1194950c4b98b4c38fe47d260ffbae020c15cd3`。
+候选状态保持 unregistered、admission closed、rule fallback required，生产、D3 和 D7
+权限继续关闭。专项测试为 `5 passed, 1 warning in 2.27s`，D6 全量回归为
+`1215 passed, 1 warning in 136.45s`。warning 是环境中的 Matplotlib `Axes3D` 多版本提示，
+不影响本次哈希、Torch 推理或 JSON/CSV 输出。
+
 ## 2026-07-29 D4 v5 置信校准候选独立审计
 
 D6 新增 `d4_v5_confidence_candidate_audit.py`、固定配置、CLI、专项测试和原子报告输出，

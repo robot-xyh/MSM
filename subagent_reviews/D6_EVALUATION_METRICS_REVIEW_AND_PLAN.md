@@ -1,5 +1,31 @@
 # D6 系统评估指标综述及子方案
 
+## 2026-07-29 D4 v5 来源独立外部评价评审
+
+评审接受 D6 的只读外部评价实现。输入固定为
+`63987592c216fbdb7e03d77183afc6e9f15748a2` 的 M16N20、32 episode、63 帧。
+source/labeled/v4/v5 哈希和绑定全部通过，四类 seed 无交集。旧 v4
+TRAIN+VALIDATION 的 251 个唯一可观测键与外部 41 个唯一键 exact 重合为 0。
+source、labeled export、labeled dataset、v4 actor 和 v5 calibrator 五个完整输入树在
+审计前后摘要一致，`input_mutation_count=0`；执行期任一树变化均失败关闭。
+
+评审接受以下统计：
+
+1. train/validation/test 为 `43/10/10` 帧，规则安全正动作 `1/1/0`；
+2. 冻结 actor-derived positive 为 `0/0/0`；
+3. 63 个 v5 分数均为 0，固定 0.60 门通过数和负类误接收均为 0；
+4. 负类特异度为 1.0，正类召回因 denominator=0 保持 unavailable；
+5. 规则回退 `63/63`，候选不注册、不准入、不产生 D3/D7/生产权限。
+
+评审不接受“外部评价通过”或“正类泛化有效”的表述。两个规则安全正动作没有被 actor
+输出，候选正类分母不存在。external test 已由 main 和 D6 各读取 10 帧，但该 split 不是
+正式 holdout；`1000-1019` 读取为 0。不得根据 test 结果调候选、门限、split 或标签。
+
+下一步只能由 D4 形成新的冻结候选和来源独立正类分母，再交 D6 盲审。此前继续保持
+unregistered、admission closed、rule fallback required 和 production permissions
+disabled。专项测试为 `5 passed, 1 warning in 2.27s`，D6 全量回归为
+`1215 passed, 1 warning in 136.45s`。
+
 ## 2026-07-29 D4 v5 独立评审
 
 评审接受 D6 的 v5 只读审计实现和外部锚边界。候选四文件、v4 180 文件树、v3 registry

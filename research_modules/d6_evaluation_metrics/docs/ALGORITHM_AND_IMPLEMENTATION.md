@@ -1,5 +1,66 @@
 # D6 系统级离线评估：算法原理与实施说明
 
+## D4 v5 来源独立外部评价（2026-07-29）
+
+实现入口为
+`d6_evaluation_metrics/d4_v5_source_independent_external_audit.py`，命令行为
+`scripts/run_d4_v5_source_independent_external_audit.py`。固定配置记录 source、labeled
+dataset、v4 actor、v5 calibrator 路径，以及 25 项调用方摘要。报告输出采用临时目录写完后
+原子重命名，不覆盖已有结果。
+
+### 输入复核
+
+审计先读取 source manifest，不读取 source episode payload。labeled dataset 通过 D4
+公开数据加载器完成 manifest、split、episode SHA、truth-free 字段和连续帧校验。外部
+train、validation、test 全部进入冻结评价，因此读取数为 `43/10/10`。旧 v4 开发数据只
+加载 train 和 validation 的 `350/75` 帧；旧 test payload 不读取。
+
+source derivation、external evidence 和 export summary 的 `content_sha256` 由 D6 删除摘要
+字段后按规范 JSON 重算。source artifact 使用文件字节 SHA-256。labeled dataset 和 split
+使用数据合同内的语义摘要。各类摘要不能混用。v4/v5 文件树按“相对路径到文件摘要”的规范
+映射重算，普通文件篡改、重签或绑定错位均失败关闭。
+
+审计器在上述读取前保存五个完整输入树的开始摘要，覆盖 source root、labeled export root、
+labeled dataset root、v4 actor root 和 v5 calibrator root。外部数据评分和新旧可观测键
+重合计算结束后，再按同一相对路径文件清单算法复算结束摘要。键集合或任一文件摘要变化时，
+入口抛出 `audit_input_mutated_during_execution`，不构造结果 JSON。成功 JSON 同时保存
+`before_sha256`、`after_sha256` 和 `input_mutation_count=0`。
+
+### 冻结推理
+
+D6 通过 v4 候选的公开离线加载模式读取冻结 actor。每帧执行以下步骤：
+
+1. 将区域快照转换为 truth-free 区域图；
+2. 重算不含身份的 observable key；
+3. 运行冻结 actor，使用既有投影器得到候选动作；
+4. 运行同快照 R0，并读取外部安全标签；
+5. 将候选、R0 和标签转换为可执行签名；
+6. 按签名和干预不变量计算 actor-derived positive；
+7. 独立重建 24 维池化特征，按冻结 v5 state 计算 11 近邻逆距离分数；
+8. 只比较固定 0.60 门，不拟合、不调门。
+
+评分公式为
+
+\[
+s(h)=
+\begin{cases}
+\operatorname{mean}(y_j), & d_j\le 10^{-12}\text{ 的 exact 近邻存在},\\
+\dfrac{\sum_{j\in N_{11}}y_j/\max(d_j,10^{-12})}
+{\sum_{j\in N_{11}}1/\max(d_j,10^{-12})}, & \text{其他情况}.
+\end{cases}
+\]
+
+### 输出判定
+
+逐 split CSV 保留样本、seed、唯一键、规则安全正动作、actor-derived 正负类、有限评分、
+门通过、负类误接收、分母 availability 和规则回退。JSON 另保留完整摘要、seed 实际读取
+集合、key 重合和权限状态。
+
+本轮 train/validation/test 为 `43/10/10` 帧，规则安全正动作 `1/1/0`，
+actor-derived positive `0/0/0`。所有分数为 0，0.60 通过和负类误接收为 0。正类召回写
+`unavailable/null`；负类特异度为 1.0。固定结论不运行注册、runtime preflight、D3
+successor、D7 权限或控制路径。
+
 ## D4 v5 置信校准审计（2026-07-29）
 
 实现入口为 `d6_evaluation_metrics/d4_v5_confidence_candidate_audit.py`，命令行为
