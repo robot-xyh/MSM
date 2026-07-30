@@ -42,6 +42,28 @@ _REQUIRED_EPISODE_ARTIFACTS = (
     "stage_timings.csv",
 )
 _HEX64 = frozenset("0123456789abcdef")
+_POSTERIOR_AUDIT_LOW_LEVEL_EVIDENCE_FIELDS = (
+    "online_truth_use_count",
+    "online_truth_field_violation_count",
+    "finite_state",
+    "formal_acceptance_eligible",
+    "experiment_matrix_formal_acceptance_eligible",
+    "d1_posterior_generation",
+    "d1_full_posterior_publication_count",
+    "d2_consumed_d1_posterior_generation",
+    "d2_posterior_consumption_count",
+    "d2_association_publication_count",
+    "d2_pre_tick_posterior_merge_count",
+    "d2_finalize_unchanged_posterior_skip_count",
+    "d2_pending_generation_empty",
+    "observation_governance_generation_integrity",
+    "observation_governance_generation_contract_status",
+    "d2_id_switch_count",
+    "d4_advice_resource_quota_conservation_violation_count",
+    "d4_advice_formal_decision_mutation_count",
+    "d5_active_vision_target_reference_violation_count",
+    "d5_active_vision_ack_target_mismatch_count",
+)
 
 
 class FormalR0TargetedPosteriorAuditError(ValueError):
@@ -836,6 +858,9 @@ def _audit_execution_progress(
                 shard_reasons.append("checkpoint_progress_sha256_mismatch")
         if len(progress) != expected_completed:
             shard_reasons.append("progress_row_count_mismatch")
+        shard_reasons.extend(
+            _progress_identity_reasons(progress, planned_cells)
+        )
         for sequence, row in enumerate(progress):
             expected_cell = (
                 planned_cells[sequence]
@@ -896,6 +921,33 @@ def _audit_execution_progress(
         "shards": shard_rows,
         "failure_reasons": reasons,
     }
+
+
+def _progress_identity_reasons(
+    progress: Sequence[Mapping[str, Any]],
+    planned_cells: Sequence[Mapping[str, Any]],
+) -> list[str]:
+    """Detect duplicate or incomplete shard progress identities explicitly."""
+
+    reasons: list[str] = []
+    progress_cell_ids = [
+        row.get("cell_id") for row in progress if isinstance(row, Mapping)
+    ]
+    progress_sequences = [
+        row.get("sequence") for row in progress if isinstance(row, Mapping)
+    ]
+    if len(set(progress_cell_ids)) != len(progress_cell_ids):
+        reasons.append("progress_duplicate_cell_id")
+    if len(set(progress_sequences)) != len(progress_sequences):
+        reasons.append("progress_duplicate_sequence")
+    planned_cell_ids = [
+        row.get("cell_id")
+        for row in planned_cells[: len(progress)]
+        if isinstance(row, Mapping)
+    ]
+    if progress_cell_ids != planned_cell_ids:
+        reasons.append("progress_cell_identity_order_mismatch")
+    return reasons
 
 
 def _audit_target_cell(
@@ -1034,7 +1086,7 @@ def _audit_target_cell(
             for reason in reasons
         )
     )
-    return {
+    row = {
         "cell_id": target.cell_id,
         "shard_index": target.shard_index,
         "scenario": (
@@ -1110,6 +1162,16 @@ def _audit_target_cell(
         "verified": not reasons,
         "failure_reasons": reasons,
     }
+    for field in _POSTERIOR_AUDIT_LOW_LEVEL_EVIDENCE_FIELDS:
+        if field not in row:
+            row[field] = low_level.get(field)
+        row[f"{field}_availability"] = low_level.get(
+            f"{field}_availability"
+        )
+        row[f"{field}_unavailable_reason"] = low_level.get(
+            f"{field}_unavailable_reason"
+        )
+    return row
 
 
 def _low_level_gate_reasons(

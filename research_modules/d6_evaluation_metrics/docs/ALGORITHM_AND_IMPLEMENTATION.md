@@ -6157,3 +6157,69 @@ generation contract status == verified
 进度守恒、五 cell 指标分母、clean-formal 失败关闭、generation 不可用不补零和报告范围。
 D6 全量回归为 `1243 passed, 1 warning in 150.38s`。输出 `SHA256SUMS`、专项 Python
 语法和 D6 owned-path diff 检查均通过。
+
+## 26. 正式 R0 全量后验独立审计
+
+### 26.1 输入与边界
+
+完整审计入口消费显式配置，冻结 source commit、execution plan 逻辑 SHA-256、900-cell
+分母、20 个分片、每片 45 项和 5700-cell 父矩阵边界。canonical cell 只从已通过摘要核对的
+execution plan 提取。每个 `cell_id`、scope/global index、shard index 和 shard sequence
+必须唯一，并满足 modulo 分片规则。
+
+merged scope 的 manifest、episode index 和 CSV 不承担指标来源。审计器先核对
+`SHA256SUMS` 的精确文件集合，再将 900 个路径和 CSV 行逐项与 canonical plan、cell result
+及重新计算的 artifact tree 对齐。`merged_scope/d6_evaluation`、旧
+`targeted_formal_d6` 和 episode producer governance audit 不读取。
+
+### 26.2 低层复用
+
+全量实现复用五项定向审计的 source、plan、shard、cell 和 episode 低层路径。每个 cell
+仍调用 `evaluate_scalable_3d_episode()` 一次，从在线总线与 summary 重新获得：
+
+```text
+D1 final generation
+D1 full posterior publication count
+D2 consumed D1 generation
+D2 consumption/publication count
+D2 pre-tick merge count
+D2 finalization skip count
+D2 pending state
+generation integrity and contract status
+```
+
+必需字段同时携带 value、availability 和 unavailable reason。availability 不是
+`available` 时，完整审计增加 `required_evidence_unavailable:<field>`，不将空值转换为 0。
+数值聚合只有在整个分母可用时输出 total；否则 total 保持 `null`，同时记录可用项数量和
+不可用原因分布。
+
+### 26.3 分层判定
+
+逐 cell 判定依次核对：
+
+1. source、execution plan、shard progress、cell result 和 artifact tree；
+2. merged index 与 canonical cell 的一致性；
+3. 在线真值为 0、有限状态、clean formal 和实验矩阵资格；
+4. D1/D2 generation integrity；
+5. 低层 episode failure reasons。
+
+任一结构矛盾关闭完整 scope。单 cell 的低层失败只关闭该 cell，并保留具体原因。聚合分别
+输出 audited、clean formal、matrix formal、generation verified 和 strict verified，
+避免把不同门限压成一个通过率。
+
+### 26.4 实际结果
+
+source `1e5ed8d` 的 900 项均完成结构、clean formal 和 generation 审计。D1
+generation/publication 合计为 `28777/28777`；D2 final consumed 为 `28777`；
+consumption/publication/pre-tick merge 为 `6411/6411/22366`；skip 为 0，pending
+排空 `900/900`。
+
+严格通过为 `872/900`。28 项都带
+`d6_low_level:d4_fail_closed:collecting_member_acks`，集中在
+`high_threat_m_to_n`。审计器没有为获得 900/900 修改 evaluator 或 source episode。
+
+### 26.5 测试
+
+新增测试覆盖 900 分母、20 分片、缺 cell、重复 progress、merged checksum 篡改、必需值
+不可用失败关闭和原五项配置兼容。专项联合测试为 `19 passed, 1 warning in 2.31s`，D6
+全量为 `1253 passed, 1 warning in 132.38s`。完整输出清单通过 `sha256sum -c`。

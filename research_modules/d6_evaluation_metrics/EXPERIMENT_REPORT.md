@@ -3353,10 +3353,10 @@ main 修复 finalization 后，在 dirty 工作树中重跑原 5 个异常 cell�
 这证明错误跳过在定向开发回归中已消失。五项的 `repository_dirty=true`，D6 证据分类仍为
 5 个 `descriptive_or_incomplete_evidence`，正式验收资格为 0/5。该结果不能与旧 clean
 提交的 895 项拼接。runtime 修复已形成 clean source commit `98d01bf`；完整 R0 formal
-rerun 已在后继 source `1e5ed8d` 上启动，但尚未完成。D6 仍保持旧正式结论 895/900，
+rerun 已在后继 source `1e5ed8d` 上启动；在该阶段尚未完成，D6 当时仍保持旧正式结论 895/900，
 900/900 formal acceptance 仍不可声明。
 
-### 17.2 Clean-source 增量结果（更新至 2026-07-30）
+### 17.2 Clean-source 增量结果（全量完成前阶段记录，2026-07-30）
 
 执行计划 SHA-256 为
 `8804ecb4dd0513db55906905f031832711012974fc911546df40e09fb297d373`。shard 0、5、9
@@ -3373,8 +3373,41 @@ rerun 已在后继 source `1e5ed8d` 上启动，但尚未完成。D6 仍保持�
 
 五项 `repository_dirty=false`、pending 为空，generation integrity reasons 也为空。
 source、plan、shard、cell result 和 artifact tree 完整性通过。该表只关闭五项定向准入，
-不证明其余 172 个已执行 cell 的 D6 正式状态。其余 723 个 cell 尚未执行。旧批次整体结论
-继续保持 895/900。
+不证明其余 172 个已执行 cell 的 D6 正式状态。该阶段其余 723 个 cell 尚未执行，旧批次
+整体结论继续保持 895/900。当前结论见第 18 节。
 
 专项测试为 `9 passed, 1 warning in 2.37s`，D6 全量回归为
 `1243 passed, 1 warning in 150.38s`。完整输出的 `SHA256SUMS` 校验通过。
+
+## 18. 正式 R0 全量后验独立审计（2026-07-30）
+
+clean source `1e5ed8d` 的 20 个 R0 分片均已完成，每片 45 项。D6 不使用 producer D6
+聚合，从 execution plan、shard ledger、cell result、episode tree、在线总线和 summary
+逐项重算 900 个 cell。
+
+| 指标 | 结果 |
+| --- | ---: |
+| 审计范围 | 900/900 |
+| shard/hash/index/tree | 20/20，900/900 |
+| clean formal | 900/900 |
+| experiment-matrix formal | 900/900 |
+| generation verified | 900/900 |
+| strict verified | 872/900 |
+| skip / pending non-empty | 0 / 0 |
+| online truth use / forbidden field | 0 / 0 |
+
+D1 generation 和 full publication 合计均为 `28777`，D2 final consumed generation 也为
+`28777`。D2 consumption/publication/pre-tick merge 为 `6411/6411/22366`，后验代次守恒。
+
+28 个严格失败 cell 全部属于高威胁 M 对 N，原因是
+`d4_fail_closed:collecting_member_acks`。5、20、50、100、200 规模的失败数分别为
+`5/4/5/6/8`。这些 cell 的 clean formal 和 generation 通过，但 D4 联盟没有在 episode
+结束前完成 ACK，因此系统严格门失败关闭。
+
+D2 ID switch 在 900 项中均显式不可用，未补零。D4/D5 四项运行安全计数在 700 项可用且
+均为 0，其余 200 项因对应 runtime 未发布而保持不可用。
+
+完整结果见 `docs/FORMAL_R0_FULL_POSTERIOR_AUDIT_CN.md`。专项测试
+`19 passed, 1 warning in 2.31s`，D6 全量
+`1253 passed, 1 warning in 132.38s`，输出 `SHA256SUMS` 校验通过。完整父矩阵仍为
+`900/5700`，无学习变体同范围对照。

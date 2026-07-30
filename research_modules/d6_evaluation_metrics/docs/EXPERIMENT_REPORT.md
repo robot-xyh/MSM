@@ -1274,6 +1274,9 @@ G1、A1、A2、A3、C1 和 F1 不能在正式矩阵中声明 assist 后静默回
 
 ## R0 后验代次定向复核
 
+本节和下一节保留完整 R0 执行结束前的定向与增量记录。当前 900-cell 结论见文末
+“正式 R0 全量后验审计”。
+
 clean 提交 `2c7b425d076899e1c54a3d87d6ef23a613ba6e3a` 的 900-cell R0 已完成结构性
 执行，原 D6 结果为 895 个 clean-formal 和 5 个 delayed-noisy 后验代次失败。逐轨审计确认
 这 5 项的最终状态、协方差和有效时刻已经变化，原运行时将其错误登记为一次 no-op skip。
@@ -1292,11 +1295,11 @@ main 修复 finalization 后，在 dirty 工作树定向重跑原 5 项。D6 合
 五项均由 D2 实际消费最终后验，generation integrity reasons 为空。该批次的
 `repository_dirty=true`，因此正式验收资格仍为 0/5，只能作为修复后的开发态定向证据。
 旧 clean 895 项与新 dirty 5 项不能拼接。runtime 修复已形成 clean source commit
-`98d01bf`。完整 R0 formal rerun 已在后继 clean source `1e5ed8d` 上启动，当前完成
-177/900，尚未形成整体结果。D6 仍保持旧正式结论 895/900。
+`98d01bf`。完整 R0 formal rerun 已在后继 clean source `1e5ed8d` 上启动；该增量阶段完成
+177/900，尚未形成整体结果，D6 当时仍保持旧正式结论 895/900。
 详细清单和判定边界见 `FORMAL_R0_POSTERIOR_SKIP_AUDIT_CN.md`。
 
-## Clean-source 正式增量复核
+## Clean-source 正式增量复核（全量完成前阶段记录）
 
 执行计划 SHA-256 为
 `8804ecb4dd0513db55906905f031832711012974fc911546df40e09fb297d373`。shard 0、5、9
@@ -1307,8 +1310,8 @@ contract 为 `verified`，episode/matrix/variant failure reasons 全为空。
 
 五个 cell 分别为 5v5 seed 1000、1005、1008、1018 和 20v20 seed 1009。D1/D2
 最终代次分别为 13/13、9/9、13/13、14/14、27/27；skip 均为 0，pending 均为空。
-该证据不能外推到其余 172 个已执行 cell。新批次剩余 723 个 cell。完整批次结束前，旧正式
-结论保持 895/900。
+该证据不能外推到其余 172 个已执行 cell。该阶段剩余 723 个 cell，旧正式结论保持
+895/900。
 
 新专项测试为 `9 passed, 1 warning in 2.37s`，D6 全量回归为
 `1243 passed, 1 warning in 150.38s`。完整输出的 JSON、CSV 和中文报告通过
@@ -1392,3 +1395,68 @@ D6 输出 `fault_generation_fence_verified`，安全违规为 0。该负例计�
 本次没有运行 AirSim，没有独立同键 R0 episode，没有多 seed 统计，没有注册或执行 D4 v4，
 也没有物理拦截结果。下一阶段需要 main 持久化同键 R0 与 learned treatment 的独立 episode，
 再交给现有严格学习采纳审计。
+
+## 正式 R0 全量后验审计（2026-07-30）
+
+### 实验范围
+
+本次输入为 clean source `1e5ed8d` 的完整 R0 单臂。执行计划包含 9 个场景、5 个规模、
+20 个 seed，共 900 个 cell。每个分片 45 项，20 个分片全部完成。完整父矩阵为 5700 项，
+本轮没有执行 G1、A1、A2 或 A3。
+
+### 完整性结果
+
+| 指标 | 结果 |
+| --- | ---: |
+| canonical cell / episode | 900/900 |
+| shard hash | 20/20 |
+| cell result / artifact tree | 900/900 |
+| clean formal | 900/900 |
+| experiment-matrix formal | 900/900 |
+| generation verified | 900/900 |
+| strict verified | 872/900 |
+
+merged scope 的三项 SHA、900 条 episode index 和 900 行 CSV 均与 execution plan、shard
+ledger 和重新计算结果一致。未发现 source、plan、progress、cell result 或 artifact tree
+篡改。
+
+### 后验结果
+
+| 指标 | 合计 | 可用项 |
+| --- | ---: | ---: |
+| D1 generation | 28777 | 900/900 |
+| D1 full publication | 28777 | 900/900 |
+| D2 final consumed generation | 28777 | 900/900 |
+| D2 consumption | 6411 | 900/900 |
+| D2 publication | 6411 | 900/900 |
+| D2 pre-tick merge | 22366 | 900/900 |
+| D2 finalization skip | 0 | 900/900 |
+| D2 pending empty | 900 | 900/900 |
+| online truth use | 0 | 900/900 |
+| forbidden truth field violation | 0 | 900/900 |
+| D2 ID switch | 不可用 | 0/900 |
+
+`6411 + 22366 = 28777`，最终代次、发布、消费和节拍前合并闭合。900 项均未使用末尾 skip，
+没有 pending 遗留。ID switch 缺少 producer 离线身份配对声明，结果保持不可用。
+
+### 失败分布
+
+28 个失败项全部属于 `high_threat_m_to_n`，原因均为
+`d4_fail_closed:collecting_member_acks`。各规模失败数为：
+
+| 规模 | 失败 / 该场景 20 seeds |
+| ---: | ---: |
+| 5 | 5/20 |
+| 20 | 4/20 |
+| 50 | 5/20 |
+| 100 | 6/20 |
+| 200 | 8/20 |
+
+其余 8 个场景均为 `100/100` 严格通过。28 项的 clean formal、实验矩阵资格和 generation
+均通过，失败仅表示 D4 联盟在 episode 终点仍等待成员确认。D6 没有更改低层 evaluator。
+
+完整失败 cell、seed 和原因见
+[`FORMAL_R0_FULL_POSTERIOR_AUDIT_CN.md`](FORMAL_R0_FULL_POSTERIOR_AUDIT_CN.md)。
+专项测试 `19 passed, 1 warning in 2.31s`，全量回归
+`1253 passed, 1 warning in 132.38s`。本结果不是 AirSim 或实飞证据，也不支持学习变体收益
+结论。

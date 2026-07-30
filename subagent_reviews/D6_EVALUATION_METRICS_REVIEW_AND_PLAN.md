@@ -1,5 +1,35 @@
 # D6 系统评估指标综述及子方案
 
+## 2026-07-30 正式 R0 全量后验独立评审
+
+评审接受 D6 的 900-cell 审计完整性，不接受把结果写成全系统 `900/900` 通过。D6 从 clean
+source `1e5ed8d` 和冻结 execution plan 重建规范范围，不读取 producer D6 聚合、旧定向
+聚合或 episode governance audit。
+
+评审确认：
+
+1. 20 个分片均为 45/45，canonical cell、progress、cell result、episode index、merged
+   CSV 和 artifact tree 均为 900/900；
+2. source、execution plan、merged scope 和 20 个 shard 哈希均通过；
+3. clean formal、实验矩阵资格和 generation verified 均为 900/900；
+4. D1 generation/full publication 和 D2 final consumed 均为 28777；
+5. D2 consumption/publication/pre-tick merge 为 6411/6411/22366，skip 为 0，
+   pending 全排空；
+6. 在线真值使用和禁用真值字段违规均为 0；
+7. 严格通过为 872/900，28 项均为
+   `high_threat_m_to_n` 的 `d4_fail_closed:collecting_member_acks`；
+8. D2 ID switch 的 900 项均显式不可用，未补零；
+9. D4/D5 四项安全计数只在 700 项可用且均为 0，另 200 项保持不可用；
+10. 完整父矩阵为 900/5700，没有 G1/A1/A2/A3 同范围结果。
+
+评审将 28 项归为 D4/main 联盟 ACK 收敛与 episode 终止条件的开放 P1。失败关闭有效，因此
+不构成新的 D6-owned P0。D6 不能为提高通过率过滤该原因，也不能把 clean formal 或
+generation 通过替代系统严格通过。
+
+专项与原五项兼容测试 `19 passed, 1 warning in 2.31s`，D6 全量
+`1253 passed, 1 warning in 132.38s`。完整输出 SHA 校验通过。AirSim 集成计划不受本次
+离线三维质点审计影响。
+
 ## 2026-07-30 D4 v7 来源独立外部评价盲审评审
 
 评审接受 D6 的审计执行完整性，不接受 v7 候选能力通过。D6 没有调用 D4 v7 高层
@@ -2979,12 +3009,13 @@ main 在 `/tmp/msm-r0-finalize-fix-20260725` 重跑原 5 个异常 cell。D6 v10
 provenance。评审接受该结果作为修复确认，不接受把它与旧 clean 提交的 895 项拼接，也不接受
 据此声明 R0 900/900 formal acceptance。
 
-完整 R0 formal rerun 已在 clean source `1e5ed8d` 上启动，当前完成 177/900。D6 继续保持
-旧正式结论 895/900，并在新批次中使用 v10 逐项核对 generation contract、clean provenance
+完整 R0 formal rerun 已在 clean source `1e5ed8d` 上启动。以下为增量阶段 177/900 的历史
+评审；当前完整结论见文件顶部“正式 R0 全量后验独立评审”。D6 当时继续保持旧正式结论
+895/900，并在新批次中使用 v10 逐项核对 generation contract、clean provenance
 和实验矩阵门。任何 `skip=1` 若没有版本化完整 D2 输入摘要，仍须失败关闭；本次 `skip=0`
 的结果不能作为放宽先例。
 
-### 增量正式评审（更新至 2026-07-30）
+### 增量正式评审（全量完成前阶段记录，2026-07-30）
 
 评审核对 execution plan SHA-256
 `8804ecb4dd0513db55906905f031832711012974fc911546df40e09fb297d373`。shard 0、5、9
@@ -3003,7 +3034,7 @@ plan、shard、cell result 和 artifact tree 完整性通过，D1 final 与 D2 c
 skip 为 0，pending 为空。评审接受这五个 cell 的新批次正式准入。
 
 评审不接受 900/900、177/177 或把旧 895 与新五项相加的组合声明。旧 895/900 属于旧
-source 的整体结论；新 source 当前只有 177/900 执行完成，D6 定向报告只覆盖其中五项。
+source 的整体结论；新 source 当时只有 177/900 执行完成，D6 定向报告只覆盖其中五项。
 其余 172 个已执行 cell 未由本专项逐项审计，723 个 cell 尚未执行。
 
 评审接受 D6-owned 定向审计实现与文档同步。专项 `9 passed, 1 warning in 2.37s`，D6

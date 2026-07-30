@@ -1,0 +1,12 @@
+{
+  "schema_version": "d6.formal-r0-full-posterior-audit-input.v1",
+  "execution_root": "/tmp/msm-formal-r0-shard-1e5ed8d/research_modules/scalable_3d_simulation/outputs/formal_r0_20260725_1e5ed8d",
+  "source_repository": "/tmp/msm-formal-r0-shard-1e5ed8d",
+  "expected_source_git_commit": "1e5ed8ddcf27f375e922a447decfbd875d21bfdf",
+  "expected_execution_plan_sha256": "8804ecb4dd0513db55906905f031832711012974fc911546df40e09fb297d373",
+  "expected_scope_cell_count": 900,
+  "expected_parent_cell_count": 5700,
+  "expected_shard_count": 20,
+  "expected_cells_per_shard": 45,
+  "merged_scope_relative_path": "merged_scope"
+}

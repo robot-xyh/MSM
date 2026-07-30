@@ -3890,6 +3890,9 @@ D6 v10 已提交为 `8e955f3d920df36818ff1961aae5484192995dba`。
 
 ### 运行时修复定向复核
 
+本小节及其后的 177/900 增量小节保留全量执行完成前的阶段证据。当前结论见本文件末尾
+“正式 R0 全量后验独立审计”。
+
 main 修复 finalization 后，在 dirty 工作树中按原配置重跑上述 5 个异常 cell。D6 v10
 读取 `/tmp/msm-r0-finalize-fix-20260725/combined_d6` 后确认，五项均满足：
 
@@ -3904,15 +3907,15 @@ main 修复 finalization 后，在 dirty 工作树中按原配置重跑上述 5 
 `descriptive_or_incomplete_evidence`，正式验收资格为 0/5。它们不能与旧 clean 提交的
 895 个正式 episode 拼接成 900/900 正式结果。runtime 修复已形成 clean source commit
 `98d01bfa2daa0bbd279dfbde27f0dfa669150bf6`。完整 R0 formal rerun 已在其后继 clean source
-`1e5ed8ddcf27f375e922a447decfbd875d21bfdf` 上启动，但尚未完成。D6 仍保留旧正式结论
-895/900。D6 对 declared skip 的失败关闭规则没有变化：没有版本化完整 D2 输入摘要时，
+`1e5ed8ddcf27f375e922a447decfbd875d21bfdf` 上启动；在该阶段尚未完成，D6 当时仍保留旧
+正式结论 895/900。D6 对 declared skip 的失败关闭规则没有变化：没有版本化完整 D2 输入摘要时，
 `skip=1` 仍不能进入正式守恒式。
 
-### R0 正式增量复核（更新至 2026-07-30）
+### R0 正式增量复核（全量完成前阶段记录，2026-07-30）
 
 新执行计划 SHA-256 为
 `8804ecb4dd0513db55906905f031832711012974fc911546df40e09fb297d373`。shard 0、5、9
-各完成 45 个 cell；shard 8、18 各完成 21 个 cell，当前执行进度为 177/900。
+各完成 45 个 cell；shard 8、18 各完成 21 个 cell，当时执行进度为 177/900。
 
 D6 新专项不读取 `targeted_formal_d6` 聚合，直接从 execution plan、shard ledger、
 cell result、episode artifact tree、在线总线和 summary 重算五个原失败 cell。5v5
@@ -3922,7 +3925,7 @@ contract 为 `verified`，三类 failure reason 均为空，skip 为 0，pending
 
 该结果关闭五个目标 cell 在新批次中的后验代次疑点，不代表 177 个已执行 cell 已全部由
 D6 完成正式准入，也不改变旧批次 895/900 的整体结论。其余 172 个已执行 cell 未由本专项
-逐项审计，新批次仍有 723 个 cell 未执行。完整结果和哈希见
+逐项审计，该阶段仍有 723 个 cell 未执行。完整结果和哈希见
 `docs/FORMAL_R0_TARGETED_POSTERIOR_AUDIT_1E5ED8D_CN.md`。
 
 专项测试为 `9 passed, 1 warning in 2.37s`，D6 全量回归为
@@ -3997,3 +4000,47 @@ unavailable。
 中文报告均携带上述分层字段。专项测试 `6 passed`；D6 全量回归
 `1202 passed, 1 warning in 106.92s`。warning 为既有 Matplotlib `Axes3D` 环境提示。本轮
 没有启动 AirSim，也没有形成多 seed、同键 R0 或学习模型收益证据。
+
+## 正式 R0 全量后验独立审计（2026-07-30）
+
+D6 已完成 clean source
+`1e5ed8ddcf27f375e922a447decfbd875d21bfdf` 的完整 R0 单臂审计。执行计划逻辑
+SHA-256 为
+`8804ecb4dd0513db55906905f031832711012974fc911546df40e09fb297d373`。
+审计不读取 `merged_scope/d6_evaluation`、旧 `targeted_formal_d6` 或 episode 内
+producer 生成的 `observation_governance_audit.json`。merged manifest、episode index
+和 CSV 只作为待复核索引。
+
+全量入口 `formal_r0_full_posterior_audit.py` 从冻结执行计划生成 900 个规范 cell，复用五项
+定向审计的逐 episode 低层 evaluator。它独立核对 20 个 shard 的 plan、checkpoint、
+progress、900 个 cell result 和每个 episode artifact tree，再从
+`online_observations.jsonl` 与 `summary.json` 重算 D1/D2 后验代次。
+
+本次结果如下：
+
+- 执行范围、规范 cell、merged index 和 artifact tree：`900/900`；
+- 20 个分片哈希：`20/20`；
+- clean formal、实验矩阵资格、generation integrity：均为 `900/900`；
+- D1 最终代次与完整发布合计均为 `28777`，D2 最终消费代次合计为 `28777`；
+- D2 消费与发布均为 `6411`，节拍前合并为 `22366`，满足
+  `6411 + 22366 = 28777`；
+- finalization skip 总量为 0，pending 排空 `900/900`；
+- 在线真值使用与禁用真值字段违规总量均为 0。
+
+严格总门为 `872/900`。28 个失败项全部位于 `high_threat_m_to_n` 场景，episode 结束时
+D4 仍为 `collecting_member_acks`，低层 evaluator 因此保留
+`d4_fail_closed:collecting_member_acks`。这些项的 clean formal、实验矩阵资格和 D1/D2
+generation 仍通过，但不能计为完整系统 episode 通过。D6 未改写 evaluator 或源制品。
+
+身份交换计数在 900 项中均由 producer 显式声明不可用，聚合总量保持 `null`。D4 建议和
+D5 主动视觉四个安全计数在 700 项可用且均为 0，另 200 项因对应 runtime 未发布而保持
+不可用，未补零。
+
+完整报告见
+[`docs/FORMAL_R0_FULL_POSTERIOR_AUDIT_CN.md`](docs/FORMAL_R0_FULL_POSTERIOR_AUDIT_CN.md)。
+输出目录包含完整 JSON、逐 cell CSV、中文报告和 `SHA256SUMS`；tracked docs 只保留中文
+报告和紧凑 JSON。专项与五项兼容测试为 `19 passed, 1 warning in 2.31s`，D6 全量为
+`1253 passed, 1 warning in 132.38s`。
+
+该结果只关闭 R0 单臂的执行和 D1/D2 后验完整性。完整父矩阵仍为 `900/5700`，没有
+G1、A1、A2、A3 同范围对照，不能声明学习收益或因果改进。

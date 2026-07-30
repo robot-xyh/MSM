@@ -3503,6 +3503,9 @@ manifest 形成独立证据。
 
 ## 20. 正式 R0 后验跳过审计（2026-07-25）
 
+本节先保留旧批次和 177/900 增量阶段的处置记录，最新状态见后文“完整 R0 scope 审计
+状态”。历史条目中的“当前”和“后续”不再代表本轮完成后的项目状态。
+
 ### 已完成
 
 1. 复核 900 个 R0 episode 的后验代次证据。结构性 scope 为 900/900，D6 clean-formal
@@ -3524,7 +3527,7 @@ manifest 形成独立证据。
    `98d01bf`。正式证据不能跨提交拼接；下一步应基于 `98d01bf` 重新执行完整 900-cell
    R0 scope，再由 D6 v10 生成报告。
 4. 对旧批次只允许声明 `formal_scope_complete=900/900` 和 `clean-formal=895/900`；
-   新批次当前只允许声明 shard execution 177/900 和五个 target cell 正式通过，不允许声明
+   新批次在 177/900 阶段只允许声明 shard execution 和五个 target cell 正式通过，不允许声明
    900/900 formal acceptance 或完整 5700-cell matrix complete。
 5. 2026-07-25 D6 全量回归为 `894 passed, 1 warning in 85.66s`；5 个原始异常
    episode 的 v10 实物复核均保持三层 formal gate 为 false。
@@ -3536,7 +3539,7 @@ main 已修复 finalization 输入判定，并在
 generation contract 均为 `verified`：D1 最终代次等于 D2 最终消费代次，消费次数等于
 发布次数，消费与节拍前合并之和等于 D1 代次，declared skip 为 0，pending 为空。
 
-该批次在 dirty 工作树生成，五项均为开发态描述性证据，正式验收资格为 0/5。当前状态按两层
+该批次在 dirty 工作树生成，五项均为开发态描述性证据，正式验收资格为 0/5。当时状态按两层
 管理：
 
 1. runtime P0 的错误跳过现象已在定向开发回归中消失，修复代码已由 clean source commit
@@ -3549,7 +3552,7 @@ generation contract 均为 `verified`：D1 最终代次等于 D2 最终消费代
    D2 输入摘要、pending 全空、episode 全部 clean-formal；
 5. 若运行时未来重新出现 `skip=1`，没有完整输入摘要时 D6 继续失败关闭，不以计数式放行。
 
-### 正式增量状态与后续（更新至 2026-07-30）
+### 正式增量状态与后续（全量完成前阶段记录，2026-07-30）
 
 1. source 为 `1e5ed8ddcf27f375e922a447decfbd875d21bfdf`，`repository_dirty=false`；
    execution plan SHA-256 为
@@ -3569,10 +3572,35 @@ generation contract 均为 `verified`：D1 最终代次等于 D2 最终消费代
    复核，并调用 D6 低层合同从在线总线与 summary 重算后验代次。
 3. 已输出逐 cell CSV、聚合 JSON、中文 Markdown 和 `SHA256SUMS`；完整输出保存在 D6
    outputs 忽略目录，紧凑报告与结果保存在 docs。
-4. 当前专项 5/5 通过。后续计划保持为执行剩余 723 cell，再审计完整 R0 scope；不对
+4. 当时专项 5/5 通过。该阶段计划为执行剩余 723 cell，再审计完整 R0 scope；不对
    未审计的 172 个已执行 cell 作推断。
 5. 专项 `9 passed, 1 warning in 2.37s`，D6 全量
    `1243 passed, 1 warning in 150.38s`；输出 SHA、语法和 owned-path diff 检查通过。
+
+### 完整 R0 scope 审计状态（2026-07-30）
+
+1. [x] source `1e5ed8d` 的 20 个分片均完成 `45/45`，正式 R0 执行与审计范围为
+   `900/900`。旧 source 的 895 项没有与本批次拼接。
+2. [x] D6 已独立核对 execution plan、merged scope 三文件 SHA、20 个 shard ledger、
+   900 个 cell result 和每个 episode artifact tree。producer D6 聚合和 episode
+   governance audit 不作为输入。
+3. [x] 900 项均重新调用低层 evaluator。clean formal、实验矩阵资格和 generation
+   verified 均为 `900/900`；skip 总量为 0，pending 全部排空，在线真值使用为 0。
+4. [x] D1 generation/full publication 合计 `28777/28777`，D2 final consumed 为
+   `28777`；D2 consume/publication/merge 为 `6411/6411/22366`。
+5. [x] 输出完整 JSON、逐 cell CSV、中文 Markdown 和 SHA-256 清单。tracked docs 保存
+   中文报告及紧凑 JSON，全部 28 个失败 cell 均保留。
+6. [ ] 严格总门为 `872/900`。28 项均为高威胁 M 对 N 场景的
+   `d4_fail_closed:collecting_member_acks`。该项由 D4/main 处理联盟 ACK 收敛和 episode
+   终止条件；D6 继续失败关闭。
+7. [ ] D2 ID switch 在 900 项中均显式不可用。后续需要独立离线真值配对制品后再由 D6
+   统计，不允许把不可用写成 0。
+8. [ ] 完整父矩阵仍为 `900/5700`。G1、A1、A2、A3 尚无同范围结果，因果收益和模型准入
+   继续不可用。
+
+专项与五项兼容测试 `19 passed, 1 warning in 2.31s`；D6 全量
+`1253 passed, 1 warning in 132.38s`。AirSim 集成计划已检查，本次只读三维质点制品审计
+没有新增 AirSim 消息、episode 或硬件接口，因此无需修改。
 
 ## 21. 学习作用域正式证据审计（2026-07-26）
 

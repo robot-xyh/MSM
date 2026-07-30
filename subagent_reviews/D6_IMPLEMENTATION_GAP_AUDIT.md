@@ -1,5 +1,35 @@
 # D6 实现差距审计
 
+## 2026-07-30 正式 R0 全量后验审计 GAP
+
+### 已关闭的 D6-owned 项
+
+1. 完整 900-cell 分母、20 shard、merged index 和逐 episode artifact tree 的独立审计
+   已实现。
+2. 全量路径复用五项定向审计的低层 evaluator，没有复制第二套宽松后验逻辑。
+3. 每项均从 online observations 与 summary 重算在线真值、有限状态、clean formal、
+   matrix formal、D1/D2 generation、skip 和 pending。
+4. 缺 cell、重复 progress、SHA 篡改和必需证据不可用均有直接失败关闭测试。
+5. 完整 JSON、逐 cell CSV、中文报告、紧凑 JSON 和 `SHA256SUMS` 已生成。
+6. 原五项定向审计入口和配置保持兼容。
+
+### 结果与开放 P1
+
+- R0 执行与审计范围 `900/900`，clean formal、matrix formal、generation verified 均为
+  `900/900`。
+- 严格通过 `872/900`。28 个失败 cell 均为高威胁 M 对 N 场景的
+  `d4_fail_closed:collecting_member_acks`。D4/main 需处理成员确认收敛、lease/timeout
+  和 episode 终止条件；D6 保持原 evaluator 判定。
+- D2 ID switch 900 项均显式 unavailable。D2/main 需要提供独立离线真值配对制品，D6
+  才能形成该指标分母。
+- D4/D5 四项安全计数 700 项可用且为 0，200 项因 runtime 未发布而不可用。跨场景总计
+  继续为 `null`。
+- 完整父矩阵仍为 `900/5700`。G1、A1、A2、A3 同范围对照、因果收益和学习准入保持开放。
+
+当前无新增 D6-owned P0。D6 全量审计代码与证据输出缺口已关闭；开放项属于跨模块运行
+证据和后续学习对照。专项 `19 passed, 1 warning in 2.31s`，全量
+`1253 passed, 1 warning in 132.38s`。
+
 ## 2026-07-30 D4 v7 来源独立外部评价盲审
 
 ### 已关闭的 D6-owned 子项
@@ -3114,7 +3144,8 @@ GAP 状态：当前无 D6-owned P0。clean 单 seed 安全合同证据已闭合�
 
 该 P0 不属于 D6 控制代码所有权。D6 已补齐检测并保持 fail-closed，v10 已提交为
 `8e955f3`。main/D2 修复已形成 clean source commit `98d01bf`。5 个异常 cell 的 dirty
-定向回归已经通过。正式 R0 已在后继 clean source `1e5ed8d` 上启动，当前完成 177/900。
+定向回归已经通过。正式 R0 已在后继 clean source `1e5ed8d` 上启动。以下为增量阶段
+177/900 的历史记录；当前完整结论见文件顶部“正式 R0 全量后验审计 GAP”。
 旧 895 个通过项不能与此前 dirty 工作树的 5 个修复项或新批次局部结果拼接。
 
 ### D6 状态
@@ -3142,13 +3173,13 @@ main 已修复 runtime finalization，并在 dirty 工作树中重跑原 5 个�
 `repository_dirty=true`，D6 正确保留为 5 个
 `descriptive_or_incomplete_evidence`，formal eligibility 为 0/5。旧 clean 895 项不得与
 该批次拼接。修复已由 clean source commit `98d01bf` 固化，后继 source `1e5ed8d` 的完整
-R0 已执行 177/900，但尚未完成。D6 继续保持旧正式结论 895/900，900/900 formal
+R0 当时已执行 177/900，但尚未完成。D6 当时继续保持旧正式结论 895/900，900/900 formal
 acceptance 仍是开放验收项。
 
 D6 的 skip 门没有放宽。此次修复通过来自 skip=0 和实际消费闭环；未来任何未经版本化完整
 D2 输入摘要验证的 skip 仍不能进入 formal 守恒式。
 
-### Clean-source 增量正式状态（更新至 2026-07-30）
+### Clean-source 增量正式状态（全量完成前阶段记录，2026-07-30）
 
 - source/plan 为 `1e5ed8d` /
   `8804ecb4dd0513db55906905f031832711012974fc911546df40e09fb297d373`，来源 dirty=false。
@@ -3156,7 +3187,7 @@ D2 输入摘要验证的 skip 仍不能进入 formal 守恒式。
 - D6 独立定向报告中的 5v5 seed 1000/1005/1008/1018、20v20 seed 1009 为 5/5
   clean-formal、两层 formal eligible、generation verified，failure reasons 为空。
 - 该 5/5 关闭五个目标 cell，不关闭其余 172 个已执行 cell。不得声明 177/177。
-- 当前无新增 D6-owned P0。开放项是 main 完成其余 723 cell，并由 D6 对完整 900-cell
+- 该阶段无新增 D6-owned P0。开放项是 main 完成其余 723 cell，并由 D6 对完整 900-cell
   scope 重新聚合；这属于跨模块执行证据 P1。
 - D6-owned 独立定向审计缺口已关闭。专项 `9 passed, 1 warning in 2.37s`，全量
   `1243 passed, 1 warning in 150.38s`，输出 SHA、语法和 owned-path diff 检查通过。

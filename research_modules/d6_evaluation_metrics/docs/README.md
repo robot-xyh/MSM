@@ -665,9 +665,15 @@ D2 输入摘要；公开载荷相等本身不足以认可 no-op skip。当前 5 
 同日 main 修复 finalization 后完成五项定向重跑。D6 v10 确认五项 skip 均为 0，D1/D2 最终
 代次一致，消费与发布一致，消费加节拍前合并等于 D1 代次，pending 为空。该批工作树 dirty，
 因此只形成开发态修复证据。D6 v10 已提交为 `8e955f3`，runtime 修复已形成 clean source
-commit `98d01bf`。正式 R0 已在后继 clean source `1e5ed8d` 上执行 177/900。2026-07-30
+commit `98d01bf`。正式 R0 在全量完成前阶段执行至 177/900。2026-07-30
 新增
 [`FORMAL_R0_TARGETED_POSTERIOR_AUDIT_1E5ED8D_CN.md`](FORMAL_R0_TARGETED_POSTERIOR_AUDIT_1E5ED8D_CN.md)，
 不读取原定向聚合，独立复核五个原失败 cell。五项均为 clean-formal、实验矩阵 formal 和
-generation verified。完整批次尚未完成，旧正式结论仍为 895/900。
-完整结论和正式重跑边界已同步写入上述审计报告。
+generation verified。该段保留增量阶段结论；当前完整结论见下一段全量审计报告。
+
+2026-07-30 新增
+[`FORMAL_R0_FULL_POSTERIOR_AUDIT_CN.md`](FORMAL_R0_FULL_POSTERIOR_AUDIT_CN.md)。
+该报告覆盖 clean source `1e5ed8d` 的完整 900-cell R0 单臂，独立核对 20 个分片、900 个
+cell result 和 artifact tree，并逐项重算 D1/D2 后验代次。clean formal、实验矩阵资格和
+generation verified 均为 900/900；严格总门为 872/900。28 项均为高威胁 M 对 N 场景在
+episode 结束时仍处于 D4 成员 ACK 收集状态。完整父矩阵和学习变体对照尚未完成。
