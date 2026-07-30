@@ -2113,3 +2113,42 @@ main 两项专项测试通过；scalable world 与 module stack 全量 `100 pass
 区域提示专项 `34 passed`，D3 全量收集 619 项，结果为
 `618 passed, 1 skipped`。唯一跳过仍为可选 OR-Tools；既有 Matplotlib `Axes3D` 环境
 警告不影响本项。
+
+## 2026-07-30 A1 分配感知开发候选
+
+D3 新增与旧行为克隆 bundle 并存的
+`d3_a1_assignment_aware_cost_residual_policy_v1`。新入口只解析源数据中的 TRAIN 和
+VALIDATION。优化器只读取 962 个 TRAIN 帧；检查点选择只读取 320 个 VALIDATION 帧。
+内部 TEST 不参与本轮开发，外部正式种子 `1000-1019` 的读取计数为 0。
+
+开发教师先用原始规则矩阵和需求槽 Hungarian 形成 R0，再从仍硬安全的历史绑定中选择
+规则成本间隔最小的困难边。只有替代绑定降低历史换绑量、保持需求覆盖、满足 M-to-N
+all-or-none、绑定对称差不超过 8，且原规则成本绝对差不超过 0.10、相对差不超过
+0.002 时，才形成正类。其余帧的修正目标为逐元素零，绑定目标为 exact-R0。
+
+模型使用边编码、帧上下文门和有界成本残差。输出仍为
+`C_final=C_rule+alpha*tanh(delta_C)`，离散结果仍由现有需求槽 Hungarian 和安全投影
+产生。模型不输出 plan、version、target id 或控制命令。所有 assist、authority、
+assignment、runtime publication、control、physical、formal holdout 和 production
+admission 权限为 false。
+
+同输入独立训练两次后，模型、manifest 和 tree SHA-256 完全一致。所选第 7 轮检查点的
+验证结果为：
+
+- 教师正例安全换绑 `13/95`，教师绑定完全一致 `9/95`；
+- 负类 exact-R0 `224/225`，比例 99.56%；
+- 有效绑定的重复资源、硬边、M-to-N 完整性和版本违规均为 0；
+- 79 帧因分布外、换绑数量或规则成本差超限失败关闭，矩阵和绑定均恢复 R0。
+
+模型 SHA-256 为
+`c185823bd9a4cf5363d17854385aeb74c340c8ac384327281d224a1097eb8206`，
+manifest SHA-256 为
+`ec9f93d668e1aa319f65fcda0d73adb0527f316a2d1880e93e88697b6468ad3d`，
+tree SHA-256 为
+`de7b627df9782d7d2577687f30d02d4faeeaf577ecc557c2b8d91dd6e7115dd9`。
+
+该结果关闭“开发候选无法形成任何安全离散变化”的模块内 P1。来源独立评价、正式
+holdout、收益、运行采用和物理闭环仍开放。旧正式 `0/20 eligible` 证据不改写。
+
+2026-07-30 的 D3 全量测试共收集 624 项，结果为
+`623 passed, 1 skipped`。跳过项仍是可选 OR-Tools。

@@ -1958,3 +1958,51 @@ D3 已证明该类区域提示可以产生可辨识的严格后继，且变化�
 区域提示专项 `34 passed`，D3 全量收集 619 项，结果为
 `618 passed, 1 skipped`。唯一跳过是可选 OR-Tools；既有 Matplotlib 三维导入警告不影响
 结果。
+
+## A1 分配感知开发候选试验（2026-07-30）
+
+### 条件
+
+本试验不改写旧正式 `0/20 eligible` 结果，也不读取正式种子。源数据使用
+`d3_learning_dataset_v2`。优化器读取 962 个 TRAIN 帧，检查点选择读取 320 个
+VALIDATION 帧。内部 TEST 未解析，正式种子 `1000-1019` 读取计数为 0。
+
+连续性教师在 TRAIN/VALIDATION 中分别构造 294/95 个安全替代正例，其余 668/225 帧为
+负类。模型只输出有界 `delta_C`，最终绑定继续由需求槽 Hungarian 和确定性安全投影产生。
+
+### 结果
+
+所选检查点为第 7 轮。
+
+| 指标 | TRAIN | VALIDATION |
+|---|---:|---:|
+| 非零成本修正帧 | 310 | 104 |
+| 安全绑定变化帧 | 32 | 14 |
+| 正类安全绑定变化 | 31/294 | 13/95 |
+| 教师绑定完全一致 | 19/294 | 9/95 |
+| 负类 exact-R0 | 667/668 | 224/225 |
+| 失败关闭帧 | 254 | 79 |
+| 最大有效绑定对称差 | 8 | 8 |
+| 重复资源、硬边、M-to-N、版本违规 | 0 | 0 |
+
+原规则矩阵改写为 0。全部失败关闭帧的有效矩阵和绑定均恢复 R0。同输入独立构建两次，
+模型、manifest 和 bundle tree SHA-256 一致：
+
+```text
+model    c185823bd9a4cf5363d17854385aeb74c340c8ac384327281d224a1097eb8206
+manifest ec9f93d668e1aa319f65fcda0d73adb0527f316a2d1880e93e88697b6468ad3d
+tree     de7b627df9782d7d2577687f30d02d4faeeaf577ecc557c2b8d91dd6e7115dd9
+```
+
+### 判断
+
+开发门通过，说明候选在同一数据生成体系的 VALIDATION 上能够跨越部分离散分配边界。
+负类仍有 1/225 帧不是 exact-R0，且正类安全换绑仅 13/95。该结果不能解释为新来源泛化、
+任务收益、运行采用或物理拦截改善。
+
+候选只允许 `shadow` 和 `source_independent_evaluation`。全部 assist、authority、
+assignment、runtime publication、control、physical、formal holdout 和 production
+admission 权限关闭。下一步由 main 使用全新来源和布局进行只读独立评价。
+
+新增专项 5 项通过。2026-07-30 D3 全量共收集 624 项，结果为
+`623 passed, 1 skipped`。跳过项是未安装的可选 OR-Tools。未启动 AirSim。

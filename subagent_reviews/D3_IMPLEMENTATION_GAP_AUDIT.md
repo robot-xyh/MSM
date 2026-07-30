@@ -1870,3 +1870,34 @@ main 两项专项测试通过；scalable world 与 module stack 全量 `100 pass
 
 AirSim 集成计划已检查；没有 DTO、settings、episode 或控制接口变化，因此不修改。
 M-to-N 专项也已检查；本项没有需求槽、联盟成员、角色或到达调度变化，因此不修改。
+
+## 62. A1 分配感知开发候选 GAP 更新（2026-07-30）
+
+### 已关闭的 D3 P1 子缺口
+
+旧 development bundle 偏向边残差拟合，正式 20-seed/100-frame 仍为
+`0/20 eligible`。D3 现另立 assignment-aware 策略和 bundle schema，把安全投影后的
+离散绑定变化作为检查点选择首要目标。旧 bundle、正式结果、Hungarian、规则代价、硬禁
+边、迟滞、M-to-N all-or-none、计划版本和 stale rejection 均未修改。
+
+训练只读取 962 个 TRAIN 帧，选模只读取 320 个 VALIDATION 帧；正式 `1000-1019` 未读。
+所选检查点形成 13/95 个正类安全换绑、9/95 个教师精确匹配；负类 exact-R0 为 224/225。
+有效结果的重复资源、硬边、M-to-N 和版本违规为 0，规则矩阵改写为 0，失败关闭矩阵和
+绑定均 exact-R0。同输入两次构建摘要一致，全部运行和生产权限为 false。
+
+该结果关闭“开发数据无法形成任何安全离散变化”的模块内 P1 子缺口，不关闭 A1 正式
+准入。旧 `0/20 eligible` 证据保持有效。
+
+### 保持开放的 P1
+
+1. main 需提供与本轮 TRAIN/VALIDATION 不同来源、不同布局的数据，通过严格只读 loader
+   独立评价。D3 不依据该结果重新选模。
+2. 独立评价必须报告正类安全换绑、负类 exact-R0、失败关闭分母、规则矩阵不变和全部
+   安全违规。当前负类 `224/225` 不能写成全保持。
+3. 只有来源独立评价仍有安全离散变化，才可另行预注册正式 `1000-1019`。
+4. 当前教师提供可辨识连续性干预，不提供收益标签。同键 R0 非退化、D6 审计、runtime
+   ACK、D7 binding 和物理窗口仍不可用。
+5. 上述证据形成前，不创建 admitted/production bundle，不开放在线 assist、分配或控制。
+
+本项没有新增 P0。AirSim 集成计划已检查；未改变 AirSim DTO、settings、episode 或控制
+接口，因此不修改。M-to-N 专项已检查；联盟角色、波次和到达调度未改变。

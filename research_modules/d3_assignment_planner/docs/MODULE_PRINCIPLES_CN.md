@@ -1957,3 +1957,47 @@ intervention。R0 可以因资源失效等普通输入变化形成自己的下�
 同一版本号的未发布 R0 与已发布 treatment 是并列候选，不是两个连续版本。后续消费者只能
 采用已发布 treatment；R0 只用于反事实审计。该规则不授予 D4 assignment、coalition、
 takeover 或 control execution authority。
+
+## A1 分配感知开发候选原则（2026-07-30）
+
+旧 A1 候选的正式 20-seed/100-frame 结果仍为 `0/20 eligible`。新候选另立策略版本
+`d3_a1_assignment_aware_cost_residual_policy_v1` 和 bundle schema
+`d3_a1_assignment_aware_development_bundle_v1`，只验证开发数据中能否形成受安全约束的
+离散换绑，不覆盖旧 bundle，不取得运行权限。
+
+优化器只能读取 TRAIN，检查点选择只能读取独立 VALIDATION。内部 TEST 行按原始字节跳过，
+不构造训练记录；正式留出种子 `1000-1019` 不读取、不评价。训练、验证和正式评价用途由
+manifest 固定，不能在选模后回看正式结果再修改权重或检查点。
+
+模型仍只输出有界代价修正：
+
+\[
+C_{\mathrm{final}}=C_{\mathrm{rule}}+
+\alpha\tanh(\Delta C),\qquad \alpha=0.25
+\]
+
+检查点优先比较安全投影后的离散绑定变化，再比较教师精确匹配和负类 exact-R0。最终绑定
+继续由原需求槽 Hungarian 求解器产生。模型不能输出计划号、版本、`global_track_id` 或
+控制命令。
+
+教师替代和模型提议均要求资源不重复、选中边属于原硬安全候选集、多资源需求全有或全无、
+需求覆盖不低于 R0、绑定对称差不超过 8，且按原规则矩阵重评分的绝对成本差不超过 0.10、
+相对差不超过 0.002。任一条件失败时，整帧矩阵和绑定逐元素恢复 R0。负类也纳入分母，
+不能只报告有替代机会的正类。
+
+开发数据包含 962 个 TRAIN 帧和 320 个 VALIDATION 帧。所选检查点在 VALIDATION 上得到
+13/95 个正类安全换绑和 9/95 个教师精确匹配；负类 exact-R0 为 224/225。另一个负类
+出现受安全约束的换绑，因此不能宣称负类全部保持。有效结果的重复资源、硬边、多资源
+需求完整性和版本违规均为 0，原规则矩阵改写为 0。
+
+模型、manifest 和 bundle tree SHA-256 分别为：
+
+```text
+c185823bd9a4cf5363d17854385aeb74c340c8ac384327281d224a1097eb8206
+ec9f93d668e1aa319f65fcda0d73adb0527f316a2d1880e93e88697b6468ad3d
+de7b627df9782d7d2577687f30d02d4faeeaf577ecc557c2b8d91dd6e7115dd9
+```
+
+严格读取器只接受 `shadow` 和 `source_independent_evaluation`。assist、authority、
+assignment、runtime publication、control、physical、formal holdout 和 production
+admission 始终为 false。新来源泛化、正式留出集、收益、运行采用和物理拦截仍未验证。

@@ -4142,3 +4142,66 @@ treatment.previous_plan_id == source.plan_id
 
 区域提示文件 `34 passed`，D3 全量为 `618 passed, 1 skipped`。本项未发现规划器实现
 缺陷，因此只增强测试和证据文档。
+
+## 73. A1 分配感知开发候选（2026-07-30）
+
+### 73.1 独立开发路径
+
+新实现使用独立策略、schema 和严格只读 loader，与旧 development bundle 并存，不接入
+`AssignmentPlanner.plan()` 默认路径。开发入口依次执行严格数据读取、R0 与连续性教师
+构造、TRAIN 优化、VALIDATION 选模、两次独立构建和 development/shadow bundle 冻结。
+
+数据读取器先验证数据 schema、帧文件 SHA-256、split seed 清单和逐行 split 标记。
+TRAIN 和 VALIDATION 才会解析为 `LearningFrameRecord`。TEST 行只累计原始行数后跳过；
+种子属于 `1000-1019` 时立即失败关闭。
+
+### 73.2 教师与训练目标
+
+每帧先以原规则矩阵、硬安全掩码和需求数量调用现有 `HungarianDemandSlotSolver`，再移除
+不完整的多资源结果，得到 R0。教师从仍可行的历史绑定中选择规则成本接近的困难边，按
+冻结修正网格重算。替代绑定必须降低相对历史计划的换绑量，保持需求覆盖，通过硬安全、
+M-to-N 完整性、换绑上限和规则成本差门。
+
+正类采样包含被提升边、被抑制边、R0 边、替代边和每目标的困难负边。没有安全替代机会
+的帧作为负类，目标修正逐元素为零，目标绑定为 exact-R0。
+
+模型读取现有 12 维候选边特征。边编码器、帧上下文编码器分别产生边表示和全帧状态，
+残差头输出 `delta_C`，选择头区分替代边，帧门决定是否提出非零修正。训练损失包含有界
+修正回归、困难边排名、替代边分类和帧激活分类。
+
+TRAIN 执行梯度更新。每轮结束后只在 VALIDATION 评价。检查点评分首先最大化正类安全
+离散换绑数，再比较教师精确匹配、负类 exact-R0、失败关闭数量和非零修正帧数。边残差
+均方误差不单独决定检查点。
+
+### 73.3 安全投影
+
+评价入口保留 `raw_rule_matrix` 副本。模型修正只作用于原硬安全候选边，处理矩阵再次经过
+需求槽 Hungarian 和 M-to-N 全有或全无投影。机器门统计非零修正、非零安全换绑、负类
+exact-R0、重复资源、硬边、M-to-N、版本、规则矩阵改写以及 fallback 矩阵和绑定是否
+exact-R0。
+
+特征分布外、绑定变化过大、规则成本差超限或安全检查失败时，整帧回退原矩阵和 R0 绑定。
+回退不重新近似求解。
+
+### 73.4 Bundle 与结果
+
+权重采用规范 JSON/Base64 张量编码。bundle 固定只含 `manifest.json`、
+`state_dict.json` 和 `SHA256SUMS`。读取器拒绝多余文件、符号链接、摘要错配、schema
+错配、split 越权、正式留出重叠和任何权限为 true 的清单。允许模式仅为 `shadow` 和
+`source_independent_evaluation`。
+
+第 7 轮检查点在 VALIDATION 上形成 14 个安全换绑，其中正类 13/95、教师精确匹配 9/95，
+负类 exact-R0 224/225；79 帧失败关闭。TRAIN 上安全换绑 32，正类 31/294，负类
+exact-R0 667/668。全部有效结果的重复资源、硬边、M-to-N 完整性和版本违规均为 0，规则
+矩阵改写为 0。
+
+模型、manifest 和 tree SHA-256 为：
+
+```text
+c185823bd9a4cf5363d17854385aeb74c340c8ac384327281d224a1097eb8206
+ec9f93d668e1aa319f65fcda0d73adb0527f316a2d1880e93e88697b6468ad3d
+de7b627df9782d7d2577687f30d02d4faeeaf577ecc557c2b8d91dd6e7115dd9
+```
+
+这些结果仅属于开发 TRAIN/VALIDATION。正式 `1000-1019`、来源独立泛化、收益、运行采用、
+D7 执行和物理结果未评价。

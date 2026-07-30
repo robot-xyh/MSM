@@ -2391,3 +2391,48 @@ A2 successor 专项 `16 passed`；区域提示、身份和围栏组合 `51 passe
 `docs/AIRSIM_INTEGRATION_PLAN.md` 已检查。本项没有 AirSim DTO、settings、episode 或控制
 接口变化，因此不修改。M-to-N 专项也已检查；本项没有需求槽、联盟规模、成员角色或到达
 调度变化，因此不修改。
+
+## 62. A1 分配感知开发候选（2026-07-30）
+
+### 已完成
+
+1. [x] 保留旧 `d3_learning_model_bundle_v3`，新建独立 policy version、bundle schema
+   和严格只读 loader。
+2. [x] 数据加载器只将 TRAIN/VALIDATION 解析为训练记录；TRAIN 仅用于优化，VALIDATION
+   仅用于检查点选择。正式种子 `1000-1019` 未读取。
+3. [x] 复用现有候选边、规则矩阵、硬安全掩码和需求槽 Hungarian，构造连续性困难替代
+   绑定，不复制在线 planner 或修改规则代价。
+4. [x] 教师正例要求需求覆盖不降、M-to-N all-or-none、资源唯一、硬边为零、换绑不超过
+   8，且原规则成本差处于冻结上限。
+5. [x] 使用成本修正回归、困难边排名、替代边分类和帧激活损失。模型输出只有有界
+   `delta_C`。
+6. [x] 检查点按 VALIDATION 的安全正类换绑数优先选择，同时核验负类 exact-R0、规则
+   矩阵不变、回退逐元素一致和全部有效安全计数。
+7. [x] 同输入独立训练两次，冻结模型、manifest 和 bundle tree SHA-256，并增加只读、
+   固定文件集合、禁止符号链接、关闭权限和摘要篡改测试。
+8. [x] 同步 README、原则、算法、实验、GAP 和 review。AirSim 集成计划已检查；本项没有
+   DTO、settings、episode 或物理控制变化，不修改该文件。
+
+### 开发结果
+
+TRAIN/VALIDATION 分别为 962/320 帧，教师正例为 294/95。第 7 轮检查点在 VALIDATION
+形成 13 个正类安全换绑，9 个与教师绑定完全一致；负类 exact-R0 为 `224/225`。有效
+绑定的重复资源、硬边、M-to-N 完整性和版本违规均为 0。79 个不满足冻结门的验证帧失败
+关闭到逐元素 R0。
+
+模型、manifest 和 tree SHA-256 分别为：
+
+- `c185823bd9a4cf5363d17854385aeb74c340c8ac384327281d224a1097eb8206`
+- `ec9f93d668e1aa319f65fcda0d73adb0527f316a2d1880e93e88697b6468ad3d`
+- `de7b627df9782d7d2577687f30d02d4faeeaf577ecc557c2b8d91dd6e7115dd9`
+
+### 保持开放
+
+1. main 需使用全新来源和区域布局进行只读独立评价。不得复用本轮 VALIDATION 调参。
+2. 来源独立评价必须继续报告正类安全换绑、负类 exact-R0、全部失败关闭分母和安全计数。
+3. 只有独立来源仍存在安全离散变化，才可预注册正式 `1000-1019`；D3 不读取正式结果后
+   再次选模。
+4. D6 独立审计、runtime ACK、D7 binding、物理窗口和同键 R0 非退化形成前，assist、
+   assignment、control、physical 和 formal-holdout 权限保持 false。
+5. 当前开发教师优化可辨识连续性干预，不是收益教师；不得据 13 个验证正例声明成本收益、
+   泛化或物理拦截改善。
