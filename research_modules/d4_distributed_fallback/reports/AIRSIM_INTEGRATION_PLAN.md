@@ -1,5 +1,33 @@
 # D4 AirSim Episode 集成计划
 
+## 2026-07-29 v5 AirSim 边界
+
+v5 仅完成冻结 TRAIN/VALIDATION 上的置信校准开发门，不进入 AirSim episode。开发门
+虽然通过，但 75 条 VALIDATION 中有 42 条原始图键和 latent 与 TRAIN 完全重合，
+20 条非完全重合记录的最近 latent 距离小于 `1e-3`，另有 10 条位于
+`[1e-3,0.1)`；最近 TRAIN 标签 75/75 一致，13 条正类中 12 条完全重合。该开发结果
+不具备来源独立性或泛化可用性。
+
+D6 已完成 v5 独立只读审计。artifact 和原开发门可复现；冻结候选实际 latent 维数为
+24。TRAIN self-match 为 350/350，raw/latent key 留组的
+recall/specificity/Brier 为 `0.965517/0.958904/0.037610440`。去除 validation exact
+overlap 后仅剩 1 个正类，独立泛化 unavailable。
+
+候选重分类为“记忆化开发对照，等待来源独立扰动集”。它未注册，未运行正式 holdout 或
+runtime preflight；admission closed、rule fallback required，D3、接管、联盟和 D7
+权限均为 false。main 不得把 v5 的离线置信度接到当前分配或控制总线，也不得用开发门
+通过关闭低召回 P1。
+
+后续若 main 获得单独的 development preflight 授权，应先建立与当前 TRAIN/VALIDATION
+来源独立的扰动输入，只运行 shadow 记录。每帧至少保存 v4 actor latent 身份、v5
+artifact 身份、固定 0.60 门、近邻距离、有效置信度、规则回退原因和全部权限 false。
+该步骤不能读取 AirSim truth ID 作为在线特征，也不能运行正式 holdout seed。
+
+当前制品的 D6 审计已经完成。只有来源独立扰动集建立内容锚，并由 D6 对新输入独立复核
+状态与数据用途，且新分布 shadow 结果继续满足召回、特异度和裕量开发门后，main 才能
+另行评审 runtime preflight。当前 AirSim 路径继续使用确定性规则或既有隔离对照，不修改
+episode 编排。
+
 ## 2026-07-29 v3 隔离配对编排接口
 
 D4 已提供 `RegionResourceV3IsolatedPairedAdvisor`，供 main 在统一三维 episode 状态机中

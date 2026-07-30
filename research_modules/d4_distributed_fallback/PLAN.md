@@ -1,5 +1,60 @@
 # D4 分布式协同与降级接管计划
 
+## 2026-07-29 v4 独立审计后 v5 校准计划
+
+### 已完成
+
+- D6 已完成 v4 独立、只读审计。候选完整性通过；TRAIN/VALIDATION 固定 0.60 门正类
+  召回为 0.206897/0.307692，负类特异度均为 1.0，最小越门正裕量为
+  0.000504935。
+- v4 已冻结为 development/shadow 对照。未修改候选字节、注册常量、v3 registry 或 D6
+  审计制品；默认 loader 仍按未注册失败关闭。
+- 新增独立 v5 置信校准路径。它复用冻结 v4 actor 的在线可见 pooled latent，采用固定
+  `k=11` 的 TRAIN 标准化逆距离近邻校准，不重训 actor，不读取 truth identifier、未来
+  结果或 reward。
+- v5 只用 TRAIN 350 条记录拟合。VALIDATION 75 条记录只审计；validation 的权重、门限、
+  超参数、选择和拟合计数均为 0。TEST 与正式 holdout payload 读取/拟合计数均为 0。
+- D6 独立复算确认冻结 v4 `hidden_dim` 和 v5 `feature_dimension` 均为 24。该值属于
+  冻结候选配置，不改变通用模型默认维度。
+- 开发门预先固定为 0.60 置信阈值、TRAIN/VALIDATION 正类召回均不低于 0.80、负类
+  特异度均为 1.0、最小越门正裕量均不低于 0.02。当前结果分别为
+  `1.0/1.0`、`1.0/1.0` 和 `0.400000/0.209319`，开发门通过。
+- 新增 TRAIN/VALIDATION 重合诊断。75 条 validation 中有 42 条 raw graph key 和
+  latent 完全重合；非重合记录有 20 条最近距离小于 `1e-3`、10 条小于 0.1、3 条不低于
+  0.1。最近邻标签 75/75 一致，13 个正类中 12 个完全重合。
+- D6 已完成 v5 独立只读审计。artifact 与原开发门可复现，TRAIN self-match 为
+  350/350；raw observable key 和 latent exact key 留组的 recall/specificity/Brier
+  均为 `0.965517/0.958904/0.037610440`。去除 validation exact overlap 后只剩 1 个
+  正类，独立泛化指标 unavailable。
+- v5 已重分类为记忆化开发对照。开发指标门保持通过，但 independence gate 为 false，
+  独立性和泛化 evidence 均 unavailable，等待来源独立扰动集。
+- 构建器在拟合和落盘前后重算 v4 与 v3 文件树。v4 树摘要
+  `2afd6928...00d0`、v3 树摘要 `07c770b0...a93a` 均保持不变。
+- v5 保持 development only、shadow only、admission closed 和 rule fallback required。
+  全部生产权限、D3 权限和 D7 权限为 false；未登记、未运行正式 holdout 或 preflight。
+- 定向测试 10/10 通过，增加重合距离/标签诊断和泛化声明同步重签失败关闭；原有数据
+  用途、固定门、召回、裕量、artifact 篡改、未注册加载、失败回执和 v4/v3 不变性保持。
+
+### 当前 P1
+
+1. v4 的独立审计已关闭完整性复核，但低正类召回和薄裕量阻断其准入；v4 不再作为待登记
+   候选推进。
+2. **低召回 P1 未关闭。** v5 的数值门改善主要由 TRAIN 记忆和 validation 高重合支撑。
+   42/75 完全重合、72/75 距离小于 0.1、75/75 最近邻标签一致，不构成来源独立证据。
+3. D6 已完成当前 v5 制品和同源开发数据的独立复算。尚无来源独立扰动集、正式 holdout、
+   runtime preflight、D3 successor、D7/物理窗口或收益证据，不能从开发指标推导泛化
+   或准入。
+
+### 下一步
+
+1. 先准备与当前 TRAIN/VALIDATION 来源独立的 development 扰动集，冻结其来源、场景、
+   seed 和内容摘要；不得访问正式 holdout payload。
+2. 当前 v5 的 D6 只读审计已完成。新扰动集建立后，main/D6 再按独立内容锚复算数据用途、
+   重合诊断、近邻状态、开发指标、篡改负例和全部权限。在新扰动集可用前不登记、不向
+   D3/D7 接线。
+3. 只有独立开发审计成立后，main 才能另行决定是否授权 formal holdout 和 runtime
+   preflight。任一指标或身份不满足时继续使用确定性规则回退。
+
 ## 2026-07-29 v4 落盘候选审查计划
 
 ### 已完成
@@ -21,12 +76,13 @@
 
 1. D4 落盘候选构建和不可变制品审查已经关闭。v4 registry 摘要仍为空，默认运行加载
    继续拒绝。
-2. D6 独立审计、正式 holdout、runtime preflight、main 准入决策尚未开展。
+2. D6 独立审计随后已完成，结论为完整性通过但模型门阻断。正式 holdout、runtime
+   preflight 和 main 准入决策仍未开展。
 3. D3 successor、运行 ACK、D7/物理窗口、独立双臂非退化、扰动场景和正收益仍缺少证据。
 
 ### 下一步
 
-1. main/D6 以审查报告中的完整 SHA-256 作为唯一输入身份开展独立离线审计。
+1. main/D6 已以审查报告中的完整 SHA-256 完成独立离线审计；结果见本文件首节。
 2. 在另行批准前保持 formal holdout、preflight、assist、authority 和 registry 全部关闭。
 3. 任何后续制品身份不一致时终止评估，不从本次 training-domain smoke 推导准入。
 
@@ -73,8 +129,8 @@
 
 1. development fixture 的 TRAIN 域 smoke 阻塞已关闭，clean 候选和 D4 不可变 review
    已由本文件首节记录。
-2. main 准入决策和 D6 独立审计仍未完成。v4 五项注册摘要保持空值，全部生产权限保持
-   false。
+2. D6 对 v4/v5 的独立只读审计已完成；main 准入决策仍未通过。v4 五项注册摘要保持
+   空值，全部生产权限保持 false。
 3. D3 successor、运行 ACK、D7/物理窗口、独立双臂非退化、正收益和扰动场景均未开始。
 
 ### 下一步

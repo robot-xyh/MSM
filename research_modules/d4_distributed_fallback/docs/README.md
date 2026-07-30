@@ -1,5 +1,33 @@
 # D4 文档索引
 
+2026-07-29 D6 已完成 v4 独立只读审计。完整性通过，但固定 0.60 门的
+TRAIN/VALIDATION 正类召回仅为 0.206897/0.307692，负类特异度均为 1.0，最小越门正
+裕量为 0.000504935。v4 冻结为未注册 development/shadow 对照。D4 随后新增独立 v5
+TRAIN-only 近邻置信校准候选；两个开发 split 的正类召回和负类特异度均为 1.0，最小
+越门正裕量为 0.400000/0.209319。冻结 v4 `hidden_dim` 和 v5
+`feature_dimension` 实际均为 24；该值只描述冻结候选，不改通用模型默认维度。
+
+重合诊断表明，75 条 VALIDATION 中有 42 条原始图键和标准化 latent 与 TRAIN 在
+`1e-12` 内完全重合。其余样本中，20 条最近 latent 距离小于 `1e-3`，10 条位于
+`[1e-3, 0.1)`，3 条不低于 0.1；最近 TRAIN 标签 75/75 一致，13 条正类中 12 条完全
+重合。VALIDATION 虽未参与拟合，但不能作为来源独立的泛化证据。v5 因此重分类为
+“记忆化开发对照，等待来源独立扰动集”，独立性和泛化 availability 均为 false，低召回
+P1 未关闭。
+
+D6 随后完成 v5 独立只读审计。artifact 和原开发门可复现，TRAIN self-match 为
+350/350；raw observable key 与 latent exact key 留组的 recall/specificity/Brier
+均为 `0.965517/0.958904/0.037610440`。validation exact overlap 为 42/75，去重后仅剩
+1 个正类，独立泛化 unavailable。
+
+v5 仍未注册，TEST/正式 holdout payload 使用为 0，全部生产及 D3/D7 权限为 false。
+候选保持 admission closed 和 rule fallback required。
+当前 manifest 内容、manifest 文件、校准状态和校准摘要 SHA-256 分别为
+`83192d4f...2c52`、`caa77414...9459`、`d8bd5437...12a3` 和
+`7f0047f7...9c60`；定向测试 10/10、D4 全量 835/835 通过。全量测试仅出现环境中
+Matplotlib 多版本导致 `Axes3D` 不可用的警告，不影响本次 v5 逻辑。详细证据见模块
+README、PLAN、两份主文档和
+`../reports/D4_V5_CONFIDENCE_CALIBRATION_CANDIDATE_20260729.md`。
+
 2026-07-29 已完成 v4 落盘候选不可变审查。候选由 clean commit
 `fd857457...7f848` 构建；manifest 内容、模型和数据 SHA-256 分别为
 `4f3e9735...7e116`、`33a28060...b9fe5`、`b31fc43f...7fb8c`。现有 reviewer 重算
@@ -17,8 +45,8 @@ validation/test 拟合计数均为 0。旧 development fixture 的三项感知�
 同一数据只读复跑置信度为 0.602367，安全投影形成 1 条区别于 R0 和 source 的转移。
 该指纹与 TRAIN 输入键完全一致，置信裕量约 0.002367；夹具只属于训练域 smoke，不提供
 独立泛化或正式验证证据，也不能支持准入。专项 42/42、D4 全量 825/825 通过。后续已形成
-上述落盘候选，但仍未登记；D3 successor、D6 审计和收益尚未完成。原理与实现细节见本
-目录两份主文档及 `../PLAN.md`。
+上述落盘候选，但仍未登记；后续 D6 独立审计和 v5 状态见本文件首段。D3 successor
+和收益尚未完成。原理与实现细节见本目录两份主文档及 `../PLAN.md`。
 
 同日较早完成的 v4 外部数据候选框架继续有效。首版放宽备用资源、压制规则 R0 和内生
 dirty 数据的原型已删除且未登记。当前 builder 固定 main/v3 安全合同，只接受外部内容

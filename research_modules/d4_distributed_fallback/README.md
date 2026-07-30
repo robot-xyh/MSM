@@ -1,5 +1,56 @@
 # D4 分布式协同与降级接管
 
+## 2026-07-29 v4 独立审计与 v5 开发校准
+
+D6 已对冻结 v4 候选完成独立、只读审计。候选目录、179 个 manifest artifact、来源
+实现、模型、数据、切分和 v3 registry 完整性通过；TEST 只解析 manifest 元数据，候选
+payload、builder read、D6 payload read、fit 和 weight fit 均为 0。v4 固定 0.60 门的
+结果为：
+
+| split | 正类召回 | 负类特异度 | 最小越门正裕量 |
+| --- | ---: | ---: | ---: |
+| TRAIN | 0.206897 | 1.000000 | 0.000504935 |
+| VALIDATION | 0.307692 | 1.000000 | 0.000504935 |
+
+完整性通过不等于模型准入。v4 正类召回过低，越门样本离固定门过近；正式 holdout、
+runtime preflight 和收益也未完成。v4 冻结为 development/shadow 对照，继续未注册、
+admission closed、rule fallback required，全部生产权限为 false。
+
+D4 在独立模块和独立输出路径新增 v5 最小置信校准候选。v5 不改 v4 actor、v4 artifact、
+v3 registry、0.60 门、确定性投影、备用资源、版本、联盟或权限门。校准器只读取冻结
+TRAIN/VALIDATION payload；用 TRAIN 的 350 条 actor pooled latent 和 58/292 正负标签
+拟合固定 `k=11` 逆距离近邻模型，VALIDATION 75 条记录只审计，不参与权重、门限、
+超参数或模型拟合。冻结 v4 的 `hidden_dim` 和 v5 的 `feature_dimension` 实际均为
+24；这是冻结候选配置，不改写通用模型的默认维度。TEST 与正式 holdout payload 的读取
+和拟合均为 0。
+
+预先固定的开发门要求两个 split 正类召回不低于 0.80、负类特异度等于 1.0、最小越门
+正裕量不低于 0.02。当前 D4 构建结果如下：
+
+| split | 正类召回 | 负类特异度 | 最小越门正裕量 | Brier 分数 |
+| --- | ---: | ---: | ---: | ---: |
+| TRAIN | 1.000000 | 1.000000 | 0.400000 | 0.000000 |
+| VALIDATION | 1.000000 | 1.000000 | 0.209319 | 0.000485 |
+
+重合诊断改变了上述指标的证据等级。VALIDATION 75 条记录中，42 条原始图指纹和标准化
+latent 与 TRAIN 在 `1e-12` 内完全重合；其余记录中，20 条最近距离小于 `1e-3`，10 条
+位于 `[1e-3, 0.1)`，只有 3 条不低于 0.1。最近 TRAIN 标签 75/75 一致，13 个正类中
+12 个为完全重合。VALIDATION 没有参与拟合，但不能视为来源独立或未见分布证据。
+
+D6 已完成 v5 独立只读审计。候选 artifact、固定哈希、数据用途和原开发门均可复现；
+TRAIN 全库存评分 self-match 为 350/350。raw observable key 留组与 latent exact key
+留组的正类召回均为 0.965517、负类特异度均为 0.958904、Brier 均为
+0.037610440。VALIDATION exact overlap 为 42/75，去除 exact overlap 后仅剩 1 个正类，
+不足以形成可用的独立泛化指标。
+
+候选标识为 `region_resource_a2_confidence_knn_shadow_v5`，manifest 内容 SHA-256 为
+`83192d4f...2c52`。v5 重分类为“记忆化开发对照，等待来源独立扰动集”。
+`independence_evidence_available=false`、
+`generalization_evidence_available=false`，开发指标门通过不关闭低召回 P1，也不支持
+登记或准入。v5 未跑正式 holdout、未做 runtime preflight，也未获得 D3 或 D7 权限。
+候选保持 unregistered、admission closed、rule fallback required；默认 loader 继续以
+`v5_candidate_unregistered` 失败关闭。定向测试 10/10 通过。
+
 ## 2026-07-29 v4 落盘候选不可变审查
 
 clean commit `fd857457bb27a4a709a7c4937e22ebe1cbd7f848` 已生成 v4
@@ -15,8 +66,9 @@ training-domain smoke，置信裕量约 0.002367，不提供独立泛化、正�
 
 默认 loader 继续以 `v4_candidate_unregistered` 拒绝运行加载。离线 loader 成功，但
 `registered_binding_verified=false`。全部 permissions 为 false，formal holdout、
-runtime preflight、D6 独立审计、D3 successor、运行采用和收益均未完成。完整身份和结论
-见 `reports/D4_V4_PERSISTED_CANDIDATE_IMMUTABILITY_REVIEW_20260729.md`。
+runtime preflight、D3 successor、运行采用和收益均未完成。D6 独立审计随后已完成，
+结论和 v5 后续状态见本文件首节。完整 D4 身份复核见
+`reports/D4_V4_PERSISTED_CANDIDATE_IMMUTABILITY_REVIEW_20260729.md`。
 
 ## 2026-07-29 v4 类别平衡与置信校准验证
 
@@ -63,8 +115,9 @@ TRAIN 的模型可见张量域中心距离、固定 0.05 OOD 门、固定 0.60 �
 该薄裕量只支持训练域构建 smoke 检查，不能支持泛化、独立验证或模型准入结论。
 
 该训练阶段只完成训练机制、测试和组合数据只读验证；随后已由上述 clean commit 构建落盘
-候选并完成 D4 不可变审查。registry、D6 独立审计、D3 successor、物理结果和收益评价
-仍未完成。v4 仍为 unregistered、development/shadow only，全部生产权限为 false；
+候选并完成 D4 不可变审查。D6 对 v4/v5 的独立只读审计已完成；registry、D3 successor、
+物理结果和收益评价仍未完成。v4 仍为 unregistered、development/shadow only，全部
+生产权限为 false；
 v3 未修改。2026-07-29 v4 专项 42/42、D4 全量 825/825 通过。
 
 ## 2026-07-29 区域规划资格与执行权限

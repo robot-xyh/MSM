@@ -1,5 +1,90 @@
 # 分布式协同与降级接管模块原理（模块编号 D4）
 
+## 2026-07-29 v5 置信校准原理
+
+D6 对 v4 的独立审计表明，制品完整性和负类拒绝正确，但固定门下正类覆盖不足。v4 在
+TRAIN/VALIDATION 上的正类召回为 0.206897/0.307692，负类特异度均为 1.0，最小越门
+正裕量只有 0.000504935。该结果说明线性置信头过于保守，且通过样本贴近 0.60 门。v4
+因此只保留为 development/shadow 对照。
+
+v5 不改变冻结 actor 和动作输出。对在线图 \(g\)，先复算 v4 actor 最后一轮消息传递后的
+节点隐变量 \(h_i(g)\)，再做均值池化：
+
+\[
+z(g)=\frac{1}{|V|}\sum_{i\in V}h_i(g).
+\]
+
+\(z(g)\) 只由节点特征、边特征、边索引和冻结 actor 参数产生，不含目标身份、节点身份、
+seed、未来结果或 reward。用 TRAIN 的均值 \(\mu_j\) 和标准差 \(\sigma_j\) 标准化：
+
+D6 独立复算确认冻结 v4 的 `hidden_dim` 和 v5 状态中的 `feature_dimension` 均为 24，
+因此 \(z(g)\) 的实际维数为 24。该数值属于冻结候选配置，不改变通用模型默认维度。
+
+\[
+\tilde z_j(g)=\frac{z_j(g)-\mu_j}{\max(\sigma_j,\epsilon)}.
+\]
+
+校准集合只包含 TRAIN 的 350 条记录。每条记录的标签仍使用 v4 的安全定义：冻结 actor
+形成与外部无真值 target 相同的安全可执行签名时为正，否则为负。TRAIN 正负数为
+58/292，标准化参数和近邻库存都只从 TRAIN 生成。
+
+对待评估图，选取欧氏距离最近的固定 \(k=11\) 个 TRAIN latent。无完全相同点时，置信度
+为逆距离加权正标签比例：
+
+\[
+p_5(g)=
+\frac{\sum_{i\in \mathcal N_{11}(g)}
+ y_i/\max(d_i,\epsilon)}
+{\sum_{i\in \mathcal N_{11}(g)}
+ 1/\max(d_i,\epsilon)}.
+\]
+
+存在完全相同点时，只对零距离邻居取标签均值。TRAIN latent 的同键异标签数必须为 0，
+否则停止构建。算法、近邻数、距离定义和门限均在读取 validation 前固定；validation
+只计算开发指标，不拟合权重、阈值、超参数或候选选择。
+
+固定门仍为 \(p_0=0.60\)。开发候选必须同时满足
+
+\[
+\operatorname{Recall}^{train}_{+}\geq0.80,\quad
+\operatorname{Recall}^{val}_{+}\geq0.80,
+\]
+
+\[
+\operatorname{Specificity}^{train}_{-}
+=\operatorname{Specificity}^{val}_{-}=1,
+\]
+
+\[
+\min_{p_5\geq p_0,y=1}(p_5-p_0)\geq0.02
+\]
+
+且该裕量条件在两个 split 分别成立。当前 TRAIN/VALIDATION 的召回为 1.0/1.0，
+特异度为 1.0/1.0，最小正裕量为 0.400000/0.209319。开发门通过。
+
+开发门与独立性判定分开。对每条 VALIDATION 图，先比较不含样本身份和标签的原始图键，
+再计算其标准化 latent 到全部 TRAIN latent 的最近欧氏距离。完全重合阈值固定为
+\(10^{-12}\)，诊断只读 TRAIN/VALIDATION，拟合计数为 0，不访问 TEST 或正式 holdout。
+
+75 条 VALIDATION 中有 42 条原始图键完全重合，42 条 latent 完全重合，且两类重合对应
+同一批记录。最近距离分桶为：42 条不大于 \(10^{-12}\)，20 条非完全重合但小于
+\(10^{-3}\)，10 条位于 \([10^{-3},10^{-1})\)，3 条不低于 \(10^{-1}\)。最近距离的
+P50、P90 和 P95 分别为 0、0.0123058 和 0.0940144。最近 TRAIN 标签 75/75 一致；
+13 条 VALIDATION 正类中有 12 条 latent 完全重合。
+
+D6 已完成 v5 独立只读审计，复现 artifact、数据用途和原开发门。TRAIN 全库存评分
+self-match 为 350/350。raw observable key 留组和 latent exact key 留组的正类召回均为
+0.965517、负类特异度均为 0.958904、Brier 均为 0.037610440。去除 42 条 exact overlap
+后，VALIDATION 只剩 1 个正类，低于固定最小分母，独立泛化指标保持 unavailable。
+
+TRAIN Brier 分数为 0，原因是近邻模型对训练 latent 的精确记忆。VALIDATION 的高重合和
+近邻标签完全一致使其开发指标不能说明来源独立泛化。v5 重分类为“记忆化开发对照，等待
+来源独立扰动集”，`independence_evidence_available=false`、
+`generalization_evidence_available=false`。开发门通过不关闭低召回 P1。v5 保持未注册、
+admission closed、rule fallback required，D3 和 D7 权限为 false。2026-07-29 v5
+专项 10/10、D4 全量 835/835 通过；全量测试的单个 Matplotlib `Axes3D` 环境警告与本次
+置信校准无关。
+
 ## 2026-07-29 落盘候选证据边界
 
 落盘候选采用内容寻址复核。设 manifest 声明的 artifact 集为
@@ -71,7 +156,8 @@ w_{\mathrm{hard}}
 positive/negative/inconsistent/executable 计数为 train `12/0/0/12`、validation
 `4/0/0/4`。这些结果只证明训练机制和固定门验收在该只读数据上成立。当时尚未生成
 clean candidate；后续落盘候选及复核状态见本文件首节。登记、D3 后继、D6 审计和收益
-仍未完成。生产权限继续为 false，v3 不受影响。
+在该阶段仍未完成。后续 D6 已确认 v4 完整性，但召回和裕量阻断准入；当前状态见 v5
+首节。生产权限继续为 false，v3 不受影响。
 
 development fixture 需要同时满足“位于训练域”和“能检验安全非零动作”。旧 8 区域
 attribution fixture 的对数 D2 不确定度、视觉可见率和视觉一致率超出当前训练域。直接把

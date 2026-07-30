@@ -1,5 +1,44 @@
 # D4 实现差距审计：分布式协同与降级接管
 
+## 2026-07-29 v4 独立审计与 v5 校准 GAP
+
+- **无新增 P0。** v4、v3 registry、固定 0.60 门、确定性投影、备用资源、版本、联盟和
+  权限门均未修改。v4/v5 默认 loader 都按未注册失败关闭，在线路径继续使用确定性规则。
+- **已关闭 P1 子项：v4 独立完整性审计未完成。** D6 已独立重算候选文件树、来源、
+  TRAIN/VALIDATION 开发指标、数据用途、v3 registry 和失败关闭负例。完整性通过；
+  TEST payload、正式 holdout payload 和全部 fit 使用为 0。
+- **v4 模型阻断确认。** 固定 0.60 门下，TRAIN/VALIDATION 正类召回仅
+  0.206897/0.307692；负类特异度均为 1.0；最小越门正裕量为 0.000504935。v4 冻结为
+  development/shadow 对照，不登记、不准入。
+- **P1 未关闭：低召回和薄裕量只形成开发对照。** 新增独立 v5 TRAIN-only
+  置信校准器。固定 `k=11` 逆距离近邻只拟合 TRAIN 350 条冻结 actor pooled latent；
+  VALIDATION 75 条只审计，validation fit/weight/threshold/hyperparameter/selection
+  均为 0。TEST 和正式 holdout payload read/fit 均为 0。
+- **开发门通过。** 门限预先固定为两个 split 正类召回不低于 0.80、负类特异度等于
+  1.0、最小越门正裕量不低于 0.02。v5 TRAIN/VALIDATION 的正类召回为 1.0/1.0，
+  负类特异度为 1.0/1.0，最小越门正裕量为 0.400000/0.209319。
+- **D6 v5 独立审计已完成。** artifact、固定哈希、数据用途和原开发门均可复现。冻结
+  v4 `hidden_dim` 与 v5 `feature_dimension` 实际均为 24；这是候选配置，不改通用模型
+  默认维度。TRAIN 全库存 self-match 为 350/350。raw observable key 与 latent exact
+  key 留组的 recall/specificity/Brier 均为 `0.965517/0.958904/0.037610440`。
+- **独立性阻断。** 75 条 validation 中 42 条 raw graph key/latent 完全重合；非重合
+  记录有 20 条最近距离小于 `1e-3`、10 条位于 `[1e-3,0.1)`、3 条不低于 0.1。最近
+  TRAIN 标签 75/75 一致，13 个正类中 12 个完全重合。开发门通过不能解释为低召回
+  P1 已关闭。
+- **制品与权限边界。** v5 manifest 内容 SHA-256 为 `83192d4f...2c52`。构建前后 v4
+  树摘要均为 `2afd6928...00d0`，v3 树摘要均为 `07c770b0...a93a`。v5 仍是
+  记忆化 development control、shadow only、admission closed、rule fallback required；
+  independence/generalization evidence 均为 false，全部生产、D3 和 D7 权限为 false。
+- **测试。** v5 定向 10/10 通过。覆盖重合诊断、泛化声明同步重签拒绝、固定门不可降低、
+  坏指标与越界数据用途失败关闭、召回/特异度/裕量、artifact 篡改、未注册加载、失败
+  回执和 v4/v3 不变性。
+- **仍开放 P1：v5 独立性和泛化。** v5 使用与 v4 相同的冻结开发数据。TRAIN Brier 为
+  0，反映近邻模型对训练样本的精确记忆。D6 已确认 validation exact overlap 为 42/75，
+  去重后仅剩 1 个正类，独立泛化 unavailable。独立扰动集、正式 holdout、runtime
+  preflight、D3 successor、D7/物理窗口和收益均未完成。候选重分类为“记忆化开发对照，
+  等待来源独立扰动集”；保持 unregistered、admission closed、rule fallback required，
+  开发门通过不能关闭低召回、准入或泛化 GAP。
+
 ## 2026-07-29 v4 落盘候选审查 GAP
 
 - **无新增 P0。** v4 仍未登记，默认 loader 失败关闭；固定 0.05 OOD、0.60 confidence、
@@ -22,9 +61,9 @@
 - **权限与加载边界通过。** 全部 permissions 为 false，admission closed，preflight 和
   holdout 未完成。默认 loader 返回 `v4_candidate_unregistered`；离线 development
   loader 成功且 registration binding 为 false。
-- **仍开放 P1。** D6 独立审计、正式 holdout、runtime preflight、main 准入决策、
-  registry、D3 successor、运行 ACK、D7/物理窗口、双臂非退化、扰动场景和正收益尚未
-  完成。
+- **状态更新。** D6 独立审计已完成，结论为完整性通过、模型门阻断；其余正式 holdout、
+  runtime preflight、main 准入决策、registry、D3 successor、运行 ACK、D7/物理窗口、
+  双臂非退化、扰动场景和正收益仍未完成。当前状态见本文件首节。
 
 ## 2026-07-29 v4 observable-group 置信门 GAP
 

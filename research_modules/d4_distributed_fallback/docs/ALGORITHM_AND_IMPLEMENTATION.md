@@ -1,5 +1,72 @@
 # D4 分布式协同与降级接管算法及实施方案
 
+## 2026-07-29 v5 置信校准实现
+
+`region_resource_v5_confidence_candidate.py` 是独立于 v4 builder 和 v3 registry 的
+开发路径。入口先用 v4 离线 loader 核验 D6 冻结的 manifest 文件/内容、模型、数据和
+切分 SHA-256。随后在拟合前后重算整个 v4 候选树和 v3 registry 树。任一摘要变化时删除
+新输出并失败关闭。
+
+数据 loader 只请求 TRAIN 和 VALIDATION。它从冻结 v4 actor 重新生成正负置信记录，
+不读取 TEST episode payload。执行顺序如下：
+
+1. 冻结 actor，复算每个图消息传递后的实际 24 维节点均值 latent。24 来自冻结 v4
+   `hidden_dim` 和 v5 `feature_dimension`，不修改通用模型默认维度。
+2. 只用 TRAIN 350 条记录计算逐维均值、标准差和 11 近邻库存。TRAIN 标签为
+   58 正、292 负；latent 同键异标签直接拒绝。
+3. 使用固定逆距离公式计算 TRAIN 和 VALIDATION 得分。算法没有可调 epoch，也不根据
+   validation 改变近邻数、距离、标准化、阈值或状态。
+4. 在固定 0.60 门上重算正类召回、负类特异度、最小越门正裕量和 Brier 分数。
+5. 用预置开发门验收。TRAIN/VALIDATION 召回均须不低于 0.80，特异度均须为 1.0，
+   最小正裕量均须不低于 0.02。
+6. 开发门失败时不创建候选目录，只在独立 sibling 路径保存
+   `candidate_created=false` 的失败回执和原因。
+7. 开发门通过时，以 staging 目录写入校准状态、摘要和固定门，再生成逐 artifact
+   SHA-256 与 manifest 内容摘要，最后原子改名到 v5 独立路径。
+
+本次构建的 TRAIN/VALIDATION 召回为 1.0/1.0，特异度为 1.0/1.0，最小正裕量为
+0.400000/0.209319。TRAIN/VALIDATION Brier 分数为 0/0.000485。VALIDATION
+fit/weight/threshold/hyperparameter/selection 均为 0；TEST 和正式 holdout payload
+read/fit 均为 0。
+
+构建器在开发门计算后执行只读重合诊断。原始图键只由冻结 actor 可见的节点张量、边张量、
+边索引及其 shape/dtype 形成；latent 距离在 TRAIN 均值和标准差定义的同一标准化空间中
+计算。诊断不改变近邻库存、阈值、候选选择或任何拟合状态，并显式记录
+`validation_overlap_diagnostic_fit_count=0`。
+
+当前 75 条 VALIDATION 记录中，原始图键、latent 以及两者同时完全重合的数量均为 42。
+最近距离分桶为 `exact_le_1e_12=42`、`nonexact_lt_1e_3=20`、
+`ge_1e_3_lt_1e_1=10`、`ge_1e_1=3`；最近距离 P50/P90/P95 为
+`0/0.0123058/0.0940144`。最近 TRAIN 标签匹配 75/75，VALIDATION 的 13 条正类中
+12 条完全重合。
+
+D6 使用固定外部哈希完成独立只读审计。四个候选 artifact、v4/v3 身份、数据用途和
+TRAIN/VALIDATION 原开发门均可复现；冻结 v4 hidden state 与 v5 feature state 的实际
+维度均为 24。TRAIN 全库存评分将被评样本自身置于近邻库，self-match 为 350/350。
+raw observable key 留组与 latent exact key 留组的 recall/specificity/Brier 均为
+`0.965517/0.958904/0.037610440`。移除 validation exact overlap 后只剩 1 个正类，
+独立泛化指标 unavailable。
+
+开发门结果仍为通过，但独立门固定失败。summary 和 manifest 写入
+`candidate_classification=memorization_development_control`、
+`independence_evidence_available=false` 和
+`generalization_evidence_available=false`，并保存来源相同、原始图重合、latent 重合、
+近重复和缺少来源独立扰动集五项 blocker。reviewer 会重算这些字段；同步篡改并重签为
+可泛化声明时失败关闭。
+
+默认 loader 在读取 artifact 前检查注册摘要。三个 v5 注册摘要都是 `None`，因此返回
+`v5_candidate_unregistered`。只有显式 `offline_development` 上下文可以检查候选和读取
+校准状态。loader 不提供 D3 建议发布、D4 接管、D7 控制或 runtime ACK 接口。
+
+候选 reviewer 要求目录只有 manifest、状态、摘要和固定门四个文件，逐文件验证
+SHA-256 和内容摘要。即使攻击者同步改写 artifact hash 和 manifest content hash，
+0.60/0.80/1.0/0.02 固定门或权限字段变化仍由代码常量拒绝。定向测试还覆盖普通字节
+篡改、数据用途越界、失败回执、未注册加载、重合诊断、虚假泛化声明以及 v4/v3 文件树
+不变性，当前 10/10 通过；D4 全量为 835/835。全量测试仅报告环境中 Matplotlib
+`Axes3D` 不可用警告，不影响 v5 代码路径。候选 manifest 内容、manifest 文件、校准
+状态、校准摘要和 builder 源码 SHA-256 分别为 `83192d4f...2c52`、`caa77414...9459`、
+`d8bd5437...12a3`、`7f0047f7...9c60` 和 `77e91e06...e1e0`。
+
 ## 2026-07-29 v4 落盘候选复核实现
 
 落盘复核直接调用既有 manifest loader、candidate reviewer 和离线 development loader。

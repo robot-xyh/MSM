@@ -1,5 +1,49 @@
 # D4 分布式协同与降级接管综述及子方案
 
+## 2026-07-29 v4 独立审计与 v5 校准评审
+
+D6 已完成冻结 v4 候选的独立只读审计。候选文件、来源实现、模型、数据、切分和 v3
+registry 完整性通过。TEST 只解析 manifest 元数据，候选 payload、builder read、D6
+payload read、fit 和 weight fit 均为 0。该审计关闭了完整性和开发指标独立重算缺口。
+
+模型门没有通过。固定 0.60 门下，TRAIN/VALIDATION 正类召回为
+0.206897/0.307692，负类特异度均为 1.0，最小越门正裕量只有 0.000504935。v4 保留为
+development/shadow 对照，未注册、admission closed、rule fallback required。正式
+holdout、runtime preflight 和收益仍未完成。
+
+D4 评审接受一个独立 v5 最小校准实验。v5 不改 actor，不覆盖或重签 v4，也不触碰 v3。
+它从冻结 v4 actor 的 pooled latent 生成实际 24 维在线可见特征，用 TRAIN 均值和标准差
+归一，再使用固定 11 近邻逆距离得分。冻结 v4 `hidden_dim` 与 v5
+`feature_dimension` 均为 24；这是冻结候选配置，不修改通用模型默认维度。输入不含
+节点身份、目标身份、seed、未来结果或 reward。
+
+训练数据用途固定为 TRAIN 350 条拟合、VALIDATION 75 条审计。validation 不拟合权重、
+门限、超参数或模型，也不参与候选选择；TEST 与正式 holdout payload 不读取。开发门在
+实现前固定为两个 split 正类召回不低于 0.80、负类特异度等于 1.0、最小越门正裕量不低于
+0.02，固定置信门保持 0.60。
+
+本次 D4 构建的 TRAIN/VALIDATION 正类召回均为 1.0，负类特异度均为 1.0，最小越门
+正裕量为 0.400000/0.209319。开发门通过。近邻模型在 TRAIN 上 Brier 为 0，说明它精确
+记住了训练 latent；该结果不能作为未见数据泛化证据。
+
+进一步复算显示，VALIDATION 75 条中 42 条 raw graph key 和 latent 与 TRAIN 完全重合。
+非重合记录有 20 条最近距离小于 `1e-3`、10 条位于 `[1e-3,0.1)`、3 条不低于 0.1。
+最近 TRAIN 标签 75/75 一致，13 个正类中 12 个完全重合。validation 没有参与拟合，
+但其来源和输入几何不独立。
+
+D6 已完成 v5 独立只读审计。候选四个 artifact、调用方固定哈希、v4 基线、v3 registry
+树、数据用途和原开发门均可复现。TRAIN 全库存评分 self-match 为 350/350；raw
+observable key 留组与 latent exact key 留组的 recall/specificity/Brier 均为
+`0.965517/0.958904/0.037610440`。validation exact overlap 为 42/75，去除 exact
+overlap 后仅剩 1 个正类，因此独立泛化指标 unavailable。
+
+v5 manifest 内容 SHA-256 为 `83192d4f...2c52`。默认加载以
+`v5_candidate_unregistered` 拒绝，离线 development loader 才可读取。全部生产权限以及
+D3/D7 权限为 false。评审将 v5 重分类为“记忆化开发对照，等待来源独立扰动集”，并固定
+independence/generalization evidence 为 false。该结果不关闭低召回 P1；候选保持
+unregistered、admission closed、rule fallback required，不跑正式 holdout、不接入
+运行权限。定向测试 10/10 通过。
+
 ## 2026-07-29 v4 落盘候选不可变评审
 
 D4 已从文件系统重新调用现有 reviewer 和离线 development loader。clean commit
@@ -14,7 +58,8 @@ TRAIN/VALIDATION episode；TEST payload 未复制、未读取、未拟合。
 fixture 继续标为 training-domain smoke，置信裕量约 0.002367，不形成独立泛化或正式
 验证证据。全部权限为 false。默认 loader 以 `v4_candidate_unregistered` 拒绝，离线
 loader 的注册绑定状态为 false。评审结论是“落盘候选完整性通过，可以保留为后续独立
-评估输入；登记、准入、preflight、holdout、运行采用和收益均未通过”。
+评估输入；登记、准入、preflight、holdout、运行采用和收益均未通过”。后续 D6 独立
+审计与 v5 开发校准结论见本文件首节。
 
 ## 2026-07-29 v4 observable-group 置信校准评审（构建前）
 
@@ -97,8 +142,9 @@ v3 文件树摘要仍为 `07c770b0...a93a`。
 
 该框架阶段评审结论是“v4 builder/framework 可保留，当时尚无 v4 候选”。后续
 observable-group 数据已完成训练、clean build 和 D4 不可变制品审查；当前状态以本文件
-首节为准。开放 P1 包括 D6 独立审计、正式 holdout、preflight、main 准入决策、
-D3 successor、独立双臂非退化和正收益。AirSim 与既有物理实验结果未受本轮变化影响。
+首节为准。D6 对 v4/v5 的独立只读审计已完成；开放 P1 包括来源独立扰动集、正式
+holdout、preflight、main 准入决策、D3 successor、独立双臂非退化和正收益。AirSim
+与既有物理实验结果未受本轮变化影响。
 
 ## 2026-07-29 D6 v2b 最终评审
 
