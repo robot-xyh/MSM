@@ -1,5 +1,46 @@
 # D4 分布式协同与降级接管
 
+## 2026-07-30 v7 来源独立只读评价
+
+冻结候选 `region_resource_a2_rule_node_transfer_residual_shadow_v7` 已在全新
+M16N24、8 区域来源上完成只读评价。来源 commit 为
+`4a83a373f4eb4e29704bb3cf9f62e3d54eee3aec`，seed 为 5216-5279，共 64 个
+episode、128 帧。外部数据自身的 train/validation/test 为 90/20/18 帧，规则正类为
+24/9/9。数据集和划分 SHA-256 分别为
+`f6c52bdd4ce630ae40787226383caab7833f3b034adfb0fc7e93d9e30c90ce67`
+和 `4179c0a766fa93b9127dc534176d69276face35fb110a8c247100d1807521215`。
+
+| 划分 | 规则正/负 | 原始残差激活 | 实际转移变化 | exact 正动作 | 负类 exact R0 | 虚假转移 | 投影拒绝 | 不变量失败 | R0 节点偏差 |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| train | 24/66 | 10 | 3 | 0/24 | 63/66 | 3 | 0 | 0 | 0 |
+| validation | 9/11 | 0 | 0 | 0/9 | 11/11 | 0 | 0 | 0 | 0 |
+| test | 9/9 | 0 | 0 | 0/9 | 9/9 | 0 | 0 | 0 | 0 |
+
+评价结果为失败关闭。validation 和 test 均未形成相对 R0 的原始转移变化，exact 正动作
+均为 0；test 的 actor-derived 正类分母为 0，相应比率保持 `unavailable`。train 的
+3 次实际转移全部发生在规则负类，属于错误边和虚假转移。安全边界没有退化：三类划分的
+投影拒绝、不变量失败和完整 R0 action tuple 继承失败均为 0。
+
+新增评价器硬绑定候选、原始来源、标签导出、数据集、证据、推导清单、导出摘要和冻结
+v4 来源。候选树、原始来源树、标签导出树、数据集树和冻结 v4 树的评价前后 SHA-256
+分别保持为 `7bd5419f...1a667`、`978f94c0...c9a1`、
+`05a37585...e6d1b`、`0b88d9af...a9282` 和 `2afd6928...500d0`。
+冻结 v4 TRAIN+VALIDATION 的 251 个唯一在线可观测键与外部 92 个键精确交集为 0；
+候选训练来源 B 的完整特征载荷未作为本评价输入，因此不宣称全部训练可观测键零交集。
+
+评价读取 train/validation/test 仅用于前向审计。模型拟合、checkpoint 更新、阈值调整、
+置信校准、候选或输入修改、注册、准入、正式 holdout 读取和旧评价 payload 读取均为
+0。候选没有置信校准器；assist、authority、assignment、degradation、takeover、
+coalition、control、physical、D3、D7 及生产确认权限全部为 false。确定性规则 R0
+继续是唯一允许的运行路径。
+
+入口为 `scripts/run_region_resource_v7_external_evaluation.py`，输出位于忽略目录
+`outputs/d4_v7_source_independent_external_evaluation_20260730/`。输出包含逐帧
+JSONL/CSV、完整性审计、可观测键重合审计、汇总、中文报告和制品清单。v7 评价专项
+21/21、D4 全量 903/903 和 Python 语法检查通过。本次没有修改 AirSim 消息、episode
+或运行适配器。固化结论见
+`reports/D4_V7_SOURCE_INDEPENDENT_EVALUATION_20260730.md`。
+
 ## 2026-07-30 v7 规则节点与转移残差开发候选
 
 D4 已另立未注册候选
@@ -35,7 +76,8 @@ checkpoint 为 epoch 137，训练在 epoch 182 提前停止，当前结果通过
 `outputs/d4_v7_rule_node_residual_failclosed_final_repro_20260730/`，不进入模型注册表。v7 没有
 置信校准器，不应用 0.60 置信门；assist、assignment、degradation、takeover、
 coalition、control、physical、D3 和 D7 权限全部为 false。专项 19/19、D4 全量
-882/882 通过。全新 seed 5216-5279 的来源独立评价和 D6 盲审尚未开始。
+882/882 通过。该句记录候选构建阶段状态；seed 5216-5279 的来源独立评价已由上一节
+完成并失败关闭，D6 独立复核尚未完成。
 
 两次构建逐文件无差异。模型、训练审计、候选 manifest 和候选树内容 SHA-256 分别为
 `bec99032bc176854f7ba265977ed35bf828d415be4bc260c9b6703a95d70082d`、

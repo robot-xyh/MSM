@@ -1,5 +1,95 @@
 # D4 分布式降级与接管实验报告
 
+## 2026-07-30 v7 来源独立只读评价
+
+### 结论
+
+冻结 v7 没有通过来源独立转移动作评价。validation 和 test 各含 9 个规则正类，actor
+原始残差激活、实际 transfer change 和投影后 exact 正动作均为 0。两个划分的负类
+exact R0 分别为 11/11 和 9/9。test 的 actor-derived 正类分母为 0，比率保持
+`unavailable`。
+
+train 出现 10 次 actor 边激活，其中只有 3 帧形成实际 transfer change；3 帧均为
+规则负类，属于错误边和虚假转移。安全检查没有失败：train、validation、test 的投影
+拒绝、不变量失败和完整 R0 raw action tuple 偏差均为 0。评价处置为
+`failed_closed`，确定性 R0 继续作为唯一运行路径。
+
+### 输入
+
+| 项目 | 固定值 |
+| --- | --- |
+| 场景 | M16N24，8 区域 |
+| source commit | `4a83a373f4eb4e29704bb3cf9f62e3d54eee3aec` |
+| seed | 5216-5279 |
+| episode / frame | 64 / 128 |
+| train / validation / test | 90 / 20 / 18 |
+| 规则正类 | 24 / 9 / 9 |
+| dataset SHA-256 | `f6c52bdd4ce630ae40787226383caab7833f3b034adfb0fc7e93d9e30c90ce67` |
+| split SHA-256 | `4179c0a766fa93b9127dc534176d69276face35fb110a8c247100d1807521215` |
+
+评价硬绑定 generation plan、generation summary、batch summary、evidence、
+derivation 和 export summary。对应文件或内容 SHA-256 为
+`16ee1200...7d936`、`9ebaf151...bc905`、`992cf4cd...0692`、
+`73b35dde...de5f6`、`2a8941fe...0ed4` 和 `793064c0...d055`。
+
+### 方法
+
+每帧先重算同快照 R0，再运行冻结 v7。raw 记录同时保存 actor 选择的有向边和相对 R0
+真正发生变化的 transfer。随后运行确定性投影，将 target、R0 和 projected action
+转换为同一可执行签名。评价分别统计 exact 正动作、负类 exact R0、方向、数量、错误边、
+虚假转移、投影拒绝和不变量失败。
+
+raw action tuple 与 R0 直接比较完整不可变数据类，覆盖资源配额增量、储备比例、侦察
+优先级、hold、重规划、owner、plan、version、epoch、lease 和 reasons。projected
+action 另行持久化，使投影器为守恒修改配额的行为不会被误写成学习节点动作。
+
+外部三个 split 均只用于评价。模型 fit、checkpoint update、threshold tuning、
+confidence calibration、candidate/input mutation、registration、admission、正式
+holdout payload 和旧评价 payload 读取计数均为 0。
+
+### 结果
+
+| 划分 | 样本 | 正/负 | raw 激活 | transfer change | exact 正动作 | 负类 exact R0 | 正确有向边 | 虚假转移 | 投影拒绝 | 不变量失败 | 节点偏差 |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| train | 90 | 24/66 | 10 | 3 | 0/24 | 63/66 | 0 | 3 | 0 | 0 | 0 |
+| validation | 20 | 9/11 | 0 | 0 | 0/9 | 11/11 | 0 | 0 | 0 | 0 | 0 |
+| test | 18 | 9/9 | 0 | 0 | 0/9 | 9/9 | 0 | 0 | 0 | 0 | 0 |
+
+冻结 v4 TRAIN+VALIDATION 有 251 个唯一在线可观测键，外部数据有 92 个，精确交集为
+0。该审计只覆盖冻结 v4 来源。候选训练来源 B 的完整特征载荷未提供给评价器，因此
+全训练来源可观测键重合状态为 unavailable，不能由 seed 隔离替代该项。
+
+### 完整性
+
+| 内容 | SHA-256 |
+| --- | --- |
+| candidate manifest 内容 | `fe9b18f6da8d9daf6d443a89f4cc321a9bda7645be3367b69c4ac29b3ac4f45f` |
+| training audit 内容 | `1d60fbd1e3841eddc76914f7dad4421ae024eaf4ff63190269dc1a2046f6385e` |
+| source binding 内容 | `04f7986709c75c9138f10282aad678872ed74a2bfa1c82b506a5a202881c7002` |
+| model 内容 | `bec99032bc176854f7ba265977ed35bf828d415be4bc260c9b6703a95d70082d` |
+| state 文件 | `d0f7f17599fba382d9aa436c6ae34ef5f23b582a5ed9068f3475cb545b4f88f5` |
+| candidate tree | `7bd5419f9d071d6c801f72415a8eb36ac0e36d259187e94229959f5f21d1a667` |
+| raw source tree | `978f94c0165ce6f79446b601c8eddf5b2e157f641fab243582a3349250d5c9a1` |
+| labeled root tree | `05a375853c42a31ecf3a20b2c61d9be6f2a7932d8a5125665f04d30ebc3e6d1b` |
+| dataset tree | `0b88d9afbb0e0e98cb2c59dc950a98cc57c7f5d5bd22d762278fdd81ce6a9282` |
+| frozen v4 tree | `2afd692874b91a23a5525448a0c5af98f3c2d96f0b12cebbf81a570d58d500d0` |
+| summary 内容 | `956082ef5096fdff925aa694dd4c9bf4e84e5e2a4c35208a3b2389080af2a9f9` |
+| artifact manifest 内容 | `e089bfcc91f9fc7dbd71ba0ffe4d73c43a31828ba80e3997c1594fadb5f2d057` |
+
+五棵输入树评价前后一致。records JSONL/CSV 文件 SHA-256 为
+`7785ded96360869edfb694c425321fa3323450cf1624607b53edf5d3eca6a5cd`
+和 `b8403cf34d8014b193d90f960c34e19a977e65a8b5e79e01ecc36ebdb8f42680`。
+
+### 权限与测试
+
+候选未注册、仅开发影子、准入关闭、强制规则回退。没有置信校准器，固定置信门没有应用。
+assist、authority、assignment、degradation、takeover、coalition、control、
+physical、D3、D7、生产确认、实际采用和收益声明均为 false。
+
+专项测试 21/21、D4 全量 903/903 和三个新增 Python 文件的 `py_compile` 通过。全量
+测试只有既有 Matplotlib `Axes3D` 导入警告。本次没有启动 AirSim，也没有修改 AirSim
+接口。
+
 ## 2026-07-30 v7 规则节点与转移残差开发验证
 
 ### 结论
@@ -79,8 +169,9 @@ no-transfer 一致性。checkpoint 先比较投影后 exact 行为和安全失�
 - 新增模块、构建入口和专项测试 `py_compile`：通过；
 - 两个候选目录 `diff -qr`：无差异。
 
-全量测试有 1 条既有 Matplotlib `Axes3D` 导入警告，不影响 D4 测试结果。测试没有启动
-AirSim，也没有读取预留独立评价、TEST 或 holdout。
+全量测试有 1 条既有 Matplotlib `Axes3D` 导入警告，不影响 D4 测试结果。该段记录候选
+构建验证，当时没有启动 AirSim，也没有读取预留独立评价、TEST 或 holdout；后续只读
+评价结果见页首。
 
 ### 权限和后续评价
 

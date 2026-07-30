@@ -1,5 +1,45 @@
 # D4 实现差距审计：分布式协同与降级接管
 
+## 2026-07-30 v7 来源独立评价 GAP
+
+- **无新增 P0。** v7 仍未注册，确定性 R0、投影、不变量、owner/version/epoch/lease、
+  ACK、联盟和控制边界没有变化。外部评价不会写回候选或运行时。
+- **已关闭 P1 子项：v7 缺少来源独立只读评价器。** 新评价器硬绑定 candidate、
+  raw source、labeled export、dataset、evidence、derivation、export summary 和
+  frozen v4 source，输出逐帧 JSONL/CSV、summary、中文报告、完整性和 artifact
+  manifest。
+- **已关闭 P1 子项：外部数据用途与输入突变不可审计。** train/validation/test
+  90/20/18 帧只用于评价。fit、checkpoint、threshold、confidence calibration、
+  candidate/input mutation、registration、admission、正式 holdout 和旧评价 payload
+  读取均为 0。五棵输入树评价前后一致。
+- **已关闭 P1 子项：v7 raw 残差和节点继承缺少逐帧证据。** records 同时保存 actor
+  激活、相对 R0 的实际 transfer change、raw/projected transfer、完整 projected
+  action 和 R0/raw/projected action tuple 差异。三个划分的 R0 raw 节点继承失败、
+  projection rejection 和 invariant failure 均为 0。
+- **P1 仍开放且已有反证：来源独立正类激活。** train 的 activation/change 为
+  10/3，但 3 次变化均为规则负类，exact 正动作 0/24。validation 和 test 的
+  activation/change 均为 0/0，exact 正动作均为 0/9。候选未在独立正类上形成可执行
+  转移，评价处置为 `failed_closed`。
+- **P1 仍开放：困难负类与方向覆盖。** train 负类 exact R0 为 63/66，存在 3 个
+  错误边和虚假转移。validation/test 负类为 11/11、9/9，说明当前新来源上的保守性
+  较好，但不能抵消 train 误激活和正类零召回。
+- **P1 仍开放：完整训练来源可观测重合审计。** frozen v4 与外部唯一在线键
+  251/92，精确交集为 0；训练来源 B 完整 payload 未作为评价输入，因此全部 v7 训练
+  来源的特征级重合状态仍为 unavailable。
+- **P1 仍开放：D6 独立复核和后继协议。** 本轮只有 D4 owner 评价。D6 尚未复核
+  records 和摘要；置信校准、正式 holdout、runtime preflight、D3 successor、D7
+  权限、AirSim 和物理收益均不得启动。若继续研究，应另立 v8 并使用新的 TRAIN，
+  本批评价数据不得用于拟合、选模或调门。
+- **权限。** v7 保持 unregistered、development/shadow only、admission closed、
+  rule fallback required；assist、authority、assignment、degradation、takeover、
+  coalition、control、physical、D3、D7 和生产确认权限全部 false。
+- **验收。** v7 评价专项 21/21、D4 全量 903/903、Python 语法检查通过。全量仅有
+  既有 Matplotlib `Axes3D` 导入警告。
+
+本次没有改变 AirSim 消息、节点、episode 或适配器。已检查
+`reports/AIRSIM_INTEGRATION_PLAN.md`，无需修改。M 对 N 联盟形成、成员 ACK 和原子
+提交合同未变化，已检查 `D4_M_TO_N_DISTRIBUTED_COALITION_REVIEW.md`，无需修改。
+
 ## 2026-07-30 v7 规则节点与转移残差 GAP
 
 - **无新增 P0。** v7 未注册且没有通用运行加载器。确定性 R0、投影器、

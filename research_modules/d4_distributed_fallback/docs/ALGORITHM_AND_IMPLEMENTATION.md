@@ -1,5 +1,72 @@
 # D4 分布式协同与降级接管算法及实施方案
 
+## 2026-07-30 v7 来源独立评价实现
+
+### 输入绑定
+
+评价实现与 v6 版本隔离，入口为
+`region_resource_v7_external_evaluation.py`。CLI 要求显式传入冻结 v7 candidate、
+原始 source root、labeled dataset、证据、推导清单、导出摘要和冻结 v4 candidate。
+实现硬绑定以下身份：
+
+- v7 manifest、training audit、source binding、model content 和 state file；
+- source commit、64 个 seed、generation plan、generation summary 和 batch summary；
+- labeled root、dataset、split、evidence、derivation 和 export summary；
+- 冻结 v4 source binding 和完整候选树。
+
+输出目录不得位于任一受保护输入树内，也不得位于模型注册目录。评价前后分别计算五棵
+输入树，变化时抛出稳定的失败关闭错误。评价不会写回 candidate manifest，也不会创建
+runtime loader 或注册记录。
+
+### 逐帧流程
+
+每个外部帧按固定顺序处理：
+
+1. 从同一快照运行 `RuleRegionResourcePolicy`，得到 R0。
+2. 由 `V7RuleNodeTransferResidualPolicy.decide()` 得到 raw recommendation、
+   同帧 baseline、actor 激活有向边和预测资源数。
+3. 比较 raw 与 R0 transfer，形成实际残差变化；同时比较完整 raw action tuple。
+4. 用 `DeterministicResourceProjector` 生成 projected action。
+5. 将 target、R0 和 projected action 转为同一 D3 可消费签名，判断 exact 正动作和
+   负类 exact R0。
+6. 执行 v4 干预不变量，分开记录正确有向边、错误方向、错误数量、错误边、虚假转移、
+   投影拒绝和约束失败。
+
+逐帧 JSONL 和 CSV 保存 target/raw/projected transfer、完整 R0/raw/projected action
+tuple、逐字段偏差、actor 激活边、预测资源数和失败原因。投影后配额变化与 raw 节点
+继承分别统计，避免把投影守恒改写误判为 node actor 输出。
+
+### 数据用途
+
+外部 train/validation/test 的读取数为 90/20/18。三类 payload 对 v7 的 fit、
+checkpoint、threshold 和 confidence calibration 使用数全部为 0。正式 holdout
+1000-1019 和旧评价 3008-3039 没有作为评价 payload 读取。候选和输入 mutation、
+注册、准入和权限授予计数均为 0。
+
+评价产物包括：
+
+- `evaluation_records.jsonl` 和 `evaluation_records.csv`；
+- `input_integrity.json`；
+- `observable_overlap_audit.json`；
+- `external_evaluation_summary.json`；
+- `REPORT_CN.md`；
+- `artifact_manifest.json`。
+
+artifact reviewer 重新验证内容摘要、文件清单和全部关闭状态。actor-derived 分母为 0
+时保留 `None/unavailable`，不生成伪比率。
+
+### 实测行为
+
+train 的 raw residual activation 为 10，实际 transfer change 为 3，exact 正动作
+0/24，负类 exact R0 63/66。validation 和 test 的 activation/change 均为 0/0，
+exact 正动作均为 0/9，负类 exact R0 为 11/11 和 9/9。train 的 3 次变化均为错误边
+和虚假转移。所有划分的 projection rejection、invariant failure 和 raw R0 action
+tuple preservation failure 均为 0。
+
+summary 将处置写为 `failed_closed`。候选没有置信校准器，固定置信门不应用；所有
+assist、authority、assignment、degradation、takeover、coalition、control、
+physical、D3、D7 和生产确认权限保持 false。
+
 ## 2026-07-30 v7 规则节点与转移残差实现
 
 ### 设计边界

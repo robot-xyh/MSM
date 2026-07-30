@@ -1,5 +1,51 @@
 # D4 分布式协同与降级接管计划
 
+## 2026-07-30 v7 来源独立评价收口计划
+
+### 已完成
+
+- 冻结 v7 候选和来源 commit `4a83a373...3aec`，建立版本隔离的
+  `region_resource_v7_external_evaluation.py` 与 CLI。评价器只接受固定候选目录、
+  原始来源目录、标签导出目录、dataset、证据、推导清单、导出摘要和冻结 v4 来源。
+- 评价前后分别计算候选、原始来源、标签导出、dataset 和冻结 v4 五棵树的内容摘要。
+  五棵树前后一致，候选和输入突变计数为 0。
+- 只读加载 seed 5216-5279 的 train/validation/test 90/20/18 帧。模型 fit、
+  checkpoint update、threshold tuning、confidence calibration、registration、
+  admission、正式 holdout 和旧评价 payload 读取计数均为 0。
+- 每帧记录 actor 原始边激活、相对 R0 的实际 transfer change、raw/projected
+  transfer、投影后 action、正确有向边、方向和数量错误、投影拒绝、不变量结果，以及
+  完整 R0 action tuple 的逐字段偏差。actor-derived 分母为 0 时输出 unavailable。
+- train 的 raw activation/transfer change 为 10/3，exact 正动作为 0/24，
+  负类 exact R0 为 63/66，出现 3 次虚假转移。validation 和 test 的 raw
+  activation/transfer change 均为 0/0，exact 正动作为 0/9，负类 exact R0 分别为
+  11/11 和 9/9。
+- 三个划分的投影拒绝、不变量失败和 R0 节点字段继承失败均为 0。评价处置固定为
+  `failed_closed`，候选继续未注册、准入关闭和规则回退。
+- 持久化 JSONL、CSV、summary、中文报告、输入完整性、可观测键重合审计和 artifact
+  manifest。评价专项 21/21、D4 全量 903/903、`py_compile` 通过。
+
+### 当前判断
+
+v7 的结构安全边界在新来源上保持成立，但 transfer 残差没有迁移到 validation/test
+正类。开发集上的 2/9 exact 正动作不能作为泛化证据。当前独立评价已关闭“没有新来源
+只读评价基础设施”这一子项，同时以实测结果确认“来源独立正类激活”仍是 P1。
+
+冻结 v4 与外部数据的在线可观测键精确交集为 0。候选训练来源 B 的完整特征载荷没有
+提供给评价器，因此全训练来源可观测键重合率保持 unavailable；本轮只确认 seed、来源
+commit 和固定导出谱系独立。
+
+### 下一步
+
+1. 不使用本次 train/validation/test 反向修改 v7，不建立置信校准器，也不运行正式
+   holdout、runtime preflight、D3 successor、D7 或物理收益试验。
+2. 由 main 和 D6 独立复核本评价的逐帧 records、内容摘要、负类误激活和零正类激活。
+   D6 复核完成前，来源独立评价只记为 D4 owner 结果。
+3. 若继续学习路线，另立 v8 研究计划。训练数据必须使用新的 TRAIN 来源，重点增加
+   正转移可观测覆盖、相近负帧和反向边；本次评价数据不得用于 checkpoint、阈值或
+   confidence calibration。
+4. 新候选必须在另一批未见 development 数据上同时形成非零安全正动作和稳定负类
+   R0，才能另行设计置信校准与准入协议。当前确定性 R0 保持主线。
+
 ## 2026-07-30 v7 规则节点与转移残差计划
 
 ### 已完成
@@ -37,7 +83,11 @@ v7 关闭了“学习节点动作与转移边脱节”和“M16N24 验证负类�
 形成，TRAIN 正类命中仅 1/24；不能把 VALIDATION 2/9 写成独立泛化能力。候选保持
 unregistered、development/shadow only、admission closed 和 rule fallback required。
 
-### 下一门
+### 开发阶段原定下一门
+
+以下 1-3 项的 D4-owned 部分已由页首来源独立评价收口计划执行。评价结果为
+validation/test 正类均未激活并失败关闭；D6 独立复核仍待 main 调度，第 4 项置信
+校准条件未成立。
 
 1. 冻结最终 v7 actor、训练审计、来源绑定和双构建摘要，不再根据当前开发数据调网络、
    帧门或 checkpoint。

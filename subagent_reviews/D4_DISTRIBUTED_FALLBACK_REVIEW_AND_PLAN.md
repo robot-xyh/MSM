@@ -1,5 +1,41 @@
 # D4 分布式协同与降级接管综述及子方案
 
+## 2026-07-30 v7 来源独立评价评审
+
+D4 接受本轮产物为冻结 v7 的来源独立只读评价，不接受其作为泛化通过、置信校准前置或
+生产准入。评价输入固定为 source commit `4a83a373...3aec`、seed 5216-5279、
+M16N24、8 区域、64 episode 和 128 帧。train/validation/test 为 90/20/18，规则
+正类为 24/9/9。数据集和划分摘要为 `f6c52bdd...ce67` 和
+`4179c0a7...215`。
+
+评价器硬绑定候选、source、labeled root、dataset、evidence、derivation、export
+summary 和 frozen v4 source。候选、原始来源、标签导出、dataset 和冻结 v4 五棵树
+评价前后一致。外部 train/validation/test 的 fit、checkpoint、threshold 和 confidence
+calibration 使用数均为 0；候选或输入修改、注册、准入、正式 holdout 和旧评价 payload
+读取数均为 0。
+
+行为结果没有建立来源独立正类。train 的 raw activation/transfer change 为 10/3，
+exact 正动作 0/24，负类 exact R0 63/66，3 次变化均为虚假转移。validation 和 test
+的 activation/change 均为 0/0，exact 正动作均为 0/9，负类 exact R0 分别为 11/11
+和 9/9。test actor-derived 正类分母为 0，结果保持 unavailable。
+
+安全结果保持稳定。三个划分的投影拒绝、不变量失败和完整 R0 raw action tuple 偏差均
+为 0。该结果说明 R0 节点继承和确定性安全外壳有效，但不能抵消转移残差在独立正类上
+完全未激活的事实。评审处置为失败关闭。
+
+冻结 v4 TRAIN+VALIDATION 与外部数据的唯一在线可观测键为 251/92，精确交集为 0。
+候选训练来源 B 的完整特征载荷没有提供给本评价器，因此全训练来源可观测键重合状态
+仍为 unavailable；评审不把 seed 隔离写成完整特征独立证明。
+
+v7 继续 unregistered、development/shadow only、admission closed 和 rule fallback
+required。没有置信校准器；assist、authority、assignment、degradation、takeover、
+coalition、control、physical、D3、D7 和生产确认权限全部为 false。D4 评价专项
+21/21、全量 903/903 和语法检查通过。下一步是 main/D6 对现有制品做独立复核，不允许
+用本批数据反向修改 v7 或建立校准器。
+
+本次没有改变 AirSim 和 M 对 N 联盟接口。`AIRSIM_INTEGRATION_PLAN.md` 与
+`D4_M_TO_N_DISTRIBUTED_COALITION_REVIEW.md` 已检查，无需修改。
+
 ## 2026-07-30 v7 规则节点与转移残差候选评审
 
 D4 接受 v7 为新的未注册开发候选，不接受其作为 v4-v6 的覆盖版本或生产晋级。v6 在
@@ -10,7 +46,8 @@ M16N24 外部输入上出现 raw transfer 0 和节点动作偏离 R0。v7 因此
 训练来源固定为冻结 v4 TRAIN 350 帧和 M16N24 TRAIN 89 帧；checkpoint 只使用对应
 VALIDATION 75/20 帧。M16N24 TEST 17 帧没有进入 fit、checkpoint 或 threshold。
 seed 4016-4079 已作为 v7 development source，后续不能再声称为未见评价。正式
-holdout 1000-1019、旧评价 3008-3039 和预留独立评价 5216-5279 均未读取。
+holdout 1000-1019、旧评价 3008-3039 和预留独立评价 5216-5279 在候选构建阶段均未
+读取；5216-5279 后续只用于页首来源独立评价。
 
 首版转移残差网络仍在 M16N24 VALIDATION 上激活 20/20 帧，负类 exact R0 为 0/11。
 最终结构将帧激活与边方向解耦，并将新域负类门写入 checkpoint。最佳 epoch 137 的
@@ -25,8 +62,8 @@ fail-closed 复核进一步要求 raw activation 和相对 R0 的实际 transfer
 
 评审接受该结果关闭“节点动作与 transfer 脱节”和“新域验证全激活”两个开发缺口。
 不接受来源独立泛化结论。M16N24 TRAIN 正动作仅命中 1/24，VALIDATION 2/9 又参与
-checkpoint 选择，证据等级仍是开发验收。下一步必须冻结 v7，由 main 提供全新
-5216-5279 数据并由 D6 只读盲审；D4 不再根据当前或新评价数据修改本候选。
+checkpoint 选择，证据等级仍是开发验收。原定的冻结 v7 和 5216-5279 只读评价已由
+页首评审收口，结果为失败关闭；D6 复核仍未完成。D4 不再根据开发或评价数据修改本候选。
 
 v7 没有置信校准器，固定 0.60 门未应用。候选保持 unregistered、
 development/shadow only、admission closed 和 rule fallback required。assist、
