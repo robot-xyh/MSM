@@ -1,5 +1,55 @@
 # D6 Evaluation Metrics Plan
 
+## 2026-07-29 D4 v5 记忆偏差与泛化审计
+
+### 已完成
+
+- [x] 增加独立只读 v5 审计模块、固定调用方配置、CLI、机器可读 JSON、中文报告和
+  `SHA256SUMS`。
+- [x] 固定 manifest file/content、state、summary、gate、builder source、v4
+  manifest/model/dataset/split/tree、四个 v4 源文件和 v3 registry 外部锚；候选自签不能
+  替换信任根。
+- [x] 枚举并复哈希 v5 四文件闭包，拒绝 symlink、特殊文件、缺项、多余文件、普通字节篡改
+  和同步自重签。
+- [x] 复核 v4 180 文件树、v3 8 文件树、v4/v5 空登记常量和不存在的 registry 路径。
+- [x] 逐字段检查 manifest/summary 权限全 false，candidate unregistered、admission closed、
+  rule fallback required，formal holdout/preflight 未完成。
+- [x] 只语义加载 TRAIN 350 条和 VALIDATION 75 条；TEST/formal holdout payload read/fit
+  均为 0。v4 树审计对 TEST 文件只做字节哈希。
+- [x] 从冻结 v4 actor 独立重建实际 24 维池化 latent、TRAIN 均值/标准差和 350 条归一化
+  特征。state 数值最大差不超过 `1e-12`，标签逐项一致。
+- [x] 记录 D4 报告/任务 64 维口径与实际 24 维冻结模型不一致，严格 profile 保持失败关闭。
+- [x] 独立复算 k=11 逆距离评分和固定 0.60 门。TRAIN/VALIDATION 正类召回、负类特异度均为
+  `1.0/1.0`，最小正裕量为 `0.4/0.209319`，Brier 为
+  `0/0.000484791`。
+- [x] 审计 TRAIN self-match：350/350 查询把自身放入近邻库；逐样本留一为
+  recall `1.0`、specificity `0.993151`、Brier `0.006652708`。
+- [x] 按 raw observable key 和 latent exact key 留组，同键副本全部从近邻库剔除；两者均为
+  recall `0.965517`、specificity `0.958904`、Brier `0.037610440`。
+- [x] 独立复算 VALIDATION overlap：exact `42/75`，非 exact `<1e-3` 为 20，
+  `[1e-3,0.1)` 为 10，`>=0.1` 为 3，最近邻标签 `75/75` 一致，正类 exact `12/13`。
+- [x] 输出全 VALIDATION、去 exact、距离 `>=1e-3`、距离 `>=0.1` 四层指标；分母小于 5
+  时写 `unavailable/null`，不补 0。
+- [x] 将结论分为 artifact/development integrity、fixed development gate、independent
+  validation/generalization、admission 四层。开发门通过不产生泛化或准入。
+- [x] 专项测试 `5 passed, 1 warning in 12.56s`，覆盖 TEST 语义读取阻断、普通篡改、同步
+  自重签和诊断计数偏差。D6 全量回归为
+  `1210 passed, 1 warning in 119.78s`。
+
+### 当前边界
+
+- [ ] 来源独立扰动集尚未提供。去 exact 后只有 1 个正类，不能计算可用的独立正类召回或裕量。
+- [ ] 距离 `>=0.1` 只有 3 个负类，正类为 0；该层 recall、specificity、margin 和 Brier
+  按最小分母合同均不可用。
+- [ ] 64 维报告口径与实际 24 维模型不一致，D4 需自行修正文档或提供新的、外部固定的 64 维
+  候选；D6 不修改 D4。
+- [ ] formal holdout 和 runtime preflight 均未运行，候选未注册，全部 D3/D7/生产权限保持
+  false。
+- [ ] 当前候选只可作为 `development memorization baseline`。规则回退继续为 required。
+
+本轮关闭 D6 对 v5 固定字节、算法复算、记忆偏差和重合分层的审计实现缺口。独立泛化、
+正式准入和运行收益仍为 P1 开放项。
+
 ## 2026-07-29 D4 v4 未注册候选独立审计
 
 ### 已完成

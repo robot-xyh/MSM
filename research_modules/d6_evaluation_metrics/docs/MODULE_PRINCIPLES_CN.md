@@ -1,5 +1,65 @@
 # D6 系统级离线评估模块原理
 
+## 记忆偏差与独立泛化边界（2026-07-29）
+
+D4 v5 审计将外部信任根与候选自签分开。调用方配置固定 manifest file/content、state、
+summary、gate、builder source、v4 基线和 v3 registry 摘要。候选文件内的摘要只能证明
+内部交叉绑定，不能在篡改后自行更新信任根。D6 先核对外部锚，再解析候选声明。普通文件
+篡改和候选同步自重签都必须失败关闭。
+
+D6 不读取候选 summary 的指标作为模型结果。冻结 v4 actor 对图 \(G_i\) 完成两轮消息传递，
+对节点隐状态取均值得到池化特征 \(h_i\)。冻结 bundle 的实际隐藏维数为 24：
+
+\[
+h_i=\frac{1}{|V_i|}\sum_{v\in V_i}h_{i,v},\qquad h_i\in\mathbb{R}^{24}.
+\]
+
+TRAIN 的 350 条特征确定均值 \(\mu\) 和总体标准差 \(\sigma\)，标准化后为
+\(u_i=(h_i-\mu)/\sigma\)。候选 state、冻结权重和 D6 重建均为 24 维。D4 报告和任务说明
+写成 64 维，与固定制品不一致。D6 将该事实单独列为报告维度合同失败，不把真实 24 维向量
+填充或映射成虚假的 64 维向量。
+
+评分使用固定 11 近邻。若近邻内存在距离不大于 \(10^{-12}\) 的 exact 样本，只对 exact
+样本标签取均值；否则按逆距离加权：
+
+\[
+\hat p(u)=
+\frac{\sum_{j\in N_{11}(u)}y_j/\max(d_j,10^{-12})}
+{\sum_{j\in N_{11}(u)}1/\max(d_j,10^{-12})}.
+\]
+
+固定门为 0.60。TRAIN/VALIDATION 的完整库存均得到 recall=1、specificity=1，但这是开发门
+结果。TRAIN 的每个查询都把自身以零距离放入近邻库，Brier 因而为 0。D6 增加三类反事实
+库存：
+
+1. 全库存评分，记录 self-match 数量；
+2. leave-one-sample-out，只移除被评样本自身，保持冻结 TRAIN 标准化状态；
+3. leave-one-observable-group-out，分别按 raw graph key 和 normalized latent exact key
+   移除全部同键副本。
+
+逐样本留一后特异度为 `0.993151`；按两种键留组后召回/特异度均为
+`0.965517/0.958904`。留组 Brier 从全库存的 0 上升到 `0.037610440`。同键副本对开发门有
+明显影响。
+
+VALIDATION 独立性按 raw graph exact key、latent exact key 和最近 TRAIN 距离三条证据审计。
+当前 75 条中有 42 条 exact，20 条非 exact 的距离仍小于 `1e-3`，10 条处于
+`[1e-3,0.1)`，只有 3 条不小于 0.1；最近邻标签 75/75 一致。13 个正类中 12 个 exact。
+去 exact 后正类分母为 1，不能建立稳定召回估计。
+
+D6 对分层指标设置固定最小分母 5。正类数、负类数、通过门的正类数或总样本数低于相应
+门限时，recall、specificity、margin 或 Brier 的 `availability` 为 `unavailable`，数值为
+`null`。系统不得用 0 或单样本命中率替代缺失证据。
+
+结论必须按四层输出：
+
+1. artifact/development integrity：文件、外部锚、v4/v3 绑定和真实算法复算；
+2. fixed development gate：同源 TRAIN/VALIDATION 固定门结果；
+3. independent validation/generalization：来源独立性和去重后有效分母；
+4. admission：登记、正式留出集、运行预检、规则回退及 D3/D7 权限。
+
+本候选只有前两层的有限开发证据。第三层不可用，第四层保持关闭。最终分类为
+`development memorization baseline`。
+
 ## 未注册候选的外部锚审计（2026-07-29）
 
 D4 v4 候选审计使用调用方固定信任根。manifest content、model state、dataset 和 clean

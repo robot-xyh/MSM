@@ -1,5 +1,26 @@
 # D6 M 对 N 协同拦截评估框架审查
 
+## 2026-07-29 20 对 20 D4 v5 记忆偏差审计
+
+D6 已对 v4 20 对 20、8 区域开发数据上构建的 v5 k=11 置信校准候选完成独立审计。
+四个候选文件及 v4/v3 绑定完整，TEST/formal holdout payload semantic read/fit 为 0，
+候选未注册且全部权限为 false。
+
+固定 0.60 门在 TRAIN/VALIDATION 上均为 recall=1、specificity=1。该数值不能作为
+20 对 20 泛化结论：TRAIN 350/350 查询包含自身；VALIDATION 有 42/75 exact overlap，
+另有 20 条距离小于 `1e-3`，13 个正类中 12 个 exact。去 exact 后只有 1 个正类，距离
+`>=0.1` 的 3 条均为负类。D6 按最小分母 5 将相应 recall、margin、specificity 或 Brier
+写为 unavailable。
+
+逐样本留一后的召回/特异度/Brier 为
+`1.000000/0.993151/0.006652708`；按 raw observable key 或 latent exact key 留组后均为
+`0.965517/0.958904/0.037610440`。这组结果说明候选可作为同源记忆化开发基线，尚不能进入
+正式 M 对 N 策略收益或准入分母。
+
+冻结模型实际 latent 为 24 维，D4 报告的 64 维口径不成立。正式状态保持
+development memorization baseline、candidate unregistered、admission closed、
+rule fallback required，不开放 D3/D7 权限。
+
 ## 2026-07-29 20 对 20 D4 v4 未注册候选审计
 
 D6 已对 20 目标/20 资源、8 区域 composite 数据构建的 D4 v4 候选完成独立只读开发审计。

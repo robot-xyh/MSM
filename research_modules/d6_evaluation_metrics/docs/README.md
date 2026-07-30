@@ -1,5 +1,18 @@
 # D6 文档索引
 
+2026-07-29 新增 D4 v5 置信校准候选独立审计。D6 固定 manifest file/content、state、
+summary、gate、builder source 和 v4/v3 外部锚，独立重建实际 24 维 latent、TRAIN
+标准化状态和 k=11 逆距离评分。固定开发门复算通过；TRAIN self-match 为 350/350，
+VALIDATION exact overlap 为 42/75，最近邻标签 75/75 一致。去 exact 后仅余 1 个正类，
+独立泛化不可用。D4 报告中的 64 维口径与冻结模型/候选 state 的 24 维不一致。
+
+原理见 `MODULE_PRINCIPLES_CN.md`，算法见 `ALGORITHM_AND_IMPLEMENTATION.md`，结果见
+`EXPERIMENT_REPORT.md`，GAP 见
+`../../../subagent_reviews/D6_IMPLEMENTATION_GAP_AUDIT.md`。机器可读结果、中文报告和
+校验和位于 `../outputs/d4_v5_confidence_candidate_independent_audit_20260729/`。
+候选保持 development memorization baseline、未注册、准入关闭和规则回退；未运行 formal
+holdout/runtime preflight，未授予 D3/D7 权限。
+
 2026-07-29 新增 D4 v4 未注册候选独立只读审计。固定外部锚为 clean commit
 `fd857457bb27a4a709a7c4937e22ebe1cbd7f848`、manifest content
 `4f3e973597469d394a594bec3dd7d2c16b24e80d2e97ba45f718d9ef8397e116`、model state

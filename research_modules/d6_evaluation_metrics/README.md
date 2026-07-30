@@ -1,5 +1,59 @@
 # D6 Evaluation Metrics
 
+## 2026-07-29 D4 v5 置信校准候选独立审计
+
+D6 新增 `d4_v5_confidence_candidate_audit.py`、固定配置、CLI、专项测试和原子报告输出，
+对未注册候选 `region_resource_a2_confidence_knn_shadow_v5` 执行只读、失败关闭审计。
+调用方固定 manifest file/content、state、summary、gate 和 builder source 六个外部锚；
+候选自身的 content hash 和 artifact map 只作为待核声明，不能替换信任根。候选四个文件
+逐项复哈希，普通 artifact 篡改和同步修改 payload、artifact hash、content hash、manifest
+的自重签攻击均被外部锚拒绝。
+
+审计同时复核冻结 v4 候选 180 文件树、v4 manifest/model/dataset/split、四个 v4 实现文件和
+v3 registry 8 文件树。v4/v5 登记常量均为 `None`，对应 registry 路径不存在。候选、
+summary 和权限合同中的生产、D3、D7 权限全部为 false。TEST 文件只参与 v4 树字节完整性
+哈希，不做 payload 语义解析；D6 的 TEST/formal holdout payload read/fit 均为 0。
+
+D6 不信任候选 summary 指标。从冻结 v4 actor 和 TRAIN 350 条、VALIDATION 75 条记录重建
+池化消息传递 latent、TRAIN 标准化状态和 k=11 逆距离评分。冻结模型和候选 state 的实际
+latent 维数均为 24，重建均值、标准差和 350 条归一化特征与 state 的最大差均不超过
+`1e-12`。D4 报告和任务口径写为 64 维，与冻结制品不一致；D6 未补造 64 维结果，将其列为
+严格 profile blocker。
+
+固定 0.60 开发门独立复算结果为：
+
+| split | 正/负 | 正类召回 | 负类特异度 | 最小正裕量 | Brier |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| TRAIN | 58/292 | 1.000000 | 1.000000 | 0.400000 | 0.000000000 |
+| VALIDATION | 13/62 | 1.000000 | 1.000000 | 0.209319 | 0.000484791 |
+
+完整开发门通过，但 TRAIN 评分把 350/350 个被评样本自身放入近邻库。逐样本留一后的召回、
+特异度和 Brier 为 `1.000000/0.993151/0.006652708`；按 raw observable key 或 latent exact
+key 整组留出后均为 `0.965517/0.958904/0.037610440`。TRAIN 的 raw/latent 分组均为
+229 组，其中 115 组含副本，最大组大小 3。
+
+VALIDATION 独立重算得到 42/75 raw graph exact overlap、42/75 latent exact overlap；
+非 exact 且距离 `<1e-3` 为 20 条，`[1e-3,0.1)` 为 10 条，`>=0.1` 仅 3 条，最近邻标签
+75/75 一致，13 个正类中 12 个 exact。去除 exact 后仅余 1 正/32 负；距离 `>=1e-3`
+仅余 1 正/12 负；距离 `>=0.1` 的 3 条均为负类。固定最小分母为 5，分母不足的 recall、
+margin、specificity 或 Brier 明确写为 `unavailable`，不补 0。
+
+四层结论分别为：artifact 哈希、v4/v3 绑定和实际 24 维算法复算通过；同源重合数据上的固定
+开发门通过；独立验证和泛化不可用；正式准入关闭。状态保持
+`development memorization baseline`、candidate unregistered、admission closed、
+rule fallback required，不运行 formal holdout/runtime preflight，不授予 D3/D7 权限。
+
+机器可读 JSON、中文报告和 `SHA256SUMS` 位于
+`outputs/d4_v5_confidence_candidate_independent_audit_20260729/`。JSON content/file
+SHA-256 为
+`7317fc0c19a8c2f149c3f7193e725db9470851526d329c6f897ee2da8762b1d9` /
+`c12fdd740120193e071452abdce487b05d79f230ac907ebc7ad7c15bcbeb2bac`；
+中文报告/`SHA256SUMS` 文件 SHA-256 为
+`e56faa01c04e2010c577d7f1c810ce0b8d9f5eed3b42b17d0cd35c8638700abf` /
+`0aa7921cb2643b1acf792377b37dbee5e7283de6b29eba8a77aca4e7288f3cab`。
+专项测试为 `5 passed, 1 warning in 12.56s`；D6 全量回归为
+`1210 passed, 1 warning in 119.78s`。
+
 ## 2026-07-29 D4 v4 未注册候选独立审计
 
 D6 新增只读审计器 `d4_v4_candidate_audit.py`、CLI、固定输入配置和真实候选负例测试，

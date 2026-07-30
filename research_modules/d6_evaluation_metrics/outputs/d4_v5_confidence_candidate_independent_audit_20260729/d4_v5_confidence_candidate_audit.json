@@ -1,0 +1,498 @@
+{
+  "anchors": {
+    "base_v4_dataset_sha256": "b31fc43f3d3cff34ee53f2b2c33ece0b06d7624e46e26a36c4aa834135e7fb8c",
+    "base_v4_manifest_content_sha256": "4f3e973597469d394a594bec3dd7d2c16b24e80d2e97ba45f718d9ef8397e116",
+    "base_v4_manifest_file_sha256": "2986d166ad6de231896e46f78aa2d9304c21b6d68714eaf34dfe21439220bebe",
+    "base_v4_model_state_sha256": "33a28060f11277a549b90d2f2f365962fec057b2bfb50a70ab5a422059cb9fe5",
+    "base_v4_split_sha256": "c212fe9b48e9908fd4d47488711724ed361429cf9df29667ac32c3e88d094619",
+    "base_v4_tree_sha256": "2afd692874b91a23a5525448a0c5af98f3c2d96f0b12cebbf81a570d58d500d0",
+    "builder_source_sha256": "77e91e06712013e6c1195c40f72b9a941d8396aa4594b52bd7d839276b57e1e0",
+    "calibration_state_file_sha256": "d8bd543759f6e52eb62585c1bd8aa67e59e718e7b548d38cc9dd5c690a5612a3",
+    "calibration_summary_file_sha256": "7f0047f72ebeea0358c127af5fe3dabe0c7f886bee48ff94b7d92b12b3259c60",
+    "candidate_manifest_content_sha256": "83192d4f96d7dd2c64ffd8f9b5c7c11a70c8c24a90934a0dfea12fe397c12c52",
+    "candidate_manifest_file_sha256": "caa774143db4a9c797e2a4ddff42d8f4cbc437471fe95926270f9bdec93b9459",
+    "development_gate_file_sha256": "e88c9480765369e34a03dd417e4b483143188da40c3403ff35918f9cfd605b3c",
+    "v3_registry_tree_sha256": "07c770b05ffc70f190cd8b45d762d579857747e0efb12b472a2354ee5aeaa93a"
+  },
+  "audit_execution_passed": true,
+  "audit_id": "d4-v5-confidence-memory-bias-independent-audit-20260729",
+  "base_v4_and_v3_binding": {
+    "base_v4_dataset_sha256": "b31fc43f3d3cff34ee53f2b2c33ece0b06d7624e46e26a36c4aa834135e7fb8c",
+    "base_v4_file_count": 180,
+    "base_v4_manifest_content_sha256": "4f3e973597469d394a594bec3dd7d2c16b24e80d2e97ba45f718d9ef8397e116",
+    "base_v4_manifest_file_sha256": "2986d166ad6de231896e46f78aa2d9304c21b6d68714eaf34dfe21439220bebe",
+    "base_v4_model_state_sha256": "33a28060f11277a549b90d2f2f365962fec057b2bfb50a70ab5a422059cb9fe5",
+    "base_v4_root": "/home/linux/Documents/MSM/research_modules/d4_distributed_fallback/outputs/d4_v4_candidate_observable_calibrated_20260729/region_resource_a2_executable_transfer_shadow_v4",
+    "base_v4_split_sha256": "c212fe9b48e9908fd4d47488711724ed361429cf9df29667ac32c3e88d094619",
+    "base_v4_tree_sha256": "2afd692874b91a23a5525448a0c5af98f3c2d96f0b12cebbf81a570d58d500d0",
+    "builder_source_file": "/home/linux/Documents/MSM/research_modules/d4_distributed_fallback/d4_distributed_fallback/region_resource_v5_confidence_candidate.py",
+    "builder_source_sha256": "77e91e06712013e6c1195c40f72b9a941d8396aa4594b52bd7d839276b57e1e0",
+    "formal_holdout_payload_read_count": 0,
+    "passed": true,
+    "test_payload_integrity_hash_count": 30,
+    "test_payload_semantic_read_count": 0,
+    "v3_registry_file_count": 8,
+    "v3_registry_root": "/home/linux/Documents/MSM/research_modules/d4_distributed_fallback/model_registry/region_resource_a2_8region_runtime_action_readiness_shadow_v3",
+    "v3_registry_tree_sha256": "07c770b05ffc70f190cd8b45d762d579857747e0efb12b472a2354ee5aeaa93a",
+    "v4_source_sha256": {
+      "research_modules/d4_distributed_fallback/d4_distributed_fallback/region_resource.py": "1b534b4b3d73724e2ed778f05182eac45052087efc05afa8a7900daf3dbd65e4",
+      "research_modules/d4_distributed_fallback/d4_distributed_fallback/region_resource_dataset.py": "171a462da4f288e53812572e55ee3c52aaba66730634c6d129e26b1d235a281e",
+      "research_modules/d4_distributed_fallback/d4_distributed_fallback/region_resource_learning.py": "b303e84b87d2ddb0bedbe10b39518e96c875e7be4a9a402a4add0abc405b0830",
+      "research_modules/d4_distributed_fallback/d4_distributed_fallback/region_resource_v4_shadow_candidate.py": "c686d469b4e2f3d0690d868b3bd205e2a3936b9b8d5beb57055d713095821a44"
+    }
+  },
+  "candidate_tree": {
+    "artifact_sha256": {
+      "calibration_state.json": "d8bd543759f6e52eb62585c1bd8aa67e59e718e7b548d38cc9dd5c690a5612a3",
+      "calibration_summary.json": "7f0047f72ebeea0358c127af5fe3dabe0c7f886bee48ff94b7d92b12b3259c60",
+      "development_gate.json": "e88c9480765369e34a03dd417e4b483143188da40c3403ff35918f9cfd605b3c",
+      "v5_confidence_candidate_manifest.json": "caa774143db4a9c797e2a4ddff42d8f4cbc437471fe95926270f9bdec93b9459"
+    },
+    "directory_count": 1,
+    "external_anchors_match": true,
+    "file_count": 4,
+    "manifest_declared_artifacts_match": true,
+    "passed": true,
+    "root": "/home/linux/Documents/MSM/research_modules/d4_distributed_fallback/outputs/d4_v5_confidence_calibrated_20260729/region_resource_a2_confidence_knn_shadow_v5",
+    "special_file_count": 0,
+    "symlink_count": 0,
+    "tree_sha256": "632f066fcad363531762e6b7a1ef0f21c03b7b0d0aa3b4cd39a16e4fbbf7c273"
+  },
+  "content_bindings": {
+    "calibration_state_content_sha256": "ca8967582ee8c65b56cffcc65c330a4dfa2d45dec8ebd1cfe9576f38d3ba776c",
+    "calibration_summary_content_sha256": "13447398e0a07120693a297ab9dcc9a8b51eb93a06928ed5acbb7066ce3af46d",
+    "development_gate_content_sha256": "fb071181072dfa632d62044dc6ea2751618b52cfb69dd380d51b43cd02d266b3",
+    "passed": true
+  },
+  "content_sha256": "7317fc0c19a8c2f149c3f7193e725db9470851526d329c6f897ee2da8762b1d9",
+  "data_usage_and_permissions": {
+    "admission_closed": true,
+    "all_permissions_false": true,
+    "candidate_declared_data_usage": {
+      "audit_split": "validation",
+      "fit_split": "train",
+      "formal_holdout_payload_fit_count": 0,
+      "formal_holdout_payload_read_count": 0,
+      "future_outcome_use_count": 0,
+      "reward_use_count": 0,
+      "test_payload_fit_count": 0,
+      "test_payload_read_count": 0,
+      "test_payload_weight_fit_count": 0,
+      "train_fit_count": 350,
+      "train_payload_read_count": 350,
+      "truth_identifier_use_count": 0,
+      "validation_audit_count": 75,
+      "validation_fit_count": 0,
+      "validation_hyperparameter_fit_count": 0,
+      "validation_overlap_diagnostic_count": 75,
+      "validation_overlap_diagnostic_fit_count": 0,
+      "validation_payload_read_count": 75,
+      "validation_selection_count": 0,
+      "validation_threshold_fit_count": 0,
+      "validation_weight_fit_count": 0
+    },
+    "candidate_unregistered": true,
+    "d3_permission_available": false,
+    "d6_semantic_payload_usage": {
+      "fit_count": 0,
+      "formal_holdout_payload_read_count": 0,
+      "hyperparameter_fit_count": 0,
+      "test_payload_read_count": 0,
+      "threshold_fit_count": 0,
+      "train_payload_read_count": 350,
+      "validation_payload_read_count": 75
+    },
+    "d7_permission_available": false,
+    "passed": true,
+    "permissions": {
+      "actual_adoption_claimed": false,
+      "assignment_enabled": false,
+      "assist_enabled": false,
+      "authority_enabled": false,
+      "benefit_claimed": false,
+      "coalition_commit_enabled": false,
+      "control_enabled": false,
+      "d3_permission_available": false,
+      "d7_permission_available": false,
+      "formal_evaluation_authorized": false,
+      "physical_permission_available": false,
+      "production_runtime_ack_enabled": false,
+      "schema": "d4-region-resource-confidence-shadow-permissions-v5",
+      "takeover_enabled": false
+    },
+    "rule_fallback_required": true
+  },
+  "evaluated_at_utc": "2026-07-29T23:55:00Z",
+  "fail_closed_guards": {
+    "caller_fixed_external_anchors_are_trust_root": true,
+    "candidate_file_inventory_exact": true,
+    "candidate_self_signature_is_not_trust_root": true,
+    "known_overlap_diagnostics_recomputed_not_substituted": true,
+    "negative_control_contracts": {
+      "ordinary_artifact_byte_tamper": "candidate_artifact_external_anchor_mismatch",
+      "overlap_diagnostic_disagreement": "validation_overlap_expected_crosscheck_mismatch",
+      "synchronous_candidate_self_resign": "candidate_manifest_file_external_anchor_mismatch"
+    },
+    "ordinary_artifact_tamper_rejected": true,
+    "synchronously_self_resigned_candidate_rejected": true
+  },
+  "fixed_development_gate": {
+    "candidate_declared_gate_passed": true,
+    "fixed_minimum_confidence": 0.6,
+    "interpretation": "development_gate_only_not_independent_validation_or_admission",
+    "neighbour_count": 11,
+    "recalculated_gate_passed": true,
+    "train": {
+      "brier_score": 0.0,
+      "confidence_maximum": 1.0,
+      "confidence_mean": 0.1657142857142857,
+      "confidence_minimum": 0.0,
+      "fixed_minimum_confidence": 0.6,
+      "minimum_positive_passing_margin": 0.4,
+      "negative_specificity": 1.0,
+      "negative_threshold_pass_count": 0,
+      "positive_recall": 1.0,
+      "positive_threshold_pass_count": 58,
+      "sample_count": 350,
+      "target_negative_count": 292,
+      "target_positive_count": 58
+    },
+    "validation": {
+      "brier_score": 0.0004847909153949047,
+      "confidence_maximum": 1.0,
+      "confidence_mean": 0.17079091738154023,
+      "confidence_minimum": 0.0,
+      "fixed_minimum_confidence": 0.6,
+      "minimum_positive_passing_margin": 0.2093188036155168,
+      "negative_specificity": 1.0,
+      "negative_threshold_pass_count": 0,
+      "positive_recall": 1.0,
+      "positive_threshold_pass_count": 13,
+      "sample_count": 75,
+      "target_negative_count": 62,
+      "target_positive_count": 13
+    }
+  },
+  "four_level_conclusion": {
+    "admission": {
+      "admission_closed": true,
+      "allowed": false,
+      "candidate_registered": false,
+      "d3_permission_available": false,
+      "d7_permission_available": false,
+      "formal_holdout_executed": false,
+      "rule_fallback_required": true,
+      "runtime_preflight_executed": false
+    },
+    "artifact_and_development_integrity": {
+      "algorithm_recalculation_passed": true,
+      "artifact_hash_integrity_passed": true,
+      "base_binding_passed": true,
+      "classification": "artifact_integrity_passed_with_reported_dimension_mismatch",
+      "reported_dimension_contract_passed": false
+    },
+    "fixed_development_gate": {
+      "passed": true,
+      "scope": "overlapping_train_validation_development_only"
+    },
+    "independent_validation_and_generalization": {
+      "classification": "unavailable_due_to_memorization_and_overlap",
+      "generalization_evidence_available": false,
+      "independence_evidence_available": false,
+      "passed": false
+    }
+  },
+  "latent_reconstruction": {
+    "actual_frozen_actor_hidden_dimension": 24,
+    "candidate_state_feature_dimension": 24,
+    "documented_dimension_contract_passed": false,
+    "documented_or_requested_feature_dimension": 64,
+    "feature_source": "frozen_v4_actor_pooled_message_passing_latent",
+    "reconstructed_from_frozen_v4_actor_and_payloads": true,
+    "state_recalculation": {
+      "feature_dimension": 24,
+      "latent_key_count": 229,
+      "maximum_mean_absolute_difference": 0.0,
+      "maximum_normalized_feature_absolute_difference": 0.0,
+      "maximum_scale_absolute_difference": 0.0,
+      "normalized_train_features_sha256": "8b66307c7ea5d3b2203a9dc7f34bceaef5ac0fbf5e9cffedda5835b34830038b",
+      "passed": true,
+      "train_feature_mean_sha256": "a9ac229d89586bc718ca8eb7852a4d5f6a577040962c825cb15ff9c92798f79f",
+      "train_feature_scale_sha256": "d64d8322d98b1ebf30ab01c1adda7c720c7694c43bf8e552372b7368797bdda4",
+      "train_labels_exact_match": true,
+      "train_labels_sha256": "eb243828b79424680becce9027949b762aea79f92635179989151a5e5666e952",
+      "train_negative_count": 292,
+      "train_positive_count": 58,
+      "train_sample_count": 350,
+      "validation_negative_count": 62,
+      "validation_positive_count": 13,
+      "validation_sample_count": 75
+    }
+  },
+  "memory_bias_and_overlap": {
+    "classification": "development_memorization_baseline",
+    "generalization_evidence_available": false,
+    "interpretation": "fixed development metrics are dominated by exact and near TRAIN overlap; independent generalization remains unavailable",
+    "leave_one_observable_group_out": {
+      "latent_exact_key": {
+        "duplicate_group_count": 115,
+        "group_count": 229,
+        "maximum_group_size": 3,
+        "metrics": {
+          "brier_score": 0.03761043972744485,
+          "confidence_maximum": 1.0,
+          "confidence_mean": 0.16810194752544527,
+          "confidence_minimum": 0.0,
+          "fixed_minimum_confidence": 0.6,
+          "minimum_positive_passing_margin": 0.0546040463908013,
+          "negative_specificity": 0.958904109589041,
+          "negative_threshold_pass_count": 12,
+          "positive_recall": 0.9655172413793104,
+          "positive_threshold_pass_count": 56,
+          "sample_count": 350,
+          "target_negative_count": 292,
+          "target_positive_count": 58
+        },
+        "same_key_neighbours_excluded": true
+      },
+      "raw_observable_key": {
+        "duplicate_group_count": 115,
+        "group_count": 229,
+        "maximum_group_size": 3,
+        "metrics": {
+          "brier_score": 0.03761043972744485,
+          "confidence_maximum": 1.0,
+          "confidence_mean": 0.16810194752544527,
+          "confidence_minimum": 0.0,
+          "fixed_minimum_confidence": 0.6,
+          "minimum_positive_passing_margin": 0.0546040463908013,
+          "negative_specificity": 0.958904109589041,
+          "negative_threshold_pass_count": 12,
+          "positive_recall": 0.9655172413793104,
+          "positive_threshold_pass_count": 56,
+          "sample_count": 350,
+          "target_negative_count": 292,
+          "target_positive_count": 58
+        },
+        "same_key_neighbours_excluded": true
+      },
+      "train_standardization_state_held_fixed": true
+    },
+    "leave_one_sample_out": {
+      "metrics": {
+        "brier_score": 0.006652708026781329,
+        "confidence_maximum": 1.0,
+        "confidence_mean": 0.1645741436673496,
+        "confidence_minimum": 0.0,
+        "fixed_minimum_confidence": 0.6,
+        "minimum_positive_passing_margin": 0.06628310634382983,
+        "negative_specificity": 0.9931506849315068,
+        "negative_threshold_pass_count": 2,
+        "positive_recall": 1.0,
+        "positive_threshold_pass_count": 58,
+        "sample_count": 350,
+        "target_negative_count": 292,
+        "target_positive_count": 58
+      },
+      "query_count": 350,
+      "query_sample_excluded_from_neighbour_inventory": true,
+      "train_standardization_state_held_fixed": true
+    },
+    "minimum_subgroup_denominator": 5,
+    "train_self_match": {
+      "full_inventory_metrics": {
+        "brier_score": 0.0,
+        "confidence_maximum": 1.0,
+        "confidence_mean": 0.1657142857142857,
+        "confidence_minimum": 0.0,
+        "fixed_minimum_confidence": 0.6,
+        "minimum_positive_passing_margin": 0.4,
+        "negative_specificity": 1.0,
+        "negative_threshold_pass_count": 0,
+        "positive_recall": 1.0,
+        "positive_threshold_pass_count": 58,
+        "sample_count": 350,
+        "target_negative_count": 292,
+        "target_positive_count": 58
+      },
+      "sample_count": 350,
+      "self_exact_match_count": 350,
+      "self_in_k_neighbour_inventory_count": 350,
+      "self_match_rate": 1.0
+    },
+    "validation_overlap": {
+      "exact_graph_and_latent_overlap_count": 42,
+      "exact_latent_overlap_count": 42,
+      "exact_raw_graph_key_overlap_count": 42,
+      "expected_crosscheck_passed": true,
+      "ge_1e_1_count": 3,
+      "ge_1e_3_lt_1e_1_count": 10,
+      "nearest_distance_distribution": {
+        "maximum": 2.476676799385529,
+        "mean": 0.07133688636148472,
+        "minimum": 0.0,
+        "p50_nearest_rank": 0.0,
+        "p90_nearest_rank": 0.012305795519323757,
+        "p95_nearest_rank": 0.09401443868607032
+      },
+      "nearest_train_label_match_count": 75,
+      "nearest_train_label_match_rate": 1.0,
+      "nearest_train_label_mismatch_count": 0,
+      "nonexact_lt_1e_3_count": 20,
+      "positive_exact_latent_overlap_count": 12,
+      "positive_exact_raw_graph_key_overlap_count": 12,
+      "validation_record_count": 75
+    },
+    "validation_subsets": {
+      "all_validation": {
+        "brier_score": {
+          "availability": "available",
+          "denominator": 75,
+          "value": 0.0004847909153949047
+        },
+        "minimum_positive_passing_margin": {
+          "availability": "available",
+          "passing_positive_count": 13,
+          "value": 0.2093188036155168
+        },
+        "negative_specificity": {
+          "availability": "available",
+          "denominator": 62,
+          "numerator": 62,
+          "value": 1.0
+        },
+        "positive_recall": {
+          "availability": "available",
+          "denominator": 13,
+          "numerator": 13,
+          "value": 1.0
+        },
+        "sample_count": 75,
+        "target_negative_count": 62,
+        "target_positive_count": 13
+      },
+      "nearest_distance_ge_1e_1": {
+        "brier_score": {
+          "availability": "unavailable",
+          "denominator": 3,
+          "reason": "sample_denominator_too_small",
+          "value": null
+        },
+        "minimum_positive_passing_margin": {
+          "availability": "unavailable",
+          "passing_positive_count": 0,
+          "reason": "passing_positive_denominator_too_small",
+          "value": null
+        },
+        "negative_specificity": {
+          "availability": "unavailable",
+          "denominator": 3,
+          "numerator": 3,
+          "reason": "negative_denominator_too_small",
+          "value": null
+        },
+        "positive_recall": {
+          "availability": "unavailable",
+          "denominator": 0,
+          "numerator": 0,
+          "reason": "positive_denominator_too_small",
+          "value": null
+        },
+        "sample_count": 3,
+        "target_negative_count": 3,
+        "target_positive_count": 0
+      },
+      "nearest_distance_ge_1e_3": {
+        "brier_score": {
+          "availability": "available",
+          "denominator": 13,
+          "value": 0.002796870665739835
+        },
+        "minimum_positive_passing_margin": {
+          "availability": "unavailable",
+          "passing_positive_count": 1,
+          "reason": "passing_positive_denominator_too_small",
+          "value": null
+        },
+        "negative_specificity": {
+          "availability": "available",
+          "denominator": 12,
+          "numerator": 12,
+          "value": 1.0
+        },
+        "positive_recall": {
+          "availability": "unavailable",
+          "denominator": 1,
+          "numerator": 1,
+          "reason": "positive_denominator_too_small",
+          "value": null
+        },
+        "sample_count": 13,
+        "target_negative_count": 12,
+        "target_positive_count": 1
+      },
+      "without_exact_overlap": {
+        "brier_score": {
+          "availability": "available",
+          "denominator": 33,
+          "value": 0.0011017975349884197
+        },
+        "minimum_positive_passing_margin": {
+          "availability": "unavailable",
+          "passing_positive_count": 1,
+          "reason": "passing_positive_denominator_too_small",
+          "value": null
+        },
+        "negative_specificity": {
+          "availability": "available",
+          "denominator": 32,
+          "numerator": 32,
+          "value": 1.0
+        },
+        "positive_recall": {
+          "availability": "unavailable",
+          "denominator": 1,
+          "numerator": 1,
+          "reason": "positive_denominator_too_small",
+          "value": null
+        },
+        "sample_count": 33,
+        "target_negative_count": 32,
+        "target_positive_count": 1
+      }
+    }
+  },
+  "profile_version": "d6.d4-v5-memory-bias-and-generalization-audit.v1",
+  "registration_boundary": {
+    "candidate_unregistered": true,
+    "passed": true,
+    "v4_registration_constants": {
+      "REGION_RESOURCE_V4_REGISTERED_BUNDLE_MANIFEST_SHA256": null,
+      "REGION_RESOURCE_V4_REGISTERED_DATASET_SHA256": null,
+      "REGION_RESOURCE_V4_REGISTERED_MANIFEST_CONTENT_SHA256": null,
+      "REGION_RESOURCE_V4_REGISTERED_MANIFEST_FILE_SHA256": null,
+      "REGION_RESOURCE_V4_REGISTERED_MODEL_STATE_SHA256": null
+    },
+    "v4_registry_path_present": false,
+    "v5_candidate_outside_registry": true,
+    "v5_registration_constants": {
+      "REGION_RESOURCE_V5_REGISTERED_MANIFEST_CONTENT_SHA256": null,
+      "REGION_RESOURCE_V5_REGISTERED_MANIFEST_FILE_SHA256": null,
+      "REGION_RESOURCE_V5_REGISTERED_STATE_SHA256": null
+    },
+    "v5_registry_path_present": false
+  },
+  "schema_version": "d6.d4-v5-confidence-candidate-audit.v1",
+  "status": "completed_development_memorization_baseline_candidate_unregistered_admission_closed",
+  "strict_profile_blocker_codes": [
+    "documented_latent_dimension_mismatch",
+    "validation_source_not_independent",
+    "validation_exact_overlap_present",
+    "validation_near_duplicate_overlap_present",
+    "validation_nonoverlap_positive_denominator_insufficient",
+    "formal_holdout_not_completed",
+    "runtime_preflight_not_completed",
+    "candidate_unregistered"
+  ],
+  "strict_profile_passed": false
+}

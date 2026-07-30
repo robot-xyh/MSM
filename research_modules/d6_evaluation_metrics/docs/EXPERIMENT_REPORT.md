@@ -1,5 +1,115 @@
 # D6 正式实验矩阵准入预检报告
 
+## D4 v5 置信校准候选审计（2026-07-29）
+
+### 结论
+
+D6 对固定 v5 候选完成只读审计。候选四个文件、外部锚、v4/v3 绑定、数据用途和权限完整；
+实际 24 维 latent、TRAIN 标准化状态和 k=11 评分可独立复现。固定 0.60 开发门通过。
+
+VALIDATION 与 TRAIN 高度重合，去重后正类分母不足。候选不能提供独立验证或泛化证据。
+最终状态为 `development memorization baseline`、candidate unregistered、admission
+closed、rule fallback required。未运行 formal holdout/runtime preflight，未授予 D3/D7
+权限。
+
+### 固定锚
+
+| 制品 | SHA-256 |
+| --- | --- |
+| manifest file | `caa774143db4a9c797e2a4ddff42d8f4cbc437471fe95926270f9bdec93b9459` |
+| manifest content | `83192d4f96d7dd2c64ffd8f9b5c7c11a70c8c24a90934a0dfea12fe397c12c52` |
+| calibration state | `d8bd543759f6e52eb62585c1bd8aa67e59e718e7b548d38cc9dd5c690a5612a3` |
+| calibration summary | `7f0047f72ebeea0358c127af5fe3dabe0c7f886bee48ff94b7d92b12b3259c60` |
+| development gate | `e88c9480765369e34a03dd417e4b483143188da40c3403ff35918f9cfd605b3c` |
+| builder source | `77e91e06712013e6c1195c40f72b9a941d8396aa4594b52bd7d839276b57e1e0` |
+| v4 tree | `2afd692874b91a23a5525448a0c5af98f3c2d96f0b12cebbf81a570d58d500d0` |
+| v3 registry tree | `07c770b05ffc70f190cd8b45d762d579857747e0efb12b472a2354ee5aeaa93a` |
+
+普通 artifact 字节篡改由 `candidate_artifact_external_anchor_mismatch` 拒绝。同步修改
+payload、候选 artifact hash、content hash 和 manifest 的自重签攻击由
+`candidate_manifest_file_external_anchor_mismatch` 拒绝。
+
+### 数据与维数
+
+| split | 语义读取 | 正类 | 负类 | fit |
+| --- | ---: | ---: | ---: | ---: |
+| TRAIN | 350 | 58 | 292 | 候选声明 350，D6 0 |
+| VALIDATION | 75 | 13 | 62 | 0 |
+| TEST | 0 | unavailable | unavailable | 0 |
+| formal holdout | 0 | unavailable | unavailable | 0 |
+
+v4 树完整性检查对 TEST 文件只做字节哈希，不解析 payload。truth identifier、future outcome
+和 reward 使用均为 0。候选所有权限为 false。
+
+冻结 v4 actor 的 `hidden_dim`、权重形状和 v5 state 的 `feature_dimension` 均为 24。
+重建均值、标准差和归一化特征与 state 的最大差均为 0（容差 `1e-12`）。D4 报告和任务
+口径写为 64 维，与制品不一致。严格审计保留
+`documented_latent_dimension_mismatch`。
+
+### 固定开发门
+
+| split | 正类召回 | 负类特异度 | 最小正裕量 | Brier |
+| --- | ---: | ---: | ---: | ---: |
+| TRAIN | 1.000000 | 1.000000 | 0.400000 | 0.000000000 |
+| VALIDATION | 1.000000 | 1.000000 | 0.209319 | 0.000484791 |
+
+候选 summary 中的数值没有作为审计输入。D6 先独立计算，再逐字段比对；结果一致。
+
+### TRAIN 记忆审计
+
+| 评分方式 | 正类召回 | 负类特异度 | 最小正裕量 | Brier |
+| --- | ---: | ---: | ---: | ---: |
+| 全库存，含自身 | 1.000000 | 1.000000 | 0.400000 | 0.000000000 |
+| 逐样本留一 | 1.000000 | 0.993151 | 0.066283 | 0.006652708 |
+| raw observable key 留组 | 0.965517 | 0.958904 | 0.054604 | 0.037610440 |
+| latent exact key 留组 | 0.965517 | 0.958904 | 0.054604 | 0.037610440 |
+
+全库存评分的 self-match 为 350/350。raw 和 latent 均形成 229 组，115 组含副本，最大组
+大小为 3。按同键整组移除后出现 2 个正类未越门和 12 个负类越门。
+
+### VALIDATION 重合
+
+| 项目 | 数量 |
+| --- | ---: |
+| raw graph exact overlap | 42 |
+| latent exact overlap | 42 |
+| 非 exact 且距离 `<1e-3` | 20 |
+| 距离 `[1e-3,0.1)` | 10 |
+| 距离 `>=0.1` | 3 |
+| 最近邻标签一致 | 75/75 |
+| 正类 exact overlap | 12/13 |
+
+最近距离最小值、P50、P90、P95 和最大值分别为
+`0/0/0.0123058/0.0940144/2.4766768`。VALIDATION 的 72/75 条记录距离小于 0.1。
+
+### 去重与距离分层
+
+| 子集 | 样本 | 正/负 | recall | specificity | margin | Brier |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: |
+| 全 VALIDATION | 75 | 13/62 | 1.000000 | 1.000000 | 0.209319 | 0.000485 |
+| 去 exact | 33 | 1/32 | unavailable | 1.000000 | unavailable | 0.001102 |
+| 距离 `>=1e-3` | 13 | 1/12 | unavailable | 1.000000 | unavailable | 0.002797 |
+| 距离 `>=0.1` | 3 | 0/3 | unavailable | unavailable | unavailable | unavailable |
+
+最小指标分母为 5。分母不足时 JSON 使用 `availability=unavailable` 和 `value=null`，没有
+以 0 或单样本比率补值。
+
+### 输出与验证
+
+输出目录为
+`outputs/d4_v5_confidence_candidate_independent_audit_20260729/`。
+
+| 输出 | SHA-256 |
+| --- | --- |
+| JSON content | `7317fc0c19a8c2f149c3f7193e725db9470851526d329c6f897ee2da8762b1d9` |
+| JSON file | `c12fdd740120193e071452abdce487b05d79f230ac907ebc7ad7c15bcbeb2bac` |
+| 中文 Markdown file | `e56faa01c04e2010c577d7f1c810ce0b8d9f5eed3b42b17d0cd35c8638700abf` |
+| `SHA256SUMS` file | `0aa7921cb2643b1acf792377b37dbee5e7283de6b29eba8a77aca4e7288f3cab` |
+
+专项测试 `5 passed, 1 warning in 12.56s`。warning 为环境中的 Matplotlib `Axes3D`
+多版本提示，与本次 JSON、Torch 模型或近邻审计无关。D6 全量回归为
+`1210 passed, 1 warning in 119.78s`。
+
 ## D4 v4 未注册候选独立审计（2026-07-29）
 
 ### 输入与结论

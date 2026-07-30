@@ -1,5 +1,34 @@
 # D6 系统评估指标综述及子方案
 
+## 2026-07-29 D4 v5 独立评审
+
+评审接受 D6 的 v5 只读审计实现和外部锚边界。候选四文件、v4 180 文件树、v3 registry
+8 文件树、四个 v4 实现文件、数据用途和全 false 权限通过复核。候选仍未注册，formal
+holdout 和 runtime preflight 未执行，D3/D7 权限保持 false。
+
+D6 从冻结 actor 和 TRAIN/VALIDATION payload 独立复算，未使用候选 summary 指标作为输入。
+实际 pooled latent 为 24 维，候选 state 也是 24 维。D4 报告和任务说明中的 64 维说法与
+冻结制品不符，严格 profile 因 `documented_latent_dimension_mismatch` 不通过。制品哈希和
+实际 24 维算法仍可分别判定完整，不能把文档错误改写成 64 维实测事实。
+
+固定 0.60 开发门在 TRAIN 58 正/292 负和 VALIDATION 13 正/62 负上均得到 recall=1、
+specificity=1，最小正裕量为 `0.4/0.209319`。TRAIN Brier 为 0 的直接原因是 350/350
+查询含自身 exact neighbour。逐样本留一后特异度降至 `0.993151`，按同观测键或同 latent
+键整组留出后召回/特异度降至 `0.965517/0.958904`，Brier 升至 `0.037610440`。
+
+VALIDATION 42/75 exact，另有 20 条非 exact 距离小于 `1e-3`；72/75 样本距离小于 0.1，
+最近邻标签 75/75 一致。13 个正类中 12 个 exact。去 exact 后只剩 1 个正类，距离不小于
+0.1 的 3 条均为负类。评审接受 D6 最小分母 5 的不可用规则，禁止把这些小分母结果写成
+recall=1 或 Brier=0 的独立泛化结论。
+
+评审结论分四层：artifact 与实际算法复算通过；同源重合开发门通过；独立 validation 和
+generalization 不可用；admission closed。候选分类保持
+`development memorization baseline`，继续规则回退，不运行正式 holdout，不授予权限。
+
+专项测试 `5 passed, 1 warning in 12.56s`。JSON content/file SHA-256 为
+`7317fc0c19a8c2f149c3f7193e725db9470851526d329c6f897ee2da8762b1d9` /
+`c12fdd740120193e071452abdce487b05d79f230ac907ebc7ad7c15bcbeb2bac`。
+
 ## 2026-07-29 D4 v4 未注册候选独立评审
 
 评审接受 D6 对固定 v4 候选的开发完整性审计实现。信任根来自 D6 固定配置：clean commit

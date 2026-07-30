@@ -1,5 +1,48 @@
 # D6 实现差距审计
 
+## 2026-07-29 D4 v5 置信校准与记忆偏差
+
+### 已关闭的 D6-owned 缺口
+
+1. D6 已建立 v5 调用方固定信任根。manifest file/content、state、summary、gate、
+   builder source、v4/v3 绑定均来自 D6 固定配置，候选自有签名不能替换外部锚。
+2. v5 四文件清单完成枚举和复哈希。普通 artifact 篡改，以及同步修改 payload、候选
+   artifact hash、content hash 和 manifest 的攻击均失败关闭。
+3. v4 候选 180 文件树、四个冻结实现文件、dataset/split/model 和 v3 registry 8 文件树
+   已复核。v4/v5 注册常量全空，两个 registry 目标路径均不存在。
+4. D6 只语义读取 TRAIN 350 条和 VALIDATION 75 条。TEST/formal holdout payload read/fit
+   均为 0；TEST 文件仅在 v4 树完整性步骤做字节哈希。
+5. 冻结 actor latent、TRAIN 标准化状态和 k=11 逆距离评分已独立实现。实际维数为 24，
+   与 state 一致；均值、标准差、归一化特征最大差不超过 `1e-12`。
+6. 固定 0.60 开发门独立复算通过。TRAIN/VALIDATION 的 recall/specificity 为
+   `1.0/1.0`，最小正裕量为 `0.4/0.209319`，Brier 为 `0/0.000484791`。
+7. TRAIN self-match 350/350 已显式记录。逐样本留一后为
+   `1.0/0.993151/0.006652708`；raw key 与 latent key 留组后均为
+   `0.965517/0.958904/0.037610440`（召回/特异度/Brier）。
+8. VALIDATION 42/75 exact、20 条非 exact `<1e-3`、10 条 `[1e-3,0.1)`、3 条
+   `>=0.1`、最近邻标签 75/75 一致和正类 exact 12/13 已独立重算并与外部预期交叉核对。
+9. 去 exact 和距离分层指标已实现可用性语义。去 exact 后仅 1 正/32 负，`>=1e-3`
+   为 1 正/12 负，`>=0.1` 为 0 正/3 负；分母小于 5 的指标为 `unavailable/null`。
+10. JSON、中文 Markdown、CLI、固定配置和 `SHA256SUMS` 已生成。专项测试
+    `5 passed, 1 warning in 12.56s`；D6 全量回归为
+    `1210 passed, 1 warning in 119.78s`。
+
+### 当前 P1
+
+1. 独立来源或独立扰动验证集缺失。当前 VALIDATION 与 TRAIN 高度重合，不能提供独立泛化
+   证据。
+2. 去除 exact 后的正类分母只有 1；距离 `>=0.1` 无正类且总样本只有 3。固定开发门通过
+   不能替代独立 validation gate。
+3. D4 报告及任务口径称 64 维 latent，冻结 v4 hidden dimension 和 v5 state 均为 24。
+   D6 将其列为 `documented_latent_dimension_mismatch`，不修改 D4-owned 文档。
+4. formal holdout、runtime preflight 和候选注册均未执行。candidate unregistered、
+   admission closed、rule fallback required，全部生产、D3 和 D7 权限为 false。
+5. 后续只有在 D4 提供来源独立、无同键副本、正负分母满足门限的冻结 development 输入后，
+   D6 才能重做独立 validation/generalization 审计。正式 holdout 仍需另行授权和预注册。
+
+当前无新增 D6-owned P0。已关闭的是 v5 制品完整性、真实算法复算和记忆偏差诊断实现缺口；
+独立泛化与准入仍为 P1，状态固定为 `development memorization baseline`。
+
 ## 2026-07-29 D4 v4 未注册候选独立审计
 
 ### 已关闭的 D6-owned 缺口

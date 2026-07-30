@@ -1,5 +1,92 @@
 # D6 系统级离线评估：算法原理与实施说明
 
+## D4 v5 置信校准审计（2026-07-29）
+
+实现入口为 `d6_evaluation_metrics/d4_v5_confidence_candidate_audit.py`，命令行为
+`scripts/run_d4_v5_confidence_candidate_audit.py`，固定配置为
+`configs/d4_v5_confidence_candidate_independent_audit_20260729.json`。输出使用临时目录
+完整写入 JSON、中文 Markdown 和 `SHA256SUMS` 后原子重命名，不覆盖已有审计目录。
+
+### 外部锚与文件闭包
+
+配置固定 v5 manifest file/content、calibration state、calibration summary、development
+gate 和 builder source SHA-256。manifest 声明的三个 artifact 必须与目录中除 manifest
+之外的三个文件精确相等。D6 同时复算每个文件的外部摘要、候选内部摘要和 content hash。
+检查顺序以 manifest file 外部锚为先，因此攻击者同步修改所有候选内部摘要仍不能通过。
+
+v4 基线检查包含 180 文件树、manifest file/content、state dict、dataset、split 和四个实现
+文件。v3 registry 按 8 文件树复哈希。审计器从 v4/v5 源文件的抽象语法树读取登记常量，
+要求全部为 `None`，并要求两个候选的 registry 目标路径不存在。
+
+### 实际 latent 重建
+
+审计器仅调用已固定哈希的 v4 数据与模型加载边界，不调用 v5 的拟合、评分或 summary
+函数。每条图记录按冻结 actor 的节点编码、边编码、消息网络和节点更新重新计算两轮消息传递，
+最后取节点均值。实际冻结模型 `hidden_dim=24`，所以
+
+\[
+H_{\mathrm{train}}\in\mathbb{R}^{350\times24},\qquad
+H_{\mathrm{validation}}\in\mathbb{R}^{75\times24}.
+\]
+
+TRAIN 均值和总体标准差逐列重算。标准差小于 `1e-12` 时按候选合同置为 1。D6 再比较
+candidate state 的均值、标准差、350 条归一化特征和标签。当前三类数值最大差均为 0
+（验收容差 `1e-12`），标签完全一致，TRAIN exact latent 共 229 个。
+
+任务口径要求 64 维，但冻结 bundle、权重形状和 state 均只能产生 24 维。审计输出保留
+`documented_latent_dimension_mismatch`。该不一致不阻止对真实 24 维算法做复算，但使严格
+profile 不能通过。
+
+### 近邻评分与开发门
+
+对查询 \(u\) 计算到 TRAIN 行的欧氏距离，按 `(distance, train_index)` 稳定排序并取前 11。
+exact 距离不大于 `1e-12` 时，仅平均前 11 中的 exact 标签；否则使用逆距离权重。门限、
+近邻数和 exact epsilon 都不可由 CLI 重配。
+
+独立评分完成后，D6 才逐项比较 candidate summary。固定门要求两 split 的正类召回不低于
+0.8、负类特异度等于 1、最小正裕量不低于 0.02。当前 TRAIN/VALIDATION 结果为：
+
+| split | recall | specificity | margin | Brier |
+| --- | ---: | ---: | ---: | ---: |
+| TRAIN | 1.000000 | 1.000000 | 0.400000 | 0.000000000 |
+| VALIDATION | 1.000000 | 1.000000 | 0.209319 | 0.000484791 |
+
+### 留一、留组与距离分层
+
+TRAIN 记忆审计保持已拟合的 TRAIN 标准化状态不变，只改变可进入近邻库的索引：
+
+\[
+\mathcal{I}_{-i}=\mathcal{I}\setminus\{i\},
+\]
+
+\[
+\mathcal{I}_{-g(i)}=
+\{j\in\mathcal{I}:k_j\ne k_i\}.
+\]
+
+第二式分别使用 raw observable key 和 normalized latent exact key。两种键都由在线可见张量
+或实际 latent 构造，不含 seed、样本身份、truth identifier 或未来结果。当前 350 条记录
+形成 229 组，115 组有副本，最大组大小 3。
+
+VALIDATION 对每条记录输出 raw key overlap、latent exact overlap、最近距离和最近标签。
+调用方配置只保存已知计数用于交叉核对，报告值始终由本次计算产生；任一计数不同均以
+`validation_overlap_expected_crosscheck_mismatch` 失败关闭。
+
+四个分层集合为全 VALIDATION、去除 raw/latent exact 并集、最近距离 `>=1e-3`、最近距离
+`>=0.1`。最小分母固定为 5。当前去 exact 集为 33 条但只有 1 个正类，因此 recall/margin
+不可用；`>=0.1` 集只有 3 个负类，四项指标均不可用。
+
+### 数据用途和结论
+
+语义 loader 显式只选择 TRAIN 和 VALIDATION。TEST episode 文件可以在 v4 文件树完整性检查
+中按字节计算 SHA-256，但不解析 JSONL，不参与 latent、标签、评分、阈值或候选选择。
+正式 holdout 不定位、不读取、不运行。输出分别记录完整性哈希读取和 payload semantic read，
+避免把两者混为模型数据使用。
+
+开发门通过后仍强制输出 `independence_evidence_available=false`、
+`generalization_evidence_available=false`、candidate unregistered、admission closed 和
+rule fallback required。D6 不调用登记器，不执行 preflight，不产生 D3/D7 权限。
+
 ## D4 v4 未注册候选独立审计算法（2026-07-29）
 
 实现入口为 `d6_evaluation_metrics/d4_v4_candidate_audit.py`，命令行为

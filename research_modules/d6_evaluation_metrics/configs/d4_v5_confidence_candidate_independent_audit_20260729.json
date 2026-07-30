@@ -1,0 +1,40 @@
+{
+  "audit_id": "d4-v5-confidence-memory-bias-independent-audit-20260729",
+  "base_v4_root": "research_modules/d4_distributed_fallback/outputs/d4_v4_candidate_observable_calibrated_20260729/region_resource_a2_executable_transfer_shadow_v4",
+  "candidate_root": "research_modules/d4_distributed_fallback/outputs/d4_v5_confidence_calibrated_20260729/region_resource_a2_confidence_knn_shadow_v5",
+  "documented_latent_dimension": 64,
+  "evaluated_at_utc": "2026-07-29T23:55:00Z",
+  "expected_base_v4_dataset_sha256": "b31fc43f3d3cff34ee53f2b2c33ece0b06d7624e46e26a36c4aa834135e7fb8c",
+  "expected_base_v4_manifest_content_sha256": "4f3e973597469d394a594bec3dd7d2c16b24e80d2e97ba45f718d9ef8397e116",
+  "expected_base_v4_manifest_file_sha256": "2986d166ad6de231896e46f78aa2d9304c21b6d68714eaf34dfe21439220bebe",
+  "expected_base_v4_model_state_sha256": "33a28060f11277a549b90d2f2f365962fec057b2bfb50a70ab5a422059cb9fe5",
+  "expected_base_v4_split_sha256": "c212fe9b48e9908fd4d47488711724ed361429cf9df29667ac32c3e88d094619",
+  "expected_base_v4_tree_sha256": "2afd692874b91a23a5525448a0c5af98f3c2d96f0b12cebbf81a570d58d500d0",
+  "expected_builder_source_sha256": "77e91e06712013e6c1195c40f72b9a941d8396aa4594b52bd7d839276b57e1e0",
+  "expected_gate_file_sha256": "e88c9480765369e34a03dd417e4b483143188da40c3403ff35918f9cfd605b3c",
+  "expected_manifest_content_sha256": "83192d4f96d7dd2c64ffd8f9b5c7c11a70c8c24a90934a0dfea12fe397c12c52",
+  "expected_manifest_file_sha256": "caa774143db4a9c797e2a4ddff42d8f4cbc437471fe95926270f9bdec93b9459",
+  "expected_state_file_sha256": "d8bd543759f6e52eb62585c1bd8aa67e59e718e7b548d38cc9dd5c690a5612a3",
+  "expected_summary_file_sha256": "7f0047f72ebeea0358c127af5fe3dabe0c7f886bee48ff94b7d92b12b3259c60",
+  "expected_v3_registry_tree_sha256": "07c770b05ffc70f190cd8b45d762d579857747e0efb12b472a2354ee5aeaa93a",
+  "expected_v4_source_files": {
+    "research_modules/d4_distributed_fallback/d4_distributed_fallback/region_resource.py": "1b534b4b3d73724e2ed778f05182eac45052087efc05afa8a7900daf3dbd65e4",
+    "research_modules/d4_distributed_fallback/d4_distributed_fallback/region_resource_dataset.py": "171a462da4f288e53812572e55ee3c52aaba66730634c6d129e26b1d235a281e",
+    "research_modules/d4_distributed_fallback/d4_distributed_fallback/region_resource_learning.py": "b303e84b87d2ddb0bedbe10b39518e96c875e7be4a9a402a4add0abc405b0830",
+    "research_modules/d4_distributed_fallback/d4_distributed_fallback/region_resource_v4_shadow_candidate.py": "c686d469b4e2f3d0690d868b3bd205e2a3936b9b8d5beb57055d713095821a44"
+  },
+  "expected_validation_diagnostics": {
+    "exact_latent_overlap_count": 42,
+    "exact_raw_graph_key_overlap_count": 42,
+    "ge_1e_1_count": 3,
+    "ge_1e_3_lt_1e_1_count": 10,
+    "nearest_train_label_match_count": 75,
+    "nonexact_lt_1e_3_count": 20,
+    "positive_exact_latent_overlap_count": 12,
+    "positive_exact_raw_graph_key_overlap_count": 12,
+    "validation_record_count": 75
+  },
+  "minimum_subgroup_denominator": 5,
+  "profile_version": "d6.d4-v5-memory-bias-and-generalization-audit.v1",
+  "schema_version": "d6.d4-v5-confidence-candidate-audit-input.v1"
+}
