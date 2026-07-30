@@ -34,6 +34,15 @@ def build_parser() -> argparse.ArgumentParser:
         default=1,
     )
     parser.add_argument(
+        "--test-positive-frame-count",
+        type=int,
+        default=0,
+        help=(
+            "evaluation labels only; defaults to zero to preserve the "
+            "training-dataset export contract"
+        ),
+    )
+    parser.add_argument(
         "--source-kind",
         choices=(
             "main_runtime_frames",
@@ -56,6 +65,7 @@ def main() -> int:
             validation_positive_frame_count=(
                 args.validation_positive_frame_count
             ),
+            test_positive_frame_count=args.test_positive_frame_count,
             source_kind=args.source_kind,
         ),
     )

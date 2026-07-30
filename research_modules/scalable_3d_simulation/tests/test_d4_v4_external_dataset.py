@@ -241,6 +241,44 @@ def test_external_export_fails_without_safe_validation_positive(
         )
 
 
+def test_external_export_can_reserve_test_positive_for_evaluation(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    source = _source_dataset(
+        tmp_path,
+        seed_count=40,
+    )
+    monkeypatch.setattr(
+        d4_v4_external_dataset,
+        "_clean_repository_identity",
+        lambda _root: {
+            "git_commit": _COMMIT,
+            "source_worktree_dirty": False,
+            "exporter_sha256": "b" * 64,
+        },
+    )
+    summary = export_d4_v4_external_runtime_dataset(
+        source,
+        tmp_path / "output",
+        repository_root=tmp_path,
+        config=replace(
+            _config(),
+            test_positive_frame_count=1,
+        ),
+    )
+    assert summary["positive_record_count_by_split"]["train"] >= 1
+    assert summary["positive_record_count_by_split"]["validation"] >= 1
+    assert summary["positive_record_count_by_split"]["test"] >= 1
+    derivation = json.loads(
+        (tmp_path / "output" / "source_derivation_manifest.json").read_text(
+            encoding="utf-8"
+        )
+    )
+    assert derivation["generation"]["truth_identifier_use_count"] == 0
+    assert derivation["generation"]["production_permission_available"] is False
+
+
 def test_external_export_combines_distinct_source_datasets(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,

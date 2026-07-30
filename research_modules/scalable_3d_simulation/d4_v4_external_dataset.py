@@ -87,6 +87,7 @@ class D4V4ExternalDatasetExportConfig:
     minimum_test_seeds: int = 4
     train_positive_frame_count: int = 1
     validation_positive_frame_count: int = 1
+    test_positive_frame_count: int = 0
     source_kind: str = "main_runtime_frames"
     created_at_utc: str = "2026-07-29T00:00:00Z"
     schema: str = D4_V4_EXTERNAL_EXPORT_SCHEMA
@@ -107,6 +108,13 @@ class D4V4ExternalDatasetExportConfig:
             value = getattr(self, name)
             if type(value) is not int or value <= 0:
                 raise ValueError(f"{name} must be a positive integer")
+        if (
+            type(self.test_positive_frame_count) is not int
+            or self.test_positive_frame_count < 0
+        ):
+            raise ValueError(
+                "test_positive_frame_count must be a non-negative integer"
+            )
         if not 0.0 < self.train_fraction < 1.0:
             raise ValueError("train_fraction must be in (0, 1)")
         if not 0.0 < self.validation_fraction < 1.0:
@@ -211,6 +219,15 @@ def export_d4_v4_external_runtime_dataset(
             RegionLearningSplit.TRAIN: resolved.train_positive_frame_count,
             RegionLearningSplit.VALIDATION: (
                 resolved.validation_positive_frame_count
+            ),
+            **(
+                {
+                    RegionLearningSplit.TEST: (
+                        resolved.test_positive_frame_count
+                    )
+                }
+                if resolved.test_positive_frame_count
+                else {}
             ),
         },
         projector=projector,
@@ -493,10 +510,7 @@ def _select_positive_frames(
         )
 
     selected_keys: list[str] = []
-    count_by_split = {
-        RegionLearningSplit.TRAIN: 0,
-        RegionLearningSplit.VALIDATION: 0,
-    }
+    count_by_split = {split: 0 for split in positive_counts}
     for observable_key in eligible_positive_keys:
         options = groups[observable_key]
         contribution = {
