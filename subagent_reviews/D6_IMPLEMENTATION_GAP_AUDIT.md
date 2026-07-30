@@ -1,5 +1,55 @@
 # D6 实现差距审计
 
+## 2026-07-29 D4 v4 未注册候选独立审计
+
+### 已关闭的 D6-owned 缺口
+
+1. D6 已实现固定外部锚的候选完整树审计。180 个文件中，179 个非 manifest artifact
+   与清单精确闭包并逐项复哈希；symlink、特殊文件、模式、缺项和多余文件均失败关闭。
+2. clean source commit
+   `fd857457bb27a4a709a7c4937e22ebe1cbd7f848` 的 4 个实现 blob 已与候选 source
+   summary 和当前只读文件交叉绑定。
+3. 外部 evidence、source derivation、export summary、dataset manifest、split 和
+   train/validation episode inventory 已形成只读交叉绑定。
+4. train 70 seeds/140 episodes/350 samples 和 validation
+   15 seeds/30 episodes/75 samples 的正负库存已重算。test payload read、fit、weight fit，
+   truth identifier use 和 future outcome use 均为 0。
+5. train-only actor/confidence 权重、actor epoch 107、confidence epoch 66 和固定 0.60 门
+   已独立重算。JSON 保留正负召回、特异度、Brier、checkpoint 历史和薄裕量。
+6. development fixture 已固定为 `training_domain_smoke_only`；generalization、formal
+   validation 和 production permission 字段均为 false。
+7. v3 registry 的 8 文件树摘要
+   `07c770b05ffc70f190cd8b45d762d579857747e0efb12b472a2354ee5aeaa93a`
+   保持不变；v4 五个注册常量全空，registry 路径不存在。
+8. artifact 篡改和权限声明篡改后自重算候选 manifest 的负例均由外部锚失败关闭。
+9. 机器可读 JSON、中文 Markdown、CLI、固定配置和单元测试已落在 D6 ownership 内。
+   专项 `3 passed, 1 warning in 4.97s`；D6 全量
+   `1205 passed, 1 warning in 112.59s`。
+10. admission blocker 已增加 TRAIN-domain fixture、低 confidence 正类召回、薄越门裕量和
+    runtime outcome/benefit unavailable 四项，与原三项合计七项。JSON content/file
+    SHA-256 为
+    `3a4ed311c55e6419d3db1b3ba830f0ea6ce22c638eb363aa03c3f4510fdcd7c2` /
+    `e225a1a16ae2b1988ce5ea34b3cceaa30d7c829004663368ecc6514de3eb3887`；
+    Markdown/`SHA256SUMS` 文件 SHA-256 为
+    `16a2e5a4efacd4b58b22b7b9dd9d0d632cedb3e7b8d6cc6d55a0dce954870fe0` /
+    `6ee4e7822800401b531acc93f03f105fc1ff02a77c1842fe1d36546bc9500af6`。
+
+### 当前 P1 与边界
+
+1. formal holdout 未完成，正式 holdout seed use 为 0；本次 development audit 不关闭独立
+   泛化证据缺口。
+2. runtime preflight 未完成，固定 0.60 confidence gate 未登记为运行门。
+3. 候选未注册，admission closed，rule fallback required。全部逻辑和生产权限保持 false。
+4. confidence train/validation 正类召回只有 `0.206897/0.307692`；最小越门裕量
+   `0.000504935`，train 最接近门负类裕量 `-0.000029838`。薄裕量风险保持显式。
+5. fixture 只覆盖 train-domain smoke，不能建立 formal validation、benefit 或 production
+   eligibility。
+6. runtime outcome 和 benefit 均 unavailable。
+
+当前无新增 D6-owned P0。状态
+`pass_development_integrity_only_admission_closed` 只关闭固定候选的 D6 开发完整性和独立
+复算缺口。本轮没有运行正式 holdout、preflight、候选登记或权限变更。
+
 ## 2026-07-29 D4 readiness-v3 v2b 隔离配对
 
 ### 已关闭

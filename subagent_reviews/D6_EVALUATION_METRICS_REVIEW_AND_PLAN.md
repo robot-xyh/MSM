@@ -1,5 +1,46 @@
 # D6 系统评估指标综述及子方案
 
+## 2026-07-29 D4 v4 未注册候选独立评审
+
+评审接受 D6 对固定 v4 候选的开发完整性审计实现。信任根来自 D6 固定配置：clean commit
+`fd857457bb27a4a709a7c4937e22ebe1cbd7f848`、manifest content
+`4f3e973597469d394a594bec3dd7d2c16b24e80d2e97ba45f718d9ef8397e116`、model state
+`33a28060f11277a549b90d2f2f365962fec057b2bfb50a70ab5a422059cb9fe5` 和 dataset
+`b31fc43f3d3cff34ee53f2b2c33ece0b06d7624e46e26a36c4aa834135e7fb8c`。
+候选不能通过自签 manifest 替换这些锚。
+
+180 个候选文件、179 个 artifact SHA、4 个 source commit blob、外部 evidence、
+dataset/split 和 170 个 train/validation episode 均复核通过。test 只读取 manifest
+15 seeds、30 episodes、74 frames 的元数据；候选 payload、builder/D6 read、fit 和 weight
+fit 均为 0。truth identifier、future outcome 和 reward 使用均为 0。数据用途边界满足本次
+开发审计要求。
+
+actor epoch 107 的 train/validation 正类召回为 `0.966667/0.866667`，负类召回为
+`0.951724/0.966667`。confidence epoch 66 在固定 0.60 门的正类召回仅为
+`0.206897/0.307692`，特异度均为 `1.0`，Brier 为
+`0.186847275/0.186468779`。最小越门裕量 `0.000504935`，train 最接近门的负类仅低
+`0.000029838`。评审要求保留薄裕量告警，不把已读开发样本的零负类越门扩展为泛化结论。
+
+fixture confidence `0.602367163`，高于门限 `0.002367163`，其证据等级固定为
+`training_domain_smoke_only`。v3 registry 的 8 文件树未变；v4 注册常量全空且 registry
+路径不存在。全部逻辑权限 false，formal holdout 和 runtime preflight 未完成。评审结论为
+development integrity pass、formal admission closed、runtime eligibility unavailable。
+
+最终 admission blocker 为未注册、formal holdout 未完成、runtime preflight 未完成、
+TRAIN-domain fixture、confidence 正类召回偏低、越门裕量过薄和 runtime outcome/benefit
+unavailable 七项。后四项治理收紧不改变
+`pass_development_integrity_only_admission_closed`。
+
+artifact 字节篡改和自重算 manifest 的权限声明篡改负例均失败关闭。专项测试
+`3 passed, 1 warning in 4.97s`，D6 全量
+`1205 passed, 1 warning in 112.59s`。最终 JSON content/file SHA-256 为
+`3a4ed311c55e6419d3db1b3ba830f0ea6ce22c638eb363aa03c3f4510fdcd7c2` /
+`e225a1a16ae2b1988ce5ea34b3cceaa30d7c829004663368ecc6514de3eb3887`；
+Markdown/`SHA256SUMS` 文件 SHA-256 为
+`16a2e5a4efacd4b58b22b7b9dd9d0d632cedb3e7b8d6cc6d55a0dce954870fe0` /
+`6ee4e7822800401b531acc93f03f105fc1ff02a77c1842fe1d36546bc9500af6`。
+评审不产生候选登记或权限变更。
+
 ## 2026-07-29 D4 readiness-v3 v2b 评审
 
 评审接受 D6 v3 紧凑证据 adapter。10 个开发 seed 的完整性、有限值、零在线真值和 false

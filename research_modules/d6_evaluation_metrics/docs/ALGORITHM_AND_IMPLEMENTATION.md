@@ -1,5 +1,122 @@
 # D6 系统级离线评估：算法原理与实施说明
 
+## D4 v4 未注册候选独立审计算法（2026-07-29）
+
+实现入口为 `d6_evaluation_metrics/d4_v4_candidate_audit.py`，命令行为
+`scripts/run_d4_v4_candidate_audit.py`。输入配置
+`configs/d4_v4_candidate_independent_audit_20260729.json` 只保存候选、外部 evidence、
+v3 registry 的相对路径和五个固定锚。审计器要求所有路径位于显式 repository root 内，
+并把 D4、scalable 和 registry 输入视为只读。
+
+### 文件树与来源身份
+
+候选遍历首先拒绝 symlink 和非普通文件，记录目录、文件、模式和逐文件 SHA-256。设候选
+普通文件集合为 \(F\)，manifest 中 artifact 集合为 \(A\)，manifest 自身为 \(m\)。闭包门为：
+
+\[
+F=A\cup\{m\}, \qquad m\notin A
+\]
+
+每个 \(a\in A\) 的实际 SHA-256 必须等于 manifest 声明值。manifest content hash 使用删除
+自身 content-hash 字段后的 canonical JSON 复算，并与 D6 配置中的外部固定锚比较。当前
+结果为 180 个文件、179 个 artifact 和 4 个目录，全部通过。
+
+source summary 必须声明 clean commit
+`fd857457bb27a4a709a7c4937e22ebe1cbd7f848`。D6 对 4 个实现路径分别运行只读
+`git show`，将 commit blob SHA-256 与 source summary、候选 implementation inventory 和
+当前文件摘要交叉核对。候选构建时 dirty=false；当前 HEAD 是否等于构建 commit 只作诊断，
+不会替换冻结来源身份。
+
+### 外部 evidence 与数据用途
+
+审计器按固定相对路径复哈希 external evidence、source derivation、export summary 和
+dataset manifest，要求候选副本与外部原件逐字节相同。dataset SHA-256
+`b31fc43f3d3cff34ee53f2b2c33ece0b06d7624e46e26a36c4aa834135e7fb8c`
+及 split SHA-256
+`c212fe9b48e9908fd4d47488711724ed361429cf9df29667ac32c3e88d094619`
+必须贯穿 bundle、候选和外部 evidence。源数据包含两个 clean dataset，共
+200 episodes、499 frames。
+
+payload loader 只接收 split 为 `train` 或 `validation` 的 170 个选中 episode。test 清单
+仅解析 split、相对路径、seed 和帧数等 manifest 元数据，用于证明候选未携带 test payload；
+不访问或复哈希对应 payload 文件。当前库存为：
+
+| split | seeds | episodes | samples | actor 正/负 | confidence 正/负 |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| train | 70 | 140 | 350 | 60/290 | 58/292 |
+| validation | 15 | 30 | 75 | 15/60 | 13/62 |
+| test manifest only | 15 | 30 | 74 | unavailable | unavailable |
+
+候选 test payload 文件数、builder/D6 payload read、fit、weight fit 均必须为 0。
+truth identifier、future outcome、reward 和 formal holdout seed 的 available/use 计数也
+必须为 0。
+
+### 权重、checkpoint 与固定门
+
+actor 类别权重只由 train 库存计算：
+
+\[
+w_{+}=\frac{N_{-}}{N_{+}}=\frac{290}{60}=4.833333,\qquad
+w_{\mathrm{edge+}}=\min\left(\frac{3848}{72},32\right)=32
+\]
+
+confidence 同样只使用 train 库存计算普通正类、不一致负类和可执行负类权重；validation/test
+weight fit 保持 0。模型输出经 D4 公共 DTO 和投影合同复载，D6 独立累计混淆库存。actor
+epoch 107 在 240 个历史 epoch 中按声明选择规则重算；confidence epoch 66 在 180 个历史
+epoch 中重算，固定 0.60 门共有 8 个 accepted epoch，最长连续 7 个。
+
+| split | actor 正类召回 | actor 负类召回 | confidence 正类召回 | 特异度 | Brier |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| train | 0.966667 | 0.951724 | 0.206897 | 1.000000 | 0.186847275 |
+| validation | 0.866667 | 0.966667 | 0.307692 | 1.000000 | 0.186468779 |
+
+train/validation 的最小正类越门裕量均为 `0.000504935`。train 最接近门的负类裕量为
+`-0.000029838`；validation 为 `-0.000602221`。输出因此固定
+`thin_margin_warning=true`。
+
+### Fixture、registry 与失败关闭
+
+审计器从冻结 fixture contract 重放一次 train-domain 输入，并独立比较 source、R0 和
+treatment executable signature。fixture confidence 为 `0.602367163`，门上裕量
+`0.002367163`；输出分类强制为 `training_domain_smoke_only`，泛化与正式验证字段为 false。
+
+v3 registry 使用固定 8 文件逐项摘要和树摘要复核。D6 还从 source commit blob 解析 v4
+注册常量，要求五个值全部为 `None`，并要求 v4 registry 路径不存在。manifest、gate、
+training summary、model package 和 fixture 中的逻辑权限逐字段检查为 false。formal
+holdout、preflight、registration 或 permission 任一被声明完成都会失败关闭。
+
+负例测试复制候选到临时目录后执行两类攻击：直接改写 `training_config.json` 字节；将
+`assist_enabled` 改为 true，并同步重算候选内部 manifest content hash。前者在 artifact
+SHA 门失败，后者在 D6 外部 manifest content anchor 失败。原候选和外部 evidence 未被写入。
+
+### Admission blocker 治理
+
+`admission_blocker_codes` 保持确定顺序：
+
+```text
+candidate_unregistered
+formal_holdout_not_completed
+runtime_preflight_not_completed
+development_fixture_train_domain_smoke_only
+confidence_positive_recall_low
+confidence_threshold_passing_margin_too_thin
+runtime_outcome_and_benefit_unavailable
+```
+
+后四项分别绑定 fixture 的 TRAIN-domain 分类、已重算的低正类召回、显式
+`thin_margin_warning=true` 和缺失的 runtime outcome/benefit。该列表只收紧 admission
+治理，不参与 `audit_passed` 或开发指标重算状态计算。
+
+输出 schema 为 `d6.d4-v4-candidate-independent-audit.v1`，原子生成 JSON、中文 Markdown
+和 `SHA256SUMS`。最终 JSON content/file SHA-256 为
+`3a4ed311c55e6419d3db1b3ba830f0ea6ce22c638eb363aa03c3f4510fdcd7c2` /
+`e225a1a16ae2b1988ce5ea34b3cceaa30d7c829004663368ecc6514de3eb3887`，
+中文 Markdown/`SHA256SUMS` 文件 SHA-256 为
+`16a2e5a4efacd4b58b22b7b9dd9d0d632cedb3e7b8d6cc6d55a0dce954870fe0` /
+`6ee4e7822800401b531acc93f03f105fc1ff02a77c1842fe1d36546bc9500af6`。
+2026-07-29 专项测试为 `3 passed, 1 warning in 4.97s`，D6 全量为
+`1205 passed, 1 warning in 112.59s`。正式 holdout、runtime preflight 和候选登记均未执行。
+
 ## D4 v3 隔离证据审计（2026-07-29）
 
 审计入口要求 `input_root` 和调用方固定的 `SHA256SUMS` SHA-256。最终 schema 为

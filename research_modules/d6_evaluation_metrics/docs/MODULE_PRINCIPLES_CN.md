@@ -1,5 +1,51 @@
 # D6 系统级离线评估模块原理
 
+## 未注册候选的外部锚审计（2026-07-29）
+
+D4 v4 候选审计使用调用方固定信任根。manifest content、model state、dataset 和 clean
+source commit 的预期摘要来自 D6 配置，不从候选目录或候选声明派生。候选目录只作为只读
+被审对象。D6 枚举完整文件树，要求 manifest artifact map 与除 manifest 自身外的文件集合
+精确相等，并拒绝 symlink、特殊文件和不一致模式。通过后仍只表示固定字节集合与外部身份
+一致。
+
+来源交叉绑定包含三层：
+
+1. 以 `git show <clean-commit>:<path>` 读取 4 个实现 blob，核对候选 source summary 和
+   当前只读实现文件；
+2. 核对 scalable 外部 evidence、source derivation、export summary、dataset manifest 和
+   split 摘要；
+3. 将 train/validation episode 清单与候选内 170 个 payload 一一绑定，只加载这两个 split。
+
+test 仅允许读取 manifest 元数据。当前 test inventory 为 15 seeds、30 episodes、74 frames，
+候选中没有 test payload 文件；builder read、D6 read、fit 和 weight fit 均为 0。train 为
+70 seeds、140 episodes、350 samples，validation 为 15 seeds、30 episodes、75 samples。
+truth identifier、future outcome 和 reward 的可用或使用计数均为 0。这里的零是显式库存与
+用途审计结果，不用于填充未知正式指标。
+
+模型质量按两个层次重算。actor 以 train-only 类别权重重放行为克隆输出，分别报告正类召回和
+负类召回/特异度。confidence 以固定 0.60 门报告正类召回、负类特异度、Brier 和距离门限的
+裕量。当前 train/validation confidence 正类召回为 `0.206897/0.307692`，负类特异度均为
+`1.0`，Brier 为 `0.186847275/0.186468779`；最小越门裕量只有
+`0.000504935`。零已观测负类越门只描述已读开发样本，薄正类召回和薄裕量必须同时保留。
+
+固定 fixture 来自 train 域的版本化可观测定义，其 confidence 为 `0.602367163`，高于门限
+`0.002367163`。D6 将其固定分类为 `training_domain_smoke_only`，并保持
+`generalization_evidence=false`、`formal_validation_evidence=false`。fixture 可证明冻结
+实现能重放一次可执行差异，不能建立未知 seed 上的泛化、收益或运行安全结论。
+
+注册与权限独立于开发完整性。v3 registry 的 8 文件树必须继续匹配冻结摘要
+`07c770b05ffc70f190cd8b45d762d579857747e0efb12b472a2354ee5aeaa93a`；
+v4 注册常量必须全部为空，registry 路径必须不存在。所有逻辑权限为 false，formal holdout
+和 runtime preflight 未完成，因此最终状态固定为
+`pass_development_integrity_only_admission_closed`。候选字节篡改，以及权限声明篡改后
+重算候选自有 content hash，均由外部锚失败关闭。
+
+admission blocker 除未注册、formal holdout 未完成和 runtime preflight 未完成外，还必须
+显式保留 `development_fixture_train_domain_smoke_only`、
+`confidence_positive_recall_low`、`confidence_threshold_passing_margin_too_thin` 和
+`runtime_outcome_and_benefit_unavailable`。这些是准入治理事实，不改变候选字节完整性和
+开发指标重算通过，也不产生任何权限。
+
 ## 隔离配对与计划刷新（2026-07-29）
 
 D4 readiness-v3 v2 证据先由外部 `SHA256SUMS` 摘要固定。D6 对 compact 复核精确文件

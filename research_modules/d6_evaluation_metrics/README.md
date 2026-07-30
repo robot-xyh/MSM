@@ -1,5 +1,62 @@
 # D6 Evaluation Metrics
 
+## 2026-07-29 D4 v4 未注册候选独立审计
+
+D6 新增只读审计器 `d4_v4_candidate_audit.py`、CLI、固定输入配置和真实候选负例测试，
+独立复核未注册候选
+`region_resource_a2_executable_transfer_shadow_v4`。外部信任锚固定为 clean source
+commit `fd857457bb27a4a709a7c4937e22ebe1cbd7f848`、manifest content SHA-256
+`4f3e973597469d394a594bec3dd7d2c16b24e80d2e97ba45f718d9ef8397e116`、model state
+SHA-256 `33a28060f11277a549b90d2f2f365962fec057b2bfb50a70ab5a422059cb9fe5`
+和 dataset SHA-256
+`b31fc43f3d3cff34ee53f2b2c33ece0b06d7624e46e26a36c4aa834135e7fb8c`。
+候选树共 180 个文件；manifest 之外的 179 个 artifact 全部逐项复哈希，目录、文件模式、
+symlink/特殊文件和清单闭包均受审。4 个 source implementation 文件同时与 clean commit
+blob 和当前只读实现逐字节一致。
+
+外部 composite evidence、source derivation、export summary、dataset manifest、split 和
+170 个 train/validation episode 完成交叉绑定。D6 只加载 train 和 validation payload：
+train 为 70 seeds、140 episodes、350 samples，目标正/负 `60/290`；validation 为
+15 seeds、30 episodes、75 samples，目标正/负 `15/60`。test 只核对 manifest 中的
+15 seeds、30 episodes、74 frames；候选 test payload 文件、builder/D6 payload read、fit
+和 weight fit 均为 0。truth identifier、future outcome 和 reward 的可用或使用计数均为 0。
+
+actor checkpoint 独立重算为 epoch 107。train 正/负召回为
+`0.966667/0.951724`，validation 为 `0.866667/0.966667`；actor 正类样本权重
+`4.833333` 和非零边权重上限 `32` 只由 train 库存推导。confidence checkpoint 独立重算
+为 epoch 66；固定 0.60 门的 train/validation 正类召回分别为
+`0.206897/0.307692`，负类特异度均为 `1.0`，Brier 分别为
+`0.186847275/0.186468779`。最小越门裕量仅 `0.000504935`，最接近门的 train
+负类仅低 `0.000029838`，结论保留薄裕量告警。
+
+development fixture 的 confidence 为 `0.602367163`，高于门限
+`0.002367163`；它固定分类为 `training_domain_smoke_only`，generalization 和 formal
+validation evidence 均为 false。v3 registry 的 8 文件树摘要仍为
+`07c770b05ffc70f190cd8b45d762d579857747e0efb12b472a2354ee5aeaa93a`；
+v4 注册常量全为 `None`，目标 registry 路径不存在。全部逻辑权限为 false，候选保持
+unregistered、shadow-only、admission closed；formal holdout 与 runtime preflight 均未完成。
+
+最终治理收紧后的 `admission_blocker_codes` 为
+`candidate_unregistered`、`formal_holdout_not_completed`、
+`runtime_preflight_not_completed`、`development_fixture_train_domain_smoke_only`、
+`confidence_positive_recall_low`、`confidence_threshold_passing_margin_too_thin` 和
+`runtime_outcome_and_benefit_unavailable`。这些 blocker 不改变开发完整性通过状态。
+
+机器可读 JSON、中文报告和输出清单位于
+`outputs/d4_v4_candidate_independent_audit_20260729/`，状态为
+`pass_development_integrity_only_admission_closed`。篡改普通候选 artifact，以及修改权限
+声明后重算候选自有 manifest content hash，两类负例都由外部锚失败关闭。专项测试
+`3 passed, 1 warning in 4.97s`；2026-07-29 D6 全量回归为
+`1205 passed, 1 warning in 112.59s`。本次没有运行正式 holdout、preflight 或候选登记，
+也没有改变任何权限。
+
+最终审计时间为 `2026-07-29T23:15:40Z`。JSON content/file SHA-256 分别为
+`3a4ed311c55e6419d3db1b3ba830f0ea6ce22c638eb363aa03c3f4510fdcd7c2` /
+`e225a1a16ae2b1988ce5ea34b3cceaa30d7c829004663368ecc6514de3eb3887`；
+中文 Markdown 和 `SHA256SUMS` 文件 SHA-256 分别为
+`16a2e5a4efacd4b58b22b7b9dd9d0d632cedb3e7b8d6cc6d55a0dce954870fe0` /
+`6ee4e7822800401b531acc93f03f105fc1ff02a77c1842fe1d36546bc9500af6`。
+
 ## 2026-07-29 D4 readiness-v3 v2b 隔离审计
 
 D6 使用两个只读入口审计最终 v2b：紧凑 10-seed 配对审计和 seed 2007 完整 episode

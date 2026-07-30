@@ -1,5 +1,30 @@
 # D6 M 对 N 协同拦截评估框架审查
 
+## 2026-07-29 20 对 20 D4 v4 未注册候选审计
+
+D6 已对 20 目标/20 资源、8 区域 composite 数据构建的 D4 v4 候选完成独立只读开发审计。
+候选固定于 clean commit `fd857457bb27a4a709a7c4937e22ebe1cbd7f848`，180 文件和
+179 个 artifact SHA 全部闭合。train 为 70 seeds、140 episodes、350 samples，
+validation 为 15 seeds、30 episodes、75 samples；test 仅保留 manifest 中
+15 seeds、30 episodes、74 frames 的库存，payload read/fit/weight fit 均为 0。
+
+actor train/validation 正类召回为 `0.966667/0.866667`，负类召回为
+`0.951724/0.966667`。固定 0.60 confidence 门的正类召回为
+`0.206897/0.307692`，特异度均为 `1.0`，Brier 为
+`0.186847275/0.186468779`；门限薄裕量告警保持。development fixture 只属于
+`training_domain_smoke_only`，没有独立 M 对 N 泛化或物理收益证据。
+
+v3 registry 8 文件树未变，v4 未注册，全部权限 false。formal holdout、runtime preflight、
+运行采用、物理窗口和正式 M 对 N 非退化证据均未由本次审计建立。最终状态保持
+development integrity pass、admission closed 和 rule fallback required。
+
+最终 JSON 还显式记录 TRAIN-domain fixture、低 confidence 正类召回、薄越门裕量和 runtime
+outcome/benefit unavailable 四项治理 blocker；加上未注册、holdout 和 preflight 共七项。
+JSON content/file SHA-256 为
+`3a4ed311c55e6419d3db1b3ba830f0ea6ce22c638eb363aa03c3f4510fdcd7c2` /
+`e225a1a16ae2b1988ce5ea34b3cceaa30d7c829004663368ecc6514de3eb3887`。
+这些 blocker 不改变开发完整性通过结论。
+
 ## 2026-07-29 20 对 20 D4 v3 v2b 隔离证据
 
 20 目标/20 资源、8 区域、10-seed 紧凑批次通过 D6 完整性审计。D3 后继和开发 ACK 为

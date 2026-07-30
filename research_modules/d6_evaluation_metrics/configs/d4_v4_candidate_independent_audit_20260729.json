@@ -1,0 +1,13 @@
+{
+  "audit_id": "d4-v4-observable-calibrated-unregistered-20260729",
+  "candidate_root": "research_modules/d4_distributed_fallback/outputs/d4_v4_candidate_observable_calibrated_20260729/region_resource_a2_executable_transfer_shadow_v4",
+  "evaluated_at_utc": "2026-07-29T23:15:40Z",
+  "expected_dataset_sha256": "b31fc43f3d3cff34ee53f2b2c33ece0b06d7624e46e26a36c4aa834135e7fb8c",
+  "expected_manifest_content_sha256": "4f3e973597469d394a594bec3dd7d2c16b24e80d2e97ba45f718d9ef8397e116",
+  "expected_model_state_sha256": "33a28060f11277a549b90d2f2f365962fec057b2bfb50a70ab5a422059cb9fe5",
+  "expected_source_git_commit": "fd857457bb27a4a709a7c4937e22ebe1cbd7f848",
+  "expected_v3_registry_tree_sha256": "07c770b05ffc70f190cd8b45d762d579857747e0efb12b472a2354ee5aeaa93a",
+  "external_evidence_root": "research_modules/scalable_3d_simulation/outputs/d4_v4_external_composite_observable_20v20_8region_curriculum_seed9_20260729",
+  "profile_version": "d6.d4-v4-observable-calibrated-development-integrity.v1",
+  "schema_version": "d6.d4-v4-candidate-independent-audit-input.v1"
+}

@@ -1,5 +1,62 @@
 # D6 系统级评估指标实验报告
 
+## 2.43 D4 v4 未注册候选开发完整性审计
+
+### 结论
+
+2026-07-29，D6 对
+`region_resource_a2_executable_transfer_shadow_v4` 完成独立、只读开发完整性审计。
+固定来源为 clean commit `fd857457bb27a4a709a7c4937e22ebe1cbd7f848`；manifest
+content、model state 和 dataset SHA-256 分别为
+`4f3e973597469d394a594bec3dd7d2c16b24e80d2e97ba45f718d9ef8397e116`、
+`33a28060f11277a549b90d2f2f365962fec057b2bfb50a70ab5a422059cb9fe5` 和
+`b31fc43f3d3cff34ee53f2b2c33ece0b06d7624e46e26a36c4aa834135e7fb8c`。
+
+候选 180 文件、179 个清单 artifact、4 个 source implementation、外部 evidence、
+dataset/split 和 train/validation payload 交叉绑定均通过。train 为 70 seeds、
+140 episodes、350 samples，目标正/负 `60/290`；validation 为 15 seeds、30 episodes、
+75 samples，目标正/负 `15/60`。test 只读取 manifest 元数据
+15 seeds、30 episodes、74 frames；payload read、fit 和 weight fit 均为 0。
+truth identifier、future outcome 和 reward 使用均为 0。
+
+### 指标
+
+actor checkpoint 为 epoch 107。train 正/负召回为 `0.966667/0.951724`，validation 为
+`0.866667/0.966667`。confidence checkpoint 为 epoch 66；固定 0.60 门下：
+
+| split | 正类召回 | 负类特异度 | Brier | 最小越门裕量 |
+| --- | ---: | ---: | ---: | ---: |
+| train | 0.206897 | 1.000000 | 0.186847275 | 0.000504935 |
+| validation | 0.307692 | 1.000000 | 0.186468779 | 0.000504935 |
+
+train 中最接近门的负类仅低 `0.000029838`。因此零已观测负类越门与薄正类召回、薄门限裕量
+同时记录，`thin_margin_warning=true`。
+
+development fixture confidence 为 `0.602367163`，仅标记
+`training_domain_smoke_only`。v3 registry 8 文件树未变；v4 注册常量全空，registry 路径
+不存在。全部权限 false，formal holdout/preflight 未完成，候选保持 unregistered 和
+admission closed。报告状态为 `pass_development_integrity_only_admission_closed`，不建立
+泛化、正式收益或运行准入。
+
+最终治理增加四项等义 blocker：
+`development_fixture_train_domain_smoke_only`、`confidence_positive_recall_low`、
+`confidence_threshold_passing_margin_too_thin` 和
+`runtime_outcome_and_benefit_unavailable`；与原有未注册、holdout 未完成和 preflight
+未完成合计七项。开发完整性通过状态不变。
+
+机器可读 JSON、中文报告和清单位于
+`outputs/d4_v4_candidate_independent_audit_20260729/`。两个篡改负例均失败关闭；专项
+`3 passed, 1 warning in 4.97s`，D6 全量
+`1205 passed, 1 warning in 112.59s`。本轮没有运行正式 holdout、runtime preflight、
+候选登记或权限变更。
+
+最终审计时间为 `2026-07-29T23:15:40Z`。JSON content/file SHA-256 为
+`3a4ed311c55e6419d3db1b3ba830f0ea6ce22c638eb363aa03c3f4510fdcd7c2` /
+`e225a1a16ae2b1988ce5ea34b3cceaa30d7c829004663368ecc6514de3eb3887`；
+中文报告和 `SHA256SUMS` 文件 SHA-256 为
+`16a2e5a4efacd4b58b22b7b9dd9d0d632cedb3e7b8d6cc6d55a0dce954870fe0` /
+`6ee4e7822800401b531acc93f03f105fc1ff02a77c1842fe1d36546bc9500af6`。
+
 ## 2.42 G1 模型来源证据复算
 
 ### 结论

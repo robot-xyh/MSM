@@ -1,5 +1,60 @@
 # D6 Evaluation Metrics Plan
 
+## 2026-07-29 D4 v4 未注册候选独立审计
+
+### 已完成
+
+- [x] 增加独立只读审计模块、CLI、固定 reference 配置、机器可读 JSON、中文报告和
+  `SHA256SUMS` 输出。
+- [x] 以调用方固定的 manifest content、model state、dataset 和 clean source commit
+  作为外部锚；候选自签声明不能替换信任根。
+- [x] 枚举候选 180 文件和 4 个目录，逐项复算 179 个 artifact SHA-256，拒绝清单缺项、
+  多余文件、symlink、特殊文件、模式和摘要漂移。
+- [x] 从 commit blob 独立复核 4 个 source implementation 文件；当前只读实现与冻结
+  commit 内容一致，当前 HEAD 差异不被当作候选来源身份。
+- [x] 交叉绑定外部 evidence、source derivation、export summary、dataset、split 和
+  train/validation episode inventory。
+- [x] 只读取 train/validation payload。train 为 70 seeds、140 episodes、350 samples，
+  目标正/负 `60/290`；validation 为 15 seeds、30 episodes、75 samples，目标正/负
+  `15/60`。test manifest 为 15 seeds、30 episodes、74 frames，payload read/fit/weight
+  fit 均为 0。
+- [x] 验证 truth identifier、future outcome、reward 以及 formal holdout seed 使用均为
+  0；所有 train/validation 输入与模型参数有限。
+- [x] 从 train 库存独立复算 actor/confidence 类别权重，并重放 actor epoch 107、
+  confidence epoch 66 的 checkpoint 选择和固定 0.60 门结果。
+- [x] 记录 actor train/validation 正负召回，以及 confidence 正类召回、负类特异度、
+  Brier 和薄裕量；最小越门裕量为 `0.000504935`，train 最接近门的负类裕量为
+  `-0.000029838`。
+- [x] 将固定 development fixture 分类为 `training_domain_smoke_only`；confidence
+  `0.602367163` 不产生泛化或正式验证结论。
+- [x] 复核 v3 registry 8 文件树未变，v4 注册常量全空且 registry 路径不存在；全部权限
+  false，候选保持 unregistered、admission closed。
+- [x] 增加 artifact 字节篡改和自重算 manifest 的权限声明篡改负例，两者均失败关闭。
+- [x] 将 TRAIN-domain fixture、低 confidence 正类召回、薄越门裕量和 runtime
+  outcome/benefit unavailable 显式加入 admission blocker；开发完整性状态保持通过。
+- [x] 最终输出 JSON content/file SHA-256 为
+  `3a4ed311c55e6419d3db1b3ba830f0ea6ce22c638eb363aa03c3f4510fdcd7c2` /
+  `e225a1a16ae2b1988ce5ea34b3cceaa30d7c829004663368ecc6514de3eb3887`；
+  Markdown/`SHA256SUMS` 文件 SHA-256 为
+  `16a2e5a4efacd4b58b22b7b9dd9d0d632cedb3e7b8d6cc6d55a0dce954870fe0` /
+  `6ee4e7822800401b531acc93f03f105fc1ff02a77c1842fe1d36546bc9500af6`。
+- [x] 专项测试 `3 passed, 1 warning in 4.97s`；D6 全量
+  `1205 passed, 1 warning in 112.59s`。
+
+### 当前边界
+
+- [ ] formal holdout evidence 未完成，本轮 formal holdout seed use 为 0。
+- [ ] runtime preflight 未完成，固定 0.60 gate 未登记为运行门。
+- [ ] v4 候选未注册，正式准入保持 closed，rule fallback 保持 required。
+- [ ] development fixture、train/validation 指标和零已观测负类越门均不能建立独立泛化、
+  正式收益或生产权限。
+- [ ] confidence 正类召回和门限裕量偏薄；机器可读输出保留
+  `thin_margin_warning=true`。
+- [ ] runtime outcome 和 benefit 仍 unavailable。
+
+本轮关闭的是 D6 对固定 v4 候选的开发完整性、数据用途和指标独立复算缺口。没有执行正式
+holdout、runtime preflight、登记或权限变更。
+
 ## 2026-07-29 D4 readiness-v3 v2b 隔离证据
 
 ### 已完成

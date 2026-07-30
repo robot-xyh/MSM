@@ -1,5 +1,122 @@
 # D6 正式实验矩阵准入预检报告
 
+## D4 v4 未注册候选独立审计（2026-07-29）
+
+### 输入与结论
+
+D6 对以下固定候选执行独立、只读审计：
+
+```text
+research_modules/d4_distributed_fallback/outputs/
+  d4_v4_candidate_observable_calibrated_20260729/
+  region_resource_a2_executable_transfer_shadow_v4
+```
+
+来源外部数据为
+`d4_v4_external_composite_observable_20v20_8region_curriculum_seed9_20260729`。候选由
+clean commit `fd857457bb27a4a709a7c4937e22ebe1cbd7f848` 构建。结论状态为
+`pass_development_integrity_only_admission_closed`：候选完整性、来源绑定和开发指标重算
+通过；候选仍未注册，formal holdout 和 runtime preflight 未完成，正式准入关闭。
+
+| 固定锚 | SHA-256 |
+| --- | --- |
+| manifest content | `4f3e973597469d394a594bec3dd7d2c16b24e80d2e97ba45f718d9ef8397e116` |
+| manifest file | `2986d166ad6de231896e46f78aa2d9304c21b6d68714eaf34dfe21439220bebe` |
+| model state | `33a28060f11277a549b90d2f2f365962fec057b2bfb50a70ab5a422059cb9fe5` |
+| dataset | `b31fc43f3d3cff34ee53f2b2c33ece0b06d7624e46e26a36c4aa834135e7fb8c` |
+| split | `c212fe9b48e9908fd4d47488711724ed361429cf9df29667ac32c3e88d094619` |
+
+候选树共 180 个文件、4 个目录。除 manifest 自身外的 179 个 artifact 全部在清单中且逐项
+SHA-256 一致，没有 symlink 或特殊文件。4 个 source implementation 与 clean commit blob
+及当前只读文件一致。外部 evidence、source derivation、export summary、bundle dataset
+manifest 和候选 development manifest 逐字节交叉一致。
+
+### 数据库存与隔离
+
+| split | seeds | episodes | frames/samples | actor 正/负 | confidence 正/负 |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| train | 70 | 140 | 350 | 60/290 | 58/292 |
+| validation | 15 | 30 | 75 | 15/60 | 13/62 |
+| test manifest only | 15 | 30 | 74 | unavailable | unavailable |
+
+候选内 test payload 文件数为 0。builder test payload read、D6 audit payload read、fit 和
+weight fit 均为 0。truth identifier use、future outcome available/use、reward available
+和 formal holdout seed use 均为 0。训练数据源为两个 clean dataset，合计 200 episodes、
+499 frames；候选只选择其中 170 个 train/validation episode。
+
+### Actor 与 confidence 重算
+
+actor 只用 train 库存推导正类样本权重 `4.833333`，非零边权重按上限截断为 `32`。
+actor checkpoint 独立选择 epoch 107。结果如下：
+
+| split | 正类召回 | 负类召回/特异度 | balanced recall |
+| --- | ---: | ---: | ---: |
+| train | 58/60 = 0.966667 | 276/290 = 0.951724 | 0.959195 |
+| validation | 13/15 = 0.866667 | 58/60 = 0.966667 | 0.916667 |
+
+confidence checkpoint 独立选择 epoch 66；固定门限为 0.60。180 个历史 epoch 中有 8 个
+checkpoint 通过固定门，最长连续 7 个。开发样本结果为：
+
+| split | 正类召回 | 负类特异度 | Brier | 最小越门裕量 | 最大负类裕量 |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| train | 12/58 = 0.206897 | 292/292 = 1.000000 | 0.186847275 | 0.000504935 | -0.000029838 |
+| validation | 4/13 = 0.307692 | 62/62 = 1.000000 | 0.186468779 | 0.000504935 | -0.000602221 |
+
+固定门在已读 train/validation 上没有负类越门。正类召回较低，且门限两侧均存在薄裕量，
+所以报告固定 `thin_margin_warning=true`。这些数字是开发数据重算结果，不构成独立
+holdout 或泛化证据。
+
+### Fixture、注册和权限
+
+development fixture 的有效 confidence 为 `0.602367163`，门上裕量
+`0.002367163`，产生一个经投影的可执行 transfer。该 fixture 由 train-domain 冻结可观测
+定义选择，分类为 `training_domain_smoke_only`；generalization、formal validation 和
+production permission 均为 false。
+
+v3 registry 的 8 个文件逐项摘要不变，树摘要为
+`07c770b05ffc70f190cd8b45d762d579857747e0efb12b472a2354ee5aeaa93a`。
+v4 五个注册常量全为 null，registry 目标路径不存在。assist、authority、assignment、
+takeover、coalition commit、control、production ACK、formal evaluation、physical
+permission、actual adoption 和 benefit 等逻辑权限全部为 false。候选状态保持
+development/shadow、unregistered、rule fallback required、admission closed。
+
+### Admission blocker 与输出摘要
+
+最终 JSON 的 blocker 为：
+
+```text
+candidate_unregistered
+formal_holdout_not_completed
+runtime_preflight_not_completed
+development_fixture_train_domain_smoke_only
+confidence_positive_recall_low
+confidence_threshold_passing_margin_too_thin
+runtime_outcome_and_benefit_unavailable
+```
+
+最终审计时间为 `2026-07-29T23:15:40Z`。输出摘要如下：
+
+| 输出 | SHA-256 |
+| --- | --- |
+| JSON content | `3a4ed311c55e6419d3db1b3ba830f0ea6ce22c638eb363aa03c3f4510fdcd7c2` |
+| JSON file | `e225a1a16ae2b1988ce5ea34b3cceaa30d7c829004663368ecc6514de3eb3887` |
+| 中文 Markdown file | `16a2e5a4efacd4b58b22b7b9dd9d0d632cedb3e7b8d6cc6d55a0dce954870fe0` |
+| `SHA256SUMS` file | `6ee4e7822800401b531acc93f03f105fc1ff02a77c1842fe1d36546bc9500af6` |
+
+新增 blocker 只收紧准入治理；状态继续为
+`pass_development_integrity_only_admission_closed`。
+
+### 负例与验证
+
+测试对临时副本分别篡改普通 artifact，以及把 `assist_enabled` 改为 true 后同步重算候选
+自有 manifest content hash。前者由 artifact SHA 门拒绝，后者由 D6 固定外部 content anchor
+拒绝。专项测试为 `3 passed, 1 warning in 4.97s`；D6 全量为
+`1205 passed, 1 warning in 112.59s`。warning 是既有 Matplotlib `Axes3D` 环境提示。
+
+机器可读 JSON、中文 Markdown 和 `SHA256SUMS` 位于
+`outputs/d4_v4_candidate_independent_audit_20260729/`。本轮没有运行正式 holdout、
+runtime preflight 或候选登记，也没有改变或建议开放权限。
+
 ## D4 readiness-v3 v2b 隔离双臂审计（2026-07-29）
 
 输入为 20 目标/20 资源、2 个侦察节点、8 区域、seeds 2003-2012、3.2 秒的开发隔离批次。
