@@ -1,5 +1,31 @@
 # D3 集中式 Assignment Planner 计划
 
+## 2026-07-30 A1 来源独立评价预注册
+
+状态：`evaluator ready / evaluation not run`。
+
+1. [x] 固定 assignment-aware 开发 bundle 的 manifest、state-dict 和 tree SHA-256，
+   只允许 `source_independent_evaluation` 模式。
+2. [x] 预注册新来源 seed `20000-20099`、10 个场景规模单元、60/20/20 来源子组数量和
+   与开发 seed、正式 seed 的零重叠要求。
+3. [x] 固定正类安全换绑 `>=1` 且 `>=5%`、教师完全匹配 `>=1` 且 `>=2%`、负类
+   exact-R0 `>=99%` 的门限。运行参数不提供阈值覆盖入口。
+4. [x] 使用冻结归一化和冻结权重；禁止训练、优化器、检查点选择、归一化重拟合和选模。
+5. [x] 流式读取 `d3_learning_dataset_v2` 的 train/validation/test，统一标记为
+   `source_independent_evaluation` 子组。
+6. [x] 输出逐帧 R0、候选、有效结果、拒绝原因、OOD 分布、逐子组分母、聚合机器门、
+   中文报告和 SHA-256 清单；结果目录拒绝覆盖。
+7. [x] 补充 bundle 篡改、摘要错配、seed 重叠、权限越权、真值使用、空分母、
+   失败关闭不一致、源码篡改和重复输出负例。2026-07-30 专项 `17 passed`；D3 全量
+   `640 passed, 1 skipped`。
+8. [ ] 在 main 确认冻结来源后执行一次正式来源独立评价。不得把该步骤用于训练、选模或
+   阈值修改。
+9. [ ] 由 D6 独立复核逐帧文件、聚合口径和 `SHA256SUMS`。只有来源独立机器门通过后，
+   才讨论是否预注册正式 `1000-1019`。
+
+本阶段没有读取新来源评价目录，也没有读取正式 holdout。所有运行、辅助、分配、计划、
+控制、物理和正式准入权限保持 false。
+
 ## 2026-07-28 A1 公共 strict loader
 
 1. [x] 复核 A1 writer 的七文件原子布局、六文件 `SHA256SUMS` 和四类 JSON schema。

@@ -1,5 +1,40 @@
 # D3 Assignment Planner
 
+## 2026-07-30 A1 来源独立只读评价器
+
+D3 已为冻结的 assignment-aware A1 开发候选建立第一阶段来源独立评价工具。固定合同位于
+`configs/a1_source_independent_evaluation_contract_v1.json`，只接受
+`mode=source_independent_evaluation`。冻结 bundle 的 manifest、state-dict 和目录树
+SHA-256 分别为
+`ec9f93d668e1aa319f65fcda0d73adb0527f316a2d1880e93e88697b6468ad3d`、
+`c185823bd9a4cf5363d17854385aeb74c340c8ac384327281d224a1097eb8206` 和
+`de7b627df9782d7d2577687f30d02d4faeeaf577ecc557c2b8d91dd6e7115dd9`。
+任一摘要、权限或源码清单变化均失败关闭。
+
+合同预注册新来源种子 `20000-20099`，覆盖 5、20、50、100、200 五档规模和九类场景。
+数据原有 train、validation、test 标签只作为来源子组，统一进入一次
+source-independent evaluation；不训练、不选模、不重拟合归一化、不调整阈值。预注册门限
+为：正类安全换绑至少 `1` 帧且比例不低于 `5%`，正类教师完全匹配至少 `1` 帧且比例不低于
+`2%`，负类 exact-R0 不低于 `99%`。重复资源、硬禁边、多机需求不完整、版本违规、在线
+真值使用和所有权限必须为零；任何拒绝帧的有效矩阵和绑定必须逐项恢复 R0。
+
+评价入口按 JSONL 单遍流式读取 200 对 200 稠密帧，不把完整数据集同时驻留内存。输出为
+逐帧 JSONL/CSV、聚合 JSON、中文报告和 `SHA256SUMS`，已存在的结果目录一律拒绝覆盖。
+命令入口为：
+
+```bash
+python3 research_modules/d3_assignment_planner/simulations/run_a1_source_independent_evaluation.py \
+  --mode source_independent_evaluation \
+  --generation-root "$GENERATION_ROOT" \
+  --dataset "$GENERATION_ROOT/learning_dataset/d3_assignment" \
+  --output "$NEW_ONE_SHOT_OUTPUT"
+```
+
+2026-07-30 仅完成工具和合同测试，专项 `17 passed`；D3 全量收集 641 项，结果为
+`640 passed, 1 skipped`。跳过项是可选 OR-Tools。新来源评价没有运行，未生成评价结果；
+正式 seed `1000-1019` 仍为 `not_read_not_evaluated`。runtime、assist、assignment、
+plan、control、physical 和 formal admission 权限全部关闭。
+
 ## 2026-07-28 A1 隔离批次公共严格读取
 
 D3 已公开 `load_a1_isolated_intervention_batch(...)` 和

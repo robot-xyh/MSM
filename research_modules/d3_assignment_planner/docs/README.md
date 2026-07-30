@@ -1,5 +1,10 @@
 # D3 文档索引
 
+2026-07-30 新增 assignment-aware A1 来源独立只读评价器。算法和预注册门见
+`ALGORITHM_AND_IMPLEMENTATION.md`，软件合同试验见 `EXPERIMENT_REPORT.md`，执行状态见
+`../PLAN.md`。当前为 evaluator ready / evaluation not run；新来源和正式 holdout 均未
+读取，所有运行与正式准入权限关闭。
+
 D3 文档遵循 `research_modules/DOCUMENTATION_STANDARD.md`。推荐阅读顺序：
 
 1. `../README.md`：模块用途、运行方式和目录入口。

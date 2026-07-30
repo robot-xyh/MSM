@@ -1,10 +1,76 @@
 # D3 集中式资源-目标分配算法与实施方案
 
-> 状态基线：2026-07-26。
+> 状态基线：2026-07-30。
 >
 > 本文依据本模块当前源码、测试、`README.md`、`PLAN.md`、
 > `docs/MODULE_PRINCIPLES_CN.md` 和根目录系统汇总同步编写。本文区分默认主线、
 > 已实现辅助能力、可选离线对照和未实现能力，不把计划项写成已完成能力。
+
+## A1 来源独立只读评价
+
+### 冻结对象
+
+评价合同同时固定四类对象：
+
+1. 模型 manifest、state-dict 和 bundle tree 的 SHA-256；
+2. 数据生成 schedule、100 个新 seed、场景版本、资源数和目标数；
+3. 训练 seed、正式 holdout seed 和来源 seed 的互斥关系；
+4. 评价源码文件清单、机器门和关闭权限。
+
+运行入口不接受学习率、轮数、检查点、归一化或阈值参数。合同文件必须是 D3 模块内的版本化
+文件，bundle 必须是合同指定的冻结目录。源码或合同存在未提交修改时评价失败关闭。
+
+### 流式处理
+
+`load_a1_source_independent_manifest(...)` 先检查
+`d3_learning_dataset_v2` manifest、来源类型、seed 集合和 60/20/20 数量。
+`iter_a1_source_independent_records(...)` 随后单遍读取 JSONL，并同时完成：
+
+- 完整 frames SHA-256；
+- 规范排序和重复帧检查；
+- seed 原子切分和 split hash 复算；
+- 场景版本、目标数和资源数检查；
+- episode、帧和来源子组计数；
+- 匿名字段、有限值和真值身份隔离。
+
+迭代器只在当前帧保留稠密矩阵。评价结果是轻量字典，因此 200 对 200 输入不要求把全部
+原始帧同时驻留内存。
+
+### 单帧计算
+
+对每个输入帧 \(f\)，评价器执行：
+
+```text
+R0_f = SafeHungarian(C_rule_f)
+delta_f = FrozenPolicy(FrozenNormalize(features_f))
+C_candidate_f = C_rule_f + alpha * tanh(delta_f)
+candidate_f = SafeHungarian(C_candidate_f)
+effective_f = candidate_f, if every gate passes
+effective_f = R0_f, otherwise
+```
+
+正类由冻结连续性教师定义。正类分母是存在安全有界替代绑定的帧数；安全换绑分子是有效
+绑定不同于 R0 的正类帧数；教师完全匹配分子是有效绑定与教师替代绑定完全一致的正类帧数。
+负类分母是没有安全替代绑定的帧数，exact-R0 分子是有效绑定与 R0 完全一致的负类帧数。
+
+预注册门限为：
+
+- 正类安全换绑：至少 1 帧且不低于 5%；
+- 正类教师完全匹配：至少 1 帧且不低于 2%；
+- 负类 exact-R0：不低于 99%；
+- 重复资源、硬禁边、多机需求不完整、版本违规和规则矩阵突变：全部为 0；
+- 失败关闭矩阵与绑定 exact-R0：100%；
+- 在线真值使用、训练 seed 重叠和正式 seed 重叠：全部为 0。
+
+### 制品和权限
+
+输出目录采用临时目录写入后原子改名。已存在目录直接拒绝，避免第二次运行覆盖第一次证据。
+固定输出包括逐帧 JSONL、逐帧 CSV、聚合 JSON、中文报告和 `SHA256SUMS`。逐帧记录保留
+R0、candidate、effective、矩阵摘要、拒绝原因和来源子组；聚合报告保留每个分母及
+unavailable 原因。
+
+模型在该路径没有 runtime、assist、assignment、plan、control、physical 或
+formal-admission 权限。评价通过只允许进入下一次人工审查，不生成生产 bundle。
 
 ## 2026-07-27 提交前合同复核
 
