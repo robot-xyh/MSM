@@ -1,5 +1,76 @@
 # D6 系统级离线评估模块原理
 
+## 冻结 actor 的来源独立动作审计（2026-07-30）
+
+D4 v6 审计把标签层、actor 层和置信层分开。对同一时刻的区域快照 \(s\)，D6 从冻结规则
+策略得到基准动作 \(a_{R0}(s)\)，从冻结标签读取安全目标动作 \(a^*(s)\)，再由冻结
+actor 输出原始动作并经过确定性投影得到 \(\hat a_\theta(s)\)。三类动作都转换为同一
+可执行签名，签名包含区域节点动作和有向资源转移。
+
+规则正类定义为
+
+\[
+y_{\mathrm{rule}}(s)=
+\mathbf{1}\left[
+\operatorname{sig}(a^*(s))\ne
+\operatorname{sig}(a_{R0}(s))
+\right].
+\]
+
+规则正类精确命中要求 actor 产生可执行差异、签名与目标完全相同、通过干预不变量且没有
+投影拒绝：
+
+\[
+y_{\mathrm{exact}}(s)=
+\mathbf{1}\left[
+y_{\mathrm{rule}}(s)=1,\
+\operatorname{sig}(\hat a_\theta(s))=
+\operatorname{sig}(a^*(s)),\
+\operatorname{safe}(\hat a_\theta(s))=1
+\right].
+\]
+
+因此规则正类召回的分母是 \(\sum y_{\mathrm{rule}}\)。本轮为 42，精确命中为 0，召回
+可评价且等于 0。actor-derived positive 用于回答另一个问题：actor 是否输出了任何通过
+约束的可执行差异。其分母为 0 时，对应精确率或条件召回必须写
+`unavailable/null`。`0/42` 与 `0/unavailable` 不能合并成一个指标。
+
+有向转移误差按三类拆分。预测边与目标边方向相反时计错误方向；方向和边都不匹配时计
+错误边；边相同但资源数量不同时计错误数量。负类帧上的投影转移计虚假转移。节点动作发生
+变化但没有对应转移时，干预不变量返回 `candidate_transfer_missing`，该帧不能计为
+actor-derived positive。本轮 15 个不变量失败均属于这一边界。
+
+D6 不调用 D4 高层评价函数。冻结模型加载后，D6 独立运行图推理、动作投影、规则策略、
+可执行签名和不变量检查，形成 126 条逐帧记录。随后才读取 D4 JSONL、CSV 和 summary
+进行对账。D4 summary 被篡改时只产生 mismatch，不会改变 D6 重算值；全审计以
+`d4_summary_claim_mismatch` 失败关闭。
+
+来源独立性继续使用在线可观测图键：
+
+\[
+k(s)=\operatorname{SHA256}
+\left(
+\text{architecture},
+X_V,\ X_E,\ I_E,
+\text{shape},\ \text{dtype}
+\right).
+\]
+
+键不含 seed、episode、目标标签或真值。冻结 v4 train+validation 的 425 帧形成
+251 个唯一键，外部 126 帧形成 94 个唯一键，精确交集为 0。seed 类别同时隔离训练、
+正式留出、旧设计/评价、pilot 和本次独立评价。
+
+置信校准是后续独立阶段。v6 bundle 声明
+`runtime_confidence_gate_available=false`，candidate 声明校准尚未开始。manifest
+中的 0.60 只作为保留参数存在，不能直接解释为可执行门。D6 要求逐帧
+`confidence_gate_applied=false`、阈值判定为 `null`、admission evaluation 为 false。
+任何 gate 使用都会以 `uncalibrated_confidence_gate_forbidden` 失败关闭。
+
+完整性采用外部固定摘要和执行期前后摘要两层约束。D6 固定 source、标签导出、标签
+dataset、冻结 v4、v6 候选和 D4 评价树，并验证 D4 artifact manifest 的文件摘要与内容
+摘要。六棵输入树在全部推理和对账后再次计算；任何变化都阻止输出通过结论。审计通过
+仍不生成注册、分配、降级、接管、联盟、导引或控制权限。
+
 ## 来源独立正负分母（2026-07-29）
 
 D4 v5 外部评价将“规则层存在安全动作”和“冻结候选能正确输出该动作”分成两个计数。对一帧

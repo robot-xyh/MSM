@@ -1,5 +1,85 @@
 # D6 系统级离线评估：算法原理与实施说明
 
+## D4 v6 来源独立盲审（2026-07-30）
+
+实现入口为
+`d6_evaluation_metrics/d4_v6_source_independent_external_audit.py`，命令行为
+`scripts/run_d4_v6_source_independent_external_audit.py`，固定配置为
+`configs/d4_v6_source_independent_external_audit_m16n24_20260730.json`。实现只使用
+D4 的冻结模型加载器和领域数据结构，不调用 D4 v6 高层评价函数。
+
+### 输入与信任根
+
+配置固定 source、标签导出、标签 dataset、冻结 v4、v6 候选和 D4 评价目录的完整树摘要，
+同时固定 manifest、dataset、split、bundle、状态参数、训练审计和 D4 artifact manifest
+的文件与内容摘要。JSON 的内容摘要按删除 `content_sha256` 后的规范 JSON 重新计算；
+文件摘要按原始字节计算；目录摘要按“相对路径到文件摘要”映射计算。
+
+D4 artifact manifest 的六个 artifact 必须与实际目录精确闭合。manifest 中的每个文件
+SHA-256、summary 对 JSONL/CSV/integrity/overlap 的内容绑定，以及 JSONL 与 CSV 的
+126 行传输值都要一致。CSV 与 JSONL 的字段顺序可以不同，但字段集合和每个字段值必须
+完全相同。
+
+审计开始前记录六棵输入树摘要，完成模型推理、可观测键计算和全部 D4 对账后再次计算。
+任何输入变化都抛出 `audit_input_mutated_during_execution`。成功结果记录
+`input_mutation_count=0`。
+
+### 逐帧重建
+
+每帧按以下顺序处理：
+
+1. 从标签 dataset 读取区域快照和安全目标动作；
+2. 运行同快照确定性 R0 规则策略；
+3. 从 v6 原始参数加载图 actor 并运行一次冻结推理；
+4. 用冻结投影器限制资源转移和节点动作；
+5. 将目标、R0、actor 三类动作转换为可执行签名；
+6. 核验目标动作自身满足干预不变量；
+7. 计算 actor 可执行差异、投影拒绝和干预不变量；
+8. 拆分正确有向边、错误方向、错误边、错误数量和负类虚假转移；
+9. 计算只含在线图张量的 observable key；
+10. 写出置信门 unavailable、未应用、未准入和规则回退字段。
+
+规则正类精确动作召回为
+
+\[
+\mathrm{Recall}_{\mathrm{rule+}}=
+\frac{
+\sum_i \mathbf{1}
+[\operatorname{sig}(\hat a_i)=\operatorname{sig}(a_i^*)
+\land \operatorname{safe}(\hat a_i)]
+}{
+\sum_i \mathbf{1}
+[\operatorname{sig}(a_i^*)\ne\operatorname{sig}(a_{R0,i})]
+}.
+\]
+
+本轮分子为 0，分母为 42，结果为 0。actor-derived positive 的条件比率采用 actor 实际
+产生可执行安全差异的帧数作为分母；该分母为 0，因此值为 `null`、availability 为
+`unavailable`。输出同时保留 numerator 和 denominator，防止报告层误填 0。
+
+### 对账
+
+D6 先完成独立重算，再读取 D4 记录。每条记录按 split、episode 和 frame 定位，并比较
+全部字段。D6 同时从 D4 JSONL 自己汇总 split 和 aggregate 指标，再与冻结模型重算比较。
+最后才比较 D4 summary。summary 只能通过或产生 mismatch，不能反向写入重算指标。
+
+当前 D6 重算 JSONL 与 D4 JSONL 文件 SHA-256 均为
+`771826bff66d3ba601d0ffecc95f7ab9faf416826898319de7b9f1669020c7c5`。
+train/validation/test 的规则正类为 `24/9/9`，raw/projected transfer 均为 0，精确正
+动作均为 0，负类精确 R0 为 `61/9/7`，不变量失败为 `6/6/3`。
+
+### 置信与权限
+
+审计器要求 bundle 没有 runtime confidence gate，candidate 的校准状态为
+`not_started_actor_must_freeze_first`，D4 integrity、summary 和全部逐帧记录的 gate
+应用数为 0。manifest 保留值 0.60 不参与任何判断。候选权限 map 必须全部为 false，
+生命周期保持 development、shadow-only、unregistered、admission closed 和 rule
+fallback required。
+
+输出包含完整 JSON、LF split CSV、逐帧 JSONL、中文报告和 `SHA256SUMS`。专项测试覆盖
+summary 篡改、固定哈希不一致、零 actor-derived 分母、test 正类分母、无校准器 gate
+以及 seed/truth 污染。当前专项为 `8 passed`，全量 D6 为 `1223 passed`。
+
 ## D4 v5 来源独立外部评价（2026-07-29）
 
 实现入口为

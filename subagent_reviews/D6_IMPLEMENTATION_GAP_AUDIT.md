@@ -1,5 +1,50 @@
 # D6 实现差距审计
 
+## 2026-07-30 D4 v6 来源独立盲审
+
+### 已关闭的 D6-owned 子项
+
+1. D6 已建立 v6 独立审计器、CLI、固定哈希配置、完整 JSON、LF split CSV、逐帧
+   JSONL、中文报告和 8 项专项测试。
+2. source、标签导出、标签 dataset、冻结 v4、v6 候选和 D4 评价树均使用调用方固定
+   摘要。六棵树在审计前后保持一致，`input_mutation_count=0`。
+3. D4 artifact manifest 的文件 SHA-256 和内容 SHA-256 已独立重算，六个 artifact
+   与目录闭合；JSONL 与 CSV 的 126 行字段值一致。
+4. D6 不采用 D4 summary 指标。从冻结模型、同快照 R0、标签动作、确定性投影和干预
+   不变量重建 126 条记录，再与 D4 JSONL、CSV 和 summary 对账。
+5. train/validation/test 的样本为 `89/20/17`，规则正类为 `24/9/9`，负类为
+   `65/11/8`。raw/projected transfer 均为 0，精确正动作均为 0，负类精确 R0 为
+   `61/9/7`，约束失败为 `6/6/3`。
+6. 规则正类精确动作召回按 `0/42` 记录为可用的 0。actor-derived positive 分母为 0，
+   对应比率按 `unavailable/null` 记录，没有以 0 回填。
+7. 冻结 v4 425 帧/251 个唯一在线可观测键与外部 126 帧/94 个唯一键精确重合为 0。
+   key 不含 seed、episode、目标标签或 truth。
+8. source commit
+   `ed9e086ea8cf5c2138035f710cf4deb3e4a2801e`、exporter commit
+   `9bdbe31dee34907525eabc9cf278e0d11f7dd88a`、dataset/split 和候选 bundle 绑定通过。
+   五类 seed 两两隔离；在线 truth、旧评价 `3008-3039` 和正式 holdout
+   `1000-1019` 读取均为 0。
+9. v6 无置信校准器。D6 已拒绝使用 manifest 保留的 0.60 值执行 gate，并要求全部
+   gate/admission 字段为 false/null。
+10. summary 篡改、固定哈希不一致、零分母、test 正类计数、无校准器 gate 以及
+    seed/truth 污染负例均已覆盖。专项 `8 passed`，全量 D6 `1223 passed`。
+
+### 仍开放的 P1
+
+1. **v6 actor 转移能力未形成。** 42 个来源独立规则正类全部未命中，raw/projected
+   transfer 为 0。当前 actor 不得冻结，不得进入置信校准。
+2. **新版本与新数据仍缺失。** D4 需另立候选版本，并增加安全 transfer 正动作、困难
+   负类、反向边和八区域拓扑覆盖。本轮 `4016-4079` 已用于评价，不能复用为新候选的
+   独立评价数据。
+3. **置信校准顺序未满足。** 只有新 actor 冻结且在全新未见开发数据上形成非零、充分的
+   精确正动作命中后，才能构建只使用 train split 的独立校准器。
+4. **正式与运行证据继续关闭。** 正类证据充分前不读取 formal holdout，不运行 runtime
+   preflight、D3/D7 权限、AirSim 或物理收益测试。
+
+当前无新增 D6-owned P0。D6 的 v6 制品、逐帧重算、D4 对账、seed/truth 和无校准器
+边界已闭合。开放项属于 D4 actor 学习和后续跨模块准入门。候选保持 unregistered、
+admission closed、rule fallback required，所有执行权限为 false。
+
 ## 2026-07-29 D4 v5 来源独立外部评价
 
 ### 已关闭的 D6 子项

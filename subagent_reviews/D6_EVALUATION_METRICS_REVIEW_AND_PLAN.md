@@ -1,5 +1,41 @@
 # D6 系统评估指标综述及子方案
 
+## 2026-07-30 D4 v6 来源独立盲审评审
+
+评审接受 D6 的独立重算和失败关闭边界。D6 固定 source、标签、冻结 v4、v6 候选和
+D4 评价制品，不采用 D4 summary 作为指标输入。冻结模型重算的 126 条 JSONL 与 D4
+JSONL 文件 SHA-256 完全相同，JSONL/CSV 传输值、split 指标和 aggregate 指标均无
+不一致。
+
+评审接受以下数据：
+
+1. M16N24、8 区域、64 episode、126 帧，seed `4016-4079`；
+2. train/validation/test 的规则正/负为 `24/65`、`9/11`、`9/8`；
+3. raw/projected transfer 均为 0，精确正动作命中为 0；
+4. 负类精确 R0 为 `61/65`、`9/11`、`7/8`；
+5. invariant failure 为 `6/6/3`，合计 15；
+6. 错误方向、错误数量、错误边、虚假转移和投影拒绝均为 0；
+7. 冻结 v4 的 251 个唯一可观测键与外部 94 个键精确重合为 0；
+8. source、标签导出、标签 dataset、冻结 v4、v6 候选和 D4 评价树前后未变化。
+
+评审要求保持两个分母口径。规则正类精确动作召回有 42 个分母，结果是 `0/42=0`。
+actor-derived positive 分母为 0，对应比率是 `unavailable/null`。不得把两者合并，也
+不得把 unavailable 填 0。
+
+v6 没有置信校准器。manifest 中的 0.60 不是可执行 gate，D6 已确认置信门应用、阈值
+判定和 admission evaluation 均为 0/false/null。评审不接受“可继续校准”“可进入正式
+holdout”或“负类安全性已通过”的表述。负类精确 R0 为 `77/84`，且 42 个正动作全部
+未命中，当前 actor 不能冻结。
+
+下一步由 D4 另立版本，使用新训练数据修复 transfer 激活能力。新候选必须冻结后再用
+全新未见开发数据评价；`4016-4079` 已读，不得复用。只有来源独立精确正动作分母和命中
+数充分，才可建立 train-only 置信校准器。此前保持 unregistered、admission closed、
+rule fallback required，D3、D7、接管、联盟和控制权限全部关闭。
+
+专项测试为 `8 passed, 1 warning in 5.20s`，D6 全量为
+`1223 passed, 1 warning in 139.78s`。唯一 warning 是既有 Matplotlib `Axes3D`
+环境提示，不影响哈希、Torch 推理或 JSON/CSV 对账。
+
 ## 2026-07-29 D4 v5 来源独立外部评价评审
 
 评审接受 D6 的只读外部评价实现。输入固定为

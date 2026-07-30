@@ -1,5 +1,53 @@
 # D6 Evaluation Metrics Plan
 
+## 2026-07-30 D4 v6 来源独立盲审
+
+### 已完成
+
+- [x] 固定 M16N24、8 区域、64 episode、126 帧、seed `4016-4079` 的 source、
+  标签导出、标签 dataset、冻结 v4、v6 候选和 D4 评价制品路径及 50 项摘要。
+- [x] 独立核验 source commit
+  `ed9e086ea8cf5c2138035f710cf4deb3e4a2801e`、exporter commit
+  `9bdbe31dee34907525eabc9cf278e0d11f7dd88a`、dataset/split 和候选 bundle 绑定。
+- [x] 核验训练 `0-99`、formal holdout `1000-1019`、旧设计/评价 `3000-3039`、
+  pilot `4000-4015`、独立评价 `4016-4079` 两两无交集；在线 truth、旧评价和正式
+  holdout 读取均为 0。
+- [x] 审计前后重算 source、labeled export、labeled dataset、冻结 v4、v6 候选和
+  D4 评价树摘要。六项一致，`input_mutation_count=0`。
+- [x] 校验 D4 artifact manifest 的文件 SHA-256 与内容 SHA-256，逐项复核其六个
+  artifact；D4 JSONL 与 CSV 的字段集合和 126 行值完全一致。
+- [x] 不调用 D4 高层评价器，从冻结 v6 模型、确定性投影器、同快照 R0 和标签动作重建
+  126 条逐帧记录。重算 JSONL 与 D4 JSONL 文件摘要完全相同。
+- [x] 独立重算 train/validation/test 正类 `24/9/9`、负类 `65/11/8`、raw/projected
+  transfer 全 0、精确正动作全 0、负类精确 R0 `61/9/7`、约束失败 `6/6/3`。
+- [x] 将规则正类召回记录为可用的 `0/42`，将 actor-derived positive 分母记录为
+  `0/unavailable/null`，两者不混用。
+- [x] 重算冻结 v4 425 帧/251 个唯一可观测键、外部 126 帧/94 个唯一键，exact overlap
+  为 0；键不含 seed、episode、目标标签或 truth。
+- [x] 明确 v6 无置信校准器，禁止使用 manifest 中保留的 0.60 值执行 gate；置信门、
+  admission、runtime preflight、D3、D7 和控制权限全部关闭。
+- [x] 生成完整 JSON、LF split CSV、逐帧 JSONL、中文报告和 `SHA256SUMS`；跟踪固定
+  config 和紧凑中文报告。
+- [x] 专项测试 `8 passed, 1 warning in 5.20s`，覆盖 summary 篡改、哈希突变、
+  unavailable 分母、test 正类独立计数、无校准器 gate 拒绝和 seed/truth 污染拒绝。
+- [x] D6 全量回归 `1223 passed, 1 warning in 139.78s`；唯一 warning 是既有
+  Matplotlib `Axes3D` 环境提示。
+
+### 当前边界
+
+- [ ] v6 在 42 个来源独立规则正类上精确命中为 0，当前 actor 不得冻结，不得继续进入
+  置信校准。
+- [ ] D4 需要另立候选版本，提高安全 transfer 正动作和困难负类覆盖；本轮
+  `4016-4079` 不得复用为下一候选的独立评价数据。
+- [ ] 新 actor 冻结后，先用全新未见 development 数据取得非零且充分的精确正动作命中，
+  再建立只使用 train split 的独立置信校准器。
+- [ ] 正类证据充分前不读取 formal holdout，不运行 runtime preflight、D3/D7 权限或
+  AirSim/物理收益测试。
+
+本轮关闭 D6 对 v6 冻结制品、逐帧动作、D4 artifact manifest、summary 独立对账、
+seed/truth 边界和无校准器 gate 的审计实现缺口。actor 转移学习和来源独立正类泛化仍是
+D4-owned P1；D6 继续保持只读和失败关闭。
+
 ## 2026-07-29 D4 v5 来源独立外部评价审计
 
 ### 已完成

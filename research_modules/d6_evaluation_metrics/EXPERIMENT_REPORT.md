@@ -1,5 +1,34 @@
 # D6 系统级评估指标实验报告
 
+## 2.44 D4 v6 来源独立盲审
+
+### 结论
+
+2026-07-30，D6 对冻结的 D4 v6 区域资源 actor 完成来源独立盲审。评价输入为
+M16N24、8 区域、64 episode、126 帧，seed 为 `4016-4079`。D6 从冻结模型重新计算
+逐帧动作，D4 summary 只用于对账。
+
+规则正类为 42 帧，精确正动作命中为 0，召回为 `0/42`。actor-derived positive 分母为
+0，对应比率保持 `unavailable/null`。负类精确保持 R0 为 `77/84`。原始和投影转移均为
+0；错误方向、错误数量、错误边、虚假转移和投影拒绝均为 0；15 帧因节点动作变化但缺少
+对应转移而未通过干预不变量。
+
+冻结 v4 train+validation 的 251 个唯一在线可观测键与外部 94 个键精确重合为 0。
+训练、正式留出、旧设计与评价、pilot 和本次独立评价 seed 两两无交集。在线 truth、
+旧评价 `3008-3039` 和正式留出 `1000-1019` 读取均为 0。
+
+D6 重算的 126 条 JSONL 与 D4 JSONL 文件 SHA-256 完全相同：
+`771826bff66d3ba601d0ffecc95f7ab9faf416826898319de7b9f1669020c7c5`。
+source、标签导出、标签 dataset、冻结 v4、v6 候选和 D4 评价树在审计前后未变化。
+
+v6 没有置信校准器，manifest 中的 0.60 未应用。候选不能冻结或进入置信校准，全部样本
+继续规则回退。candidate unregistered、admission closed，D3、D7、分配、降级、接管、
+联盟和控制权限均为 false。
+
+专项测试为 `8 passed, 1 warning in 5.20s`，D6 全量为
+`1223 passed, 1 warning in 139.78s`。完整报告见
+`docs/D4_V6_SOURCE_INDEPENDENT_EXTERNAL_AUDIT_CN.md`。
+
 ## 2.43 D4 v4 未注册候选开发完整性审计
 
 ### 结论

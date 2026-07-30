@@ -1,5 +1,58 @@
 # D6 Evaluation Metrics
 
+## 2026-07-30 D4 v6 来源独立外部评价盲审
+
+D6 新增
+`d4_v6_source_independent_external_audit.py`、固定哈希配置、命令行入口和 8 项专项
+测试。审计器直接读取冻结标签数据、v6 bundle/manifest、D4 JSONL/CSV 和完整性制品；
+不调用 D4 高层评价函数，也不把 D4 summary 当作指标来源。D6 从冻结模型重新推理
+M16N24、8 区域、64 episode、126 帧，seed 为 `4016-4079`。
+
+审计固定 source clean commit
+`ed9e086ea8cf5c2138035f710cf4deb3e4a2801e` 和 exporter clean commit
+`9bdbe31dee34907525eabc9cf278e0d11f7dd88a`。训练 `0-99`、正式 holdout
+`1000-1019`、旧设计与评价 `3000-3039`、pilot `4000-4015` 和本次独立评价
+`4016-4079` 两两无交集。source、labeled export、labeled dataset、冻结 v4、v6
+候选和 D4 评价树在审计前后摘要一致，`input_mutation_count=0`。在线 truth、旧评价和
+正式 holdout 读取均为 0。
+
+独立重算结果为：
+
+| split | 样本 | 规则正/负 | raw/projected transfer | 精确正动作 | 负类精确 R0 | invariant failure |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: |
+| train | 89 | 24/65 | 0/0 | 0 | 61 | 6 |
+| validation | 20 | 9/11 | 0/0 | 0 | 9 | 6 |
+| test | 17 | 9/8 | 0/0 | 0 | 7 | 3 |
+
+规则正类精确动作召回为 `0/42`，属于分母可用的 0。actor-derived positive 分母为 0，
+对应比率保持 `unavailable/null`，不得填 0。负类精确保持 R0 为 `77/84=0.916667`。
+错误方向、错误数量、错误边、虚假转移和投影拒绝均为 0。15 帧节点动作差异因缺少对应
+转移而未通过干预不变量。
+
+冻结 v4 train+validation 的 425 帧形成 251 个唯一在线可观测键，外部 126 帧形成
+94 个，精确重合为 0。键不含 seed、episode、目标标签或 truth。D6 重算的 126 条 JSONL
+与 D4 JSONL 文件 SHA-256 完全相同，均为
+`771826bff66d3ba601d0ffecc95f7ab9faf416826898319de7b9f1669020c7c5`；
+D4 summary、JSONL、CSV 与 D6 重算不一致时均失败关闭。
+
+v6 没有置信校准器，manifest 中的 0.60 未被应用。candidate unregistered、
+admission closed、rule fallback required；置信校准、正式 holdout、runtime preflight、
+D3、D7、接管、联盟和控制权限全部关闭。当前候选不能继续进入置信校准，下一门是另立
+actor 版本并在全新未见数据上取得非零且充分的精确正动作命中。
+
+完整输出位于
+`outputs/d4_v6_source_independent_external_audit_m16n24_20260730/`，跟踪版报告为
+`docs/D4_V6_SOURCE_INDEPENDENT_EXTERNAL_AUDIT_CN.md`。JSON content/file、split CSV、
+逐帧 JSONL、中文报告和 `SHA256SUMS` 文件 SHA-256 分别为
+`771ed844ab3364fde4ed25217ffd45b7fe04f300ffb8fe4bd2df5ec99d1f25e1`、
+`d7c611d2cd7071d98663b62da451ebeecdeb4d327bcbe2bff95277d8041d39dc`、
+`db1b3973e6ff50681caff20695649064f6a10345ffc68ad5e28ebf651405a379`、
+`771826bff66d3ba601d0ffecc95f7ab9faf416826898319de7b9f1669020c7c5`、
+`b123db5c02dd8d196cefab138d9afb67968f915fa6ec05544c97708e984134b7` 和
+`aa58c178cf947eb3957a54ba43fa6dc4f2ac9991fd03907b7867a3064e94369c`。
+专项测试为 `8 passed, 1 warning in 5.20s`，D6 全量为
+`1223 passed, 1 warning in 139.78s`。warning 是既有 Matplotlib `Axes3D` 环境提示。
+
 ## 2026-07-29 D4 v5 来源独立外部评价
 
 D6 新增只读审计入口

@@ -1,5 +1,65 @@
 # D6 正式实验矩阵准入预检报告
 
+## D4 v6 来源独立盲审（2026-07-30）
+
+### 结论
+
+D6 对冻结候选 `region_resource_a2_edge_transfer_shadow_v6` 完成只读盲审。输入为
+M16N24、8 区域、64 episode、126 帧，seed 为 `4016-4079`。D6 从冻结模型和标签
+dataset 重建全部逐帧动作，不采用 D4 summary 指标。
+
+规则正类精确动作召回为 `0/42`。actor-derived positive 分母为 0，对应比率为
+`unavailable/null`。负类精确保持 R0 为 `77/84=0.916667`。该结果不支持 actor 冻结或
+置信校准，候选继续 unregistered、admission closed、rule fallback required。
+
+### 指标
+
+| split | 样本 | 规则正/负 | raw/projected transfer | 精确正动作 | 负类精确 R0 | 约束失败 |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: |
+| train | 89 | 24/65 | 0/0 | 0 | 61 | 6 |
+| validation | 20 | 9/11 | 0/0 | 0 | 9 | 6 |
+| test | 17 | 9/8 | 0/0 | 0 | 7 | 3 |
+
+错误方向、错误数量、错误边、虚假转移和投影拒绝均为 0。15 帧出现节点动作差异但缺少
+对应 transfer，干预不变量判为失败。126 帧均保持规则回退。
+
+### 数据治理
+
+source clean commit 为
+`ed9e086ea8cf5c2138035f710cf4deb3e4a2801e`，exporter clean commit 为
+`9bdbe31dee34907525eabc9cf278e0d11f7dd88a`。训练、正式 holdout、旧设计/评价、pilot
+和本次独立评价 seed 两两无交集。正式 holdout `1000-1019`、旧评价 `3008-3039`、
+在线 truth、模型拟合、检查点更新、阈值调整和置信门应用数均为 0。
+
+冻结 v4 train+validation 的 425 帧形成 251 个唯一在线可观测键，外部 126 帧形成
+94 个，精确重合为 0。可观测键不含 seed、episode、目标标签或 truth。
+
+### 完整性
+
+D6 固定并复核 source、标签导出、标签 dataset、冻结 v4、v6 候选和 D4 评价树。
+审计前后六棵树摘要相同，`input_mutation_count=0`。D4 artifact manifest 文件与内容
+SHA-256 为
+`1b85e8667e211bf4f01264bd7c7eac4dbaeee20f1002a446f7462b52129fb7fc` /
+`030ee163db60b8257c919af56b8e53e3dc36dac17e62f5d687e9f95be0e88117`。
+D6 重算 JSONL 与 D4 JSONL 的文件 SHA-256 完全相同：
+`771826bff66d3ba601d0ffecc95f7ab9faf416826898319de7b9f1669020c7c5`。
+
+输出目录为
+`outputs/d4_v6_source_independent_external_audit_m16n24_20260730/`。
+
+| 输出 | SHA-256 |
+| --- | --- |
+| JSON content | `771ed844ab3364fde4ed25217ffd45b7fe04f300ffb8fe4bd2df5ec99d1f25e1` |
+| JSON file | `d7c611d2cd7071d98663b62da451ebeecdeb4d327bcbe2bff95277d8041d39dc` |
+| split CSV | `db1b3973e6ff50681caff20695649064f6a10345ffc68ad5e28ebf651405a379` |
+| recomputed JSONL | `771826bff66d3ba601d0ffecc95f7ab9faf416826898319de7b9f1669020c7c5` |
+| 中文报告 | `b123db5c02dd8d196cefab138d9afb67968f915fa6ec05544c97708e984134b7` |
+| `SHA256SUMS` | `aa58c178cf947eb3957a54ba43fa6dc4f2ac9991fd03907b7867a3064e94369c` |
+
+专项测试为 `8 passed, 1 warning in 5.20s`，D6 全量为
+`1223 passed, 1 warning in 139.78s`。唯一 warning 是既有 Matplotlib `Axes3D`
+环境提示。本轮不是 AirSim、运行时或物理收益实验，不产生任何权限。
+
 ## D4 v5 来源独立外部评价（2026-07-29）
 
 ### 结论
