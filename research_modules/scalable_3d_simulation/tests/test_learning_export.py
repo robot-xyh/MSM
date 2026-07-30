@@ -14,7 +14,14 @@ from research_modules.scalable_3d_simulation.module_stack import (
     IntegratedScalableModuleStack,
     IntegratedStackConfig,
 )
+from research_modules.scalable_3d_simulation.learning_runtime import (
+    LearningRuntimeOptions,
+    resolve_learning_runtime,
+)
 from research_modules.scalable_3d_simulation.orchestrator import run_episode
+from research_modules.scalable_3d_simulation.scenarios import (
+    make_curriculum_scenario,
+)
 
 
 def _learning_config() -> ScenarioConfig:
@@ -243,3 +250,54 @@ def test_batch_export_preserves_staging_when_d3_finalizer_fails(
     assert writer._d3_staging_path.is_file()
     assert writer._episode_index_path.is_file()
     assert not (writer.root / "episodes.jsonl").exists()
+
+
+@pytest.mark.parametrize("scenario", ("center_failure", "secondary_failure"))
+def test_batch_export_keeps_fault_fenced_d4_advice_out_of_teacher_targets(
+    tmp_path,
+    scenario,
+) -> None:
+    config = make_curriculum_scenario(
+        scenario,
+        scale=5,
+        seed=29999,
+        duration_s=3.0,
+    )
+    resolved = resolve_learning_runtime(
+        config,
+        LearningRuntimeOptions(),
+        stack_config=IntegratedStackConfig(capture_learning_artifacts=True),
+    )
+    result = run_episode(
+        resolved.config,
+        module_stack=resolved.stack,
+    )
+    writer = BatchLearningArtifactWriter(tmp_path / scenario)
+
+    row = writer.stage_episode(
+        config=result.config,
+        manifest=replace(result.manifest, repository_dirty=False),
+        artifacts=resolved.stack.learning_artifacts(),
+        offline_truth_labels=result.offline_truth_labels,
+        online_messages=result.online_messages,
+    )
+
+    assert row["d4_captured_frame_count"] >= 2
+    assert row["d4_target_available_count"] >= 1
+    assert row["d4_target_unavailable_count"] >= 1
+    assert row["d4_target_unavailable_reason_counts"][
+        "rule_target_projection_rejected"
+    ] >= 1
+    frame_rows = []
+    for path in writer._d4_staging_root.glob("*.jsonl"):
+        frame_rows.extend(
+            json.loads(line)
+            for line in path.read_text(encoding="utf-8").splitlines()
+            if '"record_type":"frame"' in line
+        )
+    assert any(
+        item["frame"]["target"]["availability"] == "unavailable"
+        and item["frame"]["target"]["unavailable_reason"]
+        == "rule_target_projection_rejected"
+        for item in frame_rows
+    )

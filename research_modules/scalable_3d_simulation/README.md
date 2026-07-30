@@ -1,5 +1,19 @@
 # Scalable 3D Simulation
 
+## D3 来源独立数据故障围栏导出修复（2026-07-30）
+
+D3 A1 来源独立数据生成首次运行完成 60/100 个 episode，进入
+`center_failure` 后失败关闭。故障 episode 中，D4 规则建议明确携带
+`projection_rejections` 和 `formal_d4_execution_fenced`，但批量学习导出器仍将该
+建议标成可用教师目标，随后被 D4 数据合同拒绝。已完成的 60 个 episode 保留为失败
+诊断，不与后续完整数据集拼接。
+
+main-owned 导出器现将带投影或发布拒绝的 D4 建议记录为目标不可用，并保留拒绝原因
+计数。D4 投影、安全围栏和权限合同没有放宽，故障建议也不会进入 D4 教师标签。中心
+失效和二级失效专项回归均已通过。下一步从包含本修复的 clean commit 重新生成完整
+100-episode D3 来源独立数据；在生成和评价完成前，A1 正式 holdout 与所有运行权限
+继续关闭。
+
 ## D4 v7 来源独立评价结论（2026-07-30）
 
 D4 v7 采用“确定性 R0 节点动作 + 学习转移残差”。owner、plan、version、epoch、

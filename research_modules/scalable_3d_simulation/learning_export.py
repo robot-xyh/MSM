@@ -203,6 +203,15 @@ class BatchLearningArtifactWriter:
             "d3_exported_frame_count": len(records),
             "d3_unavailable_reason_counts": dict(sorted(unavailable.items())),
             "d4_captured_frame_count": int(d4_summary["captured_frame_count"]),
+            "d4_target_available_count": int(
+                d4_summary["target_available_count"]
+            ),
+            "d4_target_unavailable_count": int(
+                d4_summary["target_unavailable_count"]
+            ),
+            "d4_target_unavailable_reason_counts": dict(
+                d4_summary["target_unavailable_reason_counts"]
+            ),
             "d5_staged_frame_count": int(d5_summary["staged_frame_count"]),
             "d5_active_vision_staged_frame_count": int(
                 d5_active_summary["staged_frame_count"]
@@ -549,6 +558,7 @@ def _stage_d4_learning_episode(
             "captured_frame_count": 0,
             "target_available_count": 0,
             "target_unavailable_count": 0,
+            "target_unavailable_reason_counts": {},
             "reward_available_count": 0,
             "reward_unavailable_count": 0,
         }
@@ -574,6 +584,7 @@ def _stage_d4_learning_episode(
     )
     records = []
     target_available_count = 0
+    target_unavailable_reasons: Counter[str] = Counter()
     for frame in sorted(frames, key=lambda item: int(item.frame_index)):
         advisory_result = frame.recommendation
         recommendation = (
@@ -581,21 +592,25 @@ def _stage_d4_learning_episode(
             if advisory_result is None
             else getattr(advisory_result, "recommendation", None)
         )
-        if (
-            recommendation is not None
-            and recommendation.source == RecommendationSource.RULE
-        ):
+        advisory_contract = (
+            None
+            if advisory_result is None
+            else getattr(advisory_result, "advisory_contract", None)
+        )
+        unavailable_reason = _d4_rule_target_unavailable_reason(
+            recommendation=recommendation,
+            advisory_contract=advisory_contract,
+            rule_source=RecommendationSource.RULE,
+        )
+        if unavailable_reason is None:
             target = RegionLearningTarget.available(
                 RegionLearningTargetKind.RULE,
                 recommendation,
             )
             target_available_count += 1
         else:
-            target = RegionLearningTarget.unavailable(
-                "rule_target_not_emitted"
-                if recommendation is None
-                else "non_rule_target_not_admitted"
-            )
+            target = RegionLearningTarget.unavailable(unavailable_reason)
+            target_unavailable_reasons[unavailable_reason] += 1
         records.append(
             RegionLearningFrame(
                 frame_index=int(frame.frame_index),
@@ -614,9 +629,38 @@ def _stage_d4_learning_episode(
         "captured_frame_count": frame_count,
         "target_available_count": target_available_count,
         "target_unavailable_count": frame_count - target_available_count,
+        "target_unavailable_reason_counts": dict(
+            sorted(target_unavailable_reasons.items())
+        ),
         "reward_available_count": 0,
         "reward_unavailable_count": frame_count,
     }
+
+
+def _d4_rule_target_unavailable_reason(
+    *,
+    recommendation: Any | None,
+    advisory_contract: Any | None,
+    rule_source: Any,
+) -> str | None:
+    """Keep fault-fenced D4 advice as evidence, not as a teacher target."""
+
+    if recommendation is None:
+        return "rule_target_not_emitted"
+    if getattr(recommendation, "source", None) != rule_source:
+        return "non_rule_target_not_admitted"
+    if not bool(getattr(recommendation, "projected", False)):
+        return "rule_target_not_projected"
+    if tuple(getattr(recommendation, "projection_rejections", ())):
+        return "rule_target_projection_rejected"
+    if advisory_contract is not None:
+        if not bool(getattr(advisory_contract, "projected", False)):
+            return "rule_target_advisory_not_projected"
+        if tuple(getattr(advisory_contract, "projection_rejections", ())):
+            return "rule_target_advisory_projection_rejected"
+        if tuple(getattr(advisory_contract, "publication_rejections", ())):
+            return "rule_target_publication_rejected"
+    return None
 
 
 def _write_d5_frames(
