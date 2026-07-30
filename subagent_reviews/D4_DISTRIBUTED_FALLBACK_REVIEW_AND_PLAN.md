@@ -1,5 +1,36 @@
 # D4 分布式协同与降级接管综述及子方案
 
+## 2026-07-30 v6 来源独立外部评价评审
+
+D4 接受本次结果为 v6 的来源独立、只读开发评价，不接受其作为模型准入或正式
+holdout。候选 manifest、训练审计、模型参数和状态文件内容固定为
+`f40064e7...66a83f`、`ebc1334d...4bee9a`、`c09d1719...ba9e6` 和
+`e92ea3aa...b6ea8`。评价前后候选树摘要均为 `8c9d0179...1665e7`。
+
+外部数据来自 clean commit `ed9e086e...2801e`，由 clean exporter commit
+`9bdbe31d...d88a` 导出。数据包含 M16N24、8 区域、seed 4016-4079、64 个 episode
+和 126 帧。train/validation/test 为 89/20/17 帧，规则正类为 24/9/9。三个划分均未
+用于 v6 训练、checkpoint 选择或阈值拟合。
+
+冻结 v4 TRAIN+VALIDATION 的 251 个唯一在线可观测键与外部 94 个唯一键精确交集为 0。
+外部输入不是 v6 训练数据的重命名或重新切分。在线键只绑定图张量，不绑定 seed、
+episode、目标标签或真值。
+
+评价结果显示 v6 在三个 split 上均未输出原始转移。正确有向边和投影后 exact 正动作
+均为 0；负类 exact R0 为 61/65、9/11、7/8。不变量失败为 6/6/3，主要由无转移条件下
+节点二值动作偏离 R0 引起。错误方向、错误数量、虚假转移和投影拒绝均为 0，这些零值
+不能抵消未激活任何转移边的事实。
+
+actor-derived 正类要求投影后存在相对 R0 的可执行差异、通过不变量且无投影拒绝。
+当前三划分分母均为 0，对应比率记为 unavailable。v6 没有置信校准器，未校准
+`confidence_head` 未用于固定 0.60 门。
+
+评审决定保持 v6 unregistered、development/shadow only、admission closed 和
+rule fallback required。全部 assist、assignment、degradation、takeover、
+coalition、control、physical、D3 和 D7 权限继续为 false。候选和输入突变均为 0，
+旧评价 seed 3008-3039 和正式 holdout seed 1000-1019 均未读取。后续若继续研究，应
+另立训练候选；本次外部结果不得用于修改当前 v6。
+
 ## 2026-07-29 v6 转移动作学习候选评审
 
 D4 接受 v6 为新的未注册开发候选，不接受其作为 v4/v5 的覆盖或晋级版本。v4、v5、

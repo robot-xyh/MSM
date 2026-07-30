@@ -1,5 +1,70 @@
 # D4 分布式降级与接管实验报告
 
+## 2026-07-30 v6 来源独立外部评价
+
+### 结论
+
+v6 没有通过来源独立转移动作评价。M16N24 外部数据有 42 个规则安全正类，actor 没有
+激活任何原始转移边，投影后 exact 正动作命中为 0。test 的负类 exact R0 为 7/8。
+候选保持未注册、准入关闭和规则回退。
+
+### 输入
+
+- 候选：`region_resource_a2_edge_transfer_shadow_v6`。
+- 场景：M16N24，8 区域，64 个 episode，126 帧。
+- seed：4016-4079。
+- 外部 split：train 89 帧、validation 20 帧、test 17 帧。
+- 外部规则正类：train 24、validation 9、test 9。
+- 数据集 SHA-256：`b1295091...2b42c`。
+- split SHA-256：`c767a48b...ae332`。
+- source clean commit：`ed9e086e...2801e`。
+- exporter clean commit：`9bdbe31d...d88a`。
+
+外部三个 split 均未参与 v6 actor 训练、checkpoint 选择或阈值拟合。旧来源独立评价
+seed 3008-3039 和正式 holdout seed 1000-1019 未读取。
+
+### 结果
+
+| 指标 | train | validation | test |
+| --- | ---: | ---: | ---: |
+| 样本 | 89 | 20 | 17 |
+| 规则正类/负类 | 24/65 | 9/11 | 9/8 |
+| actor 原始转移 | 0 | 0 | 0 |
+| actor 投影转移 | 0 | 0 | 0 |
+| 正确有向边 | 0 | 0 | 0 |
+| exact 正动作 | 0/24 | 0/9 | 0/9 |
+| 负类 exact R0 | 61/65 | 9/11 | 7/8 |
+| 错误方向 | 0 | 0 | 0 |
+| 错误数量 | 0 | 0 | 0 |
+| 虚假转移 | 0 | 0 | 0 |
+| 投影拒绝 | 0 | 0 | 0 |
+| 不变量失败 | 6 | 6 | 3 |
+| actor-derived 正类分母 | 0 | 0 | 0 |
+
+错误方向和错误数量为 0，是因为 actor 没有生成转移，不能解释为边选择正确。不变量失败
+来自 actor 的节点二值动作相对 R0 发生变化，但缺少对应转移，因
+`candidate_transfer_missing` 和二值动作不一致被安全检查拒绝。
+
+### 独立性和完整性
+
+冻结 v4 TRAIN+VALIDATION 有 251 个唯一在线可观测键，外部数据有 94 个，精确交集为
+0。train/validation/test 的外部唯一键为 70/14/10，与冻结输入的交集均为 0。键不使用
+seed、episode、target 或 truth。
+
+候选树前后 SHA-256 均为 `8c9d0179...1665e7`。外部输入树前后均为
+`b0c1044b...f9f96`，dataset 树前后均为 `95b7f64c...11ff5`，冻结 v4 来源树前后均为
+`2afd6928...00d0`。候选突变和输入突变均为 0。
+
+### 数据用途和权限
+
+模型拟合、checkpoint 更新、阈值拟合、置信门应用、注册和准入计数均为 0。v6 没有
+置信校准器，未校准 `confidence_head` 没有用于 0.60 门。全部 assist、assignment、
+degradation、takeover、coalition、control、physical、D3、D7 权限为 false。
+
+机器结果和中文报告位于
+`outputs/d4_v6_source_independent_external_evaluation_20260730/`。本次结果不能用于
+原地修改 v6；后续若继续训练，应另立候选并使用新的 TRAIN 数据。
+
 ## 2026-07-29 v6 转移动作学习验证
 
 ### 结论

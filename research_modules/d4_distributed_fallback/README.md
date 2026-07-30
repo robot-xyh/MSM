@@ -1,5 +1,37 @@
 # D4 分布式协同与降级接管
 
+## 2026-07-30 v6 来源独立外部评价
+
+D4 已对固定内容哈希的
+`region_resource_a2_edge_transfer_shadow_v6` 完成来源独立、完全只读的外部评价。
+输入为 M16N24、8 区域、seed 4016-4079，共 64 个 episode、126 帧。外部数据自身的
+train/validation/test 为 89/20/17 帧，规则正类为 24/9/9；这三个划分均未参与 v6
+actor 训练、checkpoint 选择或阈值拟合。
+
+| split | 样本 | 规则正/负 | actor 原始转移 | 正确有向边 | exact 正动作 | 负类 exact R0 | 不变量失败 |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| train | 89 | 24/65 | 0 | 0 | 0/24 | 61/65 | 6 |
+| validation | 20 | 9/11 | 0 | 0 | 0/9 | 9/11 | 6 |
+| test | 17 | 9/8 | 0 | 0 | 0/9 | 7/8 | 3 |
+
+v6 在三类外部输入上均未激活转移边，错误方向、错误数量、虚假转移和投影拒绝均为 0。
+由于 actor 没有形成通过不变量的可执行差异，actor-derived 正类分母为 0，相应比率保持
+`unavailable`。15 帧不变量失败来自无转移条件下节点二值动作偏离 R0，其中 test 为
+3 帧。该结果确认 v6 的新训练头在冻结内部数据上可工作，但没有迁移到本批 8 区域来源。
+
+冻结 v4 TRAIN+VALIDATION 有 251 个唯一在线可观测键，外部输入有 94 个，精确交集为
+0。键只使用节点特征、边特征、边索引及其形状、类型和值，不使用 seed、episode、目标
+标签或真值。候选树、外部输入树、外部数据树和冻结 v4 来源树评价前后摘要一致，突变为
+0；模型拟合、checkpoint 更新、阈值调整、置信门应用、旧评价 seed 3008-3039 和正式
+holdout seed 1000-1019 的读取计数均为 0。
+
+评价入口为 `scripts/run_region_resource_v6_external_evaluation.py`，输出位于
+`outputs/d4_v6_source_independent_external_evaluation_20260730/`。当前 v6 没有置信
+校准器，未校准 `confidence_head` 没有用于 0.60 门。候选继续保持 unregistered、
+development/shadow only、admission closed 和 rule fallback required；assist、
+assignment、degradation、takeover、coalition、control、physical、D3、D7 权限均为
+false。
+
 ## 2026-07-29 v6 转移动作学习候选
 
 D4 已从冻结 v4 的 TRAIN/VALIDATION 建立版本隔离的

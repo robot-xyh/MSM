@@ -1,5 +1,39 @@
 # D4 实现差距审计：分布式协同与降级接管
 
+## 2026-07-30 v6 来源独立外部评价 GAP
+
+- **无新增 P0。** v6 候选没有注册或接入运行时。确定性投影、固定 0.60 门、规则回退、
+  owner/version/epoch/lease 和全部权限围栏未改变。
+- **已关闭 P1 子项：v6 缺少来源独立输入。** 当前输入固定为 M16N24、8 区域、
+  seed 4016-4079、64 个 episode 和 126 帧。来源 clean commit、导出 clean commit、
+  数据集、split、推导、证据和整个输入树均有内容摘要。
+- **已关闭 P1 子项：外部三划分的数据用途不可审计。** 外部
+  train/validation/test 读取 89/20/17 帧，只用于评价；actor fit、checkpoint
+  selection、threshold fit 均为 0。seed 3008-3039 和正式 holdout 1000-1019 未读取。
+- **已关闭 P1 子项：在线输入重合未知。** 冻结 v4 TRAIN+VALIDATION 有 251 个唯一
+  在线可观测键，外部输入有 94 个，精确交集为 0。键不含 seed、episode、target 或
+  truth。
+- **已关闭 P1 子项：转移失败类型不可区分。** 逐帧 JSON/CSV 分开记录正确有向边、
+  错误方向、错误数量、错误边、虚假转移、投影拒绝和不变量失败；正类分母为 0 时使用
+  unavailable。
+- **P1 仍开放：来源独立转移动作泛化。** 外部规则正类为 24/9/9，v6 在三个 split
+  的 raw/projected transfer 均为 0，正确有向边和 exact 正动作均为 0。错误方向和
+  数量为 0 只因为没有边被激活，不能解释为方向或数量正确。
+- **P1 仍开放：负类动作保持。** 负类 exact R0 为 61/65、9/11、7/8。共 15 帧产生
+  不安全的节点二值动作差异并因 `candidate_transfer_missing` 等不变量失败；没有形成
+  可准入的 actor-derived 正类。
+- **P1 仍开放：actor 冻结后的置信校准和独立复核。** 当前 actor-derived 正类分母为
+  0，v6 没有置信校准器。未校准 `confidence_head` 禁止通过 0.60 门。后续新 actor
+  需要另一批未见 development 数据和 D6 盲审；当前外部结果不得用于原地调参。
+- **完整性和权限。** 候选、外部输入、外部 dataset 和冻结 v4 来源评价前后树摘要
+  一致，突变均为 0。v6 继续 unregistered、admission closed、
+  rule fallback required；assist、assignment、degradation、takeover、coalition、
+  control、physical、D3、D7 权限全部 false。
+
+本次是离线 actor 评价，没有改变 AirSim 消息、节点、episode 或运行适配器。已检查
+`reports/AIRSIM_INTEGRATION_PLAN.md`，无需修改。M 对 N 联盟合同未变化，已检查
+`D4_M_TO_N_DISTRIBUTED_COALITION_REVIEW.md`，无需修改。
+
 ## 2026-07-29 v6 转移动作学习 GAP
 
 - **无新增 P0。** v4/v5、固定 0.60 门、确定性投影、owner/version/epoch/lease、

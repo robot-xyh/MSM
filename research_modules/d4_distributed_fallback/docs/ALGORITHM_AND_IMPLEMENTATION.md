@@ -1,5 +1,61 @@
 # D4 分布式协同与降级接管算法及实施方案
 
+## 2026-07-30 v6 来源独立外部评价实现
+
+评价器位于
+`d4_distributed_fallback/region_resource_v6_external_evaluation.py`，命令行入口为
+`scripts/run_region_resource_v6_external_evaluation.py`。该路径只加载 v6 专属规范
+张量 bundle，不调用训练函数、优化器、反向传播、checkpoint 写入或置信门。
+
+入口固定核验以下身份：
+
+1. v6 候选目录、manifest 内容、训练审计内容、模型内容和状态文件 SHA-256；
+2. 候选 artifact 库存以及 bundle manifest，拒绝额外文件、符号链接和内容篡改；
+3. M16N24 外部数据集和 split SHA-256、126 帧、64 个 seed、8 区域及 source clean
+   commit；
+4. evidence、derivation、export summary 的内容和文件摘要，以及 exporter clean
+   commit；
+5. 外部 seed 4016-4079 与旧评价 3008-3039、正式 holdout 1000-1019 的隔离；
+6. 冻结 v4 TRAIN+VALIDATION 的数据身份，供在线可观测键精确重合审计使用。
+
+评价前记录候选树、整个外部输入树、外部 dataset 树和冻结 v4 来源树摘要。全部逐帧
+推理和重合审计完成后再次计算。任一摘要变化时停止写出并返回 mutation error。输出
+目录不得位于任一冻结输入树内，也不得写入 model registry。
+
+每帧执行固定流程：
+
+1. 从同一快照重算确定性 R0。
+2. 调用 v6 actor 的 raw recommendation，不读取其未校准置信值。
+3. 通过冻结 v4 同配置的确定性投影得到候选动作。
+4. 对 R0、外部目标和候选动作构造 D3 实际消费字段的 executable signature。
+5. 对正目标和 actor 可执行差异重新执行 owner、plan、epoch、lease、备用资源、邻接、
+   容量和总量守恒不变量。
+6. 按有向转移键分开统计正确边、反向边、错误数量和其他错误边。
+7. 输出 raw/projected transfer、exact 正动作、负类 exact R0、虚假转移、投影拒绝、
+   不变量失败和 actor-derived 正类分母。
+
+外部 train/validation/test 全部只用于评价。汇总固定写入三个 split 的 actor fit、
+checkpoint selection 和 threshold fit 计数为 0。actor-derived 正类分母为 0 时，其
+条件比率写为 JSON `null` 和状态 `unavailable_zero_actor_derived_positive_denominator`。
+
+输出目录
+`outputs/d4_v6_source_independent_external_evaluation_20260730/` 包含：
+
+- `evaluation_records.jsonl` 和 `evaluation_records.csv`：126 帧机器记录；
+- `input_integrity.json`：候选、输入、v4 来源及前后树摘要；
+- `observable_overlap_audit.json`：251 个冻结键与 94 个外部键的重合审计；
+- `external_evaluation_summary.json`：分 split 和总体指标、数据用途及权限状态；
+- `REPORT_CN.md`：中文结论；
+- `artifact_manifest.json`：输出库存与逐文件 SHA-256。
+
+输出经临时目录完整写出后原子替换。reviewer 不加载模型，按 artifact manifest 复核
+库存、文件摘要、JSON 内容摘要和全部关闭字段。身份或制品篡改、置信门应用、正式
+holdout 读取、输入突变和权限开放均失败关闭。
+
+本次结果的 raw/projected transfer 为 0/0/0，exact 正动作命中为 0/24、0/9、0/9，
+负类 exact R0 为 61/65、9/11、7/8，不变量失败为 6/6/3。在线可观测键精确交集为 0。
+结果不支持准入；v6 继续未注册并强制规则回退。
+
 ## 2026-07-29 v6 转移动作学习实现
 
 v6 实现在 `region_resource_v6_transfer_candidate.py`，构建入口为

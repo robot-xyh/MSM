@@ -1,5 +1,43 @@
 # D4 分布式协同与降级接管计划
 
+## 2026-07-30 v6 来源独立评价计划
+
+### 已完成
+
+- 固定 v6 manifest、训练审计、模型内容和状态文件哈希，评价器逐项校验 bundle、
+  artifact 和权限字段。候选树评价前后摘要均为
+  `8c9d0179...1665e7`，突变为 0。
+- 固定 M16N24、8 区域、seed 4016-4079 的外部输入。数据集/划分 SHA-256 为
+  `b1295091...2b42c` 和 `c767a48b...ae332`；来源与导出 clean commit 为
+  `ed9e086e...2801e` 和 `9bdbe31d...d88a`。输入树和数据树前后摘要一致。
+- 只读评价外部 train/validation/test 全部 89/20/17 帧。三类 actor fit、
+  checkpoint selection 和 threshold fit 均为 0；test 只用于外部评价。
+- 冻结 v4 TRAIN+VALIDATION 的 251 个唯一在线可观测键与外部 94 个唯一键精确交集为
+  0。键不含 seed、episode、目标标签或真值。
+- 分 split 持久化 actor 原始转移、正确有向边、exact 正动作、负类 exact R0、错误
+  方向、错误数量、虚假转移、投影拒绝、不变量失败和 actor-derived 正类分母。分母为
+  0 时保持 unavailable。
+- v6 在三个 split 的原始和投影转移数均为 0，exact 正动作命中为 0/24、0/9、0/9；
+  负类 exact R0 为 61/65、9/11、7/8。不变量失败为 6/6/3，投影拒绝为 0。
+- 未校准 `confidence_head` 没有参与 0.60 门。评价没有注册、准入、preflight、D3、
+  D7、AirSim 或物理权限。
+
+### 当前判断
+
+来源独立输入和只读评价基础设施已闭合。v6 的独立正类泛化没有闭合：42 个规则正类中
+没有 exact 命中，actor-derived 正类分母为 0。当前候选不能建立置信校准正类库存，也
+不能进入准入链路。规则回退继续是唯一允许的运行路径。
+
+### 下一门
+
+1. 保留本次 v6 字节和评价结果，不根据外部 train/validation/test 反向调参。
+2. 若继续研究，另立新训练候选并只使用新的 TRAIN 数据增加安全转移、困难负类、反向
+   边和 8 区域拓扑；当前 v6 不原地更新。
+3. 新 actor 冻结且在另一批未见 development 数据上形成足量安全可执行正类后，再建立
+   TRAIN-only 置信校准器并交 D6 盲审。
+4. 在上述条件成立前不读取正式 holdout，不运行 runtime preflight、D3 successor、
+   D7 权限、AirSim 或物理收益评价。
+
 ## 2026-07-29 v6 转移动作学习开发计划
 
 ### 已完成
