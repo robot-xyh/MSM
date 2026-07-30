@@ -27,6 +27,56 @@ main 已增加独立外部数据导出器。它从 D4 区域运行快照重算�
 失败关闭，未生成候选。后续须在不读取 test、不降低门限、不改变确定性投影和权限的
 条件下完成置信校准，再进入不可变 review、D6 独立审计和 D3 后继计划验证。
 
+D4 随后在提交 `5f2fe0d` 增加只看模型输入张量的可辨识性审计。第二版数据的 train
+存在 10 个相同输入、相反置信标签的键，覆盖 22 条记录；继续调整类别权重无法解决该
+冲突。main 在提交 `8a96db3` 将导出语义改为按
+`node_features/edge_features/edge_index` 的值、形状和类型整组标注。同一模型输入
+跨来源、train、validation 和 test 只能得到同一正负类别，seed、episode、来源和
+target 不参与分组。
+
+第三版 observable-group 数据仍包含 200 个 episode、499 帧。272 个模型输入键中，
+46 个键对全部同键记录都存在一致、安全的正动作，最终选择 39 个键；train、
+validation、test 正样本分别为 60、15、13，前两组负样本仍为 290、60。混合正负键、
+R0 target 冲突、正动作 target 冲突、unsafe difference、在线真值使用和 test 拟合
+均为 0。数据集、split、来源制品、外部证据和分组审计 SHA-256 分别为
+`b31fc43f...7fb8c`、`c212fe9b...4619`、`f39d9ba9...630f`、
+`f059ff5d...3ca5` 和 `3c160087...ef62`。制品位于
+`outputs/d4_v4_external_composite_observable_20v20_8region_curriculum_seed9_20260729/`。
+
+第一次 clean builder 已越过可辨识性审计，但固定 0.60 门仍未通过：train 的
+positive/negative/inconsistent/executable 越门数为 58/12/12/70，validation 为
+13/2/2/15。临时目录已删除，候选和 registry 均未形成。该结果把剩余问题缩小到 v4
+置信校准；不能通过降低门限或读取 validation/test 拟合来绕过。
+
+D4 后续形成了内容寻址的未注册 v4 development/shadow 候选。D4 不可变审查确认
+180 个文件、179 个 manifest 制品、来源提交和数据用途一致，v3 registry 未改变，
+全部运行和生产权限保持 false。D6 随后进行独立只读复核，开发完整性审计通过，但模型
+质量未通过准入判断：固定 0.60 门下，train/validation 正类召回分别只有
+0.206897/0.307692，负类特异度均为 1.0，最小正类越门裕量只有 0.000504935。
+
+main 据此拒绝将 v4 登记或送入正式 holdout。该候选只保留为开发对照，状态继续为
+`development_only`、`shadow_only`、`admission_closed` 和
+`rule_fallback_required`。下一轮必须使用新的版本和制品身份，在不读取正式 holdout、
+不降低 0.60 门、不放宽确定性安全外壳的条件下提高正类召回和门限裕量；通过新的模块
+门与 D6 独立审计后，才允许 D3 开展后继计划和同键双臂实验。
+main 的正式决定和后续开发门见
+`docs/SCALABLE_3D_D4_V4_MAIN_ADMISSION_DECISION_20260729_CN.md`。
+
+D4 随后建立了独立版本的 v5 近邻置信校准对照。它冻结 v4 actor，从实际 24 维池化
+特征中保存 TRAIN 近邻库存；固定门、确定性投影、备用资源、版本、联盟和权限合同均未
+改变。原同源开发统计为 train/validation 正类召回和负类特异度均 1.0，最小正裕量
+0.400000/0.209319。
+
+D6 独立审计确认上述数值可复现，也确认其主要来自记忆和近重复输入。TRAIN 的
+350/350 个查询都把自身纳入近邻；按 raw observable key 和 latent exact key 留组后，
+正类召回为 0.965517，负类特异度降为 0.958904，Brier 为 0.037610440。
+VALIDATION 有 42/75 条与 TRAIN 完全重合，去除重合后只剩 1 个正类；最近距离不小于
+0.1 的 3 条记录又全部是负类。因此当前没有足够分母评价独立正类召回和正裕量。
+
+v5 只保留为 `development memorization baseline`。候选未注册、准入关闭、规则回退
+保持必需，D3 和 D7 权限均为 false。下一步由 main 生成来源独立、可观测输入不重合的
+开发扰动集，先交 D6 审计数据独立性，再评价 v5；不会直接读取正式 holdout。
+
 ## D4 区域资源可执行差异探针（2026-07-29）
 
 main 已增加默认关闭的 `scalable3d-regional-resource-probe-v1` 场景合同。该合同允许

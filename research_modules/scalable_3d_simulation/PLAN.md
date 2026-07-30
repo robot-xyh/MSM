@@ -20,17 +20,35 @@
 5. [x] D4 在提交 `7646c95295f720a72fddd937a36384373a04c9c6` 中加入 v4
    专用、仅由 train 计算的有界类别平衡和双类 checkpoint 选择。Actor 的 train
    正/负命中为 59/60、278/290，validation 为 14/15、58/60。
-6. [ ] 在不降低固定 0.60 门、不使用 validation/test 拟合、不丢弃投影或干预拒绝
-   负例的条件下完成 confidence 校准。当前 validation 仍有 1 条负类且动作不一致样本
-   越门，builder 已失败关闭且未生成候选。
-7. [ ] 由 D4 从冻结组合输入构建未注册 development/shadow 候选，完成不可变 review
-   和全部 SHA/权限核验。失败时保持失败状态，不改变备用资源、区域 transfer、同键
-   R0、确定性投影或权限约束。
-8. [ ] 候选构建后由 D6 独立复核文件树、全部 SHA、数据 split、置信校准、fixture
-   差异和全关闭权限。该阶段不运行正式 holdout，不开放普通 assist。
-9. [ ] 只有未注册候选形成可辨识 treatment 后，main/D3 才运行独立同键
-   control/treatment episode。D3 successor、运行 ACK、完整物理窗口、非退化和收益
-   仍是后续独立 P1，不由数据或模型构建结果替代。
+6. [x] D4 在提交 `5f2fe0d` 增加只看模型输入张量的 train 可辨识性审计。第二版
+   数据有 10 个相同输入、相反置信标签的键，覆盖 22 条记录；该冲突不能靠类别权重
+   或继续训练消除。
+7. [x] main 在提交 `8a96db3` 将导出器改为按模型输入图整组标注，并从同一两个
+   来源生成第三版 observable-group 数据。272 个输入键中选择 39 个安全正动作键；
+   train/validation/test 正样本为 60/15/13，混合正负键、R0/正动作 target 冲突、
+   unsafe difference 和在线真值使用均为 0。数据、来源、证据和分组审计 SHA 已冻结。
+8. [x] D4 在不降低固定 0.60 门、不使用 test/holdout 拟合、不丢弃投影或干预拒绝
+   负例的条件下完成 v4 confidence 开发校准。该校准只达到“无已观测负类越门”，没有
+   达到准入质量。
+9. [x] D4 从冻结组合输入构建未注册 development/shadow 候选，并完成 180 文件树、
+   179 个制品 SHA、来源提交、数据用途、v3 registry 不变性和全部关闭权限的不可变
+   review。
+10. [x] D6 已独立复核固定候选。完整性审计通过；固定 0.60 门下 train/validation
+    正类召回仅为 0.206897/0.307692，负类特异度均为 1.0，最小越门裕量仅
+    0.000504935。候选保持未注册、admission closed、rule fallback required，不进入
+    formal holdout、runtime preflight 或 D3。
+11. [x] D4 已另建未注册 v5 近邻置信校准对照，不覆盖 v4，不读取 test/正式 holdout。
+    原同源开发门的 train/validation 召回和特异度均为 1.0，最小正裕量为
+    0.400000/0.209319；D4 全量 835 项通过。
+12. [x] D6 已独立复算 v5 制品、实际 24 维特征、近邻状态和开发指标。TRAIN
+    self-match 为 350/350；按 raw/latent key 留组后召回 0.965517、特异度
+    0.958904、Brier 0.037610440。VALIDATION 与 TRAIN exact overlap 为 42/75，
+    去重后只有 1 个正类，独立泛化不可评价。
+13. [ ] main 构造与现有 TRAIN/VALIDATION 来源独立、observable key 不重合的开发扰动
+    集，冻结生成配置、seed、标签规则和内容摘要。D6 先审计数据独立性，再离线评价 v5；
+    该阶段仍不读取正式 holdout，不登记候选。
+14. [ ] 只有来源独立开发证据通过固定门，main 才另行决定是否运行 formal holdout 和
+    runtime preflight。D3 successor、运行 ACK、完整物理窗口、非退化和收益继续后置。
 
 ## D4 区域资源可执行差异探针（2026-07-29）
 
