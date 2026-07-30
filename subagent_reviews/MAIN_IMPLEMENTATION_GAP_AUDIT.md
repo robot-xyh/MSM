@@ -4,6 +4,49 @@
 **审计目标**：列出共识算法与计划使用的开源代码哪些已经实现，哪些没有实现，为什么没有实现，以及缺少哪些条件。
 **边界**：本文只用于科研仿真、接口补齐和后续工程排期；不涉及真实硬件、实机处置、火控或绕过授权的自动动作。
 
+## 2026-07-29 D4 v5 来源独立外部评价
+
+本轮没有新增运行级 P0。main 已冻结 M16N20 来源独立数据，D4 完成候选只读评价，D6
+完成独立重算。结果支持负类拒绝，不支持正类泛化或候选准入。
+
+1. **数据来源已经隔离。** clean commit
+   `63987592c216fbdb7e03d77183afc6e9f15748a2` 生成 32 个 episode、63 帧，seed
+   为 `3008-3039`。训练 `0-99`、正式 holdout `1000-1019`、设计 pilot
+   `3000-3007` 与评价 seed 两两无交集。在线真值、未来结果和 reward 使用均为 0。
+2. **可观测输入没有复用旧开发样本。** 冻结 v4 TRAIN+VALIDATION 为 425 帧、
+   251 个唯一 observable key；外部数据为 63 帧、41 个唯一键，exact 重合为 0。
+   外部 train/validation/test 自身的唯一键也无跨 split 重合。
+3. **规则正动作与候选正类已分开。** train/validation/test 为 `43/10/10` 帧，规则
+   安全正动作为 `1/1/0`。冻结 actor 没有输出与这两个安全动作相同的可执行签名，
+   actor-derived 正类为 `0/0/0`。规则层存在安全动作不能代替候选正类分母。
+4. **固定门保持失败关闭。** 63 个 v5 分数均为 0，固定 0.60 门通过 0，负类误接收
+   0，规则回退 `63/63`。负类特异度为 1.0；正类召回因分母为 0 保持 unavailable，
+   不以 0 回填。
+5. **输入在评价期间保持不变。** D4 复核 v4/v5 候选树前后一致，并禁止把输出写入
+   source、labeled、v4 或 v5 输入树。D6 对 source、labeled export、labeled dataset、
+   v4 和 v5 五棵树执行前后哈希，突变数为 0。
+6. **test 与正式 holdout 明确分离。** D4 和 D6 各读取 external test 10 帧；main
+   此前也已只读检查同一 10 帧。这是非正式开发 test，不是正式 holdout。seed
+   `1000-1019` 的读取数仍为 0。
+7. **权限结论不变。** v5 继续 unregistered、admission closed、rule fallback
+   required。生产、assist、分配、降级、接管、联盟、控制、D3 和 D7 权限全部关闭。
+   正式 holdout、runtime preflight、D3 successor 和 D7 权限测试均未运行。
+8. **回归结果。** D4 v5 专项 `18 passed`、全量 `843 passed`；D6 专项
+   `5 passed`、全量 `1215 passed`；main scalable 3D 专项 `6 passed`、全量
+   `389 passed`。警告仅为既有 Matplotlib `Axes3D` 环境提示。
+
+当前 P1：
+
+1. 当前 v5 的来源独立 actor-derived 正类分母为 0，无法评价正类召回和门限正裕量。
+2. 当前 external test 已进入只读评价，不得再用于修改同一候选、0.60 门、split 或
+   标签设计。若继续研究，必须另立候选版本和来源独立 development 证据。
+3. 新候选只有在独立正类分母充分、D6 盲审通过且 main 单独授权后，才可讨论正式
+   holdout。runtime preflight、D3 successor、运行 ACK、物理窗口和收益评价继续后置。
+
+详细结论见
+`research_modules/scalable_3d_simulation/docs/`
+`SCALABLE_3D_D4_V5_SOURCE_INDEPENDENT_EVALUATION_20260729_CN.md`。
+
 ## 2026-07-29 D4 规划专用区域转移与 D6 证据链
 
 本轮没有新增运行级 P0。区域资源不均衡时，D4 已能在不取得任何执行权限的条件下向

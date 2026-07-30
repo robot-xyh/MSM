@@ -91,9 +91,24 @@ split 的 validation 正类不可用。等量场景把全部资源用于当前�
 
 正式独立配置因此冻结为 16 个目标、20 个资源、8 个区域和四类场景。4 个真实备用资源
 用于形成安全正负动作，区域不均衡只控制三维初始布局；D3 继续全局可达，避免把
-planning-only 建议误写成执行标签。下一步从新 clean commit 生成 seed `3008-3039`
-的 32-seed 数据，检查与既有 TRAIN/VALIDATION 的 observable key 重合、正负样本
-分母和正式 holdout 零读取，再由 D4 离线评分、D6 独立复核。
+planning-only 建议误写成执行标签。clean commit
+`63987592c216fbdb7e03d77183afc6e9f15748a2` 已生成 seed `3008-3039` 的 32 个
+episode、63 帧。train/validation/test 为 `43/10/10` 帧；旧 v4
+TRAIN+VALIDATION 的 425 帧形成 251 个唯一 observable key，新数据形成 41 个唯一键，
+exact 重合为 0。
+
+D4 只读评价和 D6 独立重算得到相同结果：规则安全正动作按 split 为 `1/1/0`，冻结
+actor-derived 正类为 `0/0/0`；63 个 v5 得分均为 0，固定 0.60 门通过数、负类误接收和
+候选授权均为 0，规则回退为 `63/63`。当前只建立来源独立负类拒绝证据。正类分母为 0，
+正类召回保持 unavailable，不能声称候选具有来源独立正类泛化能力。
+
+D4 与 D6 均记录 external test 的 10 帧已读；main 此前也已只读检查同一非正式 test。
+这些读取不属于正式 holdout。seed `1000-1019` 的正式 holdout 读取仍为 0。D6 另在
+评价前后复核 source、labeled export/dataset、v4 和 v5 五棵输入树，突变数为 0。候选
+继续保持 unregistered、admission closed、rule fallback required，全部生产、D3 和 D7
+权限关闭。不得依据本轮 external test 调候选、降低门限或修改 split；正式 holdout、
+runtime preflight、D3 successor 和 D7 权限测试均不启动。跨模块结论见
+`docs/SCALABLE_3D_D4_V5_SOURCE_INDEPENDENT_EVALUATION_20260729_CN.md`。
 
 ## D4 区域资源可执行差异探针（2026-07-29）
 

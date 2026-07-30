@@ -44,7 +44,7 @@
     self-match 为 350/350；按 raw/latent key 留组后召回 0.965517、特异度
     0.958904、Brier 0.037610440。VALIDATION 与 TRAIN exact overlap 为 42/75，
     去重后只有 1 个正类，独立泛化不可评价。
-13. [ ] main 已完成来源独立开发集生成器和首轮 20 对 20 clean 诊断。seed
+13. [x] main 已完成来源独立开发集生成器和首轮 20 对 20 clean 诊断。seed
     `3000-3007` 已固定为数据设计 pilot；正式独立评价只使用未查看的
     `3008-3039`。生成器保留真实 D4 区域快照，在离线边界重算同快照确定性规则 R0，
     并把在线建议仅作为非 target 审计证据。smoke 的 8 个 episode、16 帧均为有限
@@ -53,11 +53,14 @@
     只有 seed 3037 的 2 个安全正动作键，固定 split 的 validation 正类不可用。正式
     配置据此冻结为 16 个目标、20 个资源、8 个区域，保留 4 个真实备用资源；区域
     不均衡只控制三维初始布局，D3 保持全局可达，避免把 planning-only 建议误写成
-    可执行教师标签。剩余工作是从新 clean commit 生成 32-seed 数据，审计与既有
-    TRAIN/VALIDATION 的 observable key 重合、正负标签分母和正式 holdout 零读取，
-    再交 D4/D6 离线评价。
-14. [ ] 只有来源独立开发证据通过固定门，main 才另行决定是否运行 formal holdout 和
-    runtime preflight。D3 successor、运行 ACK、完整物理窗口、非退化和收益继续后置。
+    可执行教师标签。clean commit `63987592...` 已生成 32 个 episode、63 帧；D4 与
+    D6 分别完成冻结评价。旧/新唯一 observable key 为 251/41，exact 重合 0；规则
+    安全正动作 `1/1/0`，actor-derived 正类 `0/0/0`；63 个得分和 0.60 门通过数均为
+    0，规则回退 `63/63`。D6 评价前后五棵输入树突变数为 0，正式 holdout 读取为 0。
+14. [ ] 当前 v5 未达到来源独立正类准入条件。正类分母为 0，正式 holdout 和 runtime
+    preflight 继续关闭。不得依据已读 external test 修改当前候选、门限或 split。若另立
+    新版本，须先在新的来源独立 development 数据上形成足量 actor-derived 正类，再由
+    D6 盲审；D3 successor、运行 ACK、完整物理窗口、非退化和收益继续后置。
 
 ## D4 区域资源可执行差异探针（2026-07-29）
 
