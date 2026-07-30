@@ -41,7 +41,7 @@ delayed noisy 四类三维布局。
 \[
 y_{\mathrm{actor}} =
 \mathbf{1}\left[
-y_{\mathrm{safe}}=1,\ 
+y_{\mathrm{safe}}=1,\quad
 \operatorname{sig}(a_\theta)=\operatorname{sig}(a_{\mathrm{safe}}),\
 \operatorname{safe}(a_\theta)=1
 \right].
