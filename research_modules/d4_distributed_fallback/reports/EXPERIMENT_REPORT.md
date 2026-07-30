@@ -1,5 +1,90 @@
 # D4 分布式降级与接管实验报告
 
+## 2026-07-29 v5 来源独立外部评价
+
+### 结论
+
+冻结 v5 候选未获得准入。M16N20 外部数据与旧开发数据的精确可观测键交集为 0，当前
+输入具备来源独立性。63 帧中有 2 个规则安全正动作，冻结 actor 没有输出匹配动作，
+actor-derived 正类分母不可用。全部 v5 得分为 0，固定 0.60 门通过 0/63，负类误接收
+0/63，规则回退 63/63。
+
+该试验建立了当前外部负类拒绝证据。它没有建立正类召回、正式泛化或生产准入证据。
+
+### 设置
+
+- 日期：2026-07-29。
+- 场景：M16N20，8 个区域，32 个来源 episode，63 帧。
+- seed：3008-3039。
+- 场景族：nominal、dense crossing、evasive multilevel、delayed noisy，各 8 个
+  episode。
+- 冻结 actor：`region_resource_a2_executable_transfer_shadow_v4`。
+- 冻结 calibrator：`region_resource_a2_confidence_knn_shadow_v5`。
+- 固定置信门：0.60。
+- 训练 seed：0-99；正式 holdout：1000-1019；设计 pilot：3000-3007。
+
+评价没有拟合模型、更新权重、选择候选、调整门限、修改 split 或生成正类。在线 D4
+recommendation 未用作教师标签。外部规则标签由同一快照离线重算的 R0 和既有一资源
+安全转移过程生成。
+
+### 结果
+
+| split | episode | 帧 | 规则安全正动作 | actor-derived 正类 | 得分最小/均值/最大 | 门通过 | 负类误接收 | 回退 |
+| --- | ---: | ---: | ---: | ---: | --- | ---: | ---: | ---: |
+| train | 22 | 43 | 1 | 0 | 0/0/0 | 0 | 0 | 43 |
+| validation | 5 | 10 | 1 | 0 | 0/0/0 | 0 | 0 | 10 |
+| test | 5 | 10 | 0 | 0 | 0/0/0 | 0 | 0 | 10 |
+
+冻结 actor 产生 16 个相对 R0 的可执行差异，其中 train/validation/test 为 12/2/2。
+这些差异没有匹配两个规则安全正动作，因此不能进入 v5 正类分母。actor 与外部目标签名
+相同的记录为 45 条，但其中没有规则安全正动作；R0 负类上的签名相同不能计为正类。
+
+旧候选 TRAIN/VALIDATION 共 425 帧、251 个唯一可观测键。新数据 63 帧、41 个唯一键。
+精确键交集为 0，新记录精确重合为 0。该审计不使用 seed、episode、目标或来源身份构造
+输入键。
+
+### 数据读取
+
+D4 本次读取 train/validation/test payload 为 43/10/10。test 只用于冻结候选只读评分，
+fit、weight fit、threshold fit、hyperparameter fit 和 selection 均为 0。main 此前
+只读检查过同一 test 10 条记录，该过程事实在汇总中独立记录。正式 holdout 和 pilot
+payload 读取为 0。
+
+### 制品
+
+评价输出位于
+`outputs/d4_v5_source_independent_external_evaluation_20260729/`。关键摘要如下：
+
+- 来源 dataset manifest 文件 SHA-256：
+  `af12051917cfe9eedfc8587c953599112db62858e4b01820a16ddd5b0a10231d`；
+- 标签 dataset 内容 SHA-256：
+  `ed2fd4b1a4d50ec80e5abdaa35a1470cec03d419665ae0e08b7c4339e9b8887e`；
+- 标签 split SHA-256：
+  `cdaa40241195516eb1679f6ed0a8179f3d2365c9768f9ef9a44b6f85fabcefb6`；
+- 来源推导文件 SHA-256：
+  `ccf327717a293f63b5655e978202ff720f20c74bfd8ae401f2233cc590bb753a`；
+- v4 候选树 SHA-256：
+  `2afd692874b91a23a5525448a0c5af98f3c2d96f0b12cebbf81a570d58d500d0`；
+- v5 候选树 SHA-256：
+  `632f066fcad363531762e6b7a1ef0f21c03b7b0d0aa3b4cd39a16e4fbbf7c273`。
+
+评价前后候选树摘要一致。新增评价专项 8/8，与既有 v5 候选专项合计 18/18、D4 全量
+843/843 通过。全量测试只有既有 Matplotlib `Axes3D` 环境警告。
+
+### 独立复核
+
+D6 已独立重算本批制品。复核得到样本 43/10/10、规则安全正动作 1/1/0、
+actor-derived 正类 0/0/0、63 个得分均为 0、0.60 门通过 0、负类误接收 0、
+回退 63/63、旧/新唯一键 251/41 且重合 0、正式 holdout 读取 0，与 D4 结果一致。
+正类分母仍不可用。
+
+### 限制
+
+当前只有一个 M16N20 配置和 63 帧。没有 actor-derived 正类，无法计算来源独立正类
+召回。D6 独立复核已经完成，但没有改变这一分母缺口。正式 holdout、runtime
+preflight、D3 successor、D7 权限、物理窗口和 AirSim 收益没有运行。v5 继续保持
+unregistered、admission closed、rule fallback required，全部生产权限为 false。
+
 ## 2026-07-29 v4 独立审计与 v5 开发校准
 
 ### v4 独立审计

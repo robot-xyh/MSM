@@ -1,5 +1,45 @@
 # D4 实现差距审计：分布式协同与降级接管
 
+## 2026-07-29 v5 来源独立外部评价 GAP
+
+- **无新增 P0。** v4/v5 候选字节、固定 0.60 门、split、v3 registry、确定性投影、
+  备用资源、版本、租约、ACK、联盟和控制门均未修改。两个候选评价前后树摘要一致。
+- **已部分关闭 P1：来源独立 development 输入缺失。** 当前 M16N20 数据固定为 32 个
+  来源 episode、63 帧和 seed 3008-3039。训练 0-99、正式 holdout 1000-1019、设计
+  pilot 3000-3007 与评价 seed 两两隔离。来源 commit、配置、数据、split、导出推导和
+  标签审计均有 SHA-256。
+- **已部分关闭 P1：输入与旧开发数据重合不可审计。** 冻结候选 TRAIN/VALIDATION 的
+  425 帧形成 251 个唯一可观测键；新数据 63 帧形成 41 个唯一键。精确键交集和新记录
+  重合数均为 0。
+- **已部分关闭 P1：外部负类拒绝不可评价。** 外部规则层有 2 个安全正动作，冻结
+  actor-derived 正类为 0。因此按候选标签口径，63 条记录均为 actor-derived 负类。
+  v5 得分全部为 0，0.60 门通过 0/63，负类误接收 0/63，当前批次负类特异度为 1.0。
+- **P1 仍开放：来源独立正类召回。** 冻结 actor 产生 16 个相对 R0 的可执行差异，但
+  没有一个匹配两个规则安全正动作。positive denominator unavailable，不能把
+  `rule_safe_positive_action_count=2` 写成 actor 正类分母、召回或候选通过。
+- **已关闭 P1 子项：D6 独立复核。** D6 重算得到样本 43/10/10、规则安全正动作
+  1/1/0、actor-derived 正类 0/0/0、63 个得分均为 0、0.60 门通过 0、负类误接收 0、
+  回退 63/63、旧/新唯一键 251/41 且重合 0、正式 holdout 读取 0，与 D4 一致。
+- **P1 仍开放：正类分母与准入。** D6 复核没有补出 actor-derived 正类。正式
+  holdout、runtime preflight、D3 successor、D7 权限、物理窗口、AirSim 和收益均未
+  运行。v5 保持 unregistered、admission closed、rule fallback required，生产权限
+  全部 false。
+- **已关闭交叉审查缺口：输出路径边界。** 评价器在写出前拒绝输出等于或位于来源、
+  标签、v4 候选或 v5 候选冻结树之下，避免输出污染输入；候选子目录、来源子目录和
+  正常外部目录均有专项测试。
+- **数据使用边界。** D4 本次读取 train/validation/test payload 为 43/10/10，拟合、
+  选模和门限调整均为 0。main 先前只读检查同一 test 10 条的过程事实已单列。正式
+  holdout、pilot 和来源在线 recommendation payload 读取为 0。
+- **验收。** 新增评价专项 8/8，与原 v5 候选专项合计 18/18、D4 全量 843/843 通过。
+  持久化产物位于
+  `research_modules/d4_distributed_fallback/outputs/`
+  `d4_v5_source_independent_external_evaluation_20260729/`。
+
+后续不得在当前候选上调 split、复制正类、降低 0.60 门或依据本次 test 结果继续选模。
+若另立候选，应先在不读取正式 holdout 的来源独立 development 数据上形成可复核的
+actor-derived 正类，再交 D6 独立审计。当前批次的 D6 审计已完成；正类分母和 main
+单独授权未成立前，不进入 runtime preflight、D3 successor 或 D7 权限测试。
+
 ## 2026-07-29 v4 独立审计与 v5 校准 GAP
 
 - **无新增 P0。** v4、v3 registry、固定 0.60 门、确定性投影、备用资源、版本、联盟和

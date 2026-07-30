@@ -1,5 +1,81 @@
 # D4 分布式协同与降级接管算法及实施方案
 
+## 2026-07-29 v5 来源独立外部评价实现
+
+### 输入与校验
+
+评价器位于
+`d4_distributed_fallback/region_resource_v5_external_evaluation.py`，命令行入口为
+`scripts/run_region_resource_v5_external_evaluation.py`。入口接收来源根目录、外部标签
+数据集、冻结 v4 候选、冻结 v5 候选和输出目录。配置固定 M16N20、32 个 episode、
+63 帧、0.60 门及四类 seed 范围，构造时拒绝改门、读正式 holdout、拟合、改 split、
+生成正类和开放生产权限。
+
+加载数据前依次校验：
+
+1. 来源 generation plan、generation summary 和 D4 dataset manifest 的文件摘要；
+2. 外部导出 summary、来源推导 manifest 和 evidence 的内容摘要与文件摘要；
+3. 标签数据集 SHA-256、split SHA-256、32 个 episode 的 clean commit、M16N20 和
+   seed 3008-3039；
+4. 训练 0-99、正式 holdout 1000-1019、pilot 3000-3007 与外部评价 3008-3039 的
+   两两隔离；
+5. v4/v5 候选的 manifest、模型、校准状态和完整文件树，评价前后重新计算树摘要。
+
+输出目录在任何写入前做路径边界检查。输出等于或位于来源、标签、v4 候选或 v5 候选
+目录之下时立即拒绝；只有这些冻结输入树之外的目录可以进入临时写出和原子替换过程。
+
+来源 dataset 只读取 manifest，不读取其在线 recommendation payload。评价读取外部标签
+数据的 train/validation/test payload。标签必须是 `kind=rule`，并与来源推导 manifest
+列出的正动作逐项一致。
+
+### 逐帧评价
+
+每帧先从同一快照重算 R0，再运行冻结 v4 actor 和确定性投影。评价器对 R0、外部规则目标
+和 actor 建立 D3 实际消费字段的可执行签名。外部目标与 R0 不同时，重新执行既有 v4
+干预不变量，确认一资源转移没有破坏 authority、计划版本、租约、备用资源、通信边和
+总量守恒。
+
+规则安全正动作、actor-derived 正类和门控通过分别计算。actor-derived 正类要求外部目标
+是安全正动作、actor 签名完全匹配目标，且 actor 动作通过安全不变量。冻结 actor 的
+pooled latent 输入 v5 11 近邻 calibrator，分数只用于离线审计。固定门通过定义为
+`score >= 0.60`。候选未注册，因此逐帧仍固定
+`candidate_authorized=false`、`rule_fallback_used=true`。
+
+可观测键审计从 v4 候选 development dataset 只加载 TRAIN 和 VALIDATION，不读取旧
+TEST。新数据三个 split 都只用于评价，不参与拟合。评价器分别统计旧/新记录数、唯一键、
+交集和新记录重合数。
+
+### 持久化产物
+
+输出目录
+`outputs/d4_v5_source_independent_external_evaluation_20260729/` 包含：
+
+- `evaluation_records.jsonl`：63 条逐帧签名、标签、分数、门控和回退记录；
+- `input_integrity.json`：来源、标签、配置、v4/v5 候选和 seed 隔离哈希；
+- `observable_overlap_audit.json`：旧 425 帧和新 63 帧的输入键重合结果；
+- `external_evaluation_summary.json`：按 split 和总体统计、读取事实、准入状态和限制；
+- `REPORT_CN.md`：中文评价结论；
+- `artifact_manifest.json`：上述文件的 SHA-256 清单和内容摘要。
+
+输出先写入同目录临时路径，全部成功后原子替换。reviewer 不加载候选，只按 artifact
+manifest 复核库存、逐文件 SHA-256、JSON 内容摘要和准入关闭字段。任一篡改、额外文件、
+正式 holdout 读取或权限开放都会失败关闭。
+
+### 结果
+
+train/validation/test 样本为 43/10/10，规则安全正动作为 1/1/0，actor-derived 正类
+均为 0。三个 split 的得分 min/mean/max 均为 0，固定门通过和负类误接收均为 0，规则
+回退为 43/10/10。旧开发数据有 251 个唯一可观测键，新数据有 41 个，交集为 0。
+
+新增评价专项 8/8，与既有 v5 候选专项合计 18/18、D4 全量 843/843 通过。测试覆盖
+固定配置不可放宽、规则正动作不能冒充 actor 正类、正类召回分母、持久化制品复核和
+字节篡改拒绝。新增路径测试还覆盖候选子目录、来源子目录拒绝和外部目录接受。
+
+D6 已完成独立只读复核，按 split 的样本、规则安全正动作和 actor-derived 正类为
+43/10/10、1/1/0 和 0/0/0；63 个得分均为 0，固定门通过 0，负类误接收 0，回退
+63/63，旧/新唯一键 251/41 且重合 0，正式 holdout 读取 0。该实现和审计均未运行
+D3 successor、D7 权限、AirSim 或正式 holdout，正类分母仍不可用。
+
 ## 2026-07-29 v5 置信校准实现
 
 `region_resource_v5_confidence_candidate.py` 是独立于 v4 builder 和 v3 registry 的

@@ -1,5 +1,43 @@
 # D4 分布式协同与降级接管
 
+## 2026-07-29 v5 来源独立外部评价
+
+D4 已对冻结 v4 actor 和 v5 近邻置信候选完成来源独立、只读外部评价。输入固定为
+M16N20、8 区域、32 个来源 episode、63 帧，seed 为 3008-3039。训练 seed 0-99、正式
+holdout seed 1000-1019、设计 pilot seed 3000-3007 与本次评价 seed 两两隔离。评价没有
+拟合、重训、调 0.60 门、修改 split、生成正类、运行 preflight 或授予权限。
+
+标签只来自同一 D4 快照离线重算的确定性 R0 和既有安全投影。在线 D4 recommendation
+没有作为教师标签。外部标签中有 2 个规则安全正动作，分别位于 train 和 validation；
+冻结 actor 在 63 帧中没有输出与规则安全正动作签名一致的正类。
+
+| split | 样本 | 规则安全正动作 | actor-derived 正类 | 得分最小/均值/最大 | 0.60 门通过 | 负类误接收 | 规则回退 |
+| --- | ---: | ---: | ---: | --- | ---: | ---: | ---: |
+| train | 43 | 1 | 0 | 0/0/0 | 0 | 0 | 43 |
+| validation | 10 | 1 | 0 | 0/0/0 | 0 | 0 | 10 |
+| test | 10 | 0 | 0 | 0/0/0 | 0 | 0 | 10 |
+
+冻结候选原 TRAIN/VALIDATION 共 425 帧、251 个唯一可观测键；新数据有 41 个唯一键。
+精确可观测键交集和新记录重合数均为 0。该结果证明输入没有复用旧开发样本，并证明当前
+63 个 actor-derived 负类全部被固定门拒绝。冻结 actor 独立正类为 0，正类分母不可用，
+不能计算来源独立正类召回，也不能据此声称泛化或准入。
+
+D4 本次实际读取 train/validation/test payload 为 43/10/10，拟合计数均为 0。main
+此前已只读检查同一 test 的 10 条记录，该过程事实单独记录；正式 holdout payload 读取
+仍为 0。v4/v5 候选评价前后树摘要一致。v5 继续保持 unregistered、
+admission closed、rule fallback required，生产、D3 和 D7 权限全部关闭。
+
+评价入口为
+`scripts/run_region_resource_v5_external_evaluation.py`，输出位于
+`outputs/d4_v5_source_independent_external_evaluation_20260729/`。输出包含逐帧记录、
+输入与候选哈希、seed 隔离、可观测键重合审计、汇总 JSON、制品清单和中文报告。新增
+评价与既有 v5 专项合计 18/18、D4 全量 843/843 通过。全量仅保留既有 Matplotlib
+`Axes3D` 环境警告。D6 已完成独立复核，复算结果与 D4 一致：样本
+43/10/10、规则安全正动作 1/1/0、actor-derived 正类 0/0/0、63 个得分均为 0、
+0.60 门通过 0、负类误接收 0、规则回退 63/63、旧/新唯一键 251/41 且重合 0，
+正式 holdout 读取 0。该复核没有建立正类分母。正式 holdout、runtime preflight、
+D3 successor、D7 权限和物理/AirSim 收益仍未执行。
+
 ## 2026-07-29 v4 独立审计与 v5 开发校准
 
 D6 已对冻结 v4 候选完成独立、只读审计。候选目录、179 个 manifest artifact、来源

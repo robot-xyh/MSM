@@ -1,5 +1,27 @@
 # D4 AirSim Episode 集成计划
 
+## 2026-07-29 来源独立评价后的 AirSim 边界
+
+M16N20 来源独立数据已经建立并完成 D4 只读评价，但该数据来自统一三维质点 episode，
+不是 AirSim 运行结果。32 个来源 episode、63 帧和 seed 3008-3039 与旧候选开发数据的
+精确可观测键交集为 0。规则层有 2 个安全正动作，冻结 actor 匹配正类为 0；v5 得分
+全部为 0，固定 0.60 门通过 0/63，规则回退 63/63。
+
+该结果不满足 AirSim preflight 的前置条件。正类分母 unavailable，无法判断候选在新的
+可观测分布上能否接受正确动作。D6 已独立复核本批外部制品，结果与 D4 一致，但
+actor-derived 正类仍为 0，正类分母仍不可用。main 不得将 v5 分数写入 AirSim
+assignment、secondary takeover、coalition commit 或 D7 控制许可。
+
+后续 AirSim shadow 只有在以下条件同时满足后才可另行规划：
+
+1. 新的冻结 development 候选在来源独立数据上产生足量 actor-derived 正类；
+2. D6 对正负分母、哈希、seed 隔离和门控结果完成独立审计；
+3. main 明确授权 runtime preflight，且仍不读取正式 holdout；
+4. 每帧保留候选身份、输入键、score、固定门、规则回退和全部权限状态。
+
+当前 AirSim episode 继续使用确定性区域规则和既有版本、租约、ACK 与故障围栏。正式
+holdout、D3 successor、D7 权限和物理收益不因本次外部评价启动。
+
 ## 2026-07-29 v5 AirSim 边界
 
 v5 仅完成冻结 TRAIN/VALIDATION 上的置信校准开发门，不进入 AirSim episode。开发门
