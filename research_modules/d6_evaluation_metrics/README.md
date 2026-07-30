@@ -3908,19 +3908,26 @@ main 修复 finalization 后，在 dirty 工作树中按原配置重跑上述 5 
 895/900。D6 对 declared skip 的失败关闭规则没有变化：没有版本化完整 D2 输入摘要时，
 `skip=1` 仍不能进入正式守恒式。
 
-### R0 正式增量复核（2026-07-25）
+### R0 正式增量复核（更新至 2026-07-30）
 
 新执行计划 SHA-256 为
 `8804ecb4dd0513db55906905f031832711012974fc911546df40e09fb297d373`。shard 0、5、9
-各完成 45 个 cell，当前执行进度为 135/900。D6 定向报告只包含其中三个原失败 cell：
-5v5 seed 1000、1005 和 20v20 seed 1009。三项均为
+各完成 45 个 cell；shard 8、18 各完成 21 个 cell，当前执行进度为 177/900。
+
+D6 新专项不读取 `targeted_formal_d6` 聚合，直接从 execution plan、shard ledger、
+cell result、episode artifact tree、在线总线和 summary 重算五个原失败 cell。5v5
+seed 1000、1005、1008、1018 和 20v20 seed 1009 均为
 `clean_formal_experiment_matrix`，基础与矩阵 formal eligibility 均为 true，generation
 contract 为 `verified`，三类 failure reason 均为空，skip 为 0，pending 为空。
 
-该结果关闭上述三个 cell 在新批次中的后验代次疑点，不代表 135 个已执行 cell 已全部由 D6
-完成正式准入，也不改变旧批次 895/900 的整体结论。原失败项 5v5 seed 1008、1018 尚未执行；
-新批次仍有 765 个 cell。检查时文件系统可用空间为 21,538,787,328 bytes，仅比 20 GiB
-运行下限多 63,950,848 bytes，约 64 MB（61 MiB）。
+该结果关闭五个目标 cell 在新批次中的后验代次疑点，不代表 177 个已执行 cell 已全部由
+D6 完成正式准入，也不改变旧批次 895/900 的整体结论。其余 172 个已执行 cell 未由本专项
+逐项审计，新批次仍有 723 个 cell 未执行。完整结果和哈希见
+`docs/FORMAL_R0_TARGETED_POSTERIOR_AUDIT_1E5ED8D_CN.md`。
+
+专项测试为 `9 passed, 1 warning in 2.37s`，D6 全量回归为
+`1243 passed, 1 warning in 150.38s`。warning 为既有 Matplotlib `Axes3D` 环境提示；
+本专项不生成三维图。
 
 ## 学习作用域正式证据审计（2026-07-26）
 

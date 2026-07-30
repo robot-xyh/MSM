@@ -665,7 +665,9 @@ D2 输入摘要；公开载荷相等本身不足以认可 no-op skip。当前 5 
 同日 main 修复 finalization 后完成五项定向重跑。D6 v10 确认五项 skip 均为 0，D1/D2 最终
 代次一致，消费与发布一致，消费加节拍前合并等于 D1 代次，pending 为空。该批工作树 dirty，
 因此只形成开发态修复证据。D6 v10 已提交为 `8e955f3`，runtime 修复已形成 clean source
-commit `98d01bf`。正式 R0 已在后继 clean source `1e5ed8d` 上启动，三个分片完成
-135/900；D6 定向复核的三个原失败 cell 为 3/3 clean-formal。完整批次尚未完成，旧正式
-结论仍为 895/900。
+commit `98d01bf`。正式 R0 已在后继 clean source `1e5ed8d` 上执行 177/900。2026-07-30
+新增
+[`FORMAL_R0_TARGETED_POSTERIOR_AUDIT_1E5ED8D_CN.md`](FORMAL_R0_TARGETED_POSTERIOR_AUDIT_1E5ED8D_CN.md)，
+不读取原定向聚合，独立复核五个原失败 cell。五项均为 clean-formal、实验矩阵 formal 和
+generation verified。完整批次尚未完成，旧正式结论仍为 895/900。
 完整结论和正式重跑边界已同步写入上述审计报告。

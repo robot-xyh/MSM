@@ -3524,7 +3524,7 @@ manifest 形成独立证据。
    `98d01bf`。正式证据不能跨提交拼接；下一步应基于 `98d01bf` 重新执行完整 900-cell
    R0 scope，再由 D6 v10 生成报告。
 4. 对旧批次只允许声明 `formal_scope_complete=900/900` 和 `clean-formal=895/900`；
-   新批次当前只允许声明 shard execution 135/900 和三个 target cell 正式通过，不允许声明
+   新批次当前只允许声明 shard execution 177/900 和五个 target cell 正式通过，不允许声明
    900/900 formal acceptance 或完整 5700-cell matrix complete。
 5. 2026-07-25 D6 全量回归为 `894 passed, 1 warning in 85.66s`；5 个原始异常
    episode 的 v10 实物复核均保持三层 formal gate 为 false。
@@ -3543,23 +3543,36 @@ generation contract 均为 `verified`：D1 最终代次等于 D2 最终消费代
    `98d01bf` 固化，进入“完整 R0 待正式重跑”；
 2. R0 正式证据仍保留旧 clean 提交的 895/900 结论，不能拼接定向结果；
 3. 完整 R0 formal rerun 已在后继 clean source `1e5ed8d` 上启动，当前 shard 0、5、9
-   完成 135/900；D6 定向报告已复核其中三个原失败 cell；
+   完成 45/45，shard 8、18 完成 21/45，合计 177/900；D6 新专项已独立复核五个原失败
+   cell；
 4. 新批次验收要求 900/900 generation contract 为 `verified`、skip 为 0 或具有版本化完整
    D2 输入摘要、pending 全空、episode 全部 clean-formal；
 5. 若运行时未来重新出现 `skip=1`，没有完整输入摘要时 D6 继续失败关闭，不以计数式放行。
 
-### 正式增量状态与后续（2026-07-25）
+### 正式增量状态与后续（更新至 2026-07-30）
 
 1. source 为 `1e5ed8ddcf27f375e922a447decfbd875d21bfdf`，`repository_dirty=false`；
    execution plan SHA-256 为
    `8804ecb4dd0513db55906905f031832711012974fc911546df40e09fb297d373`。
-2. shard 0、5、9 的 checkpoint 均为 `complete`，每个 45/45，总计 135/900，剩余 765。
-3. `targeted_formal_d6` 只复核 5v5 seed 1000/1005 和 20v20 seed 1009。三项均
-   clean-formal、两层 formal eligible、generation verified，failure reasons 为空。
-4. 5v5 seed 1008/1018 所在 shard 尚未执行。不得把新批次 3/3 与旧批次 895/900 相加，
-   也不得用三项定向结果声明 135/135。
-5. 当前磁盘余量仅比 20 GiB 下限高 63,950,848 bytes。继续执行前由 main 处理空间约束，
-   完成其余 765 cell 后再生成同一 source、同一 plan 的完整 D6 合并报告。
+2. shard 0、5、9 的 checkpoint 为 `complete`，每个 45/45；shard 8、18 为 `paused`，
+   每个 21/45，总计 177/900，剩余 723。
+3. 新专项绕过既有聚合，独立复核 5v5 seed 1000/1005/1008/1018 和 20v20 seed 1009。
+   五项均 clean-formal、两层 formal eligible、generation verified，failure reasons 为空。
+4. 不得把新批次 5/5 与旧批次 895/900 相加，也不得用五项定向结果声明 177/177。
+5. main 完成其余 723 cell 后，再由 D6 对同一 source、同一 plan 的完整 900-cell scope
+   生成逐 cell、聚合和中文报告。
+
+### D6 专项实施状态（2026-07-30）
+
+1. 已冻结五个 target cell 与五个 shard 的 177/900 进度输入。
+2. 已实现 source、execution plan、shard ledger、cell result 和 artifact tree 的独立哈希
+   复核，并调用 D6 低层合同从在线总线与 summary 重算后验代次。
+3. 已输出逐 cell CSV、聚合 JSON、中文 Markdown 和 `SHA256SUMS`；完整输出保存在 D6
+   outputs 忽略目录，紧凑报告与结果保存在 docs。
+4. 当前专项 5/5 通过。后续计划保持为执行剩余 723 cell，再审计完整 R0 scope；不对
+   未审计的 172 个已执行 cell 作推断。
+5. 专项 `9 passed, 1 warning in 2.37s`，D6 全量
+   `1243 passed, 1 warning in 150.38s`；输出 SHA、语法和 owned-path diff 检查通过。
 
 ## 21. 学习作用域正式证据审计（2026-07-26）
 

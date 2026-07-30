@@ -6072,3 +6072,88 @@ scalable 3D 离线评估 v11 将审计结果写入 `d4_planning_chain_*` 字段�
 chain、authority、binding、assignment/unassigned、R0、model benefit、fault fence、
 blocker 和 violation。安全 violation 进入 episode failure reasons；同键 R0 和模型收益
 blocker 不作为运行安全失败。
+
+## 25. 正式 R0 五项后验独立复核
+
+### 25.1 输入
+
+入口 `formal_r0_targeted_posterior_audit.py` 消费显式输入配置。配置冻结 source worktree、
+source commit、execution plan 逻辑摘要、正式作用域规模、当前分片进度和五个 target cell。
+审计器不发现或扩展目标列表，也不从目录名推断缺失 cell。
+
+执行计划有两个摘要：
+
+```text
+logical_sha = SHA256(canonical_json(plan_without_execution_plan_sha256))
+file_sha    = SHA256(experiment_matrix_execution_plan.json bytes)
+```
+
+逻辑摘要绑定计划内容，文件摘要绑定持久化字节。两者分别核对，不能互相替代。
+
+### 25.2 进度账本
+
+对 shard 0、5、8、9、18，审计器读取 shard plan、checkpoint 和 progress。计划中的
+shard cell 列表与 shard plan 必须完全相同。progress 的 sequence 从 0 连续递增，每条记录
+的 cell id、global index、scope index、shard index 和 shard sequence 必须与计划对应。
+checkpoint 的完成数、下一序号和 progress 文件摘要必须一致。
+
+进度分母和审计分母独立：
+
+```text
+execution progress = 177 / 900
+targeted D6 audit  = 5 / 5
+audited share of executed cells = 5 / 177
+```
+
+177 只证明 shard ledger 中的执行进度。它不表示 177 个 episode 已经全部完成 D6 正式准入。
+
+### 25.3 Cell 完整性
+
+目标 cell 的 `cell_result.json` 必须与计划 cell 对象完全相同。progress row 中的 cell result
+摘要必须等于实际文件摘要。episode artifact tree 重新枚举目录内全部文件，按相对路径、
+字节数和文件 SHA-256 构造规范 JSON 后计算树摘要：
+
+```text
+tree_entry = {path, size_bytes, sha256}
+tree_sha   = SHA256(canonical_json(sorted(tree_entries)))
+```
+
+该摘要与 cell result 和 progress row 同时核对。审计只读取 source episode，不写回或覆盖
+producer 制品。
+
+### 25.4 后验代次重算
+
+后验重算复用 D6 低层 `evaluate_scalable_3d_episode()` 和
+`evaluate_posterior_governance()` 合同。输入为在线总线与最终 summary，不读取
+producer 侧 `observation_governance_audit.json`。
+
+每个 cell 必须满足：
+
+```text
+D1 final generation == D1 full posterior publication count
+D2 final consumed generation == D1 final generation
+D2 consumption count == D2 association publication count
+D2 consumption count + pre-tick merge count == D1 final generation
+finalize skip count == 0
+pending generation is empty
+generation integrity == true
+generation contract status == verified
+```
+
+同时要求 source clean、在线真值使用与字段违规均为 0、有限状态为 true、基础 formal 和
+实验矩阵 formal eligibility 为 true、三类 failure reason 为空。任一字段不可用或失败均
+返回 `fail_closed`，不可用不补零。
+
+### 25.5 输出
+
+报告器输出逐 cell CSV、完整聚合 JSON、中文 Markdown 和 `SHA256SUMS`。聚合 JSON 显式
+携带 `full_completed_scope_d6_audited=false` 与 `formal_r0_scope_complete=false`，并列出
+禁止声明的 177/177、900/900 和完整 R0 scope。完整输出保存在 D6 outputs 忽略目录，提交用
+紧凑结果保存在 docs。
+
+### 25.6 验证
+
+专项测试为 `9 passed, 1 warning in 2.37s`，覆盖冻结五 cell 输入、重复输入拒绝、177
+进度守恒、五 cell 指标分母、clean-formal 失败关闭、generation 不可用不补零和报告范围。
+D6 全量回归为 `1243 passed, 1 warning in 150.38s`。输出 `SHA256SUMS`、专项 Python
+语法和 D6 owned-path diff 检查均通过。

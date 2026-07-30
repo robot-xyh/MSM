@@ -15,7 +15,7 @@ main 后续修复了 finalization，并定向重跑这 5 项。修复后五项 g
 verified，且不再声明 skip。该批次来自 dirty 工作树，只能证明修复在定向开发回归中生效，
 不改变旧 clean 提交的 895/900 正式结论。D6 v10 已提交为 `8e955f3`，runtime 修复已形成
 clean source commit `98d01bf`。正式 R0 已在后继 clean source `1e5ed8d` 上启动，当前完成
-135/900；整体 formal rerun 尚未完成。
+177/900；整体 formal rerun 尚未完成。
 
 ## 输入
 
@@ -105,20 +105,26 @@ dirty 工作树的 5 项仍不能组合成同一正式批次。
 
 ## Clean-source 正式增量复核
 
-source `1e5ed8d` 的 shard 0、5、9 checkpoint 均为 `complete`，每个 45/45，总执行进度
-135/900。当前 `targeted_formal_d6` 仅包含三个原失败 cell：
+source `1e5ed8d` 的 shard 0、5、9 checkpoint 均为 `complete`，每个 45/45；shard 8、
+18 各执行 21/45 后暂停。总执行进度为 177/900。
+
+2026-07-30 的新 D6 专项不信任 `targeted_formal_d6` 聚合，直接读取 execution plan、
+五个 cell result、episode artifact tree、在线总线和 summary，重新计算五个原失败 cell：
 
 | 场景 | seed | evidence status | formal / matrix formal | generation status / integrity | D1 / D2 final | consume / publish / merge | skip / pending | failure reasons |
 | --- | ---: | --- | --- | --- | --- | --- | --- | --- |
 | delayed_noisy 5v5 | 1000 | clean formal | true / true | verified / true | 13 / 13 | 6 / 6 / 7 | 0 / empty | `[]` |
 | delayed_noisy 5v5 | 1005 | clean formal | true / true | verified / true | 9 / 9 | 5 / 5 / 4 | 0 / empty | `[]` |
+| delayed_noisy 5v5 | 1008 | clean formal | true / true | verified / true | 13 / 13 | 5 / 5 / 8 | 0 / empty | `[]` |
+| delayed_noisy 5v5 | 1018 | clean formal | true / true | verified / true | 14 / 14 | 6 / 6 / 8 | 0 / empty | `[]` |
 | delayed_noisy 20v20 | 1009 | clean formal | true / true | verified / true | 27 / 27 | 7 / 7 / 20 | 0 / empty | `[]` |
 
-三项 episode、experiment-matrix 和 variant-execution failure reason 均为空，
-`repository_dirty=false`。这证明三个目标 cell 在新 source、新 plan 下通过正式准入，不证明
-其余 132 个已执行 cell 已完成 D6 正式复核。原失败项 5v5 seed 1008、1018 尚未执行，新批次
-仍剩 765 个 cell。
+五项 episode、experiment-matrix 和 variant-execution failure reason 均为空，
+`repository_dirty=false`。source、plan、shard、cell result 和 artifact tree 完整性均通过。
+这证明五个目标 cell 在新 source、新 plan 下通过正式准入，不证明其余 172 个已执行 cell
+已完成 D6 正式复核。新批次仍有 723 个 cell 未执行。
 
+以下磁盘记录是 2026-07-25 执行 135/900 时的历史运行条件，不代表 2026-07-30 当前空间：
 复核时文件系统可用空间为 21,538,787,328 bytes。20 GiB 下限为 21,474,836,480 bytes，
 余量 63,950,848 bytes，约 64 MB（61 MiB）。磁盘约束不改变已形成的三个 cell 证据，但会
 阻塞后续完整批次。
@@ -134,17 +140,17 @@ episode 的算法证据均 clean。对旧批次可以声明：
 - 完整 5700-cell 实验矩阵：未执行，`formal_matrix_complete=false`。
 
 当前不能声明 R0 的 900/900 clean formal acceptance，也不能把 895 个通过项外推为完整矩阵通过。
-对新批次只能声明 shard execution 135/900，以及三个 target cell 通过正式准入。
+对新批次只能声明 shard execution 177/900，以及五个 target cell 通过正式准入。
 
 ## 重跑范围
 
 main 已完成上述 5 个 cell 的定向修复确认，D2 最终消费代次全部追平 D1，且 D6 未发现
 generation contract 失败。该步骤只形成开发态修复证据。
 
-正式替换批次已在 clean source `1e5ed8d` 上执行 135/900。运行时修复会改变 D2 末尾状态，
-并可能传播到 D3、D4、D5 和 D7，不能把新批次的三个通过 cell 或此前 dirty 工作树的五个
-cell 拼接到旧提交的 895 个 cell 中形成新的正式范围。main 仍需执行剩余 765 个 cell，并
-优先覆盖原失败项 5v5 seed 1008、1018。完整后由 D6 重新生成逐 episode CSV、聚合 JSON、
+正式替换批次已在 clean source `1e5ed8d` 上执行 177/900。运行时修复会改变 D2 末尾状态，
+并可能传播到 D3、D4、D5 和 D7，不能把新批次的五个通过 cell 或此前 dirty 工作树的五个
+cell 拼接到旧提交的 895 个 cell 中形成新的正式范围。main 仍需执行剩余 723 个 cell。
+完整后由 D6 重新生成逐 episode CSV、聚合 JSON、
 中文报告和曲线，验收目标为 900/900 clean-formal 且 generation-integrity 失败原因为空。
 在此之前，D6 继续保持旧正式结论 895/900。
 
@@ -157,6 +163,12 @@ cell 拼接到旧提交的 895 个 cell 中形成新的正式范围。main 仍�
 同日读取修复后的 5 个定向 episode。五项 generation integrity 均为 true，contract 状态均为
 verified；基础和矩阵 formal eligibility 仍为 false，原因仅为 dirty/non-clean provenance。
 这一区分证明 D6 同时保持了语义完整性门和正式来源门。
+
+2026-07-30 从 clean source `1e5ed8d` 独立复核五个目标 cell。专项不读取既有定向聚合或
+producer 侧治理审计，五项 generation integrity、基础 formal eligibility 和矩阵 formal
+eligibility 均为 true，failure reason 为空。专项测试为 `9 passed, 1 warning`。完整 D6
+回归为 `1243 passed, 1 warning in 150.38s`；warning 为既有 Matplotlib `Axes3D`
+环境提示。
 
 D6 全量回归为 `894 passed, 1 warning in 85.66s`。全量 `py_compile`、本次四个 Python
 变更文件的 `pyflakes` 和限定路径 `git diff --check` 通过。全 D6 树的 `pyflakes` 仍报告

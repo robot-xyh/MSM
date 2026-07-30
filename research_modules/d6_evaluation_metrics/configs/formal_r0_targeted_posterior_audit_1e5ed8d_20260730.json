@@ -1,0 +1,38 @@
+{
+  "schema_version": "d6.formal-r0-targeted-posterior-audit-input.v1",
+  "execution_root": "/tmp/msm-formal-r0-shard-1e5ed8d/research_modules/scalable_3d_simulation/outputs/formal_r0_20260725_1e5ed8d",
+  "source_repository": "/tmp/msm-formal-r0-shard-1e5ed8d",
+  "expected_source_git_commit": "1e5ed8ddcf27f375e922a447decfbd875d21bfdf",
+  "expected_execution_plan_sha256": "8804ecb4dd0513db55906905f031832711012974fc911546df40e09fb297d373",
+  "expected_scope_cell_count": 900,
+  "expected_completed_cell_count": 177,
+  "expected_shard_progress": {
+    "0": 45,
+    "5": 45,
+    "8": 21,
+    "9": 45,
+    "18": 21
+  },
+  "targets": [
+    {
+      "shard_index": 0,
+      "cell_id": "00400__r0__delayed_noisy__5v5__seed_1000"
+    },
+    {
+      "shard_index": 5,
+      "cell_id": "00405__r0__delayed_noisy__5v5__seed_1005"
+    },
+    {
+      "shard_index": 8,
+      "cell_id": "00408__r0__delayed_noisy__5v5__seed_1008"
+    },
+    {
+      "shard_index": 18,
+      "cell_id": "00418__r0__delayed_noisy__5v5__seed_1018"
+    },
+    {
+      "shard_index": 9,
+      "cell_id": "00429__r0__delayed_noisy__20v20__seed_1009"
+    }
+  ]
+}
