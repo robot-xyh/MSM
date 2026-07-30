@@ -1,5 +1,42 @@
 # D4 分布式协同与降级接管综述及子方案
 
+## 2026-07-30 v7 规则节点与转移残差候选评审
+
+D4 接受 v7 为新的未注册开发候选，不接受其作为 v4-v6 的覆盖版本或生产晋级。v6 在
+M16N24 外部输入上出现 raw transfer 0 和节点动作偏离 R0。v7 因此取消学习节点动作：
+同帧 R0 负责区域储备、侦察、hold、重规划和 authority 绑定，actor 只输出帧级残差
+激活、一个有向边和资源数。学习输出仍需通过既有投影和干预不变量。
+
+训练来源固定为冻结 v4 TRAIN 350 帧和 M16N24 TRAIN 89 帧；checkpoint 只使用对应
+VALIDATION 75/20 帧。M16N24 TEST 17 帧没有进入 fit、checkpoint 或 threshold。
+seed 4016-4079 已作为 v7 development source，后续不能再声称为未见评价。正式
+holdout 1000-1019、旧评价 3008-3039 和预留独立评价 5216-5279 均未读取。
+
+首版转移残差网络仍在 M16N24 VALIDATION 上激活 20/20 帧，负类 exact R0 为 0/11。
+最终结构将帧激活与边方向解耦，并将新域负类门写入 checkpoint。最佳 epoch 137 的
+M16N24 VALIDATION 结果为：raw residual activation 6、exact 正动作 2/9、正确有向
+残差 2/9、负类 exact R0 9/11、投影拒绝 0、不变量失败 0、R0 节点字段偏差 0。旧域
+VALIDATION 为 13/15、13/15、58/60、0、0、0。
+
+fail-closed 复核进一步要求 raw activation 和相对 R0 的实际 transfer change 均非零，
+且投影拒绝为 0。节点保持检查改为直接比较完整 `RegionResourceAction` tuple，包含
+`resource_quota_delta` 和 reasons。当前 M16N24 VALIDATION transfer change 为 6，
+新增门继续通过。
+
+评审接受该结果关闭“节点动作与 transfer 脱节”和“新域验证全激活”两个开发缺口。
+不接受来源独立泛化结论。M16N24 TRAIN 正动作仅命中 1/24，VALIDATION 2/9 又参与
+checkpoint 选择，证据等级仍是开发验收。下一步必须冻结 v7，由 main 提供全新
+5216-5279 数据并由 D6 只读盲审；D4 不再根据当前或新评价数据修改本候选。
+
+v7 没有置信校准器，固定 0.60 门未应用。候选保持 unregistered、
+development/shadow only、admission closed 和 rule fallback required。assist、
+assignment、degradation、takeover、coalition、control、physical、D3 和 D7 权限
+全部为 false。专项 19/19、D4 全量 882/882 通过。AirSim 和 M 对 N 联盟接口未变化。
+
+最终两次构建逐文件一致。模型内容、训练审计内容、候选 manifest 内容和候选树内容
+SHA-256 分别为 `bec99032...0082d`、`1d60fbd1...6385e`、
+`fe9b18f6...4f45f` 和 `b143a6bc...a2fa`。
+
 ## 2026-07-30 v6 来源独立外部评价评审
 
 D4 接受本次结果为 v6 的来源独立、只读开发评价，不接受其作为模型准入或正式

@@ -1,5 +1,48 @@
 # D4 分布式协同与降级接管
 
+## 2026-07-30 v7 规则节点与转移残差开发候选
+
+D4 已另立未注册候选
+`region_resource_a2_rule_node_transfer_residual_shadow_v7`，没有修改冻结的
+v4、v5 或 v6。v7 先在同一快照上运行确定性 R0，再继承 R0 的完整区域 action tuple：
+`resource_quota_delta`、储备比例、侦察优先级、hold、request-replan、owner、plan、
+version、epoch、lease 和 reasons 均不由学习模型生成。新 actor 只判断一帧是否需要
+转移残差，并在通过帧门后选择至多一条有向边和资源数。残差与 R0 转移集合组合后，仍进入现有
+`DeterministicResourceProjector` 和 v4 干预不变量。
+
+训练合并两个来源的 TRAIN：冻结 v4 的 350 帧和 M16N24 的 89 帧。checkpoint 只比较
+两个来源的 VALIDATION 75/20 帧。M16N24 TEST 17 帧没有加载、拟合、选模或调门；
+seed 5216-5279、正式 holdout 1000-1019 和旧评价 3008-3039 的读取计数均为 0。
+TRAIN 权重覆盖 84/355 个正负帧和 84/5260 条正/零残差边。帧激活、边方向排序和资源数
+分头监督，负帧通过独立帧门保持 R0。
+
+| 来源与划分 | 正类 exact | 正确有向残差 | 负类 exact R0 | actor 激活 | 投影拒绝 | 不变量失败 | 节点字段偏差 |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| 冻结 v4 TRAIN | 58/60 | 58/60 | 278/290 | 70 | 0 | 0 | 0 |
+| 冻结 v4 VALIDATION | 13/15 | 13/15 | 58/60 | 17 | 0 | 0 | 0 |
+| M16N24 TRAIN | 1/24 | 1/24 | 62/65 | 5 | 0 | 0 | 0 |
+| M16N24 VALIDATION | 2/9 | 2/9 | 9/11 | 6 | 0 | 0 | 0 |
+
+预置开发门要求 M16N24 VALIDATION 至少 1 个 exact 正动作、actor 原始激活和实际
+transfer change 均大于 0、负类 exact R0 至少 8/11、投影拒绝为 0、投影后不变量
+失败为 0、R0 完整 action tuple 偏差为 0。最佳
+checkpoint 为 epoch 137，训练在 epoch 182 提前停止，当前结果通过该开发门。该门只
+证明双来源开发数据上的结构修复，不证明来源独立泛化。M16N24 TRAIN 正类仅命中 1/24，
+也表明帧激活规律仍需全新来源盲审。
+
+两次最终构建使用规范张量流并要求候选目录逐字节一致。构建结果写入忽略的
+`outputs/d4_v7_rule_node_residual_failclosed_final_20260730/` 和
+`outputs/d4_v7_rule_node_residual_failclosed_final_repro_20260730/`，不进入模型注册表。v7 没有
+置信校准器，不应用 0.60 置信门；assist、assignment、degradation、takeover、
+coalition、control、physical、D3 和 D7 权限全部为 false。专项 19/19、D4 全量
+882/882 通过。全新 seed 5216-5279 的来源独立评价和 D6 盲审尚未开始。
+
+两次构建逐文件无差异。模型、训练审计、候选 manifest 和候选树内容 SHA-256 分别为
+`bec99032bc176854f7ba265977ed35bf828d415be4bc260c9b6703a95d70082d`、
+`1d60fbd1e3841eddc76914f7dad4421ae024eaf4ff63190269dc1a2046f6385e`、
+`fe9b18f6da8d9daf6d443a89f4cc321a9bda7645be3367b69c4ac29b3ac4f45f` 和
+`b143a6bc6787c97d16a8ab58af23e02341e9ce42992cb50e4bcb049b4a04a2fa`。
+
 ## 2026-07-30 v6 来源独立外部评价
 
 D4 已对固定内容哈希的

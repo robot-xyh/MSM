@@ -1,5 +1,49 @@
 # D4 实现差距审计：分布式协同与降级接管
 
+## 2026-07-30 v7 规则节点与转移残差 GAP
+
+- **无新增 P0。** v7 未注册且没有通用运行加载器。确定性 R0、投影器、
+  owner/version/epoch/lease、备用资源、ACK、联盟和全部运行权限未变化。
+- **已关闭 D4 内 P1 子项：节点动作与 transfer 脱节。** v7 删除学习节点动作头。原始
+  proposal 的完整 `RegionResourceAction` tuple 继承同帧 R0，比较覆盖
+  `resource_quota_delta`、reasons 及其余全部数据类字段；资源配额增量只由组合后的
+  transfer 经投影器守恒重算。两来源 TRAIN/VALIDATION 的节点字段偏差均为 0，不变量
+  失败均为 0。
+- **已关闭 D4 内 P1 子项：M16N24 验证负类过度激活。** 独立帧门先判断是否需要残差，
+  边头只在帧门通过时选择至多一条有向边。首版全激活状态已收敛为 M16N24
+  VALIDATION actor 激活 6/20，负类 exact R0 为 9/11，高于固定门 8/11。
+- **已关闭 D4 内 P1 子项：新域开发门缺失。** 构建器硬性要求 M16N24 VALIDATION
+  raw activation 和实际 transfer change 均大于 0、exact 正动作大于 0、负类 exact
+  R0 至少 8/11、投影拒绝为 0、不变量失败为 0、R0 完整 action tuple 偏差为 0。
+  当前为 6、6、2/9、9/11、0、0、0。任一不满足时不落盘候选。
+- **已关闭 D4 内 P1 子项：双来源数据用途和哈希不可审计。** v4 TRAIN/VALIDATION
+  350/75 帧与 M16N24 TRAIN/VALIDATION 89/20 帧分别记录样本、正负帧、正/零边、
+  有向覆盖、manifest 和已选 episode 摘要。M16N24 TEST 17 帧 payload read/fit 为
+  0；5216-5279、1000-1019、3008-3039 均被显式拒绝。
+- **已关闭 D4 内 P1 子项：重复构建漂移。** v7 使用规范张量流，最终两次构建比较
+  model、训练审计、候选 manifest 和完整 candidate tree。实现文件摘要写入来源绑定，
+  避免制品与实现脱节。四项内容摘要分别为 `bec99032...0082d`、
+  `1d60fbd1...6385e`、`fe9b18f6...4f45f` 和 `b143a6bc...a2fa`；两棵目录逐文件
+  无差异。
+- **开发结果。** 旧域 TRAIN/VALIDATION exact 正动作为 58/60、13/15，负类 exact R0
+  为 278/290、58/60。M16N24 TRAIN/VALIDATION exact 正动作为 1/24、2/9，负类 exact
+  R0 为 62/65、9/11。四个桶的投影拒绝、不变量失败和节点字段偏差均为 0。
+- **P1 仍开放：来源独立激活泛化。** M16N24 TRAIN 正类仅命中 1/24，当前
+  VALIDATION 2/9 是开发选模结果。seed 4016-4079 已转为 v7 development source，
+  不再属于未见评价。必须由 seed 5216-5279 或另一批冻结新数据执行只读盲审。
+- **P1 仍开放：置信校准和独立复核。** v7 没有置信校准器，固定 0.60 门未应用。
+  D6 尚未盲审 v7。独立正负分母、校准版本、正式 holdout、runtime preflight、
+  D3 successor、D7 权限、物理窗口和收益均未闭合。
+- **权限。** v7 继续 unregistered、development/shadow only、admission closed、
+  rule fallback required；assist、assignment、degradation、takeover、coalition、
+  control、physical、D3、D7 权限全部 false。
+- **验收。** v7 专项 19/19、D4 全量 882/882、Python 语法检查通过；格式检查无
+  错误。
+
+本次没有改变 AirSim 消息、节点、episode 或在线适配器。已检查
+`reports/AIRSIM_INTEGRATION_PLAN.md`，无需修改。M 对 N 联盟状态机和成员 ACK 合同也
+未改变，已检查 `D4_M_TO_N_DISTRIBUTED_COALITION_REVIEW.md`，无需修改。
+
 ## 2026-07-30 v6 来源独立外部评价 GAP
 
 - **无新增 P0。** v6 候选没有注册或接入运行时。确定性投影、固定 0.60 门、规则回退、

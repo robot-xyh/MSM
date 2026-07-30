@@ -1,5 +1,96 @@
 # D4 分布式降级与接管实验报告
 
+## 2026-07-30 v7 规则节点与转移残差开发验证
+
+### 结论
+
+v7 通过预先固定的 M16N24 开发门。VALIDATION 上 actor 原始残差激活为 6，exact
+正动作为 2/9，负类 exact R0 为 9/11，不变量失败和 R0 节点字段偏差均为 0。v7
+解决了 v6 节点动作与转移边脱节的问题，也将首版 v7 的新域负类全激活降为 2 个负类
+虚假转移。
+
+该结论只覆盖两个已知来源的 TRAIN/VALIDATION。M16N24 TRAIN 正类命中为 1/24，
+VALIDATION 又参与 checkpoint 选择，当前证据不支持来源独立泛化、注册或运行采用。
+
+### 输入和隔离
+
+| 来源 | TRAIN | VALIDATION | 用途 |
+| --- | ---: | ---: | --- |
+| 冻结 v4 candidate dataset | 350 | 75 | TRAIN 拟合；VALIDATION 选模 |
+| M16N24 labeled dataset | 89 | 20 | TRAIN 拟合；VALIDATION 选模 |
+
+合并 TRAIN 有 84 个正帧、355 个负帧、84 条正残差边和 5260 条零残差边。类别权重、
+边权重和来源权重均从合并 TRAIN 计算。VALIDATION 的参数拟合和权重拟合计数为 0。
+
+M16N24 TEST 17 帧的 payload read/fit 为 0。seed 5216-5279、正式 holdout
+1000-1019 和旧评价 3008-3039 均未读取。M16N24 数据集和 split 摘要分别为
+`b1295091...2b42c` 和 `c767a48b...ae332`。
+
+### 方法
+
+每帧先运行确定性 R0。actor 只输出帧激活、有向转移边和绝对资源数，不输出节点动作。
+raw `RegionResourceAction` tuple 整体继承 R0，包括 `resource_quota_delta`、储备比例、
+侦察优先级、hold、重规划、owner、plan、version、epoch、lease 和 reasons。转移残差
+与 R0 合并后，继续通过确定性投影和 v4 干预不变量。
+
+损失只监督转移残差，包括边激活、帧内有向边排序、正边资源数、正帧激活和负帧
+no-transfer 一致性。checkpoint 先比较投影后 exact 行为和安全失败，再比较验证损失。
+开发门没有在构建之间修改。
+
+### 结果
+
+| 来源与划分 | 正类 | 负类 | exact 正动作 | 正确有向残差 | 负类 exact R0 | raw transfer | 投影拒绝 | 不变量失败 | 节点字段偏差 |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| 冻结 v4 TRAIN | 60 | 290 | 58/60 | 58/60 | 278/290 | 70 | 0 | 0 | 0 |
+| 冻结 v4 VALIDATION | 15 | 60 | 13/15 | 13/15 | 58/60 | 17 | 0 | 0 | 0 |
+| M16N24 TRAIN | 24 | 65 | 1/24 | 1/24 | 62/65 | 5 | 0 | 0 | 0 |
+| M16N24 VALIDATION | 9 | 11 | 2/9 | 2/9 | 9/11 | 6 | 0 | 0 | 0 |
+
+最佳 checkpoint 为 epoch 137。训练在 epoch 182 提前停止。M16N24 VALIDATION
+达到 raw activation 大于 0、实际 transfer change 大于 0、exact 正动作大于 0、
+负类 exact R0 至少 8/11、投影拒绝为 0、不变量失败为 0 和完整 action tuple 偏差为
+0 的固定门。raw activation/transfer change 均为 6。
+
+新域仍有 7/9 个正类未形成 exact 动作，2/11 个负类产生虚假转移。现阶段主要问题已从
+“完全不激活”转为“正帧覆盖不足和少量负帧误激活”。本轮不继续调参，保留给来源独立
+评价判断。
+
+### 重复构建
+
+相同冻结输入、配置和实现执行两次独立构建。两棵候选目录执行逐文件比较无差异。
+
+| 内容 | SHA-256 |
+| --- | --- |
+| 模型参数内容 | `bec99032bc176854f7ba265977ed35bf828d415be4bc260c9b6703a95d70082d` |
+| 状态文件 | `d0f7f17599fba382d9aa436c6ae34ef5f23b582a5ed9068f3475cb545b4f88f5` |
+| 训练审计内容 | `1d60fbd1e3841eddc76914f7dad4421ae024eaf4ff63190269dc1a2046f6385e` |
+| 候选 manifest 内容 | `fe9b18f6da8d9daf6d443a89f4cc321a9bda7645be3367b69c4ac29b3ac4f45f` |
+| 候选树内容 | `b143a6bc6787c97d16a8ab58af23e02341e9ce42992cb50e4bcb049b4a04a2fa` |
+
+候选 manifest 文件摘要为
+`7da207acb00f89f1f9b34559fa5b456df412065ae7affd2c88957b776d698cfe`，
+训练审计文件摘要为
+`4ee26a00e23a7cb3f33d45fcbc5d4bbb8709814d6b9e6b38ac288d55e1072f37`。
+
+### 测试
+
+- v7 专项：19 passed；
+- D4 全量：882 passed；
+- 新增模块、构建入口和专项测试 `py_compile`：通过；
+- 两个候选目录 `diff -qr`：无差异。
+
+全量测试有 1 条既有 Matplotlib `Axes3D` 导入警告，不影响 D4 测试结果。测试没有启动
+AirSim，也没有读取预留独立评价、TEST 或 holdout。
+
+### 权限和后续评价
+
+候选保持未注册、仅开发和 shadow、准入关闭、强制规则回退。没有置信校准器，未应用
+固定 0.60 门。assist、assignment、degradation、takeover、coalition、control、
+physical、D3 和 D7 权限全部为 false。
+
+下一步是冻结当前制品，由独立评价方使用全新来源只读检查。当前报告不包含
+5216-5279、正式 holdout、AirSim、D3 successor、D7 控制或物理收益结果。
+
 ## 2026-07-30 v6 来源独立外部评价
 
 ### 结论

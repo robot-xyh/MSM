@@ -1,5 +1,53 @@
 # D4 分布式协同与降级接管计划
 
+## 2026-07-30 v7 规则节点与转移残差计划
+
+### 已完成
+
+- 冻结 v4-v6，另立 v7 candidate、model、bundle 和状态格式。v7 不再输出节点动作头，
+  同帧 R0 负责节点非转移字段，actor 只输出帧激活、有向边和资源数残差。
+- 将 R0 转移作为基线。actor 激活边时按预测资源数覆盖该有向边；未激活时完整保留 R0
+  转移。组合动作仍经过既有投影和干预不变量，owner、plan、version、epoch、lease、
+  ACK、备用资源和联盟围栏未放宽。
+- 合并冻结 v4 TRAIN 350 帧和 M16N24 TRAIN 89 帧拟合。来源权重、正负帧权重和
+  84/5260 条正/零残差边权重只由合并 TRAIN 推导。VALIDATION 75/20 帧只用于
+  checkpoint 行为排序。
+- 将帧激活和有向边排序解耦，修复 v6 的节点动作与 transfer 脱节，并抑制首版 v7
+  对 M16N24 负类的全激活。checkpoint 首先要求 M16N24 开发门通过，再比较投影后
+  exact 正动作、有向残差、负类 exact R0、安全失败和固定训练权重下的验证损失。
+- 固定开发门为：M16N24 VALIDATION exact 正动作大于 0、原始残差激活和实际
+  transfer change 均大于 0、负类 exact R0 至少 8/11、投影拒绝为 0、不变量失败为
+  0、R0 完整 action tuple 偏差为 0。最佳 epoch 137 的结果为
+  2/9、6/6、9/11、0、0、0。
+- 旧域 VALIDATION 保持 13/15 个 exact 正动作、58/60 个负类 exact R0、0 个投影拒绝
+  和 0 个不变量失败。两域结果分别持久化，未用总体均值掩盖新域。
+- M16N24 TEST 17 帧、seed 5216-5279、正式 holdout 1000-1019 和旧评价
+  3008-3039 均未用于拟合、checkpoint 或阈值。构建器和专项测试显式拒绝这些来源。
+- 新增构建 CLI、19 项专项回归和规范状态文件。最终双构建的 model、audit、
+  manifest 和 candidate-tree 内容摘要一致，完整目录逐字节无差异。对应摘要为
+  `bec99032...0082d`、`1d60fbd1...6385e`、`fe9b18f6...4f45f` 和
+  `b143a6bc...a2fa`。v7 专项 19/19、D4 全量 882/882 通过。
+- AirSim 集成计划已检查。v7 是离线区域 actor 开发路径，没有改变消息、节点、episode、
+  在线 loader 或 AirSim 适配器，因此该计划无需修改。
+
+### 当前判断
+
+v7 关闭了“学习节点动作与转移边脱节”和“M16N24 验证负类过度激活”两个开发子项。
+当前结果只来自两个已知来源的 TRAIN/VALIDATION。M16N24 的正类标签由开发数据导出流程
+形成，TRAIN 正类命中仅 1/24；不能把 VALIDATION 2/9 写成独立泛化能力。候选保持
+unregistered、development/shadow only、admission closed 和 rule fallback required。
+
+### 下一门
+
+1. 冻结最终 v7 actor、训练审计、来源绑定和双构建摘要，不再根据当前开发数据调网络、
+   帧门或 checkpoint。
+2. 由 main 生成并冻结 seed 5216-5279 的全新来源独立数据。D4 不参与标签选择或模型
+   更新；D6 对冻结 v7 执行只读盲审。
+3. 独立评价必须报告正类分母、exact 正动作、负类 exact R0、错误方向/数量、投影拒绝、
+   不变量失败和节点字段保持。证据不足时保持失败关闭。
+4. 只有独立评价形成充分正负分母后，才另立置信校准版本。当前不运行正式 holdout、
+   runtime preflight、D3 successor、D7 权限、AirSim 或物理收益试验。
+
 ## 2026-07-30 v6 来源独立评价计划
 
 ### 已完成

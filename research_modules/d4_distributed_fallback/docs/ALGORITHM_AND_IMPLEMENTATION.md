@@ -1,5 +1,164 @@
 # D4 分布式协同与降级接管算法及实施方案
 
+## 2026-07-30 v7 规则节点与转移残差实现
+
+### 设计边界
+
+v7 候选标识为
+`region_resource_a2_rule_node_transfer_residual_shadow_v7`。该候选没有覆盖或修改
+v4、v5、v6。它针对 v6 在 M16N24 来源上出现的两个问题：学习节点动作偏离同帧规则
+动作，转移头在新来源上不激活。v7 将节点动作和转移学习分开：
+
+1. `RuleRegionResourcePolicy` 先对当前区域快照生成确定性规则建议 R0。
+2. v7 actor 只预测帧级残差激活、一条有向转移边及该边的绝对资源数。
+3. 未激活时完整保留 R0；激活时只覆盖所选有向边的资源数。
+4. 组合建议经过 `DeterministicResourceProjector`，再执行既有 v4 干预不变量。
+
+v7 不生成区域节点动作头。原始建议直接复用 R0 的完整 action tuple，包含：
+
+- `resource_quota_delta`；
+- 储备比例；
+- 侦察优先级；
+- `hold` 和 `request_replan`；
+- owner 标识和 owner 层级；
+- plan 标识、plan version、epoch 和 lease；
+- `reasons`。
+
+raw action 保持审计直接比较完整不可变数据类，而不是抽取部分字段。投影器随后可以根据
+转移守恒关系重算资源配额增量并追加确定性拒绝原因。该变化属于投影结果，不属于学习
+节点动作。模型不能修改 owner、epoch、lease、分配权限、联盟权限或控制权限。
+
+### 数学表示
+
+区域快照记为 \(G\)，R0 输出记为
+
+\[
+R_0(G)=\{a_i^0,\tau_e^0\},
+\]
+
+其中 \(a_i^0\) 是区域节点动作，\(\tau_e^0\) 是有向边 \(e\) 上的基线转移资源数。
+v7 actor 输出帧激活分数 \(g(G)\)、有向边分数 \(s_e(G)\) 和资源数
+\(q_e(G)\)。当前固定激活阈值为 0，不使用置信校准：
+
+\[
+\tau_e =
+\begin{cases}
+\tau_e^0, & g(G)<0,\\
+\operatorname{round}(q_e), & g(G)\ge 0,\ e=e^\*,\\
+\tau_e^0, & g(G)\ge 0,\ e\ne e^\*,
+\end{cases}
+\qquad
+e^\*=\arg\max_e s_e(G).
+\]
+
+每帧最多激活一条残差边。预测资源数受该边可转移资源上限约束；预测为 0 时删除 R0
+在该边上的转移。这样可以表达新增、删除和修改数量三类残差，同时保留其他 R0 转移。
+
+### 网络与监督
+
+actor 使用节点特征、源节点与目标节点差、全图节点均值、边特征和 R0 转移比例构造
+有向边上下文。边上下文经过两层全连接网络，分别输出边激活值和资源数。帧激活头使用
+全图节点的均值、最大值、最小值，以及边特征的均值和最大值。网络不含 node actor。
+
+残差标签由目标转移和 R0 转移之差产生：
+
+\[
+y_e=\mathbf{1}(\tau_e^{target}\ne\tau_e^0).
+\]
+
+冻结配置的损失为
+
+\[
+L=L_{edge}
++0.75L_{rank}
++0.50L_{count}
++2.0L_{frame+}
++2.0L_{frame-}.
+\]
+
+`edge` 项显式监督残差边激活；`rank` 项要求正确有向边比分内其他边至少高 0.5；
+`count` 项只监督正残差边的绝对资源数。正帧和负帧分别监督帧门。负帧一致性损失直接
+压低帧激活，解决首版 v7 在 M16N24 VALIDATION 上 20/20 帧激活的问题。
+
+正负帧、正边与零边、两个来源之间的平衡权重只由合并 TRAIN 推导。VALIDATION 不更新
+参数，不派生类别权重，也不调整阈值。
+
+### 数据用途
+
+构建器只加载以下数据：
+
+- 冻结 v4 来源：TRAIN 350 帧、VALIDATION 75 帧；
+- M16N24 来源：TRAIN 89 帧、VALIDATION 20 帧。
+
+合并 TRAIN 含 84 个正帧、355 个负帧、84 条正残差边和 5260 条零残差边。M16N24
+数据集内容摘要为
+`b1295091d4d79e423e1ced02269895d486e2dbcca9d80834d5af0cc14882b42c`，
+划分摘要为
+`c767a48b90f6e2a3f077be4f931d95102a6b2a925a2f813ca8440c8951aae332`。
+
+M16N24 TEST 17 帧不加载为 episode payload。seed 5216-5279、正式 holdout
+1000-1019 和旧评价 3008-3039 均由载入守卫显式拒绝。4016-4079 已作为 v7 开发
+来源，不能再用于声明 v7 的未见评价。
+
+### 选模与开发门
+
+每个 checkpoint 先比较投影后行为，再比较固定 TRAIN 权重下的验证损失。排序顺序为：
+
+1. M16N24 开发门是否通过；
+2. exact 正动作数；
+3. 正确有向残差边数；
+4. 负类 exact R0 数；
+5. 不变量失败、负类虚假转移和投影拒绝；
+6. 验证损失和较早 epoch。
+
+全 no-transfer、仅节点变化或没有正确有向边的 checkpoint 不能成为合格候选。
+M16N24 VALIDATION 的固定开发门为：
+
+- actor 原始残差激活大于 0；
+- actor 相对 R0 的实际 transfer change 大于 0；
+- exact 正动作大于 0；
+- 负类 exact R0 至少 8/11；
+- 投影拒绝为 0；
+- 完整投影后不变量失败为 0；
+- R0 完整 action tuple 偏差为 0。
+
+最佳 checkpoint 为 epoch 137，训练在 epoch 182 提前停止。逐来源结果如下。
+
+| 来源与划分 | exact 正动作 | 正确有向残差 | 负类 exact R0 | actor 激活 | 投影拒绝 | 不变量失败 | 节点字段偏差 |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| 冻结 v4 TRAIN | 58/60 | 58/60 | 278/290 | 70 | 0 | 0 | 0 |
+| 冻结 v4 VALIDATION | 13/15 | 13/15 | 58/60 | 17 | 0 | 0 | 0 |
+| M16N24 TRAIN | 1/24 | 1/24 | 62/65 | 5 | 0 | 0 | 0 |
+| M16N24 VALIDATION | 2/9 | 2/9 | 9/11 | 6 | 0 | 0 | 0 |
+
+M16N24 VALIDATION 通过开发门。M16N24 TRAIN 正类只命中 1/24，说明当前模型对新域
+正帧激活的覆盖仍低。该结果是使用 VALIDATION 选模后的开发证据，不是来源独立泛化
+结论。
+
+### 构建与内容身份
+
+构建入口为
+`scripts/build_region_resource_v7_rule_node_residual_candidate.py`。模型状态使用按参数
+名、类型、形状和原始字节排序的规范张量流。两次独立构建的全部文件逐字节一致。
+
+| 内容 | SHA-256 |
+| --- | --- |
+| 模型参数内容 | `bec99032bc176854f7ba265977ed35bf828d415be4bc260c9b6703a95d70082d` |
+| 状态文件 | `d0f7f17599fba382d9aa436c6ae34ef5f23b582a5ed9068f3475cb545b4f88f5` |
+| 训练审计内容 | `1d60fbd1e3841eddc76914f7dad4421ae024eaf4ff63190269dc1a2046f6385e` |
+| 候选 manifest 内容 | `fe9b18f6da8d9daf6d443a89f4cc321a9bda7645be3367b69c4ac29b3ac4f45f` |
+| 候选树内容 | `b143a6bc6787c97d16a8ab58af23e02341e9ce42992cb50e4bcb049b4a04a2fa` |
+
+候选树摘要按排序后的相对路径和每个文件 SHA-256 计算。两个输出目录执行 `diff -qr`
+无差异。候选位于忽略的 `outputs/`，没有写入模型注册表。
+
+### 权限状态
+
+v7 保持 development、shadow only、unregistered、admission closed 和 rule fallback
+required。候选没有置信校准器，不应用固定 0.60 门。assist、assignment、
+degradation、takeover、coalition commit、control、physical、D3 和 D7 权限全部
+为 false。来源独立评价、正式 holdout、运行预检、AirSim 和物理收益均未开始。
+
 ## 2026-07-30 v6 来源独立外部评价实现
 
 评价器位于
