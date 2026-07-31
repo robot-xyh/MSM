@@ -34,6 +34,48 @@ D2 v3 复现和测试验收已同步。五 seed 200v200 候选在 45/45 周期�
 IDSW `9 -> 3`，但 D2/D3 数量 `203/200 -> 201/197`、track/coverage continuity
 `0.865/0.870 -> 0.8266667/0.8283333`。合同修复通过，算法候选继续拒绝。
 
+## 2026-07-31 正式 R0 半程 GAP 判定
+
+本轮新增证据来自 clean producer `80e55eb` 的正式 R0 shard 0-9，共 `450/900`
+episode。D6 v12 evaluator `b6289c5` 已按哈希校验后的离线 truth-isolated 身份制品
+重聚合：严格 `id_switch_count` 为 `414/450 available`，可用项合计 893，169 个
+episode 非零。在线 producer 保持 `0/450 available`；这符合在线 truth 隔离合同，
+不列为 GAP。
+
+- **P0 状态不变**：没有新增运行安全 blocker。36 个异常 episode 均失败关闭，未补零、
+  未让 truth 进入在线 D2，也没有证据表明下游可把不可用值当作硬风险零值。
+- **P1-A 高规模规范身份合并**：27 个 episode 因一条 `global_track_id` 对应多个真值
+  目标而不可用；其中 23 个位于 200 规模、4 个位于 100 规模、50 及以下为 0。需要
+  对候选边、连通分量、source claim、身份承诺与生命周期接续做逐帧因果审计。不能用
+  truth 直接拆轨，也不能仅收紧门限后宣称修复。
+- **P1-B 谱系时间链**：9 个 episode 因来源观测超出冻结的 `0.9 s` lineage window
+  而不可用。4 个是 5v5 delayed-noisy 的不同 seed，5 个是 seed 1004 在五个 100v100
+  场景中的重复表现。该分布不是规模单调退化，需先核对 measurement/arrival/
+  state-valid/published/consume 时刻、调度和 sidecar 匹配。
+- **P1-C 可评分身份稳定性**：100/200 规模贡献 821/893 次严格 ID Switch；
+  delayed-noisy 场景族贡献 486 次，dense-crossing 贡献 95 次。前者没有一轨多真值
+  失败，说明“严格可用但切换多”和“证据不可用”是两个独立问题，后续准入必须分别
+  报告。
+- **指标边界**：36 个失败项中的部分下界只覆盖局部可评分转移。严格不可用不等于 0，
+  下界不能并入严格总数、不能替代 episode 指标，也不能参与算法排名或置信区间。
+
+### 后续代码任务与验收口径
+
+1. 固定 36 个失败项及同规模、同场景相邻通过项，生成逐帧 association-edge、component、
+   claim、commitment、lifecycle 和五时刻因果包；在线包继续禁止 truth。
+2. 一轨多真值候选应把真实歧义表示为 uncommitted/coverage 损失，禁止一个已承诺
+   canonical track 同时吸收多个物理目标。谱系任务先修生产/调度/证据合同，不扩大窗口。
+3. 任一代码、门限、状态机或窗口改变均冻结新 source 与新 execution plan，从 shard 0
+   重跑。旧 `80e55eb` 的 450-cell 不重标签、不重解释、不与新结果拼接。
+4. 定向回归要求 36 个历史失败原因均被正确消除或转化为可审计的未承诺覆盖损失，在线
+   truth use、规范 ID 非法改写、重复谱系消费均为 0。
+5. 完整晋级要求 9 场景、5 规模、20 unseen seeds 的严格证据完整；配对比较 ID Switch、
+   identity/coverage continuity、track count、RMSE 和 D2 wall time。严格指标不可用或
+   任一业务指标明显退化时继续失败关闭。
+
+该证据只完成正式矩阵半程诊断。不能把 seed 1000-1009 写成 20-seed 完整结论，也不能
+将 450-cell 的 893 次 ID Switch 外推为 900-cell 总量。
+
 ## 2026-07-23 D1 歧义侧车与 D2 保持租约增量
 
 - **问题来源**：D1 v1/v2 在 clean 200v200 A/B 中把整歧义分量 suppression 作为硬

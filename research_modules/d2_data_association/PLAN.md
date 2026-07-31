@@ -8,6 +8,28 @@ D2 只负责离线科研仿真、日志回放和多目标数据关联评估。�
 
 规模边界必须保持清晰：2v2、5v5、`crossing_dense_5v5` 都只是 baseline fixture 或回放场景名。D2 的关联器、Tracker、metrics 和 dry-run adapter 均按每帧传入的 `tracks`、`detections`、`active_tracks` 长度运行，不从场景名推断目标数量，不把 main runtime 的 `--drone-count N` 复制成内部常量。
 
+### 1.1 2026-07-31 正式 R0 半程计划基线
+
+clean producer `80e55eb` 的正式 R0 已完成 shard 0-9，共 `450/900` 个 episode；D6 v12
+evaluator `b6289c5` 的严格离线重聚合得到 `414/450 available`、893 次 ID Switch、
+169 个非零 episode。36 个失败关闭项由 27 个一轨多真值和 9 个谱系窗外观测组成。
+在线 producer 保持 `0/450 available`，真值没有进入 D2 在线路径。
+
+本轮证据同步不修改关联器、门限、身份承诺状态机或 `0.9 s` lineage window。后续 P1
+按以下顺序推进：
+
+1. 对 27 个一轨多真值 episode 做逐帧、逐来源谱系和候选分量因果回放，区分错误合轨、
+   未承诺歧义处理和生命周期接续，不用离线真值生成在线关联动作。
+2. 对 9 个窗外 episode 核对 measurement、arrival、state-valid、published、D2 consume
+   五类时刻及 sidecar 匹配，先定位生产调度或证据合同断点，不直接扩大时间窗。
+3. 候选先在固定失败子集和相邻通过子集做新 source A/B。通过后冻结新的 execution
+   plan，再运行完整 9 场景、5 规模、20 unseen seeds；不得把旧 450-cell 与新代码混合。
+4. 主线晋级要求在线 truth use、规范 ID 改写和旧谱系重放均为 0；身份歧义应通过
+   uncommitted/coverage 口径表达，不能形成一轨多真值映射。严格不可用项不得补零，
+   局部下界不得替代严格 ID Switch。
+5. 候选除提高严格证据可用性外，还需对配对 seed 报告 ID Switch、identity/coverage
+   continuity、track count、RMSE 和 D2 wall time，任何一项明显退化均不准入。
+
 ## 2. 当前代码状态概览
 
 当前 D2 可运行路径依赖 NumPy、SciPy 和 pytest。兼容默认在线工程主线仍是 `GNNHungarianAssociator` + 马氏门控 + 二维常速度 Kalman fallback + `Tracker` 生命周期状态机；2026-07-20 新增的 `Scalable3DTracker` + `Sparse3DGNNHungarianAssociator` 是显式选择的六维稀疏路径，不替换旧 replay/AirSim 默认入口。JPDA 和 MHT 已有接口兼容、可执行的研究近似，但不是完整生产级 JPDA filter 或 MHT hypothesis manager。Stone Soup、FilterPy 已有 optional 版本/原因探测、对象 adapter 和 frozen replay smoke benchmark，但不进入默认运行路径或 requirements。
