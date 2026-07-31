@@ -14,8 +14,10 @@
    D6 只报告证据，不推断身份或补写 0。
 6. [ ] 获得明确授权后，人工移除已验证的原始 shard，或迁移归档到独立存储，再按相同
    流程运行 shard 10-19。shard 9 归档完成时仅余约 20.24 GiB，不能安全启动下一分片。
-7. [ ] 全部 20 个归档恢复并逐片复核后执行 `merge-r0 --write-d6-report`，由 D6 完成
-   targeted/full posterior。当前进度为 450/900。
+7. [x] 增加归档原生范围合并：完整 archive set 精确匹配、逐片临时恢复、普通分片
+   合并合同复用、D6 预评估行聚合、报告 SHA-256 绑定和原子发布。工具不删除源或归档。
+8. [ ] 完成 shard 10-19 后运行正式 `merge-archives --write-d6-report`，再使用已通过开发
+   回归的 D6 独立归档入口复核 archive set 和完整 posterior。当前进度为 450/900。
 
 ## D4 建议当前代次发布修复（2026-07-31）
 
@@ -44,8 +46,9 @@
 10. [x] 在 clean `80e55eb` 上冻结 execution plan，并完成 shard 0-9 的
     `run -> pack -> verify`。shard 9 的运行保护线仍为 20 GiB；仅归档阶段按实际压缩率
     使用 18.9 GiB 最坏情况保留值，成包后可用空间仍高于 20 GiB。
-11. [ ] 完成 shard 10-19，全部归档恢复并复核后执行
-    `merge-r0 --write-d6-report`。
+11. [ ] 完成 shard 10-19，使用完整 archive set 执行
+    `merge-archives --write-d6-report`。D6 归档模式独立审计已通过开发回归，正式 900-cell
+    运行仍待完整集合。
 
 ## 高威胁时期租约开发复验（2026-07-30）
 
@@ -428,6 +431,15 @@
    `/tmp/msm-formal-r0-shard-*` 历史证据。
 10. [ ] 只有归档和源目录再次逐文件相等且用户明确授权后，才允许人工移除对应原始
     分片。工具不自动删除，未经授权不得降低 20 GiB 正式运行保护下限。
+11. [x] 新增 archive scope merge。每个归档先完整校验，再恢复到隔离临时执行根，复用
+    普通单元/episode/文件树验证并形成只读 fragment；上一片临时目录清理后才处理下一片。
+12. [x] D6 预评估行在临时 episode 释放前生成，最终 CSV、聚合 JSON、中文报告、曲线和
+    性能证据由独立 binding 保存大小和 SHA-256。archive merge 输出不伪装规范目录已经
+    materialized。
+13. [x] D6 已独立复核 archive merge schema、压缩成员、计划绑定、逐片低层 episode 和
+    报告 binding；归档/full posterior 专项 `32 passed`，D6 全量 `1297 passed`。
+14. [ ] 在完整 20 分片正式集合执行真实合并和 D6 900-cell 后验。当前只有开发夹具与
+    10/20 缺片预检，不能关闭正式 R0 P1。
 
 ## D3 共同检查点物理证据开发复核（2026-07-26）
 

@@ -59,12 +59,15 @@ main
 | 实验矩阵分片计划 | `scalable3d-experiment-matrix-shard-plan-v1` | 分片身份、单元顺序或父计划绑定改变 |
 | 实验矩阵分片进度 | `scalable3d-experiment-matrix-shard-progress-v1` | 完整单元追加、结果摘要或文件树摘要语义改变 |
 | 实验矩阵分片检查点 | `scalable3d-experiment-matrix-shard-checkpoint-v1` | 恢复、进度前缀校验或暂停/完成状态语义改变 |
+| 实验矩阵分片合并片段 | `scalable3d-experiment-matrix-shard-merge-fragment-v1` | 单片完整性校验、合并行或逻辑 episode 路径语义改变 |
 | 实验矩阵范围合并 | `scalable3d-experiment-matrix-scope-merge-v1` | scope 完成与完整矩阵完成的区分或合并准入改变 |
 | 正式输出归档清单 | `scalable3d-artifact-archive-manifest-v1` | payload 目录、逐文件摘要、源保留或原子发布语义改变 |
 | 正式输出归档复核 | `scalable3d-artifact-archive-verification-v1` | manifest、payload、源一致性或删除资格语义改变 |
 | 正式分片存储校验 | `scalable3d-experiment-matrix-shard-storage-validation-v1` | 完整分片的计划、进度、单元制品、checkpoint 或摘要绑定语义改变 |
 | 正式分片压缩清单 | `scalable3d-formal-shard-archive-manifest-v1` | execution plan、分片身份、确定性 tar.zst、文件清单或源保留语义改变 |
 | 正式分片压缩复核 | `scalable3d-formal-shard-archive-verification-v1` | 压缩流、执行绑定、可选源比较或规范恢复语义改变 |
+| 正式分片归档范围合并 | `scalable3d-formal-shard-archive-scope-merge-v1` | 完整归档集合、逐片临时恢复、逻辑 episode 索引或低峰值存储合并语义改变 |
+| 正式归档 D6 报告绑定 | `scalable3d-formal-shard-archive-d6-binding-v1` | 预评估行分母、评估器来源或 D6 报告文件摘要语义改变 |
 | D1 一致性评估清单 | `scalable3d-offline-consistency-evaluation-manifest-v1` | 在线证据、真值状态、D2 映射或哈希绑定改变 |
 | D1 扫描输入审计 | `d1.scan_input.audit_summary.v1` | 水位线、扫描拒绝、缓冲容量或结束排空语义改变 |
 | D1 发布元数据实现 | `per_track_copy_v1` / `immutable_shared_v2` | 共享审计树的复制、不可变共享或实现身份语义改变；`immutable_shared_v1` 仅保留为历史证据标签 |
@@ -227,6 +230,19 @@ execution plan 文件摘要、内部计划摘要、父计划、源提交、shard
 三个分片控制文件摘要。载荷采用固定文件顺序、固定元数据和单线程 Zstandard；验证和
 恢复均完整读取压缩流。压缩工具仍不提供删除入口，`run-shard` 的 20 GiB 保护线不能因
 压缩功能而降低。
+
+归档范围合并使用 `scalable3d-formal-shard-archive-scope-merge-v1`。archive root 的归档
+子目录必须与 execution plan 声明的 shard id 集合精确一致；旁路结果文件不参与集合判定，
+符号链接和额外目录失败关闭。每片压缩载荷经完整逐文件校验后，只在
+隔离临时执行根中 materialize；单元、episode 和文件树复用普通 merge 合同验证，形成
+`scalable3d-experiment-matrix-shard-merge-fragment-v1` 后立即释放。逻辑 episode 路径
+继续相对于原 execution root，但 manifest 必须明确
+`canonical_episode_directories_materialized=false`。
+
+归档模式下的 D6 输出使用 `scalable3d-formal-shard-archive-d6-binding-v1`。该 binding
+记录 episode 分母、scope index、评估器 schema/提交/dirty/源码树摘要，以及 CSV、聚合
+JSON、中文报告、曲线和性能证据的路径、大小与 SHA-256。main 的验证结论不能代替 D6
+独立后验审计；完整正式 archive set 未形成时不得登记为 scope 完成。
 
 D6 严格身份汇总使用 `d6-scalable3d-offline-evaluation-v12`。公共
 `d2_id_switch_count` 只表示经过真值隔离清单、episode 上下文、两层 manifest 和源文件

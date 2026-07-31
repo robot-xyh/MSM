@@ -12,6 +12,10 @@
 - 正式 execution plan：已在 clean `80e55eb` 冻结。
 - shard 0-9：各 45/45 完成、压缩、双端复核。
 - 全作用域：450/900，尚不具备正式 R0 总体结论。
+- 归档原生合并：开发实现与回归已通过；正式 10/20 归档预检按缺片失败关闭，没有生成
+  merge 输出或 staging 目录。
+- D6 归档独立审计：开发实现和跨模块 binding 复核已通过；正式 20-shard/900-cell 后验
+  尚未执行。
 
 ### 已通过
 
@@ -33,8 +37,8 @@
 2. 100 对 100 和 200 对 200 累计平均实时倍率为 0.447 和 0.193，部署实时性仍未关闭。
 3. shard 9 归档完成时可用空间约为 20.24 GiB。运行 shard 10 前，需明确是否允许在
    双端复核后人工移除原始分片，或提供独立归档存储。
-4. 剩余 450 个单元、全部分片恢复、确定性合并和 D6 900-cell targeted/full posterior
-   尚未执行。
+4. 剩余 450 个单元、完整 20 归档集合的确定性流式合并、D6 独立归档审计和 900-cell
+   targeted/full posterior 尚未执行。
 
 ### 证据
 
@@ -48,6 +52,8 @@
 
 - 新增运行级 P0：无。
 - 正式分片压缩、执行绑定、完整复核和恢复：已实现并通过真实完整分片探针。
+- 归档原生范围合并：已实现逐片临时恢复、普通 shard 合同复用、D6 预评估行聚合和原子
+  发布；尚未在完整 20 分片正式集合运行。
 - 20 GiB 运行保护线：保持不变。
 - 正式 900-cell：仍关闭；clean execution plan 和 shard 0-9 已完成，当前缺少后续 10 个
   分片及逐片源目录移除授权。
@@ -65,14 +71,31 @@
    占比 10.46%。1850 个文件恢复后树摘要一致。
 6. 通用归档与正式分片归档专项为 `19 passed, 1 warning`，scalable 3D 全量为
    `423 passed, 1 warning`。警告来自既有 Matplotlib 三维投影环境。
+7. main 增加 `merge-archives`。archive root 的归档子目录集合必须与 execution plan
+   精确一致；旁路 pack/verify 结果文件不参与归档集合，符号链接和额外目录仍被拒绝。
+8. 每片归档完整校验后只在隔离临时根恢复一次。单元、episode、文件树、progress 和
+   checkpoint 继续复用普通合并合同；上一片清理后才处理下一片，峰值恢复分片数为 1。
+9. D6 行在临时 episode 删除前生成。最终 CSV、聚合 JSON、中文报告、曲线和性能证据
+   由独立 binding 记录大小和 SHA-256；最终目录通过 partial 目录原子发布。
+10. 开发专项 `15 passed, 1 warning`，scalable 3D 全量 `431 passed, 1 warning`。正式
+    10/20 归档预检只报告缺少 shard 10-19，`unexpected=[]`，且未创建输出或 staging。
+11. D6 不调用 main 的 verified 结果，独立复核 checksum、manifest、payload、计划绑定、
+    tar 成员、merge manifest 和报告 binding。专项 `32 passed`，D6 全量 `1297 passed`；
+    main-D6 真实开发夹具的归档、sidecar 和 `sha256:<摘要>` provenance 合同一致。
+12. 本轮实现提交为 D6 `cf00581`、main archive-native merge `84e1cf5`。正式结果仍必须
+    绑定执行时完整提交号和 clean evaluator 来源，不能只引用短提交号替代 provenance。
 
 ### 开放 P1
 
 1. 顺序执行剩余 10 个分片；每片完成后压缩并使用 `verify-shard --source` 独立复核。
 2. 只有用户明确授权后，才能人工移除已经逐文件验证的原始分片。当前历史正式目录保持
    原状。
-3. 合并前恢复全部 20 个分片并重新执行存储校验，再运行
-   `merge-r0 --write-d6-report` 和 D6 targeted/full posterior。
+3. 补齐 20 个归档目录后运行 `merge-archives --write-d6-report`。该入口逐片恢复和复核，
+   不要求 20 个原始 shard 同时驻留，也不会删除归档或当前原始分片。
+4. D6 独立归档审计实现已通过开发夹具。仍需在完整 20-shard 集合运行 900-cell
+   targeted/full posterior 和 post-run admission；开发回归不能替代该正式后验。
+5. `learning_scope_formal_audit` 尚未支持归档模式，继续作为学习变体 P1，不影响本轮 R0
+   规则基线归档审计。
 
 ### 证据
 

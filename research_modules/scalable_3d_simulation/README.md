@@ -22,6 +22,19 @@ producer 诊断仍为 0/450 available，这是在线无真值合同，未被当�
 或把归档迁移到独立存储。累计结果见
 [`docs/SCALABLE_3D_FORMAL_R0_80E55EB_SHARDS0_9_20260731_CN.md`](docs/SCALABLE_3D_FORMAL_R0_80E55EB_SHARDS0_9_20260731_CN.md)。
 
+main 已增加归档原生的范围合并入口。该入口要求 archive root 的归档子目录与 execution
+plan 的完整分片集合精确一致；旁路 pack/verify 结果文件不计入集合，符号链接和额外目录
+仍被拒绝。工具逐片验证压缩包，临时恢复一片并复用普通合并器的单元级校验，生成
+合并片段和 D6 预评估行后立即清理临时目录。最终范围表、逻辑 episode 索引、归档摘要和
+D6 报告绑定采用新 schema 原子发布。开发测试已覆盖两分片顺序恢复、规范单元表等价、
+缺片、压缩损坏、容量保护、命令行和 D6 报告生成。该能力尚未在 20 个正式归档上运行，
+也不构成删除当前原始分片的授权。
+
+D6 已实现不依赖 main verified 状态的独立归档审计，逐片复算 checksum、manifest、payload、
+计划绑定、tar 成员和低层 episode，再复核 archive-native merge 与报告 binding。归档/full
+posterior 专项 `32 passed`，D6 全量 `1297 passed`。正式 10/20 预检接受 20 个旁路结果
+文件，只因缺少 shard 10-19 失败关闭，实际 completed 分母为 0。正式 900-cell 尚未执行。
+
 ## D4 建议当前代次发布修复（2026-07-31）
 
 clean commit `49e43ea` 的 6-cell high-threat smoke 覆盖 5、100、200 三档和 seed
@@ -542,12 +555,23 @@ python3 -m research_modules.scalable_3d_simulation.formal_shard_archive \
   --execution-plan /path/to/formal_r0/experiment_matrix_execution_plan.json \
   --shard-index 0 \
   --archive /path/to/formal_r0_archives/shard_000_of_020
+
+python3 -m research_modules.scalable_3d_simulation.formal_shard_archive \
+  merge-archives \
+  --repository-root /path/to/clean/producer/worktree \
+  --execution-plan /path/to/formal_r0/experiment_matrix_execution_plan.json \
+  --archive-root /path/to/formal_r0_archives \
+  --output /path/to/formal_r0/merged_scope_from_archives \
+  --write-d6-report \
+  --minimum-free-gib 20
 ```
 
 工具仍没有删除入口。`pack-shard` 默认按未压缩最坏情况预留 20 GiB，不能在压缩过程中
-越过正式运行保护线。`restore-shard` 只恢复证据，不执行新单元；全部分片恢复并重新校验后，
-仍由既有 `merge-r0 --write-d6-report` 完成确定性合并。专项回归为
-`19 passed, 1 warning`，scalable 3D 全量为 `423 passed, 1 warning`。完整分片 17
+越过正式运行保护线。`restore-shard` 只恢复证据，不执行新单元。`merge-archives` 要求
+完整且无额外归档目录的集合，每次只临时恢复一个分片；普通目录合并仍由
+`merge-r0 --write-d6-report` 执行。归档合并的 D6 输出单独记录评估器 schema、提交、
+dirty 状态、源码树摘要和全部报告文件 SHA-256。当前开发回归不能替代正式 20 分片
+归档集合和 D6 独立后验审计。完整分片 17
 实测压缩比例为 10.46%，恢复树摘要为
 `59cd7ba239b2e0a3c7c518be85544b5a0946c284e5fc4adf364da79c5067b42b`。
 验证记录见
