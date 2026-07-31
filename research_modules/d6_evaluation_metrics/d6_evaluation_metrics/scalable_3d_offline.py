@@ -9,6 +9,7 @@ reason.
 from __future__ import annotations
 
 from collections import Counter, defaultdict
+from copy import deepcopy
 import csv
 from dataclasses import dataclass
 from functools import lru_cache
@@ -75,6 +76,39 @@ SCALABLE_3D_CURRENT_SCHEMA_REGISTRY = {
 DEFAULT_SCALABLE_3D_BOOTSTRAP_RESAMPLES = 2_000
 DEFAULT_SCALABLE_3D_BOOTSTRAP_RNG_SEED = 20260720
 FIVE_METER_THRESHOLD_M = 5.0
+
+_PRE_EVALUATED_ROW_REQUIRED_FIELDS = frozenset(
+    {
+        "evaluation_schema_version",
+        "evaluation_date",
+        "episode_dir",
+        "_stage_records",
+        "_stage_file_reason",
+        "_failure_reasons",
+        "artifact_availability_json",
+        "episode_source_git_commit",
+        "episode_source_repository_dirty",
+        "d6_evaluator_schema_version",
+        "d6_evaluator_git_commit",
+        "d6_evaluator_repository_dirty",
+        "d6_evaluator_source_tree_sha256",
+        "online_truth_use_count",
+        "online_truth_use_count_availability",
+        "online_truth_use_count_unavailable_reason",
+        "online_truth_field_violation_count",
+        "online_truth_field_violation_count_availability",
+        "online_truth_field_violation_count_unavailable_reason",
+        "d2_id_switch_count",
+        "d2_id_switch_count_availability",
+        "d2_id_switch_count_unavailable_reason",
+        "d2_id_switch_count_semantics",
+        "d2_strict_identity_truth_isolation_verified",
+        "d2_strict_identity_id_switch_backfilled",
+        "d2_strict_identity_artifact_verified",
+        "d2_strict_identity_artifact_verified_availability",
+        "d2_strict_identity_artifact_verified_unavailable_reason",
+    }
+)
 
 _LEARNING_RUNTIME_SCHEMA = "scalable3d-learning-runtime-v1"
 _D4_REGION_ADVICE_TOPIC = "modules.d4.region_resource_advice"
@@ -252,6 +286,72 @@ class Scalable3DOfflineEvaluationError(ValueError):
     """Raised when a persisted episode artifact is malformed or contradictory."""
 
 
+def _normalise_module_performance_json_paths(
+    values: Iterable[str | Path],
+) -> tuple[Path, ...]:
+    paths = tuple(Path(value).resolve() for value in values)
+    if len(set(paths)) != len(paths):
+        raise ValueError("module performance JSON paths must be unique")
+    return paths
+
+
+def _copy_pre_evaluated_rows(
+    rows: Sequence[Mapping[str, Any]],
+) -> list[dict[str, Any]]:
+    source_rows = tuple(rows)
+    if not source_rows:
+        raise ValueError("at least one pre-evaluated scalable 3D row is required")
+
+    copied_rows: list[dict[str, Any]] = []
+    episode_dirs: list[str] = []
+    for index, row in enumerate(source_rows):
+        if not isinstance(row, Mapping):
+            raise TypeError(
+                f"pre-evaluated scalable 3D row {index} must be a mapping"
+            )
+        missing = sorted(_PRE_EVALUATED_ROW_REQUIRED_FIELDS.difference(row))
+        if missing:
+            raise Scalable3DOfflineEvaluationError(
+                "pre-evaluated scalable 3D row missing required fields at "
+                f"index {index}: {','.join(missing)}"
+            )
+        if (
+            row.get("evaluation_schema_version")
+            != SCALABLE_3D_OFFLINE_EVALUATION_SCHEMA_VERSION
+            or row.get("d6_evaluator_schema_version")
+            != SCALABLE_3D_OFFLINE_EVALUATION_SCHEMA_VERSION
+        ):
+            raise Scalable3DOfflineEvaluationError(
+                "pre-evaluated scalable 3D row schema mismatch at "
+                f"index {index}"
+            )
+        episode_dir = row.get("episode_dir")
+        if not isinstance(episode_dir, str) or not episode_dir.strip():
+            raise Scalable3DOfflineEvaluationError(
+                "pre-evaluated scalable 3D row episode_dir invalid at "
+                f"index {index}"
+            )
+        if not isinstance(row.get("_stage_records"), Mapping):
+            raise Scalable3DOfflineEvaluationError(
+                "pre-evaluated scalable 3D row stage records invalid at "
+                f"index {index}"
+            )
+        failure_reasons = row.get("_failure_reasons")
+        if not isinstance(failure_reasons, Sequence) or isinstance(
+            failure_reasons, (str, bytes)
+        ):
+            raise Scalable3DOfflineEvaluationError(
+                "pre-evaluated scalable 3D row failure reasons invalid at "
+                f"index {index}"
+            )
+        episode_dirs.append(episode_dir)
+        copied_rows.append(deepcopy(dict(row)))
+
+    if len(set(episode_dirs)) != len(episode_dirs):
+        raise ValueError("pre-evaluated scalable 3D episode rows must be unique")
+    return copied_rows
+
+
 @dataclass(frozen=True)
 class Scalable3DOfflineEvaluationInputs:
     """Explicit episode directories supplied by main."""
@@ -266,11 +366,9 @@ class Scalable3DOfflineEvaluationInputs:
         if len(set(directories)) != len(directories):
             raise ValueError("episode directories must be unique")
         object.__setattr__(self, "episode_dirs", directories)
-        performance_paths = tuple(
-            Path(value).resolve() for value in self.module_performance_json_paths
+        performance_paths = _normalise_module_performance_json_paths(
+            self.module_performance_json_paths
         )
-        if len(set(performance_paths)) != len(performance_paths):
-            raise ValueError("module performance JSON paths must be unique")
         object.__setattr__(
             self,
             "module_performance_json_paths",
@@ -292,14 +390,48 @@ class Scalable3DOfflineReportGenerator:
     ) -> dict[str, Path]:
         if int(bootstrap_resamples) <= 0:
             raise ValueError("bootstrap_resamples must be positive")
+        rows = tuple(
+            evaluate_scalable_3d_episode(path) for path in inputs.episode_dirs
+        )
+        return self.write_report_bundle_from_rows(
+            output_dir,
+            rows=rows,
+            module_performance_json_paths=inputs.module_performance_json_paths,
+            bootstrap_resamples=bootstrap_resamples,
+            bootstrap_rng_seed=bootstrap_rng_seed,
+            title=title,
+        )
+
+    def write_report_bundle_from_rows(
+        self,
+        output_dir: str | Path,
+        *,
+        rows: Sequence[Mapping[str, Any]],
+        module_performance_json_paths: Sequence[str | Path] = (),
+        bootstrap_resamples: int = DEFAULT_SCALABLE_3D_BOOTSTRAP_RESAMPLES,
+        bootstrap_rng_seed: int = DEFAULT_SCALABLE_3D_BOOTSTRAP_RNG_SEED,
+        title: str = "可扩展三维真值隔离 episode 离线评估报告",
+    ) -> dict[str, Path]:
+        """Write one report bundle from rows returned by the episode evaluator.
+
+        The rows are copied before batch-wide stage columns and evidence status
+        are finalized, so callers may release restored episode directories as
+        soon as each row has been evaluated.
+        """
+
+        if int(bootstrap_resamples) <= 0:
+            raise ValueError("bootstrap_resamples must be positive")
+        working_rows = _copy_pre_evaluated_rows(rows)
+        performance_paths = _normalise_module_performance_json_paths(
+            module_performance_json_paths
+        )
         output_path = Path(output_dir)
         output_path.mkdir(parents=True, exist_ok=True)
 
-        rows = [evaluate_scalable_3d_episode(path) for path in inputs.episode_dirs]
         stage_names = sorted(
             {
                 stage
-                for row in rows
+                for row in working_rows
                 for stage in row.get("_stage_records", {})
             }
         )
@@ -308,18 +440,18 @@ class Scalable3DOfflineReportGenerator:
             raise Scalable3DOfflineEvaluationError(
                 "stage names collide after CSV column normalization"
             )
-        for row in rows:
+        for row in working_rows:
             _add_stage_columns(row, stage_names)
             _finalize_episode_status(row)
 
         aggregate = aggregate_scalable_3d_episodes(
-            rows,
+            working_rows,
             bootstrap_resamples=int(bootstrap_resamples),
             bootstrap_rng_seed=int(bootstrap_rng_seed),
         )
-        public_rows = [_public_row(row) for row in rows]
+        public_rows = [_public_row(row) for row in working_rows]
         module_performance_evidence = register_module_performance_evidence(
-            inputs.module_performance_json_paths
+            performance_paths
         )
         aggregate["module_performance_evidence"] = module_performance_evidence
 

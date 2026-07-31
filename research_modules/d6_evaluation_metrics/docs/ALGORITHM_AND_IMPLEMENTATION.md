@@ -1,5 +1,56 @@
 # D6 系统级离线评估：算法原理与实施说明
 
+## 正式归档审计流程
+
+目录模式仍由 `audit_formal_r0_full_posterior()` 直接读取 canonical shard。v1 配置出现
+`archive_root` 后，同一入口改走 D6-owned `formal_shard_archive_audit`，输出 schema 和
+最终失败关闭判定保持不变。
+
+归档流程按以下顺序执行：
+
+1. 从执行计划生成精确 shard 名称集合，只与 archive root 的普通子目录比较；普通
+   pack/verify sidecar 文件记录但不计入集合，符号链接、额外目录和非普通项失败关闭；
+2. 对当前 shard 复算 `SHA256SUMS`，解析 manifest，并按计划复算 descriptor、cells、
+   execution-plan file、parent-plan 和 source commit 绑定；
+3. 校验 inventory 排序、路径、数量、总大小和 tree SHA-256，再流式解压 tar.zst；
+4. 对每个 tar 成员拒绝绝对路径、`..`、反斜杠、目录、链接和非确定性 uid/gid/mtime/mode，
+   同时复算成员大小和 SHA-256；
+5. 在临时 execution root 内复制冻结计划，只放入当前 shard，使用该 shard 的 45 个 target
+   调用既有 targeted posterior；低层行进入累计结果后删除整个临时目录；
+6. 20 片完成后复核 archive-native merge。cell CSV 与 canonical cell 和重算摘要对账，
+   episode index 与 CSV 路径对账，manifest 中每个 archive binding 与 D6 复算值对账；
+7. 复算 `archive_d6_evaluation_binding.json` 自身摘要及五类报告文件的路径、大小和
+   SHA-256，并验证 evaluator schema、Git 提交、dirty 状态和源码树摘要；源码树摘要
+   只接受 `sha256:<64位小写十六进制>`，与 `_current_evaluator_provenance()` 输出一致；
+8. merge manifest 的 shard index 必须集合完整、无重复并按规范顺序排列，每片
+   `cell_count` 必须等于独立验证 archive binding 的 `completed_cell_count`。
+
+merge core、D6 artifact 和从 root 到文件的父目录均先执行未解引用 symlink 检查。报告内容
+不回灌 full posterior 指标。
+
+实现使用 `zstd -dc` 和 Python tar 流式读取，不调用 `extractall()`。任何异常都由临时
+目录回收；源 shard 和 archive 不在删除路径内。归档不完整时在 staging 前终止。
+
+## 预评估行报告流程
+
+目录入口先对每个目录调用 `evaluate_scalable_3d_episode()`，随后直接转交
+`write_report_bundle_from_rows()`。main 也可以逐片恢复归档并直接累积同一种评估行。
+归档在对应行生成后即可释放；最终聚合不再访问 episode 目录。
+
+预评估行入口按以下顺序处理：
+
+1. 检查输入非空、episode 唯一、评估 schema 与 evaluator schema 为当前 v12；
+2. 检查阶段记录、失败原因、episode/evaluator 来源、在线 truth 审计、严格身份值及其
+   availability 字段完整；
+3. 深拷贝行，收集所有 episode 的阶段名称并检查 CSV 列名归一化冲突；
+4. 在副本上补齐全批次阶段列并重新执行既有 episode 状态终结；
+5. 调用既有 `aggregate_scalable_3d_episodes()` 和模块性能证据注册器；
+6. 写出 CSV、aggregate JSON、性能证据 JSON、中文 Markdown 和阶段耗时曲线。
+
+该入口不重新计算或替换严格身份结果，不将 unavailable 补零，也不覆盖 producer/evaluator
+来源。调用方传入行在整个过程中保持不变。目录入口与预评估行入口只在数据取得方式上不同，
+后续聚合和写包代码相同。
+
 ## 历史候选源漂移测试
 
 生产审计的执行顺序保持不变。v4 审计从候选源实现摘要读取 `fd85745`，使用 Git 对象复算

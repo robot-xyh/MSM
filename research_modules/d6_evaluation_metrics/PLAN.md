@@ -1,5 +1,64 @@
 # D6 Evaluation Metrics Plan
 
+## 2026-07-31 正式归档 full posterior
+
+### 已完成
+
+- [x] 在 v1 full posterior 配置中增加可选 `archive_root`，保持未配置时目录模式行为不变。
+- [x] 增加 D6-owned 独立归档校验器，不导入或信任 producer 的 verified 结果。
+- [x] 精确核对计划规定的归档子目录集合，允许归档根保留普通 pack/verify sidecar 文件；
+  额外目录、任意符号链接和非普通项失败关闭。
+- [x] 核对 checksum、manifest/payload、执行计划绑定、inventory 和 tar.zst 全成员；
+  不安全路径、非普通文件、大小/摘要和确定性元数据错误均失败关闭。
+- [x] 逐片临时恢复并复用 targeted posterior 低层审计，峰值 staging 为一个 shard；
+  source/archive 不删除。
+- [x] 独立复核 archive-native merge 的 manifest、cell CSV、逻辑 episode index、分片
+  顺序/集合/cell_count binding 和 D6 报告 binding；core 文件、artifact 及父目录不得为
+  symlink，五类报告逐文件复算路径、大小和 SHA-256。
+- [x] 核对 D6 binding 中 evaluator schema、Git 提交、dirty 状态和源码树摘要，空容器、
+  格式错误和类型伪造失败关闭。源码树摘要按当前 producer/evaluator 合同严格要求
+  `sha256:<64位小写十六进制>`；不接受历史依据不明的裸摘要兼容。
+- [x] 增加 archive 配置分派、有效归档恢复、payload/计划/path tamper、精确集合和 D6
+  报告 tamper 测试。归档/full posterior 专项 `32 passed`，D6 全量
+  `1297 passed, 1 warning in 114.12s`。
+- [x] 对正式 10/20 归档做非破坏预检；普通 sidecar 被接受，预检只因缺 shard 10-19
+  失败关闭。实际低层完成数和父矩阵完成数均为 0，未创建 merge 输出。
+
+### 待执行
+
+- [ ] main 完成 shard 10-19；现有 pack/verify sidecar 可原位保留。D6 随后对精确
+  20-shard 子目录集合和 archive-native merge 执行正式 900-cell 审计。
+- [ ] 正式运行后记录实际日期、producer/evaluator 提交、900 项通过数、严格身份可用性、
+  失败原因和报告摘要。开发夹具结果不得替代正式结果。
+- [ ] `learning_scope_formal_audit` 的 archive 模式仍为 P1。本轮没有实现，也没有把 R0
+  archive 入口外推到 G1/A1/A2/A3 学习范围。
+
+## 2026-07-31 正式分片预评估行合并
+
+### 已完成
+
+- [x] 增加 `write_report_bundle_from_rows()` 公共入口，接收
+  `evaluate_scalable_3d_episode()` 的行并生成完整五类报告产物。
+- [x] 让原 `write_report_bundle()` 只负责目录评估并委托新入口，阶段列、状态终结、聚合、
+  性能证据和文件写出不再存在第二套语义。
+- [x] 对预评估行执行当前 schema、内部阶段记录、来源、在线真值和严格身份必要字段检查；
+  空输入、重复 episode、字段缺失和 schema 错配失败关闭。
+- [x] 深拷贝调用方行后再补批次阶段列和终结状态，不原地修改输入。
+- [x] 验证目录入口与预评估行入口的 CSV、aggregate JSON、性能证据 JSON、中文 Markdown
+  和阶段耗时曲线一致。
+- [x] 聚焦测试 `3 passed`，可扩展三维离线测试 `77 passed`，D6 全量
+  `1277 passed, 1 warning`。
+
+### main 开发集成状态
+
+- [x] main-owned `merge_verified_formal_shard_archives` 已逐片调用
+  `evaluate_scalable_3d_episode()`，保存评估行并在处理下一片前释放恢复目录。
+- [x] main 已在全部开发分片处理后调用 `write_report_bundle_from_rows()`，并生成
+  `archive_d6_evaluation_binding.json` 绑定五类报告和 evaluator provenance。
+- [x] 开发测试已覆盖原 source 目录释放后仍可生成报告，证明最终写包不回读已释放 episode。
+- [ ] 上述接线尚未用于正式 20-shard。shard 10-19 完成后仍需运行 900-cell full posterior
+  与 post-run admission；这是正式执行 GAP，不是预评估行接口未接线。
+
 ## 2026-07-31 D4 历史候选源漂移处置
 
 ### 已完成

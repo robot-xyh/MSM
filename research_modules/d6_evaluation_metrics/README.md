@@ -1,5 +1,57 @@
 # D6 Evaluation Metrics
 
+## 2026-07-31 正式分片归档独立审计
+
+`formal_r0_full_posterior_audit` 的 v1 配置新增可选 `archive_root`。未配置时继续使用原始
+目录模式；配置后进入归档模式。D6 不调用 producer 的归档验证函数，也不信任
+`verified_formal_shard_archives_v1` 状态。D6 独立复算每片 `SHA256SUMS`、manifest、
+payload、执行计划绑定、文件清单和 tar.zst 成员的路径、大小、摘要及确定性元数据。
+
+完整集合校验通过后，D6 一次只把一个 shard 恢复到系统临时目录，调用现有 targeted
+posterior 低层审计，再删除临时目录后处理下一片。900 项低层行来自恢复后的 episode，
+不读取 producer D6 汇总。归档 merge 的 manifest、cell CSV、逻辑 episode index、archive
+binding 和 `archive_d6_evaluation_binding.json` 单独复核；绑定的五类 D6 报告逐文件重算
+路径、大小和 SHA-256，但报告中的 producer 结论不作为 full posterior 输入。
+
+配置仍使用 `d6.formal-r0-full-posterior-audit-input.v1`，新增字段示例为：
+
+```json
+{
+  "archive_root": "/path/to/formal-r0-archives",
+  "merged_scope_relative_path": "merged_scope_from_archives"
+}
+```
+
+归档集合只比较计划规定的子目录，普通 pack/verify sidecar 文件可以原位保留。缺片、额外
+目录、任意符号链接、压缩损坏、不安全成员、计划绑定错配、单元缺失及 D6 报告篡改均返回
+`fail_closed`。merge core、D6 artifact 及其父目录不得通过 symlink 间接读取。D6 还会
+校验 evaluator schema、Git 提交、dirty 状态和源码树摘要。源码树摘要严格采用当前
+evaluator provenance 合同的 `sha256:<64位小写十六进制>`；空值、裸摘要、错误前缀和
+非十六进制载荷均失败关闭。源 shard 和 archive 均不删除。
+2026-07-31 归档/full posterior 专项为 `32 passed`，
+D6 全量为 `1297 passed, 1 warning in 114.12s`；
+现有正式归档的 10/20 非破坏性预检只因缺 shard 10-19 失败关闭；sidecar 被接受，实际
+低层完成数为 0，未生成 merge 输出。正式 20-shard、
+900-cell 归档审计尚未运行。`learning_scope_formal_audit` 的 archive 模式保留为 P1。
+
+## 2026-07-31 预评估行报告接口
+
+`Scalable3DOfflineReportGenerator.write_report_bundle_from_rows()` 接受
+`evaluate_scalable_3d_episode()` 已生成的行，统一写出逐 episode CSV、aggregate JSON、
+模块性能证据、中文 Markdown 和阶段耗时曲线。main 可以临时恢复一个正式分片，逐
+episode 生成评估行，释放该分片占用的空间，最后用全部行一次生成报告包。
+
+目录入口 `write_report_bundle()` 现在只负责读取 episode 并调用预评估行入口。阶段列补齐、
+证据状态终结、bootstrap、实验矩阵聚合、性能证据注册和五类文件写出只有一套实现。预评估
+入口要求当前 v12 schema、episode/evaluator 来源字段、在线真值审计字段和严格离线身份
+字段完整；缺失字段、重复 episode 或空输入均失败关闭。
+
+报告生成前会深拷贝每一行。调用方累积的原始行及其中的阶段记录、失败原因、availability、
+严格身份、真值隔离和来源字段不会被原地修改。等价性测试证明目录入口与预评估行入口的
+CSV、aggregate JSON、模块性能 JSON、中文 Markdown 和曲线摘要一致。聚焦测试
+`3 passed`，`test_scalable_3d_offline.py` 为 `77 passed`，D6 全量为
+`1277 passed, 1 warning in 116.32s`。本次没有改变在线总线、控制流程或 truth 使用边界。
+
 ## 2026-07-31 D4 历史候选源漂移审计
 
 D4 v4/v5 候选制品和审计配置固定绑定 clean commit

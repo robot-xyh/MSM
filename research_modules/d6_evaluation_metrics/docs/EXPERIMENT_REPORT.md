@@ -1,5 +1,45 @@
 # D6 正式实验矩阵准入预检报告
 
+## 正式归档审计开发验证（2026-07-31）
+
+开发夹具覆盖 v1 配置归档分派、有效 archive 独立恢复、普通 sidecar、额外目录、归档根
+symlink、payload 损坏、执行计划绑定错配、inventory 路径穿越、merge 分片重复/缺失/乱序、
+cell_count 错配、core/artifact/父目录 symlink、evaluator provenance 和报告文件篡改。
+来源树摘要正例采用 evaluator 实际格式 `sha256:<64位小写十六进制>`；空列表、空字符串、
+裸 64 位摘要、错误算法前缀和非十六进制载荷均返回
+`archive_d6_binding_evaluator_source_tree_sha256s_invalid`。
+full posterior 原目录测试与新增
+专项合计 `32 passed, 1 warning`，D6 全量为
+`1297 passed, 1 warning in 114.12s`；warning 为既有 Matplotlib `Axes3D` 环境提示。
+
+随后对 clean producer `80e55eb43bc4a5feeac9c9af0d718d461a46401f` 的现有正式归档
+执行非破坏预检。执行计划期望 20 片，归档根当前只有 shard 0-9；20 个 pack/verify 结果
+sidecar 均作为普通文件接受。D6 只报告缺 shard 10-19，返回 `fail_closed`、verified archive
+`0`、低层完成 `0`、父矩阵完成 `0`，没有恢复 shard，也没有创建
+`merged_scope_from_archives`。该结果不是正式 900-cell 审计结果。
+
+正式验证仍需 shard 10-19 和 main 生成的 archive-native merge；现有普通 sidecar 不需要
+移动。完成后再记录 900 项低层通过数、严格身份可用性、归档报告
+绑定和全量 verdict。`learning_scope_formal_audit` archive 模式本轮未验证。
+
+## 预评估行接口验证（2026-07-31）
+
+验证使用两个不同 seed 的可扩展三维 episode，并附加同一份 D1 描述性性能 JSON。第一组
+通过目录入口生成报告，第二组先逐 episode 调用评估函数，再通过预评估行入口生成报告。
+两组使用相同标题、bootstrap 重采样次数和随机种子。调用预评估行入口前已删除两个
+episode 目录，用于确认最终写包不再读取已释放归档。
+
+两组 aggregate JSON 和模块性能证据 JSON 逐对象相等，逐 episode CSV 与中文 Markdown
+文本相等，阶段耗时曲线文件 SHA-256 相等。输出 CSV 保留严格身份 availability、真值隔离、
+在线 truth 审计、episode source 和 evaluator source 字段。预评估行调用前后的深层对象
+相等，没有发生原地修改。
+
+空行集合在输出目录创建前返回 ValueError。删除严格身份 availability 字段的行返回
+`Scalable3DOfflineEvaluationError`，同样没有创建输出目录。聚焦测试为 `3 passed`，
+可扩展三维离线文件为 `77 passed`，D6 全量为
+`1277 passed, 1 warning in 116.32s`。warning 为既有 Matplotlib `Axes3D` 环境提示。
+本轮没有运行 AirSim、正式 900-cell 后验审计或新的控制实验。
+
 ## D4 历史候选源漂移复核（2026-07-31）
 
 D6 复核了 2026-07-29 的 D4 v4/v5 候选。两份候选均绑定 clean commit `fd85745`，

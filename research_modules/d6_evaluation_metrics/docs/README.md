@@ -1,5 +1,21 @@
 # D6 文档索引
 
+2026-07-31 增加正式 R0 归档独立审计。full posterior v1 配置可显式指定
+`archive_root`，D6 独立校验精确分片子目录集合、manifest/checksum/payload/inventory/tar
+成员、执行计划绑定和 archive-native merge，并一次只恢复一个 shard。普通 pack/verify
+sidecar 可保留；额外目录和任意 symlink 失败关闭。开发夹具专项通过；现有正式 10/20
+归档预检只因缺 shard 10-19 失败关闭。archive D6 binding 中的 evaluator 源码树摘要
+严格使用 `sha256:<64位小写十六进制>`，与当前 evaluator provenance 一致。低层完成数为
+0，尚未形成 900-cell 结论。原理、步骤和证据边界分别见
+`MODULE_PRINCIPLES_CN.md`、`ALGORITHM_AND_IMPLEMENTATION.md` 和
+`EXPERIMENT_REPORT.md`。学习范围 archive 审计仍为 P1。
+
+2026-07-31 增加可扩展三维预评估行报告入口。main 可在每个正式归档临时恢复期间生成
+episode 评估行，释放归档后再统一写出 CSV、aggregate JSON、模块性能证据、中文报告和
+阶段耗时曲线。目录入口和预评估行入口共用同一聚合实现，输入行保持不变，空输入和安全
+字段缺失失败关闭。原理见 `MODULE_PRINCIPLES_CN.md`，实现步骤见
+`ALGORITHM_AND_IMPLEMENTATION.md`，验证结果见 `EXPERIMENT_REPORT.md`。
+
 2026-07-31 完成 clean commit `b063535` 的高威胁 6-cell 修复后复核。核心合同均为
 `6/6`，12 条 D4 建议全部匹配发布时最新代次，旧代发布为 0；四个重规划 cell 均有
 最终 v2 建议。clean formal 为 `6/6`，D4 建议代次预准入通过。该 smoke 不含正式矩阵

@@ -102,6 +102,7 @@ class FormalR0FullPosteriorAuditInputs:
     expected_shard_count: int = 20
     expected_cells_per_shard: int = 45
     merged_scope_relative_path: Path = Path("merged_scope")
+    archive_root: Path | None = None
 
     def __post_init__(self) -> None:
         object.__setattr__(
@@ -114,6 +115,13 @@ class FormalR0FullPosteriorAuditInputs:
             "source_repository",
             Path(self.source_repository).resolve(),
         )
+        if self.archive_root is not None:
+            archive_root = Path(self.archive_root).expanduser()
+            object.__setattr__(
+                self,
+                "archive_root",
+                archive_root.absolute(),
+            )
         merged_relative = Path(self.merged_scope_relative_path)
         if merged_relative.is_absolute() or ".." in merged_relative.parts:
             raise FormalR0FullPosteriorAuditError(
@@ -203,6 +211,11 @@ def load_formal_r0_full_posterior_audit_inputs(
             merged_scope_relative_path=Path(
                 str(payload.get("merged_scope_relative_path", "merged_scope"))
             ),
+            archive_root=(
+                Path(str(payload["archive_root"]))
+                if payload.get("archive_root") is not None
+                else None
+            ),
         )
     except (KeyError, TypeError, ValueError) as exc:
         raise FormalR0FullPosteriorAuditError(
@@ -226,6 +239,14 @@ def audit_formal_r0_full_posterior(
     canonical = audit_canonical_r0_scope(plan, inputs)
     structural_reasons.extend(canonical["failure_reasons"])
     targets = tuple(canonical["targets"])
+
+    if inputs.archive_root is not None:
+        return _audit_formal_r0_full_posterior_from_archives(
+            inputs,
+            plan=plan,
+            canonical=canonical,
+            initial_structural_reasons=structural_reasons,
+        )
 
     core_result: dict[str, Any]
     if targets:
@@ -394,6 +415,198 @@ def audit_formal_r0_full_posterior(
             key: value
             for key, value in merged_scope.items()
             if key != "cell_failure_reasons"
+        },
+        "comparison_availability": {
+            name: {
+                "available": False,
+                "unavailable_reason": "formal_r0_single_arm_scope_only",
+            }
+            for name in ("G1", "A1", "A2", "A3")
+        },
+        "aggregate": aggregate,
+        "failure_reasons": all_reasons,
+        "cells": cells,
+    }
+
+
+def _audit_formal_r0_full_posterior_from_archives(
+    inputs: FormalR0FullPosteriorAuditInputs,
+    *,
+    plan: Mapping[str, Any] | None,
+    canonical: Mapping[str, Any],
+    initial_structural_reasons: Sequence[str],
+) -> dict[str, Any]:
+    """Run the full audit without materializing all canonical shards."""
+
+    from .formal_shard_archive_audit import (
+        audit_archive_merge_bundle,
+        audit_formal_shard_archives,
+    )
+
+    structural_reasons = list(initial_structural_reasons)
+    if plan is None:
+        archive_audit = {
+            "verified": False,
+            "cells": [],
+            "archives": [],
+            "source": {},
+            "execution_plan": {},
+            "execution_progress": {},
+            "failure_reasons": ["archive_audit_execution_plan_unavailable"],
+        }
+    else:
+        archive_audit = audit_formal_shard_archives(
+            execution_root=inputs.execution_root,
+            source_repository=inputs.source_repository,
+            archive_root=inputs.archive_root,
+            expected_source_git_commit=inputs.expected_source_git_commit,
+            expected_execution_plan_sha256=inputs.expected_execution_plan_sha256,
+            expected_scope_cell_count=inputs.expected_scope_cell_count,
+            expected_shard_count=inputs.expected_shard_count,
+            expected_cells_per_shard=inputs.expected_cells_per_shard,
+            plan=plan,
+            targets=tuple(canonical.get("targets", ())),
+        )
+    structural_reasons.extend(archive_audit.get("failure_reasons", ()))
+    core_cells = {
+        str(row.get("cell_id")): dict(row)
+        for row in archive_audit.get("cells", ())
+        if row.get("cell_id") is not None
+    }
+    archive_merge = audit_archive_merge_bundle(
+        merged_scope_dir=inputs.merged_scope_dir,
+        expected_source_git_commit=inputs.expected_source_git_commit,
+        expected_execution_plan_sha256=inputs.expected_execution_plan_sha256,
+        expected_scope_cell_count=inputs.expected_scope_cell_count,
+        expected_parent_cell_count=inputs.expected_parent_cell_count,
+        expected_shard_count=inputs.expected_shard_count,
+        archive_records=tuple(archive_audit.get("archives", ())),
+    )
+    structural_reasons.extend(archive_merge.get("failure_reasons", ()))
+    csv_audit = audit_merged_scope_csv(
+        inputs.merged_scope_dir / "experiment_matrix_scope_cells.csv",
+        inputs=inputs,
+        canonical_cells=tuple(canonical.get("cells", ())),
+        core_cells=core_cells,
+    )
+    structural_reasons.extend(csv_audit["failure_reasons"])
+    merge_cell_reasons: dict[str, list[str]] = defaultdict(list)
+    for evidence in (archive_merge, csv_audit):
+        for cell_id, reasons in evidence.get("cell_failure_reasons", {}).items():
+            merge_cell_reasons[str(cell_id)].extend(str(value) for value in reasons)
+
+    structural_reasons = list(dict.fromkeys(str(value) for value in structural_reasons))
+    cells: list[dict[str, Any]] = []
+    for canonical_cell in canonical.get("cells", ()):
+        cell_id = str(canonical_cell["cell_id"])
+        row = dict(core_cells.get(cell_id, {}))
+        if not row:
+            row = {
+                "cell_id": cell_id,
+                "shard_index": canonical_cell.get("shard_index"),
+                "scenario": canonical_cell.get("scenario"),
+                "scale": canonical_cell.get("scale"),
+                "seed": canonical_cell.get("seed"),
+                "verified": False,
+                "failure_reasons": ["archive_cell_low_level_audit_missing"],
+            }
+        cell_reasons = list(row.get("failure_reasons", ()))
+        cell_reasons.extend(merge_cell_reasons.get(cell_id, ()))
+        evidence_reasons = required_evidence_gate_reasons(row)
+        cell_reasons.extend(evidence_reasons)
+        if structural_reasons:
+            cell_reasons.append("full_scope_global_integrity_not_verified")
+        cell_reasons = list(dict.fromkeys(str(value) for value in cell_reasons))
+        row["merged_scope_index_verified"] = not merge_cell_reasons.get(cell_id)
+        row["required_evidence_available"] = not evidence_reasons
+        row["verified"] = row.get("verified") is True and not cell_reasons
+        row["failure_reasons"] = cell_reasons
+        cells.append(row)
+
+    aggregate = aggregate_formal_r0_full_posterior_rows(
+        cells,
+        expected_scope_cell_count=inputs.expected_scope_cell_count,
+        global_failure_reasons=structural_reasons,
+    )
+    all_reasons = list(
+        dict.fromkeys(
+            [
+                *structural_reasons,
+                *(
+                    reason
+                    for row in cells
+                    for reason in row.get("failure_reasons", ())
+                ),
+            ]
+        )
+    )
+    verdict = (
+        "pass"
+        if not all_reasons
+        and aggregate["verified_cell_count"] == inputs.expected_scope_cell_count
+        else "fail_closed"
+    )
+    low_level_audited_cell_count = int(
+        archive_audit.get("low_level_audited_cell_count", 0)
+    )
+    return {
+        "schema_version": FORMAL_R0_FULL_POSTERIOR_AUDIT_SCHEMA_VERSION,
+        "evaluation_date": FORMAL_R0_FULL_POSTERIOR_AUDIT_DATE,
+        "verdict": verdict,
+        "fail_closed": verdict != "pass",
+        "scope_boundary": {
+            "formal_r0_scope_completed_cell_count": low_level_audited_cell_count,
+            "formal_r0_scope_expected_cell_count": inputs.expected_scope_cell_count,
+            "formal_r0_scope_complete": (
+                low_level_audited_cell_count == inputs.expected_scope_cell_count
+                and archive_audit.get("verified_archive_count")
+                == inputs.expected_shard_count
+            ),
+            "parent_matrix_completed_cell_count": low_level_audited_cell_count,
+            "parent_matrix_expected_cell_count": inputs.expected_parent_cell_count,
+            "parent_matrix_complete": False,
+            "old_source_result_composition_allowed": False,
+            "g1_a1_a2_a3_comparators_available": False,
+            "causal_benefit_conclusion_available": False,
+        },
+        "inputs": {
+            "execution_root": str(inputs.execution_root),
+            "archive_root": str(inputs.archive_root),
+            "merged_scope_dir": str(inputs.merged_scope_dir),
+            "source_repository": str(inputs.source_repository),
+            "expected_source_git_commit": inputs.expected_source_git_commit,
+            "expected_execution_plan_sha256": inputs.expected_execution_plan_sha256,
+            "ignored_producer_aggregates": (
+                "merged_scope/d6_evaluation",
+                "targeted_formal_d6",
+                "episode/observation_governance_audit.json",
+            ),
+        },
+        "source": archive_audit.get("source", {}),
+        "evaluator": aggregate["evaluator_provenance"],
+        "execution_plan": archive_audit.get("execution_plan", {}),
+        "execution_progress": archive_audit.get("execution_progress", {}),
+        "canonical_scope": {
+            key: value
+            for key, value in canonical.items()
+            if key not in {"targets", "cells"}
+        },
+        "archive_set": {
+            key: value
+            for key, value in archive_audit.items()
+            if key not in {"cells", "source", "execution_plan", "execution_progress"}
+        },
+        "merged_scope": {
+            **{
+                key: value
+                for key, value in archive_merge.items()
+                if key != "cell_failure_reasons"
+            },
+            "cells_csv": {
+                key: value
+                for key, value in csv_audit.items()
+                if key != "cell_failure_reasons"
+            },
         },
         "comparison_availability": {
             name: {
@@ -1386,6 +1599,7 @@ def compact_formal_r0_full_posterior_result(
         "execution_plan": result.get("execution_plan"),
         "execution_progress": result.get("execution_progress"),
         "canonical_scope": result.get("canonical_scope"),
+        "archive_set": result.get("archive_set"),
         "merged_scope": result.get("merged_scope"),
         "comparison_availability": result.get("comparison_availability"),
         "evaluator": result.get("evaluator"),
@@ -1406,6 +1620,23 @@ def render_formal_r0_full_posterior_audit_markdown(
     evaluator = result.get("evaluator", {})
     plan = result.get("execution_plan", {})
     merged = result.get("merged_scope", {})
+    archive_set = result.get("archive_set", {})
+    archive_mode = isinstance(archive_set, Mapping) and bool(archive_set)
+    low_level_audited = (
+        archive_set.get("low_level_audited_cell_count")
+        if archive_mode
+        else aggregate.get("audited_cell_count")
+    )
+    shard_verified = (
+        archive_set.get("verified_archive_count")
+        if archive_mode
+        else merged.get("shard_hashes", {}).get("verified_shard_count")
+    )
+    shard_expected = (
+        archive_set.get("expected_shard_count")
+        if archive_mode
+        else merged.get("shard_hashes", {}).get("expected_shard_count")
+    )
     lines = [
         "# 正式 R0 全量后验独立审计",
         "",
@@ -1415,7 +1646,7 @@ def render_formal_r0_full_posterior_audit_markdown(
         "",
         (
             f"审计结论为 **{result.get('verdict')}**。D6 逐项复算 "
-            f"{aggregate.get('audited_cell_count')}/"
+            f"{low_level_audited}/"
             f"{aggregate.get('audit_denominator')} 个正式 R0 episode，"
             f"通过 {aggregate.get('verified_cell_count')}/"
             f"{aggregate.get('audit_denominator')}。"
@@ -1439,7 +1670,12 @@ def render_formal_r0_full_posterior_audit_markdown(
         "## 审计方法",
         "",
         "1. 重新计算执行计划文件摘要和逻辑摘要，核对 clean source 提交。",
-        "2. 独立核对 20 个 shard plan、checkpoint、progress 和 900 个 cell result。",
+        (
+            "2. 独立核对 20 个归档的 checksum、manifest、payload、inventory 和 tar 成员，"
+            "一次恢复一片后核对 shard plan、checkpoint、progress 和 cell result。"
+            if archive_mode
+            else "2. 独立核对 20 个 shard plan、checkpoint、progress 和 900 个 cell result。"
+        ),
         "3. 将 merged scope 的 manifest、episode index 和 CSV 仅作为待复核索引，逐项核对其 SHA-256、路径和身份。",
         "4. 逐 episode 重算 artifact tree，并从在线观测总线和 summary 重新评估真值隔离、有限状态、clean formal 和实验矩阵资格。",
         "5. 重算 D1 发布代次、D2 消费代次、节拍前合并、末尾跳过、pending 和 generation integrity；身份交换只读取经清单、哈希和合同复核的真值隔离制品。缺值不补零，矛盾项失败关闭。",
@@ -1451,7 +1687,7 @@ def render_formal_r0_full_posterior_audit_markdown(
         "",
         "| 项目 | 结果 |",
         "| --- | ---: |",
-        f"| 正式 R0 scope | {aggregate.get('audited_cell_count')}/{aggregate.get('audit_denominator')} |",
+        f"| 正式 R0 低层审计 | {low_level_audited}/{aggregate.get('audit_denominator')} |",
         f"| 通过 | {aggregate.get('verified_cell_count')}/{aggregate.get('audit_denominator')} |",
         f"| clean formal | {aggregate.get('clean_formal_cell_count')}/{aggregate.get('audit_denominator')} |",
         f"| 实验矩阵资格 | {aggregate.get('experiment_matrix_formal_cell_count')}/{aggregate.get('audit_denominator')} |",
@@ -1459,7 +1695,7 @@ def render_formal_r0_full_posterior_audit_markdown(
         f"| D3-D4 当前计划绑定 | {aggregate.get('current_d3_d4_plan_binding', {}).get('true_cell_count')}/{aggregate.get('audit_denominator')} |",
         f"| 当前计划联盟提交 | {aggregate.get('current_plan_coalition_commit', {}).get('true_cell_count')}/{aggregate.get('audit_denominator')} |",
         f"| 逐消息处置证据可用 | {aggregate.get('communication_disposition_validation', {}).get('available_cell_count')}/{aggregate.get('audit_denominator')} |",
-        f"| 20 分片哈希通过 | {merged.get('shard_hashes', {}).get('verified_shard_count')}/{merged.get('shard_hashes', {}).get('expected_shard_count')} |",
+        f"| 20 分片证据通过 | {shard_verified}/{shard_expected} |",
         "",
         "## 后验守恒",
         "",

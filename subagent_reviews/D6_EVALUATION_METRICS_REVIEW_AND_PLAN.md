@@ -1,5 +1,38 @@
 # D6 系统评估指标综述及子方案
 
+## 2026-07-31 正式归档独立审计评审
+
+评审接受在既有 full posterior v1 配置中增加可选 `archive_root`。未指定该字段时目录模式
+不变；指定后由 D6 独立验证归档，main 的 verified 状态和 producer D6 汇总不作为结论。
+一次一片的恢复方式满足当前存储约束，低层 targeted posterior 语义继续复用。
+
+开发夹具已覆盖普通 sidecar、额外目录和 symlink，及有效恢复、压缩损坏、计划错绑、路径
+穿越、merge 分片身份/cell_count、evaluator provenance 和报告篡改。现有正式归档预检只因
+缺 shard 10-19 失败关闭，20 个普通 sidecar 被接受；实际低层完成数为 0，没有创建 merge 输出。
+评审不接受把该预检写成 900-cell 完成。
+
+跨模块实测确认 evaluator 来源树字段的规范值为 `sha256:<64位小写十六进制>`。D6 binding
+审计已与该合同对齐，并明确拒绝空值、裸摘要、错误前缀和非十六进制载荷。该修正不改变
+dirty-source、formal scope 完整性或报告制品哈希门。归档/full posterior 专项为
+`32 passed`，D6 全量为 `1297 passed, 1 warning in 114.12s`。
+
+剩余工作由 main 完成 shard 10-19 并生成正式 archive-native merge；现有 sidecar 无需移动。
+D6 再执行正式全量审计。学习范围 archive 模式继续列为 P1，不与 R0 能力合并声明。
+
+## 2026-07-31 预评估行报告接口评审
+
+评审接受 `write_report_bundle_from_rows()` 作为 main 正式分片归档合并的 D6 公共入口。
+目录入口已改为委托该方法，两条路径使用同一阶段列补齐、证据状态终结、bootstrap、实验
+矩阵、性能证据和报告写出逻辑。
+
+预评估行必须来自当前 `evaluate_scalable_3d_episode()` schema，并保留来源、在线真值
+审计和严格离线身份必要字段。D6 在深拷贝后处理，不修改调用方行。目录与行入口五类产物
+等价，空输入和安全字段缺失均在创建输出目录前拒绝。D6 全量 `1277 passed`。
+
+main-owned merge 已完成逐片恢复、episode 评估行保留、恢复目录释放、行级报告写出和
+archive D6 binding 生成，开发测试覆盖 source 释放后报告。剩余工作是正式 20-shard 与
+900-cell 审计，不再把开发接口接线列为 P1。
+
 ## 2026-07-31 D4 历史候选源漂移评审
 
 评审确认 D4 当前实现没有回归。历史 v4/v5 候选固定绑定 `fd85745` 和

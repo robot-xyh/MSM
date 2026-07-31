@@ -5,6 +5,7 @@ import csv
 import hashlib
 import json
 from pathlib import Path
+import shutil
 import subprocess
 import sys
 from typing import Any
@@ -3121,6 +3122,123 @@ def test_report_bundle_bootstraps_distinct_seeds_and_writes_all_artifacts(
     assert "d6-scalable3d-schema-registry-v2" in markdown
     assert "schema current" in markdown
     assert "descriptive clean-source calibration" in markdown
+
+
+def test_pre_evaluated_rows_report_bundle_matches_directory_entry(
+    tmp_path: Path,
+) -> None:
+    first = _write_episode(
+        tmp_path / "equivalent_suite" / "seed_31",
+        seed=31,
+        learning_profile="assist_shadow",
+    )
+    second = _write_episode(
+        tmp_path / "equivalent_suite" / "seed_32",
+        seed=32,
+        learning_profile="assist_shadow",
+    )
+    _append_d4_advice(first, _d4_advice_payload(first, inference_latency_ms=2.0))
+    _append_d4_advice(second, _d4_advice_payload(second, inference_latency_ms=4.0))
+    performance_path = tmp_path / "d1_performance.json"
+    _write_json(performance_path, {"schema_version": "d1.performance.v1"})
+    episode_dirs = (first.resolve(), second.resolve())
+
+    evaluated_rows = [
+        evaluate_scalable_3d_episode(episode_dir)
+        for episode_dir in episode_dirs
+    ]
+    original_rows = copy.deepcopy(evaluated_rows)
+    generator = Scalable3DOfflineReportGenerator()
+    directory_outputs = generator.write_report_bundle(
+        tmp_path / "directory_report",
+        inputs=Scalable3DOfflineEvaluationInputs(
+            episode_dirs,
+            module_performance_json_paths=(performance_path,),
+        ),
+        bootstrap_resamples=100,
+        bootstrap_rng_seed=20260731,
+        title="预评估行等价性报告",
+    )
+    shutil.rmtree(tmp_path / "equivalent_suite")
+    assert not first.exists()
+    assert not second.exists()
+    row_outputs = generator.write_report_bundle_from_rows(
+        tmp_path / "row_report",
+        rows=evaluated_rows,
+        module_performance_json_paths=(performance_path,),
+        bootstrap_resamples=100,
+        bootstrap_rng_seed=20260731,
+        title="预评估行等价性报告",
+    )
+
+    assert evaluated_rows == original_rows
+    for artifact in ("aggregate_json", "module_performance_evidence"):
+        directory_payload = json.loads(
+            directory_outputs[artifact].read_text(encoding="utf-8")
+        )
+        row_payload = json.loads(row_outputs[artifact].read_text(encoding="utf-8"))
+        assert row_payload == directory_payload
+    for artifact in ("per_episode_seed_csv", "markdown"):
+        assert row_outputs[artifact].read_text(encoding="utf-8") == (
+            directory_outputs[artifact].read_text(encoding="utf-8")
+        )
+    assert hashlib.sha256(
+        row_outputs["stage_timing_curve"].read_bytes()
+    ).hexdigest() == hashlib.sha256(
+        directory_outputs["stage_timing_curve"].read_bytes()
+    ).hexdigest()
+
+    with row_outputs["per_episode_seed_csv"].open(
+        newline="", encoding="utf-8"
+    ) as stream:
+        public_rows = list(csv.DictReader(stream))
+    assert len(public_rows) == 2
+    for public_row in public_rows:
+        assert "d2_id_switch_count_availability" in public_row
+        assert "d2_strict_identity_truth_isolation_verified" in public_row
+        assert "online_truth_use_count_availability" in public_row
+        assert "episode_source_git_commit" in public_row
+        assert "d6_evaluator_source_tree_sha256" in public_row
+
+
+def test_pre_evaluated_rows_report_bundle_rejects_empty_input(
+    tmp_path: Path,
+) -> None:
+    output_dir = tmp_path / "empty_row_report"
+
+    with pytest.raises(
+        ValueError,
+        match="at least one pre-evaluated scalable 3D row is required",
+    ):
+        Scalable3DOfflineReportGenerator().write_report_bundle_from_rows(
+            output_dir,
+            rows=(),
+        )
+
+    assert not output_dir.exists()
+
+
+def test_pre_evaluated_rows_report_bundle_rejects_missing_safety_field(
+    tmp_path: Path,
+) -> None:
+    episode = _write_episode(tmp_path / "missing_safety_field", seed=33)
+    row = evaluate_scalable_3d_episode(episode)
+    del row["d2_id_switch_count_availability"]
+    output_dir = tmp_path / "invalid_row_report"
+
+    with pytest.raises(
+        Scalable3DOfflineEvaluationError,
+        match=(
+            "pre-evaluated scalable 3D row missing required fields.*"
+            "d2_id_switch_count_availability"
+        ),
+    ):
+        Scalable3DOfflineReportGenerator().write_report_bundle_from_rows(
+            output_dir,
+            rows=(row,),
+        )
+
+    assert not output_dir.exists()
 
 
 def test_batch_root_discovery_excludes_sidecar_manifest_directories(

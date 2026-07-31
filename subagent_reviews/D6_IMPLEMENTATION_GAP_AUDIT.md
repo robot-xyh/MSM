@@ -1,5 +1,49 @@
 # D6 实现差距审计
 
+## 2026-07-31 正式归档 full posterior GAP
+
+### 已关闭
+
+D6 已具备独立 archive 模式，不再依赖 main 的 verified 声明。归档子目录集合、普通
+sidecar、归档 checksum、manifest/payload、计划绑定、inventory/tar 成员、逐片低层审计、
+archive-native merge、symlink 拒绝、evaluator provenance 和 D6 报告文件绑定均有失败关闭
+路径。evaluator 来源树摘要已按当前实际 schema 收紧为
+`sha256:<64位小写十六进制>`，空值、裸摘要、错误前缀和非十六进制载荷均有负例。
+目录模式保持不变。归档/full posterior 专项 `32 passed`，D6 全量
+`1297 passed, 1 warning in 114.12s`，没有新增 P0。
+
+### 剩余 P1
+
+1. 正式归档当前只有 shard 0-9；shard 10-19 尚未生成，因此 900-cell full posterior
+   不能运行。
+2. archive-native merge 尚未对正式 20-shard 生成。D6 对 merge schema 和 D6 report
+   binding 的实现只有开发夹具证据。
+3. `learning_scope_formal_audit` 尚无 archive 模式。G1/A1/A2/A3 仍需 materialized scope
+   或后续独立实现，本轮未误标关闭。
+
+普通 pack/verify sidecar 已确认可以原位保留，不再是 P1。正式 10/20 预检只因缺
+shard 10-19 失败，实际低层完成数与父矩阵完成数均为 0。
+
+## 2026-07-31 正式分片预评估行 GAP
+
+### D6-owned P1 已关闭
+
+原报告生成器要求全部 episode 目录同时存在，main 无法在每片归档评估后立即释放临时
+空间。D6 已增加预评估行入口，并让目录入口复用同一实现。五类报告产物语义等价，输入行
+不被修改，空输入、重复 episode、schema 错配和安全字段缺失失败关闭。没有新增 P0。
+
+### 开发集成已完成
+
+main-owned `merge_verified_formal_shard_archives` 已逐片评估 episode、保留行、释放恢复
+目录后调用 `write_report_bundle_from_rows()`，并生成 `archive_d6_evaluation_binding.json`。
+开发测试已覆盖 source 目录释放后报告仍可生成。该接口接线不再列为 P1。
+
+剩余项只有正式执行：完整 900-cell 的 full posterior 和 post-run admission 尚未运行。
+这不改变正式准入门槛，也不能用开发 merge 夹具替代。
+
+验证结果：聚焦 `3 passed`，可扩展三维离线 `77 passed`，D6 全量
+`1277 passed, 1 warning`，`git diff --check` 通过。
+
 ## 2026-07-31 D4 历史候选源漂移 GAP
 
 ### P0 状态
