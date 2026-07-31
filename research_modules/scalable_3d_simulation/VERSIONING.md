@@ -62,6 +62,9 @@ main
 | 实验矩阵范围合并 | `scalable3d-experiment-matrix-scope-merge-v1` | scope 完成与完整矩阵完成的区分或合并准入改变 |
 | 正式输出归档清单 | `scalable3d-artifact-archive-manifest-v1` | payload 目录、逐文件摘要、源保留或原子发布语义改变 |
 | 正式输出归档复核 | `scalable3d-artifact-archive-verification-v1` | manifest、payload、源一致性或删除资格语义改变 |
+| 正式分片存储校验 | `scalable3d-experiment-matrix-shard-storage-validation-v1` | 完整分片的计划、进度、单元制品、checkpoint 或摘要绑定语义改变 |
+| 正式分片压缩清单 | `scalable3d-formal-shard-archive-manifest-v1` | execution plan、分片身份、确定性 tar.zst、文件清单或源保留语义改变 |
+| 正式分片压缩复核 | `scalable3d-formal-shard-archive-verification-v1` | 压缩流、执行绑定、可选源比较或规范恢复语义改变 |
 | D1 一致性评估清单 | `scalable3d-offline-consistency-evaluation-manifest-v1` | 在线证据、真值状态、D2 映射或哈希绑定改变 |
 | D1 扫描输入审计 | `d1.scan_input.audit_summary.v1` | 水位线、扫描拒绝、缓冲容量或结束排空语义改变 |
 | D1 发布元数据实现 | `per_track_copy_v1` / `immutable_shared_v2` | 共享审计树的复制、不可变共享或实现身份语义改变；`immutable_shared_v1` 仅保留为历史证据标签 |
@@ -218,6 +221,12 @@ bundle 的本地绝对路径不写入 manifest。解析成功后记录语义版�
 manifest 必须声明源被保留且未执行删除。复制目标通过临时目录原子发布；payload、manifest、
 `SHA256SUMS`、源目录或根目录结构任一不一致均失败关闭。只有再次提供源目录并获得
 `source_deletion_eligible=true` 才具备申请人工删除授权的前提，工具本身不执行删除。
+
+完整实验分片使用独立的 `scalable3d-formal-shard-archive-manifest-v1`。压缩清单必须绑定
+execution plan 文件摘要、内部计划摘要、父计划、源提交、shard index/id、单元清单和
+三个分片控制文件摘要。载荷采用固定文件顺序、固定元数据和单线程 Zstandard；验证和
+恢复均完整读取压缩流。压缩工具仍不提供删除入口，`run-shard` 的 20 GiB 保护线不能因
+压缩功能而降低。
 
 正式学习数据生成必须在启动 episode 前验证训练 seed 与保留评估 seed 零重叠，并验证
 D5 主动视觉默认 20% 测试切分可提供至少 20 个唯一未见 seed。生成过程中逐 episode 检查
