@@ -106,6 +106,7 @@ from research_modules.d4_distributed_fallback.d4_distributed_fallback import (
     RegionalFallbackMember,
     RegionResourceEdge,
     RegionResourceAdvisoryGate,
+    RegionResourceAdvisoryPublicationGate,
     RegionResourceAdvisor,
     RegionResourceAdvisorConfig,
     RegionResourceCoalitionAckDelivery,
@@ -1026,6 +1027,10 @@ class IntegratedScalableModuleStack:
         self._regional_plan_rejection_reason: str | None = None
         self._d4_region_hint_bridge_rejection_reason: str | None = None
         self._d4_region_advisory_gate: RegionResourceAdvisoryGate | None = None
+        self._d4_region_advice_publication_gate: (
+            RegionResourceAdvisoryPublicationGate | None
+        ) = None
+        self.latest_d4_region_advice_publication_decision: Any | None = None
         self._next_d4_region_hint_version = 1
         self._d4_causal_gate = CausalCommunicationEvidenceGate()
         self._next_d4_readiness_s = 0.0
@@ -1438,6 +1443,11 @@ class IntegratedScalableModuleStack:
         self._d4_region_advisory_gate = RegionResourceAdvisoryGate(
             projector=getattr(self.d4_region_advisor, "projector", None)
         )
+        self._d4_region_advice_publication_gate = (
+            RegionResourceAdvisoryPublicationGate(
+                projector=getattr(self.d4_region_advisor, "projector", None)
+            )
+        )
         self.d5 = Scalable3DTerminalAdapter()
         self.d7 = ScalableGuidanceController3D(
             ScalableGuidanceConfig3D(
@@ -1485,6 +1495,7 @@ class IntegratedScalableModuleStack:
         self._fault_generation_changed = False
         self._regional_plan_rejection_reason = None
         self._d4_region_hint_bridge_rejection_reason = None
+        self.latest_d4_region_advice_publication_decision = None
         self._next_d4_region_hint_version = 1
         self._d4_causal_gate = CausalCommunicationEvidenceGate()
         self._next_d4_readiness_s = 0.0
@@ -2840,6 +2851,7 @@ class IntegratedScalableModuleStack:
         )
         previous_region_advice = self.latest_d4_region_advice
         self.latest_d4_region_advice = None
+        self.latest_d4_region_advice_publication_decision = None
         self.latest_d4_region_consumption = None
         self._d4_region_hint_bridge_rejection_reason = None
         adapter_started = perf_counter()
@@ -3117,21 +3129,13 @@ class IntegratedScalableModuleStack:
             "d4_regional_failover",
             perf_counter() - started,
         )
-        advisory_snapshot = (
-            snapshot
-            if preplanning_snapshot is None
-            else preplanning_snapshot
-        )
-        advisory_decision = (
-            self.latest_d4_decision
-            if preplanning_decision is None
-            else preplanning_decision
-        )
         self._run_d4_region_resource_advisor(
             step_input,
-            formal_snapshot=advisory_snapshot,
-            formal_decision=advisory_decision,
+            formal_snapshot=snapshot,
+            formal_decision=self.latest_d4_decision,
             now=now,
+            learning_formal_snapshot=preplanning_snapshot,
+            learning_formal_decision=preplanning_decision,
         )
 
     def _d3_regional_hint_from_previous_d4(
@@ -3310,6 +3314,8 @@ class IntegratedScalableModuleStack:
         formal_snapshot: RegionalFailoverSnapshot,
         formal_decision: Any,
         now: float,
+        learning_formal_snapshot: RegionalFailoverSnapshot | None = None,
+        learning_formal_decision: Any | None = None,
     ) -> None:
         """Publish aggregate advice without mutating D4 authority or D3 plans."""
 
@@ -3327,6 +3333,20 @@ class IntegratedScalableModuleStack:
             formal_decision=formal_decision,
             now=now,
         )
+        learning_snapshot = regional_snapshot
+        learning_decision = formal_decision
+        if (
+            self.stack_config.capture_learning_artifacts
+            and learning_formal_snapshot is not None
+            and learning_formal_decision is not None
+        ):
+            learning_snapshot = self._d4_region_resource_snapshot(
+                step_input,
+                formal_snapshot=learning_formal_snapshot,
+                formal_decision=learning_formal_decision,
+                now=now,
+            )
+            learning_decision = learning_formal_decision
         self.latest_d4_region_snapshot = regional_snapshot
         self.latest_d4_region_formal_decision = formal_decision
         recommendation = None
@@ -3336,27 +3356,57 @@ class IntegratedScalableModuleStack:
                 formal_decision=formal_decision,
                 unseen_seed_count=self.d4_unseen_seed_count,
             )
-            self.latest_d4_region_advice = recommendation
             advisory = getattr(recommendation, "advisory_contract", None)
             candidate = getattr(recommendation, "recommendation", None)
             if advisory is not None and candidate is not None:
-                self._d4_advisory_sources[str(advisory.advisory_id)] = (
-                    _D4RegionAdvisorySource(
-                        snapshot=regional_snapshot,
-                        recommendation=candidate,
-                        formal_snapshot=formal_snapshot,
+                if self._d4_region_advice_publication_gate is None:
+                    raise RuntimeError(
+                        "D4 advice publication gate is not initialized"
+                    )
+                publication_decision = (
+                    self._d4_region_advice_publication_gate.authorize(
+                        advisory,
+                        regional_snapshot,
+                        publication_timestamp_s=now,
                         formal_decision=formal_decision,
                     )
                 )
+                self.latest_d4_region_advice_publication_decision = (
+                    publication_decision
+                )
+                if publication_decision.publishable:
+                    self.latest_d4_region_advice = recommendation
+                    self._d4_advisory_sources[str(advisory.advisory_id)] = (
+                        _D4RegionAdvisorySource(
+                            snapshot=regional_snapshot,
+                            recommendation=candidate,
+                            formal_snapshot=formal_snapshot,
+                            formal_decision=formal_decision,
+                        )
+                    )
         if self.stack_config.capture_learning_artifacts:
+            learning_recommendation = recommendation
+            if (
+                self.d4_region_advisor is not None
+                and learning_snapshot is not regional_snapshot
+            ):
+                learning_recommendation = self.d4_region_advisor.advise(
+                    learning_snapshot,
+                    formal_decision=learning_decision,
+                    unseen_seed_count=self.d4_unseen_seed_count,
+                )
             self._d4_learning_frames.append(
                 D4RegionLearningFrame(
                     frame_index=len(self._d4_learning_frames),
                     timestamp_s=now,
-                    snapshot=regional_snapshot,
-                    recommendation=recommendation,
-                    formal_snapshot=formal_snapshot,
-                    formal_decision=formal_decision,
+                    snapshot=learning_snapshot,
+                    recommendation=learning_recommendation,
+                    formal_snapshot=(
+                        formal_snapshot
+                        if learning_formal_snapshot is None
+                        else learning_formal_snapshot
+                    ),
+                    formal_decision=learning_decision,
                 )
             )
         self._record_timing(
@@ -10145,6 +10195,17 @@ class IntegratedScalableModuleStack:
         )
 
     def _d4_region_advice_publication(self, now: float) -> RuntimePublication:
+        authorization = self.latest_d4_region_advice_publication_decision
+        advisory = self.latest_d4_region_advice.advisory_contract
+        if (
+            authorization is None
+            or not authorization.publishable
+            or advisory is None
+            or authorization.advisory_id != advisory.advisory_id
+        ):
+            raise RuntimeError(
+                "D4 region advice lacks current-generation publication authority"
+            )
         payload = self.latest_d4_region_advice.to_dict()
         # The confidence-gate diagnostic is local preflight evidence. It is
         # intentionally excluded from the online bus contract.

@@ -5548,8 +5548,29 @@ def test_d4_a2_runtime_bridge_observes_later_current_plan_control() -> None:
 
     result = run_episode(config, module_stack=stack)
     diagnostics = stack._diagnostics(config.duration_s)
+    current_plan_identity = None
+    authoritative_plan_count = 0
+    advice_count = 0
+    for message in result.online_messages:
+        if message.topic == "modules.d3.assignment_plan":
+            current_plan_identity = (
+                str(message.payload["plan_id"]),
+                int(message.payload["plan_version"]),
+            )
+            authoritative_plan_count += 1
+        elif message.topic == "modules.d4.region_resource_advice":
+            source_versions = tuple(
+                (str(item[0]), int(item[1]))
+                for item in message.payload["advisory_contract"][
+                    "source_plan_versions"
+                ]
+            )
+            assert source_versions == (current_plan_identity,)
+            advice_count += 1
 
     assert result.summary["online_truth_use_count"] == 0
+    assert authoritative_plan_count >= 2
+    assert advice_count >= 2
     assert stack.latest_d4_region_advice.recommendation.policy_name == (
         "d4-a2-constrained-development-intervention"
     )
