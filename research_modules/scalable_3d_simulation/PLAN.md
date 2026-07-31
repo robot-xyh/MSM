@@ -15,9 +15,11 @@
    快照只保留给离线 D3/D4 干预学习帧，不再作为在线 advice 来源。
 5. [x] D4 全量 `913 passed, 1 warning`，scalable 3D 全量
    `416 passed, 1 warning`。warning 为既有 Matplotlib `Axes3D` 环境提示。
-6. [ ] 从包含 D4 合同和 main 接入的 clean commit 复跑相同 6-cell，要求发布时旧代
-   建议为 0、当前计划建议覆盖 `6/6`、`formal_acceptance_eligible=6/6`。
-7. [ ] D6 独立复核第 6 项并更新正式准入结论。未通过前不得启动 900-cell。
+6. [x] 从 clean `b063535` 复跑相同 6-cell。12 条建议发布时旧代为 0，最终计划
+   建议覆盖 `6/6`，低层 `formal_acceptance_eligible=6/6`。
+7. [x] D6 独立复核来源、计划、时期、租约、联盟、通信和 advice 时序，确认本轮
+   D4 代次 P1 关闭。报告见
+   `../d6_evaluation_metrics/reports/HIGH_THREAT_CLEAN_SMOKE_B063535_REVALIDATION_20260731_CN.md`。
 8. [ ] 解决正式分片存储条件。2026-07-31 检查时 `/dev/shm` 总容量 16 GiB，无法
    满足 20 GiB 保留线；根文件系统仅约 21 GiB 可用，也不足以同时容纳正式输出和
    保护余量。
@@ -1820,12 +1822,11 @@ GAP、算法文档和系统总报告。
 2. [x] D3 发布可与 D4 对照的区域时期编号和区域租约；相同计划身份下不得刷新这两项。
 3. [x] 时期/租约、D6 首轮 clean 审计和 D4/main 建议代次修复已分批提交，未夹带
    `deliverables/background/**` 用户改动。
-4. [ ] 从包含 D4/main 修复的新干净提交复跑 6-cell。旧 clean `49e43ea` 的结果为
-   `2/6`，不能据此启动正式 900-cell。
+4. [x] 从 clean `b063535` 复跑 6-cell；旧 clean `49e43ea` 的 `2/6` 已提升为
+   `6/6`，发布时旧代 advice 为 0。
 5. [ ] 正式 manifest 必须记录 `repository_dirty=false`，并冻结配置 SHA-256、
    运行 profile、seed 注册和证据摘要。
-6. [ ] D6 已对旧 6-cell 独立验证计划绑定、通信处置、联盟闭合和指标 availability，
-   但建议代次门失败；需对修复后的新 6-cell 再次独立复核。不可用的严格身份指标
-   不得按零计入。
+6. [x] D6 已对修复后 6-cell 独立验证计划绑定、通信处置、联盟闭合、advice 时序和
+   指标 availability。完整 ID Switch 仅 `3/6 available`，缺值未按零计入。
 7. [ ] 继续优化 50/100/200 规模性能。当前 development 平均实时倍率分别为
    0.795、0.358 和 0.156，尚未达到实时。

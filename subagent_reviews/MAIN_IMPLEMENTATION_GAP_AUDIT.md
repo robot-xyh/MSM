@@ -10,9 +10,9 @@
 
 - 新增运行级 P0：无。
 - D3-D4 时期/租约 clean 证据：已通过 6/6。
-- D4 建议当前代次代码修复：已完成开发回归，等待新 clean 复验。
-- 正式 900-cell：仍关闭，原因是旧 clean smoke 仅 `2/6` formal eligible，且本机
-  存储不满足 20 GiB 保护线。
+- D4 建议当前代次修复：开发回归和新 clean 复验均完成。
+- 正式 900-cell：仍关闭；D4 低层 formal 门已恢复为 `6/6`，当前直接阻断为正式
+  execution plan/矩阵 metadata 尚未生成，以及本机存储不满足 20 GiB 保护线。
 
 ### 事实
 
@@ -28,12 +28,14 @@
    防止修复在线时序时破坏既有 D3/D4 干预数据合同。
 5. D4 全量为 `913 passed, 1 warning`，scalable 3D 全量为
    `416 passed, 1 warning`。
+6. clean `b063535` 的复验包含 12 条 advice，发布时当前代 12、旧代 0，最终计划
+   覆盖和低层 `formal_acceptance_eligible` 均为 `6/6`。D6 没有过滤历史记录或放宽门。
 
 ### 开放 P1
 
-1. **同范围 clean 复验**：需从新 clean commit 复跑原 6-cell，并由 D6 独立确认旧代
-   advice 为 0、当前 advice 覆盖 `6/6`、formal eligible `6/6`。
-2. **D2 身份 availability**：旧 clean smoke 只有 `3/6` 完整 ID Switch 可用；缺值
+1. **正式矩阵**：6-cell 不含冻结 execution plan、20-shard 和矩阵 metadata。需在
+   存储条件满足后运行原生 900-cell，并由 D6 执行 targeted/full posterior。
+2. **D2 身份 availability**：修复后 clean smoke 仍只有 `3/6` 完整 ID Switch 可用；缺值
    继续保持 unavailable。
 3. **性能**：100 和 200 规模实时倍率低于 1，当前结果不能形成部署性能结论。
 4. **存储**：2026-07-31 `/dev/shm` 总容量 16 GiB，根文件系统约 21 GiB 可用。
@@ -42,7 +44,7 @@
 ### 证据
 
 - D6 clean-smoke 报告：
-  `research_modules/d6_evaluation_metrics/reports/HIGH_THREAT_CLEAN_SMOKE_49E43EA_20260731_CN.md`
+  `research_modules/d6_evaluation_metrics/reports/HIGH_THREAT_CLEAN_SMOKE_B063535_REVALIDATION_20260731_CN.md`
 - D4 合同提交：`20895c7`
 - main 接入提交：`a2fbdc6`
 

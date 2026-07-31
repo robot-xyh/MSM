@@ -15,10 +15,14 @@ shadow 证据发布，但 `planning_consumable=false`，不能授予分配、联
 规划前快照仍用于离线 D3/D4 干预学习帧，不再进入在线 advice。
 
 开发回归为 D4 `913 passed, 1 warning`、scalable 3D
-`416 passed, 1 warning`。下一步从包含本修复的 clean commit 复跑同一 6-cell，
-验收发布时旧代建议为 0、当前建议覆盖和 clean formal 均为 `6/6`。正式矩阵还受
-存储保护线约束；当前 `/dev/shm` 总容量低于 20 GiB，根文件系统可用空间也不足以
-容纳正式输出并保留 20 GiB 余量。
+`416 passed, 1 warning`。clean `b063535` 的同范围复验已完成：12 条 advice 的
+发布时旧代为 0，最终计划建议覆盖和低层 clean formal 均为 `6/6`。D6 独立报告见
+`../d6_evaluation_metrics/reports/HIGH_THREAT_CLEAN_SMOKE_B063535_REVALIDATION_20260731_CN.md`。
+该结果关闭 D4 建议代次的运行前阻断，不替代正式 900-cell。
+
+正式矩阵当前受存储保护线约束。`/dev/shm` 总容量低于 20 GiB，根文件系统可用空间
+也不足以容纳既有口径下的正式输出并保留 20 GiB 余量。正式执行前需确定外部归档、
+可验证的分片压缩，或经审查的可重建输出清理方案。
 
 ## 高威胁时期租约开发复验（2026-07-30）
 
