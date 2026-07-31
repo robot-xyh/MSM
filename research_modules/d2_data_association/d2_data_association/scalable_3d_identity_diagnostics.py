@@ -33,7 +33,7 @@ from .scalable_3d_identity import (
 
 
 SCALABLE_3D_IDENTITY_BLOCKER_DIAGNOSTICS_SCHEMA_VERSION = (
-    "d2.scalable3d_identity_blocker_diagnostics.v2"
+    "d2.scalable3d_identity_blocker_diagnostics.v3"
 )
 SCALABLE_3D_D1_LINEAGE_MAPPING_AUDIT_SCHEMA_VERSION = (
     "d2.scalable3d_d1_lineage_mapping_audit.v2"
@@ -79,6 +79,9 @@ class Scalable3DIdentityBlockerDiagnostics:
     known_false_alarm_only_mapping_count: int
     target_with_known_false_alarm_mapping_count: int
     lineage_disposition_audit: tuple[Mapping[str, Any], ...]
+    lineage_time_window_s: float
+    identity_commitment_freshness_window_s: float
+    causal_mapping_events: tuple[Mapping[str, Any], ...]
     d1_lineage_mapping_audit: Mapping[str, Any] | None = None
     schema_version: str = (
         SCALABLE_3D_IDENTITY_BLOCKER_DIAGNOSTICS_SCHEMA_VERSION
@@ -129,6 +132,14 @@ class Scalable3DIdentityBlockerDiagnostics:
             self.target_with_known_false_alarm_mapping_count,
             "target_with_known_false_alarm_mapping_count",
         )
+        lineage_time_window_s = _nonnegative_float(
+            self.lineage_time_window_s,
+            "lineage_time_window_s",
+        )
+        commitment_freshness_window_s = _nonnegative_float(
+            self.identity_commitment_freshness_window_s,
+            "identity_commitment_freshness_window_s",
+        )
         strict_available = bool(self.strict_identity_metrics_available)
         reason = (
             None
@@ -167,6 +178,21 @@ class Scalable3DIdentityBlockerDiagnostics:
             self,
             "target_with_known_false_alarm_mapping_count",
             target_with_known_false_alarm_mapping_count,
+        )
+        object.__setattr__(
+            self,
+            "lineage_time_window_s",
+            lineage_time_window_s,
+        )
+        object.__setattr__(
+            self,
+            "identity_commitment_freshness_window_s",
+            commitment_freshness_window_s,
+        )
+        object.__setattr__(
+            self,
+            "causal_mapping_events",
+            tuple(dict(item) for item in self.causal_mapping_events),
         )
         object.__setattr__(
             self,
@@ -235,6 +261,14 @@ class Scalable3DIdentityBlockerDiagnostics:
             "target_with_known_false_alarm_mapping_count": (
                 self.target_with_known_false_alarm_mapping_count
             ),
+            "lineage_time_window_s": self.lineage_time_window_s,
+            "identity_commitment_freshness_window_s": (
+                self.identity_commitment_freshness_window_s
+            ),
+            "causal_mapping_event_count": len(self.causal_mapping_events),
+            "causal_mapping_events": [
+                dict(item) for item in self.causal_mapping_events
+            ],
             "lineage_disposition_audit": [
                 dict(item) for item in self.lineage_disposition_audit
             ],
@@ -254,6 +288,7 @@ def build_scalable_3d_identity_blocker_diagnostics(
     identity_evaluation_sha256: str,
     d1_consistency_evidence: Mapping[str, Any] | None = None,
     d1_consistency_evidence_sha256: str | None = None,
+    identity_commitment_freshness_window_s: float | None = None,
 ) -> Scalable3DIdentityBlockerDiagnostics:
     """Build fail-closed diagnostics from persisted evaluator inputs.
 
@@ -268,6 +303,18 @@ def build_scalable_3d_identity_blocker_diagnostics(
     tolerance = _nonnegative_float(
         evaluation.configuration.get("timestamp_tolerance_s", 0.0),
         "timestamp_tolerance_s",
+    )
+    lineage_time_window_s = _nonnegative_float(
+        evaluation.configuration.get("lineage_time_window_s", 0.0),
+        "lineage_time_window_s",
+    )
+    commitment_freshness_window_s = _nonnegative_float(
+        (
+            lineage_time_window_s
+            if identity_commitment_freshness_window_s is None
+            else identity_commitment_freshness_window_s
+        ),
+        "identity_commitment_freshness_window_s",
     )
     evidence_by_key: dict[
         tuple[int, str],
@@ -295,17 +342,24 @@ def build_scalable_3d_identity_blocker_diagnostics(
     known_false_alarm_only_mapping_count = 0
     target_with_known_false_alarm_mapping_count = 0
     lineage_disposition_audit: list[dict[str, Any]] = []
+    causal_mapping_events: list[dict[str, Any]] = []
     for frame in evaluation.frames:
         for mapping in frame.mappings:
             if mapping.association_state not in _OBSERVED_ASSOCIATION_STATES:
                 continue
-            observations = _observation_evidence(
+            mapping_records = tuple(
                 evidence_by_key.get(
                     (frame.frame_index, mapping.global_track_id),
                     (),
-                ),
+                )
+            )
+            commitment_audit = _commitment_audit(mapping_records)
+            observations = _observation_evidence(
+                mapping_records,
                 label_index,
                 tolerance=tolerance,
+                frame_timestamp=frame.frame_timestamp,
+                commitment_audit=commitment_audit,
             )
             disposition_counts: Counter[str] = Counter(
                 disposition
@@ -363,6 +417,10 @@ def build_scalable_3d_identity_blocker_diagnostics(
             reason_counts.update(reasons)
             if "multiple_truth_targets_for_global_track" in reasons:
                 root_cause_counts["persisted_multi_truth_track_frame"] += 1
+            if "source_observation_outside_lineage_window" in reasons:
+                root_cause_counts[
+                    "stale_source_observation_lineage"
+                ] += 1
             if "truth_label_missing" in reasons:
                 root_cause_counts["truth_sidecar_label_absent"] += 1
             if "truth_label_unknown" in reasons:
@@ -371,24 +429,34 @@ def build_scalable_3d_identity_blocker_diagnostics(
                 set(reasons)
                 & {
                     "multiple_truth_targets_for_global_track",
+                    "source_observation_outside_lineage_window",
                     "truth_label_missing",
                     "truth_label_unknown",
                 }
             ):
                 root_cause_counts["other_identity_integrity_blocker"] += 1
             for reason in reasons:
-                events.append(
-                    {
-                        "reason": reason,
-                        "global_track_id": mapping.global_track_id,
-                        "candidate_truth_target_ids": list(
-                            mapping.candidate_truth_target_ids
-                        ),
-                        "frame_index": frame.frame_index,
-                        "frame_timestamp": frame.frame_timestamp,
-                        "source_observations": observations,
-                    }
+                causal_event = _causal_mapping_event(
+                    episode_id=evidence.episode_id,
+                    reason=reason,
+                    frame_index=frame.frame_index,
+                    frame_timestamp=frame.frame_timestamp,
+                    global_track_id=mapping.global_track_id,
+                    lifecycle_state=mapping.lifecycle_state,
+                    association_state=mapping.association_state,
+                    candidate_truth_target_ids=(
+                        mapping.candidate_truth_target_ids
+                    ),
+                    observations=observations,
+                    commitment_audit=commitment_audit,
+                    lineage_time_window_s=lineage_time_window_s,
+                    commitment_freshness_window_s=(
+                        commitment_freshness_window_s
+                    ),
+                    tolerance=tolerance,
                 )
+                causal_mapping_events.append(causal_event)
+                events.append(causal_event)
 
     source_hashes = dict(evaluation.source_hashes)
     source_hashes["identity_evaluation"] = _digest(
@@ -444,6 +512,11 @@ def build_scalable_3d_identity_blocker_diagnostics(
             target_with_known_false_alarm_mapping_count
         ),
         lineage_disposition_audit=tuple(lineage_disposition_audit),
+        lineage_time_window_s=lineage_time_window_s,
+        identity_commitment_freshness_window_s=(
+            commitment_freshness_window_s
+        ),
+        causal_mapping_events=tuple(causal_mapping_events),
         d1_lineage_mapping_audit=d1_audit,
     )
 
@@ -512,11 +585,19 @@ def _observation_evidence(
     label_index: Mapping[str, Sequence[Scalable3DObservationTruthLabel]],
     *,
     tolerance: float,
+    frame_timestamp: float,
+    commitment_audit: Mapping[str, Any],
 ) -> list[dict[str, Any]]:
     rows: list[dict[str, Any]] = []
     seen: set[
         tuple[int, str, float, tuple[str, ...], int]
     ] = set()
+    active_observation_id = commitment_audit.get(
+        "source_observation_id"
+    )
+    active_measurement_timestamp = commitment_audit.get(
+        "measurement_timestamp"
+    )
     for record in records:
         for ref in record.source_observations:
             key = (
@@ -555,11 +636,26 @@ def _observation_evidence(
                 label_status = "conflict"
             else:
                 label_status = "unique"
+            sensor_id = _sensor_id(ref.source_lineage)
+            age_seconds = frame_timestamp - ref.measurement_timestamp
+            active_source = (
+                active_observation_id == ref.observation_id
+                and active_measurement_timestamp is not None
+                and abs(
+                    float(active_measurement_timestamp)
+                    - ref.measurement_timestamp
+                )
+                <= tolerance
+            )
             rows.append(
                 {
                     "observation_id": ref.observation_id,
                     "measurement_timestamp": ref.measurement_timestamp,
+                    "age_seconds": age_seconds,
                     "replay_generation": ref.replay_generation,
+                    "sensor_id": sensor_id,
+                    "sensor_modality": _sensor_modality(sensor_id),
+                    "is_active_commitment_source": active_source,
                     "source_lineage_sha256": _sha256_payload(
                         list(ref.source_lineage)
                     ),
@@ -587,7 +683,311 @@ def _observation_evidence(
             item["source_lineage_sha256"],
         )
     )
+    if rows:
+        newest_timestamp = max(
+            float(item["measurement_timestamp"]) for item in rows
+        )
+        for item in rows:
+            item["is_newest_measurement"] = (
+                abs(
+                    float(item["measurement_timestamp"])
+                    - newest_timestamp
+                )
+                <= tolerance
+            )
     return rows
+
+
+def _commitment_audit(
+    records: Sequence[GlobalTrackLineageEvidence],
+) -> dict[str, Any]:
+    commitments = [
+        record.identity_commitment
+        for record in records
+        if record.identity_commitment is not None
+    ]
+    unique_payloads = {
+        _canonical_json_bytes(commitment.to_dict()): commitment
+        for commitment in commitments
+    }
+    if not commitments:
+        return {
+            "available": False,
+            "reason": "identity_commitment_missing",
+            "record_count": len(records),
+            "unique_commitment_count": 0,
+        }
+    if len(unique_payloads) != 1:
+        return {
+            "available": False,
+            "reason": "identity_commitment_conflict",
+            "record_count": len(records),
+            "unique_commitment_count": len(unique_payloads),
+        }
+    commitment = next(iter(unique_payloads.values()))
+    evidence_key = commitment.source_observation_evidence_key
+    source_observation_id = (
+        None
+        if evidence_key is None
+        else evidence_key.rsplit("::", 1)[-1]
+    )
+    measurement_timestamp = commitment.measurement_timestamp
+    return {
+        "available": True,
+        "reason": commitment.reason,
+        "record_count": len(records),
+        "unique_commitment_count": 1,
+        "schema_version": commitment.schema_version,
+        "policy_version": commitment.policy_version,
+        "state": commitment.identity_commitment_state.value,
+        "association_state": commitment.association_state,
+        "state_timestamp": commitment.state_timestamp,
+        "commitment_generation": commitment.commitment_generation,
+        "measurement_timestamp": measurement_timestamp,
+        "arrival_timestamp": commitment.arrival_timestamp,
+        "source_observation_evidence_key": evidence_key,
+        "source_observation_id": source_observation_id,
+        "source_observation_evidence_generation": (
+            commitment.source_observation_evidence_generation
+        ),
+        "source_observation_disposition": (
+            commitment.source_observation_disposition
+        ),
+        "online_truth_used": commitment.online_truth_used,
+    }
+
+
+def _causal_mapping_event(
+    *,
+    episode_id: str,
+    reason: str,
+    frame_index: int,
+    frame_timestamp: float,
+    global_track_id: str,
+    lifecycle_state: str,
+    association_state: str,
+    candidate_truth_target_ids: Sequence[str],
+    observations: Sequence[Mapping[str, Any]],
+    commitment_audit: Mapping[str, Any],
+    lineage_time_window_s: float,
+    commitment_freshness_window_s: float,
+    tolerance: float,
+) -> dict[str, Any]:
+    observation_rows = [dict(item) for item in observations]
+    ages = [float(item["age_seconds"]) for item in observation_rows]
+    newest_rows = [
+        item
+        for item in observation_rows
+        if bool(item.get("is_newest_measurement", False))
+    ]
+    historical_rows = [
+        item
+        for item in observation_rows
+        if not bool(item.get("is_newest_measurement", False))
+    ]
+    historical_truth_ids = _truth_ids(historical_rows)
+    newest_truth_ids = _truth_ids(newest_rows)
+    active_rows = [
+        item
+        for item in observation_rows
+        if bool(item.get("is_active_commitment_source", False))
+    ]
+    commitment_measurement_timestamp = commitment_audit.get(
+        "measurement_timestamp"
+    )
+    commitment_source_age = (
+        None
+        if commitment_measurement_timestamp is None
+        else frame_timestamp - float(commitment_measurement_timestamp)
+    )
+    stale_source_rows = [
+        item
+        for item in observation_rows
+        if float(item["age_seconds"])
+        > lineage_time_window_s + tolerance
+    ]
+    freshness_stale_rows = [
+        item
+        for item in observation_rows
+        if float(item["age_seconds"])
+        > commitment_freshness_window_s + tolerance
+    ]
+    classification = _causal_classification(
+        reason=reason,
+        historical_truth_ids=historical_truth_ids,
+        newest_truth_ids=newest_truth_ids,
+        stale_source_rows=stale_source_rows,
+        commitment_source_age=commitment_source_age,
+        commitment_freshness_window_s=(
+            commitment_freshness_window_s
+        ),
+        tolerance=tolerance,
+    )
+    previous_modalities = sorted(
+        {
+            str(item["sensor_modality"])
+            for item in historical_rows
+            if item.get("sensor_modality") is not None
+        }
+    )
+    newest_modalities = sorted(
+        {
+            str(item["sensor_modality"])
+            for item in newest_rows
+            if item.get("sensor_modality") is not None
+        }
+    )
+    return {
+        "event_id": (
+            f"{episode_id}:frame:{frame_index}:track:{global_track_id}:"
+            f"reason:{reason}"
+        ),
+        "reason": reason,
+        "causal_classification": classification,
+        "global_track_id": global_track_id,
+        "lifecycle_state": lifecycle_state,
+        "association_state": association_state,
+        "candidate_truth_target_ids": list(candidate_truth_target_ids),
+        "frame_index": frame_index,
+        "frame_timestamp": frame_timestamp,
+        "source_observation_count": len(observation_rows),
+        "oldest_source_age_seconds": max(ages) if ages else None,
+        "newest_source_age_seconds": min(ages) if ages else None,
+        "lineage_time_window_s": lineage_time_window_s,
+        "identity_commitment_freshness_window_s": (
+            commitment_freshness_window_s
+        ),
+        "strict_lineage_stale_observation_count": len(stale_source_rows),
+        "freshness_stale_observation_count": len(freshness_stale_rows),
+        "strict_lineage_stale_observation_ids": [
+            str(item["observation_id"]) for item in stale_source_rows
+        ],
+        "freshness_stale_observation_ids": [
+            str(item["observation_id"]) for item in freshness_stale_rows
+        ],
+        "historical_truth_cluster": {
+            "truth_target_ids": historical_truth_ids,
+            "observation_count": len(historical_rows),
+        },
+        "newest_observation_truth": {
+            "truth_target_ids": newest_truth_ids,
+            "observation_ids": [
+                str(item["observation_id"]) for item in newest_rows
+            ],
+        },
+        "sensor_transition": {
+            "historical_sensor_ids": sorted(
+                {
+                    str(item["sensor_id"])
+                    for item in historical_rows
+                    if item.get("sensor_id") is not None
+                }
+            ),
+            "newest_sensor_ids": sorted(
+                {
+                    str(item["sensor_id"])
+                    for item in newest_rows
+                    if item.get("sensor_id") is not None
+                }
+            ),
+            "historical_modalities": previous_modalities,
+            "newest_modalities": newest_modalities,
+            "modality_transition": _modality_transition(
+                previous_modalities,
+                newest_modalities,
+            ),
+        },
+        "identity_commitment": {
+            **dict(commitment_audit),
+            "source_age_seconds": commitment_source_age,
+            "source_record_match_count": len(active_rows),
+            "source_record_matched": len(active_rows) == 1,
+        },
+        "source_observations": observation_rows,
+        "offline_causal_evidence_only": True,
+        "online_correction_permitted": False,
+        "identity_heuristics_used": False,
+    }
+
+
+def _causal_classification(
+    *,
+    reason: str,
+    historical_truth_ids: Sequence[str],
+    newest_truth_ids: Sequence[str],
+    stale_source_rows: Sequence[Mapping[str, Any]],
+    commitment_source_age: float | None,
+    commitment_freshness_window_s: float,
+    tolerance: float,
+) -> str:
+    if reason == "multiple_truth_targets_for_global_track":
+        if len(historical_truth_ids) >= 2:
+            return "historical_multi_truth_already_present"
+        if any(
+            truth_id not in historical_truth_ids
+            for truth_id in newest_truth_ids
+        ):
+            return "newest_observation_introduced_new_truth"
+        return "persisted_multi_truth_without_new_truth_introduction"
+    if reason == "source_observation_outside_lineage_window":
+        if commitment_source_age is None:
+            return "commitment_source_age_unavailable"
+        if (
+            commitment_source_age
+            > commitment_freshness_window_s + tolerance
+        ):
+            return "active_commitment_source_stale"
+        if stale_source_rows:
+            return "historical_lineage_only_stale"
+        return "lineage_window_reason_without_stale_source"
+    return "other_identity_integrity_blocker"
+
+
+def _truth_ids(observations: Sequence[Mapping[str, Any]]) -> list[str]:
+    return sorted(
+        {
+            str(truth_id)
+            for item in observations
+            for truth_id in item.get("truth_target_ids", ())
+        }
+    )
+
+
+def _sensor_id(source_lineage: Sequence[str]) -> str | None:
+    sensor_tokens = [
+        str(item)[len("sensor:") :]
+        for item in source_lineage
+        if str(item).startswith("sensor:")
+    ]
+    return sensor_tokens[0] if len(set(sensor_tokens)) == 1 else None
+
+
+def _sensor_modality(sensor_id: str | None) -> str | None:
+    if sensor_id is None:
+        return None
+    normalized = sensor_id.strip().upper()
+    if normalized.startswith("RADAR"):
+        return "radar"
+    if normalized.startswith("CAM") or normalized.startswith("EO"):
+        return "camera"
+    if normalized.startswith("ACOUSTIC"):
+        return "acoustic"
+    if normalized.startswith("LIDAR"):
+        return "lidar"
+    return "other"
+
+
+def _modality_transition(
+    historical_modalities: Sequence[str],
+    newest_modalities: Sequence[str],
+) -> str | None:
+    if not historical_modalities or not newest_modalities:
+        return None
+    return (
+        "+".join(historical_modalities)
+        + "->"
+        + "+".join(newest_modalities)
+    )
 
 
 def _coalesce_blocker_intervals(

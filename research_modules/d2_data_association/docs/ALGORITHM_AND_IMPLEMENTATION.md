@@ -2424,3 +2424,59 @@ D6 当前 `_identity_mapping_for_window()` 收集 `[1.0,2.0)` 内的所有 D2 ma
 D2 evaluation v2 已提供实施上述桥接所需的数据，main 无需修改在线 producer。直接
 owner 是 D6 的离线窗口消费逻辑。本轮不修改 D2 代码、GNN/Hungarian、claim ledger、
 身份承诺或 `global_track_id`。
+
+## 40. 正式 execution-root 因果诊断算法
+
+### 40.1 只读发现
+
+输入为正式 execution root。算法先校验 execution plan 的逻辑 SHA-256、文件 SHA-256、
+clean producer commit、R0 scope 和 shard 描述，再逐 shard 读取 plan、checkpoint 与
+progress。每个 complete cell 必须位于
+`shards/<shard_id>/cells/<cell_id>/episode`，并满足 cell result、episode manifest、D6
+episode record、offline identity manifest 和 evaluation 的 ID/hash 一致性。发现阶段
+只选取严格身份 unavailable 且原因为 multi-truth 或 lineage-window 的 episode。任何
+未知原因、缺失文件、数量不符或 hash 不一致均抛错，不生成部分正式结论。
+
+归档入口只验证 manifest、SHA256SUMS、verification result 与目录证据的绑定。算法不
+自动解压 `tar.zst`；archive-only shard 由 main 一次恢复一个到临时目录后再进入同一
+校验路径。
+
+### 40.2 一航迹多真值分类
+
+对每个 blocker mapping event，v3 诊断按量测时刻和稳定 observation key 排序来源，
+形成历史来源集合和最新来源集合。由离线 observation truth sidecar 得到历史真值簇
+\(Q_h\) 与最新真值集合 \(Q_n\)。当 \(Q_n\setminus Q_h\neq\varnothing\) 时标记
+`newest_observation_introduced_new_truth`；历史本身已有多个真值时标记
+`historical_multi_truth_already_present`。输出同时保留最新传感器、历史主传感器、
+modality transition、commitment evidence key、generation 和 reason。
+
+该分类不判断哪个在线分配“应该正确”。它只说明持久化来源谱系如何形成既有
+multi-truth verdict。位置距离不参与身份推断。
+
+### 40.3 来源年龄分类
+
+对 frame timestamp \(t_f\) 与每条来源量测时刻 \(t_i\)，计算
+
+\[
+a_i=t_f-t_i.
+\]
+
+诊断输出 \(\min a_i\)、\(\max a_i\)、最新来源年龄及 active commitment source
+年龄。身份承诺新鲜度预算固定为 \(0.9\,\mathrm{s}\)。只有历史来源超龄而最新和 active
+source 未超龄时，分类为 `historical_lineage_only_stale`；active source 自身超龄时，
+分类为 `active_commitment_source_stale`。evaluation 中另有 lineage window 配置时按
+原值记录，不能与身份承诺的固定预算合并或替换。
+
+### 40.4 输出和边界
+
+每个 episode 先重放 `evaluate_scalable_3d_identity_files()`，要求结果与持久化 evaluation
+完全一致，再生成 case JSON/CSV。pack 汇总 episode count、mapping-event count、原因、
+规模、传感器转换和因果分类，并输出中文报告、artifact inventory 与
+`ARTIFACT_SHA256SUMS`。公共 API 包括正式 scope 发现、单 episode 审计和 pack 写出；
+CLI 同时保留旧 episode-root 路径。
+
+该实现没有修改 GNN/匈牙利关联、航迹状态、身份承诺、`global_track_id` 或严格指标。
+诊断 truth 不进入在线 DTO。小 fixture 验证当前 cells 布局、36-case 选择、27/9 原因
+计数、517/1 超龄分类、最新真值引入、传感器转换及 hash 篡改失败关闭；正式 450
+episode 未在本轮执行。2026-07-31 专项测试为 `8 passed in 0.60s`，D2 全量为
+`309 passed, 1 warning in 29.68s`。

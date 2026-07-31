@@ -1,8 +1,11 @@
 from __future__ import annotations
 
+from collections import Counter
 from pathlib import Path
 
 import pytest
+
+import d2_data_association.scalable_3d_identity_diagnostics as diagnostics_module
 
 from d2_data_association import (
     GlobalTrackLineageEvidence,
@@ -296,3 +299,104 @@ def test_diagnostics_reject_an_unbound_identity_evaluation_hash() -> None:
             normalized_labels,
             identity_evaluation_sha256=_SHA,
         )
+
+
+def test_multi_truth_causal_event_identifies_newest_camera_introduction() -> None:
+    labels = (
+        _label("radar-old", "truth-A", 1.2),
+        _label("radar-newer", "truth-A", 1.6),
+        _label("camera-latest", "truth-B", 1.8),
+    )
+    radar_old = ObservationLineageRef(
+        observation_id="radar-old",
+        measurement_timestamp=1.2,
+        source_lineage=(
+            "opaque_online_lineage",
+            "sensor:RADAR-CENTER-001",
+            "radar-old",
+        ),
+    )
+    radar_newer = ObservationLineageRef(
+        observation_id="radar-newer",
+        measurement_timestamp=1.6,
+        source_lineage=(
+            "opaque_online_lineage",
+            "sensor:RADAR-CENTER-001",
+            "radar-newer",
+        ),
+    )
+    camera_latest = ObservationLineageRef(
+        observation_id="camera-latest",
+        measurement_timestamp=1.8,
+        source_lineage=(
+            "opaque_online_lineage",
+            "sensor:CAM-RECON-008",
+            "camera-latest",
+        ),
+    )
+    records = (
+        _record(
+            0,
+            1.9,
+            (radar_old, radar_newer, camera_latest),
+            association_state="matched",
+            lifecycle_state="confirmed",
+        ),
+    )
+    bundle, evaluation, normalized_labels = _evaluate(records, labels)
+
+    diagnostics = build_scalable_3d_identity_blocker_diagnostics(
+        bundle,
+        evaluation,
+        normalized_labels,
+        identity_evaluation_sha256=_SHA,
+    )
+
+    event = diagnostics.causal_mapping_events[0]
+    assert event["reason"] == "multiple_truth_targets_for_global_track"
+    assert event["causal_classification"] == (
+        "newest_observation_introduced_new_truth"
+    )
+    assert event["historical_truth_cluster"]["truth_target_ids"] == [
+        "truth-A"
+    ]
+    assert event["newest_observation_truth"]["truth_target_ids"] == [
+        "truth-B"
+    ]
+    assert event["sensor_transition"]["modality_transition"] == (
+        "radar->camera"
+    )
+    assert event["sensor_transition"]["newest_sensor_ids"] == [
+        "CAM-RECON-008"
+    ]
+
+
+def test_lineage_age_classification_preserves_517_to_1_split() -> None:
+    classifications = [
+        diagnostics_module._causal_classification(
+            reason="source_observation_outside_lineage_window",
+            historical_truth_ids=("truth-A",),
+            newest_truth_ids=("truth-A",),
+            stale_source_rows=({"age_seconds": 1.01},),
+            commitment_source_age=0.6,
+            commitment_freshness_window_s=0.9,
+            tolerance=1.0e-9,
+        )
+        for _ in range(517)
+    ]
+    classifications.append(
+        diagnostics_module._causal_classification(
+            reason="source_observation_outside_lineage_window",
+            historical_truth_ids=("truth-A",),
+            newest_truth_ids=("truth-A",),
+            stale_source_rows=({"age_seconds": 1.02},),
+            commitment_source_age=0.95,
+            commitment_freshness_window_s=0.9,
+            tolerance=1.0e-9,
+        )
+    )
+
+    assert Counter(classifications) == {
+        "historical_lineage_only_stale": 517,
+        "active_commitment_source_stale": 1,
+    }

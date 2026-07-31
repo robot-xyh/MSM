@@ -585,7 +585,7 @@ python3 scripts/run_simulation.py \
 P1 N-target、至少 10-seed 校准：
 
 ```bash
-PYTHONPATH=research_modules/d2_data_association \
+PYTHONPATH=.:research_modules/d2_data_association \
 python3 research_modules/d2_data_association/scripts/run_dense_crossing_calibration.py \
   --target-count 5 \
   --steps 12 \
@@ -1300,3 +1300,55 @@ truth ID，也不需要改写 `global_track_id`。
 全局 ID 均未修改。2026-07-29 验证中，D2 loader 通过 evaluation SHA-256 和内部合同
 重算；D2 全量为 `305 passed, 1 warning in 29.38s`，warning 仅为本机 Matplotlib
 `Axes3D` 导入冲突。
+
+## 2026-07-31 正式 R0 严格身份阻断因果诊断
+
+D2 已增加正式 execution-root 的只读入口，直接发现
+`shards/shard_NNN_of_020/cells/<cell_id>/episode`。入口逐 shard 校验 execution plan、
+shard plan、checkpoint、progress、cell result、episode manifest、D6 记录和离线身份
+manifest/hash，并只选择严格身份指标为 unavailable 且原因属于以下两类的 episode：
+
+- `multiple_truth_targets_for_global_track`；
+- `source_observation_outside_lineage_window`。
+
+`run_scalable_3d_identity_blocker_audit.py` 现支持互斥的 `--execution-root` 和旧
+`--episode-root`。正式入口输出逐案例 JSON/CSV、逐 mapping event CSV、聚合 JSON/CSV、
+中文报告、制品清单和 SHA-256 清单。archive 参数只校验只读元数据绑定，不自动解包；
+仅有归档时由 main 每次恢复一个已校验 shard 到临时目录。
+
+诊断 schema 为 `d2.scalable3d_identity_blocker_diagnostics.v3`。一航迹多真值事件显式
+记录历史真值簇、最新观测真值、传感器/模态转换、承诺 evidence key/reason，以及最新
+观测是否引入新真值。谱系超窗事件分别记录每条来源年龄、最老/最新来源年龄和 active
+commitment source 年龄，并区分 `historical_lineage_only_stale` 与
+`active_commitment_source_stale`。这些字段只解释既有严格结论，不重新评分、不按位置
+最近邻补身份，也不进入在线 D2。
+
+main 对 producer commit
+`80e55eb43bc4a5feeac9c9af0d718d461a46401f`、execution-plan hash
+`b922ff5f95864345efa583da7256935694e5c675529989a659716522a0d7590e` 的正式证据完成了
+独立只读核对：450 个已完成 episode 中有 36 个严格身份不可用，其中 27 个
+multi-truth episode 含 38 个 blocker mapping event，9 个 lineage-window episode 含
+518 个 event。518 个超窗 event 中 517 个仅历史最老来源超过固定 `0.9 s` 新鲜度预算，
+1 个连最新及 active commitment source 也超龄。38 个 multi-truth event 中 36 个由
+最新观测引入此前不存在的真值，2 个在历史中已含两个真值；来源转换为
+radar-to-camera 17 个、radar-to-radar 21 个。上述数字是 main 的正式证据核对结果，
+本轮 D2 未运行 450 个 episode，也尚未生成正式 36-case pack。
+
+正式运行由 main 在资源条件满足时执行，例如：
+
+```bash
+PYTHONPATH=.:research_modules/d2_data_association \
+python3 research_modules/d2_data_association/scripts/run_scalable_3d_identity_blocker_audit.py \
+  --execution-root /tmp/msm-formal-r0-20260731-80e55eb \
+  --output-dir <output-dir> \
+  --expected-source-git-commit 80e55eb43bc4a5feeac9c9af0d718d461a46401f \
+  --expected-execution-plan-sha256 b922ff5f95864345efa583da7256935694e5c675529989a659716522a0d7590e \
+  --expected-completed-episode-count 450 \
+  --expected-strict-unavailable-episode-count 36
+```
+
+小型 fixture 已覆盖正式 cells 布局、27/9 episode 原因计数、517/1 年龄分类、最新真值
+引入、传感器转换和来源哈希篡改失败关闭。诊断工具缺口已关闭；在线 truth-free 防止
+错误合轨、重新冻结 producer/execution plan 并执行新正式批次仍是 P1。2026-07-31
+专项回归为 `8 passed in 0.60s`，D2 全量为
+`309 passed, 1 warning in 29.68s`；warning 仍是本机 Matplotlib `Axes3D` 导入冲突。

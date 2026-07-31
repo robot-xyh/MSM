@@ -12,11 +12,13 @@ from typing import Any
 
 from d2_data_association import (
     build_scalable_3d_identity_blocker_diagnostics,
+    discover_formal_identity_audit_scope,
     evaluate_scalable_3d_identity_files,
     load_scalable_3d_identity_evaluation,
     load_scalable_3d_identity_evidence,
     load_scalable_3d_observation_truth_labels,
     sha256_file,
+    write_formal_identity_blocker_causal_pack,
     write_scalable_3d_identity_blocker_diagnostics,
 )
 
@@ -28,14 +30,64 @@ AGGREGATE_SCHEMA_VERSION = (
 
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--episode-root", type=Path, required=True)
+    input_group = parser.add_mutually_exclusive_group(required=True)
+    input_group.add_argument("--episode-root", type=Path)
+    input_group.add_argument("--execution-root", type=Path)
     parser.add_argument("--output-dir", type=Path, required=True)
     parser.add_argument(
         "--episode-glob",
         default="10p0s_seed_*_nominal",
     )
+    parser.add_argument("--archive-root", type=Path)
+    parser.add_argument("--expected-source-git-commit")
+    parser.add_argument("--expected-execution-plan-sha256")
+    parser.add_argument("--expected-completed-episode-count", type=int)
+    parser.add_argument(
+        "--expected-strict-unavailable-episode-count",
+        type=int,
+    )
+    parser.add_argument(
+        "--verify-archive-payload-sha256",
+        action="store_true",
+    )
     args = parser.parse_args()
 
+    if args.execution_root is not None:
+        scope = discover_formal_identity_audit_scope(
+            args.execution_root,
+            expected_source_git_commit=args.expected_source_git_commit,
+            expected_execution_plan_sha256=(
+                args.expected_execution_plan_sha256
+            ),
+            expected_completed_episode_count=(
+                args.expected_completed_episode_count
+            ),
+            expected_strict_unavailable_episode_count=(
+                args.expected_strict_unavailable_episode_count
+            ),
+            archive_root=args.archive_root,
+            verify_archive_payload_sha256=(
+                args.verify_archive_payload_sha256
+            ),
+        )
+        result = write_formal_identity_blocker_causal_pack(
+            scope,
+            args.output_dir,
+        )
+        print(f"completed_episode_count={scope.completed_episode_count}")
+        print(
+            "strict_unavailable_episode_count="
+            f"{len(scope.strict_unavailable_references)}"
+        )
+        print(f"case_count={result['case_count']}")
+        print(f"mapping_event_count={result['mapping_event_count']}")
+        print(f"aggregate_sha256={result['aggregate_sha256']}")
+        print(f"report_sha256={result['report_sha256']}")
+        print(f"sha256sums_sha256={result['sha256sums_sha256']}")
+        print(f"output_dir={result['output_dir']}")
+        return
+
+    assert args.episode_root is not None
     episode_dirs = sorted(args.episode_root.glob(args.episode_glob))
     if not episode_dirs:
         raise SystemExit("no episode directories matched")

@@ -1726,3 +1726,37 @@ main 应把修复任务交给 D6。D6 可增加 evaluator-only 的
 episode、在线 D2 JSONL、truth sidecar 或规范 `global_track_id`。本项为 D6-owned P1，
 D2 无新增 P0/P1 代码任务。2026-07-29 的 D2 evaluation loader、全量
 `305 passed, 1 warning`、全部 Python `py_compile` 和 scoped `git diff --check` 均通过。
+
+## 41. 正式 R0 严格身份阻断因果诊断
+
+### 41.1 已完成
+
+2026-07-31 已完成离线诊断最小闭环。现有 CLI 保留旧 `--episode-root`，并增加
+`--execution-root`，从正式 `shards/*/cells/*/episode` 布局按 execution plan 和 shard
+状态发现已完成单元。发现过程校验 source commit、execution-plan logical/file hash、
+shard plan、checkpoint、progress、cell result、episode identity、D6 identity 摘要和
+离线身份 source hashes。任何缺失、布局错误、哈希不一致或严格 verdict 不一致均失败
+关闭。
+
+诊断 v3 与 causal pack API 已导出。输出按 episode 和 mapping event 分层，避免把
+27/9 episode 写成 38/518 event。multi-truth 分类包含历史真值簇、最新观测真值、最新
+引入标记、radar/camera 来源转换和承诺 reason；lineage-window 分类包含每条来源年龄、
+最老/最新年龄、active commitment source 年龄及 historical-only/active-stale 状态。
+archive 只提供元数据绑定和 main 单 shard 临时恢复约束，不自动解包。
+
+### 41.2 验证边界
+
+小型 fixture 覆盖当前正式目录布局、36 个筛选结果及 27/9 原因计数、517
+historical-only 与 1 active-stale、multi-truth newest-introduction、radar-to-camera
+转换和 identity source hash 篡改。main 已独立核对正式 450 episode 的 36-case 统计，
+本轮 D2 不重新运行正式 episode，不修改正式制品，也不把 unavailable 改写为 0。
+
+### 41.3 后续 P1
+
+离线因果诊断工具缺口关闭。后续 P1 只保留两项：一是 main 在存储和调度条件满足时用
+同一 source/plan 生成正式 36-case pack；二是基于几何、协方差、运动连续性和来源一致性
+设计 truth-free 在线候选，经新 producer/execution plan 和多 seed 正式批次验证。在线
+候选不得读取诊断中的 truth cluster，不得放宽固定 `0.9 s` 身份承诺新鲜度预算，也不得
+改写 `global_track_id`。2026-07-31 专项回归为 `8 passed in 0.60s`，全量为
+`309 passed, 1 warning in 29.68s`；CLI help、变更 Python 文件 `py_compile` 和 scoped
+`git diff --check` 均通过。

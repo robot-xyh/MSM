@@ -1732,3 +1732,59 @@ D6 可在同一落盘输入上增加严格的双锚 bounded coast bridge。bridg
 且只用于离线评估。缺任一证据继续 unavailable。本轮没有启动 AirSim，也没有产生新
 仿真结果。D2 evaluation loader 已校验来源哈希和 13 帧内部合同；D2 全量为
 `305 passed, 1 warning in 29.38s`，验收阈值为零失败。
+
+## 三十九、正式 R0 严格身份阻断诊断（2026-07-31）
+
+### 39.1 输入与边界
+
+正式证据根为 `/tmp/msm-formal-r0-20260731-80e55eb`，归档根为
+`/tmp/msm-formal-r0-archives-20260731-80e55eb`。producer commit 为
+`80e55eb43bc4a5feeac9c9af0d718d461a46401f`，execution-plan hash 为
+`b922ff5f95864345efa583da7256935694e5c675529989a659716522a0d7590e`。正式计划含 900
+个 cell；当前 shard 0--9 的 450 个 episode 和对应归档完整保留。
+
+本轮 D2 只实现并测试读取、校验和诊断能力，没有扫描或重跑 450 个正式 episode，也
+没有生成正式 36-case pack。以下正式统计来自 main 的独立只读核对，用于固定报告口径。
+
+### 39.2 正式统计
+
+| 原因 | episode 数 | blocker mapping event 数 |
+| --- | ---: | ---: |
+| 一航迹对应多个真值 | 27 | 38 |
+| 来源观测超出谱系窗口 | 9 | 518 |
+| 合计 | 36 | 556 |
+
+38 个 multi-truth event 的 commitment reason 均为
+`fresh_original_observation_accepted`。36 个由最新观测引入此前不存在的真值，2 个在
+历史来源中已含两个真值。来源转换为 radar-to-camera 17 个、radar-to-radar 21 个。
+multi-truth 分布为 100v100 的 4 episode/4 event 和 200v200 的 23 episode/34 event；
+5/20/50 规模没有该原因。结果显示阻断与密度、规模存在关联，现有证据不能确认单一算法
+根因。
+
+518 个 lineage-window event 中，517 个的最新来源和 active commitment source 均不
+超过固定 `0.9 s`，只有历史最老来源超龄；1 个 delayed-noisy 5v5 seed 1005 event 的
+最新及 active source 也超龄。历史最老来源年龄约为 `0.9295--1.2552 s`，最新/active
+年龄多数为 `0.2295--0.8572 s`。诊断分别输出 historical-only 与 active-stale，不改变
+原 strict unavailable verdict。
+
+代表事件位于 shard 000、cell 00080、nominal 200、seed 1000。`GT3D-000170` 在 frame
+7 的历史 radar 来源 1.2/1.4/1.6 秒均属于 `TGT-0176`，最新
+`CAM-RECON-008` vision 来源 1.8 秒属于 `TGT-0193`，承诺 reason 仍为
+`fresh_original_observation_accepted`。该记录说明最新相机来源引入第二个持久化真值
+谱系；它不提供在线修正答案。
+
+### 39.3 小型回归
+
+fixture 构造当前 `cells/*/episode` 布局和 37 个最小 completed episode，其中 36 个
+严格不可用，验证筛选结果恰为 27/9；另以合成 causal event 验证 517/1 年龄分类、最新
+观测引入新真值和 radar-to-camera 转换。篡改 identity source hash 后，发现阶段按预期失败关闭。fixture
+不复制正式 episode 树，不构成正式性能复跑。
+
+### 39.4 判定
+
+正式布局兼容、CLI、公共 API 和 causal pack 生成能力已经完成。在线关联算法没有修改。
+正式 36-case pack 仍待 main 在资源条件满足时运行并归档；truth-free 在线缓解策略、
+新的 clean producer/execution plan 和多 seed 正式复跑仍是 P1。`0.9 s` 身份承诺预算
+保持不变，unavailable 不得写成 0。2026-07-31 专项回归为 `8 passed in 0.60s`，D2
+全量为 `309 passed, 1 warning in 29.68s`；warning 为本机 Matplotlib `Axes3D` 导入
+冲突。CLI help、语法检查和限定路径差异检查均通过。

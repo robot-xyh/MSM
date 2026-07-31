@@ -1634,3 +1634,50 @@ main 应下发 D6 专项，在不读取在线 truth 的前提下：
 D2 本轮不改代码。该 P1 只有在 D6 测试和同输入重放通过后才能关闭。2026-07-29
 D2 loader、`py_compile`、scoped `git diff --check` 均通过，D2 全量为
 `305 passed, 1 warning in 29.38s`。
+
+## 2026-07-31 正式严格身份阻断诊断缺口复核
+
+### 状态
+
+**无新增 P0。** 正式 execution-root 只读发现、严格不可用筛选、v3 逐 mapping 因果分类、
+CLI、公共 API、逐案例制品和哈希清单已经实现。该能力不接触在线关联器，不修改既有
+450 个 episode，不重标注，也不把 unavailable 解释为 0。
+
+原 D2 P1“36 个严格身份不可用案例缺少可审计因果包生成能力”已在代码和小型 fixture
+层关闭。发现器支持 `shards/*/cells/*/episode`，并验证 execution plan、shard 状态、
+episode/D6/offline-identity 身份与来源哈希；哈希或布局不一致时失败关闭。旧
+`--episode-root` 仍兼容，archive 不自动解包。
+
+### 正式证据口径
+
+main 独立只读核对结果为 36 个 episode、556 个 blocker mapping event：
+
+- 27 个 multi-truth episode，38 个 mapping event；
+- 9 个 lineage-window episode，518 个 mapping event；
+- 517/518 为 `historical_lineage_only_stale`，1/518 为
+  `active_commitment_source_stale`；
+- 36/38 个 multi-truth event 由最新观测引入新真值，2/38 历史已含两个真值；
+- radar-to-camera 17 个，radar-to-radar 21 个；38/38 的承诺 reason 均为
+  `fresh_original_observation_accepted`；
+- multi-truth 分布为 100v100 的 4 episode/4 event、200v200 的 23 episode/34 event，
+  5/20/50 规模未出现该原因。证据显示它与密度和规模相关，不能据此断言单一算法根因。
+
+这些统计绑定 producer commit `80e55eb43bc4a5feeac9c9af0d718d461a46401f` 和
+execution-plan hash
+`b922ff5f95864345efa583da7256935694e5c675529989a659716522a0d7590e`。本轮 D2 未运行
+正式 450 episode，正式 36-case causal pack 仍待 main 调度生成。
+
+### 保留 P1
+
+1. main 在不删除原目录/归档、不中断 20 GiB 保护底线的条件下运行只读 CLI，保存并
+   审核正式 36-case pack；这属于正式制品生成，不是算法修复。
+2. 在线根因缓解仍开放。未来候选只能使用几何、协方差、运动和来源一致性等 truth-free
+   信号；诊断 truth 不得进入在线输入。候选必须绑定新的 clean producer/execution plan
+   并重新跑正式多 seed，不能回写当前 450 episode。
+3. 固定 `0.9 s` 是身份承诺新鲜度预算。正式 delayed-noisy evaluator 中可能存在
+   `1.05 s` lineage 配置，二者必须分别报告，不能通过放宽预算消除阻断。
+
+2026-07-31 验收：37-entry 小 fixture 精确筛出 36 个严格不可用 episode，专项
+`8 passed in 0.60s`；D2 全量 `309 passed, 1 warning in 29.68s`；CLI help、全部变更
+Python 文件 `py_compile` 和 scoped `git diff --check` 通过。唯一 warning 为本机
+Matplotlib `Axes3D` 多版本导入问题，与本次功能无关。

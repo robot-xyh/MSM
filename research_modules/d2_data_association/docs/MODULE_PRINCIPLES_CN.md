@@ -1759,3 +1759,25 @@ clean source commit `0d2da25` 的 seed 1000 只读复算中，严格 IDSW 保持
 6. **seed 2007 结论边界**：`GT3D-000004` 的 12 个 available frame 均映射
    `TGT-0004`，唯一 gap 为 `1.035192721089 s`；该单 seed 证据只定位 18/19 物理窗口
    断点，不构成在线身份性能或 AirSim 结论。
+
+## 四十、正式阻断因果诊断原则（2026-07-31）
+
+1. **先校验证据，再解释原因**：正式入口必须从 execution plan 发现 shard 和 cell，逐层
+   绑定 source commit、plan hash、checkpoint、progress、episode、D6 与 offline identity
+   哈希。布局、身份或 hash 不一致时停止，不能对残缺目录生成结论。
+2. **episode 与 mapping event 分层计数**：episode count 描述受影响试验单元，mapping
+   event count 描述逐帧逐航迹阻断。27/9 是 episode 数，38/518 是 event 数，报告不得
+   混用。
+3. **旧历史超龄与当前证据超龄分开**：历史最老来源超过 `0.9 s`、但最新和 active
+   commitment source 仍新鲜时，标记 `historical_lineage_only_stale`；active source
+   同样超龄时标记 `active_commitment_source_stale`。分类只解释既有 verdict，不触发
+   重算。
+4. **一轨多真值按谱系解释**：诊断保留历史真值簇、最新观测真值、传感器转换和身份
+   承诺 reason，用于判断最新观测是否引入新真值。不得用空间最近邻替代来源谱系，也
+   不得把真值分类反馈给在线 tracker。
+5. **正式证据保持不可变**：只读诊断不重标注、不修改 450 个 episode、不将 unavailable
+   写成 0。输出通过逐案例 JSON/CSV、聚合文件和 SHA-256 清单形成新的派生证据，源树
+   只读。
+6. **在线修复必须无真值**：未来缓解策略只能使用几何、协方差、运动连续性、来源一致性
+   和在线可见时序信号。truth cluster 只属于离线解释，固定 `0.9 s` 身份承诺新鲜度预算
+   不因诊断结果而放宽。
