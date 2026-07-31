@@ -16,6 +16,8 @@
   merge 输出或 staging 目录。
 - D6 归档独立审计：开发实现和跨模块 binding 复核已通过；正式 20-shard/900-cell 后验
   尚未执行。
+- D6 学习作用域归档审计：接口 P1 已关闭；真实 producer 紧凑 G1/R0 兼容夹具通过，正式
+  G1/A1/A2/A3/C1/F1 归档作用域尚未运行。
 
 ### 已通过
 
@@ -84,6 +86,9 @@
     main-D6 真实开发夹具的归档、sidecar 和 `sha256:<摘要>` provenance 合同一致。
 12. 本轮实现提交为 D6 `cf00581`、main archive-native merge `84e1cf5`。正式结果仍必须
     绑定执行时完整提交号和 clean evaluator 来源，不能只引用短提交号替代 provenance。
+13. D6 后续增加学习作用域归档模式，显式支持 learned/R0 的目录或归档输入，并在单片
+    临时恢复期间完成学习采用和离线评价。真实 main producer 的紧凑 G1/R0 夹具覆盖
+    `write_d6_report=True` merge；组合专项 `89 passed`，D6 全量 `1330 passed`。
 
 ### 开放 P1
 
@@ -94,8 +99,9 @@
    不要求 20 个原始 shard 同时驻留，也不会删除归档或当前原始分片。
 4. D6 独立归档审计实现已通过开发夹具。仍需在完整 20-shard 集合运行 900-cell
    targeted/full posterior 和 post-run admission；开发回归不能替代该正式后验。
-5. `learning_scope_formal_audit` 尚未支持归档模式，继续作为学习变体 P1，不影响本轮 R0
-   规则基线归档审计。
+5. `learning_scope_formal_audit` 的归档接口 P1 已关闭。正式 G1/A1/A2/A3/C1/F1 仍需生成
+   完整 clean archive set、带 D6 report binding 的 merge 和同键 R0，再执行正式后验；
+   当前开发夹具不构成模型准入或非退化结论。
 
 ### 证据
 

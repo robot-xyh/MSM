@@ -19,6 +19,19 @@
 8. [ ] 完成 shard 10-19 后运行正式 `merge-archives --write-d6-report`，再使用已通过开发
    回归的 D6 独立归档入口复核 archive set 和完整 posterior。当前进度为 450/900。
 
+## D6 学习作用域归档审计（2026-07-31）
+
+1. [x] D6 为 `learning_scope_formal_audit` 增加显式归档模式，learned scope 与每个 R0
+   scope 可独立选择目录或 `archive_root + archive_merge_dir`，不按路径内容猜测模式。
+2. [x] 逐片独立复核 checksum、manifest、payload、计划绑定、inventory 和 tar 成员，
+   峰值恢复分片数为 1；单元级学习采用和离线评价在临时分片清理前完成。
+3. [x] 复核 archive-native merge、逻辑 episode 索引和 D6 报告 binding。producer 必须
+   使用 `write_d6_report=True`；D6 只核对来源和制品摘要，不采信 producer verdict。
+4. [x] 使用真实 main plan/shard/archive/merge API 完成紧凑 G1/R0 兼容测试。组合专项
+   `89 passed, 1 warning`，D6 全量 `1330 passed, 1 warning`。
+5. [ ] 正式 G1/A1/A2/A3/C1/F1 作用域形成完整 clean 归档后，再运行本入口并记录 scope、
+   seed、模型 bundle、R0 配对和非退化结论。开发夹具不得作为模型准入证据。
+
 ## D4 建议当前代次发布修复（2026-07-31）
 
 1. [x] 在 clean commit `49e43ea` 上完成 5、100、200 三档、seed `7/17` 的

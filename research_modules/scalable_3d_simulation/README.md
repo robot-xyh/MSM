@@ -35,6 +35,13 @@ D6 已实现不依赖 main verified 状态的独立归档审计，逐片复算 c
 posterior 专项 `32 passed`，D6 全量 `1297 passed`。正式 10/20 预检接受 20 个旁路结果
 文件，只因缺少 shard 10-19 失败关闭，实际 completed 分母为 0。正式 900-cell 尚未执行。
 
+D6 的 `learning_scope_formal_audit` 也已接入相同的归档存储链路。G1/A1/A2/A3/C1/F1 与
+显式 R0 可分别选择目录或归档输入；归档模式一次只恢复一个分片，并在释放临时目录前完成
+学习采用、真值隔离、物理结果和同键 R0 非退化审计。真实 main producer 的紧凑 G1/R0
+兼容夹具已覆盖 plan、shard、archive 和 `write_d6_report=True` merge，组合专项为
+`89 passed`，D6 全量为 `1330 passed`。该结果只关闭归档审计接口 P1；正式学习作用域尚未
+运行，不能登记模型准入、效果增益或控制许可。
+
 ## D4 建议当前代次发布修复（2026-07-31）
 
 clean commit `49e43ea` 的 6-cell high-threat smoke 覆盖 5、100、200 三档和 seed

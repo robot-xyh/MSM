@@ -68,6 +68,7 @@ main
 | 正式分片压缩复核 | `scalable3d-formal-shard-archive-verification-v1` | 压缩流、执行绑定、可选源比较或规范恢复语义改变 |
 | 正式分片归档范围合并 | `scalable3d-formal-shard-archive-scope-merge-v1` | 完整归档集合、逐片临时恢复、逻辑 episode 索引或低峰值存储合并语义改变 |
 | 正式归档 D6 报告绑定 | `scalable3d-formal-shard-archive-d6-binding-v1` | 预评估行分母、评估器来源或 D6 报告文件摘要语义改变 |
+| D6 学习作用域正式审计 | `d6.learning-scope-formal-evidence-audit.v1` | 存储模式、模型采用、在线真值隔离、物理结果、同键 R0 配对或非退化判据改变 |
 | D1 一致性评估清单 | `scalable3d-offline-consistency-evaluation-manifest-v1` | 在线证据、真值状态、D2 映射或哈希绑定改变 |
 | D1 扫描输入审计 | `d1.scan_input.audit_summary.v1` | 水位线、扫描拒绝、缓冲容量或结束排空语义改变 |
 | D1 发布元数据实现 | `per_track_copy_v1` / `immutable_shared_v2` | 共享审计树的复制、不可变共享或实现身份语义改变；`immutable_shared_v1` 仅保留为历史证据标签 |
@@ -243,6 +244,13 @@ execution plan 文件摘要、内部计划摘要、父计划、源提交、shard
 记录 episode 分母、scope index、评估器 schema/提交/dirty/源码树摘要，以及 CSV、聚合
 JSON、中文报告、曲线和性能证据的路径、大小与 SHA-256。main 的验证结论不能代替 D6
 独立后验审计；完整正式 archive set 未形成时不得登记为 scope 完成。
+
+`d6.learning-scope-formal-evidence-audit.v1` 保持原目录模式兼容，并增加显式的
+`verified_formal_shard_archives_v1` 输入。新增的存储来源、归档计数、峰值暂存数和 sidecar
+字段属于 v1 的附加证据字段；模型采用、配对指标、非退化方向、缺失值或控制权限语义没有
+放宽。归档模式要求 archive-native merge 写出 D6 report binding，用于独立核对评价器来源
+和制品摘要，不把 producer verdict 当作后验结论。若上述判定语义或必需字段发生不兼容
+变化，审计 schema 必须升版。
 
 D6 严格身份汇总使用 `d6-scalable3d-offline-evaluation-v12`。公共
 `d2_id_switch_count` 只表示经过真值隔离清单、episode 上下文、两层 manifest 和源文件
