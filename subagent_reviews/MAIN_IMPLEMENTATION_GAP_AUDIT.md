@@ -4,13 +4,56 @@
 **审计目标**：列出共识算法与计划使用的开源代码哪些已经实现，哪些没有实现，为什么没有实现，以及缺少哪些条件。
 **边界**：本文只用于科研仿真、接口补齐和后续工程排期；不涉及真实硬件、实机处置、火控或绕过授权的自动动作。
 
+## 2026-07-31 D4 建议代次 clean-smoke 收口
+
+### 当前判断
+
+- 新增运行级 P0：无。
+- D3-D4 时期/租约 clean 证据：已通过 6/6。
+- D4 建议当前代次代码修复：已完成开发回归，等待新 clean 复验。
+- 正式 900-cell：仍关闭，原因是旧 clean smoke 仅 `2/6` formal eligible，且本机
+  存储不满足 20 GiB 保护线。
+
+### 事实
+
+1. clean `49e43ea` 的 6 个 high-threat episode 覆盖 5、100、200 三档及 seed
+   `7/17`。核心制品、配置哈希、有限状态、在线真值隔离、计划标识/版本/时期/租约、
+   49 个当前联盟目标和 16101 条通信处置均为 `6/6` 通过。
+2. 100 和 200 规模的 4 个重规划 episode 在 v2 计划发布后仍输出 v1 advice，且没有
+   最终 v2 advice。这是在线生产时序问题，不能通过 D6 后过滤解决。
+3. D4 owner 已增加 advice publication generation gate，分别输出总线发布资格和规划
+   采用资格。当前代次故障诊断可发布但不能采用；旧计划、旧版本、旧时期、错误租约和
+   回滚不能发布。
+4. main 已将在线 advice 改为基于规划后当前快照生成。规划前快照只用于离线学习帧，
+   防止修复在线时序时破坏既有 D3/D4 干预数据合同。
+5. D4 全量为 `913 passed, 1 warning`，scalable 3D 全量为
+   `416 passed, 1 warning`。
+
+### 开放 P1
+
+1. **同范围 clean 复验**：需从新 clean commit 复跑原 6-cell，并由 D6 独立确认旧代
+   advice 为 0、当前 advice 覆盖 `6/6`、formal eligible `6/6`。
+2. **D2 身份 availability**：旧 clean smoke 只有 `3/6` 完整 ID Switch 可用；缺值
+   继续保持 unavailable。
+3. **性能**：100 和 200 规模实时倍率低于 1，当前结果不能形成部署性能结论。
+4. **存储**：2026-07-31 `/dev/shm` 总容量 16 GiB，根文件系统约 21 GiB 可用。
+   两处都不能在保留 20 GiB 安全余量的同时完成正式 900-cell。
+
+### 证据
+
+- D6 clean-smoke 报告：
+  `research_modules/d6_evaluation_metrics/reports/HIGH_THREAT_CLEAN_SMOKE_49E43EA_20260731_CN.md`
+- D4 合同提交：`20895c7`
+- main 接入提交：`a2fbdc6`
+
 ## 2026-07-30 高威胁时期租约 P1 开发闭合
 
 ### 当前判断
 
 - 新增运行级 P0：无。
 - v4 的 D3-D4 权威时期和租约不可用 P1：已在 dirty development evidence 层关闭。
-- 正式准入：仍关闭。修复尚未形成 clean commit，900-cell R0 尚未运行。
+- 正式准入：仍关闭。时期/租约已形成 clean 证据，但后续 clean smoke 发现 D4 advice
+  在线错代；当前代码修复等待新 clean 复验，900-cell R0 尚未运行。
 
 ### 已闭合
 
@@ -30,10 +73,11 @@
 
 ### 开放 P1
 
-1. **clean formal evidence**：当前 100 项均为 `repository_dirty=true`。修复需先提交，
-   再从 clean checkout 运行 smoke 和规范 900-cell R0。
-2. **D4 建议生命周期计量**：51 个真实重规划 episode 同时保留一条 superseded
-   计划建议和一条当前计划建议。最终计划与联盟不受影响，但离线建议聚合保持失败关闭。
+1. **clean formal evidence**：时期/租约已在 6-cell clean smoke 中通过，但 D4 advice
+   仅 `2/6` formal eligible。需按上一节复验修复后的新提交。
+2. **D4 建议生命周期**：旧说法“存在 superseded 与当前建议”已由 clean 证据修正为
+   “部分重规划在新计划后发布旧建议且缺当前建议”。代码已修复，正式状态等待 clean
+   复验。
 3. **D2 身份 availability**：88/100 可用，可用部分 ID switch 合计 52；其余 12 项
    不得补零。
 4. **大规模实时性**：v5 的 200 对 200 实时倍率均值为 0.142，墙钟均值/P95 为
