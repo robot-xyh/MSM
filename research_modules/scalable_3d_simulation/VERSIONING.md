@@ -228,6 +228,12 @@ execution plan 文件摘要、内部计划摘要、父计划、源提交、shard
 恢复均完整读取压缩流。压缩工具仍不提供删除入口，`run-shard` 的 20 GiB 保护线不能因
 压缩功能而降低。
 
+D6 严格身份汇总使用 `d6-scalable3d-offline-evaluation-v12`。公共
+`d2_id_switch_count` 只表示经过真值隔离清单、episode 上下文、两层 manifest 和源文件
+SHA-256 复核的离线指标；在线 producer 声明使用独立诊断字段。派生报告分别记录 episode
+producer 的 Git 提交和 D6 evaluator 的 Git 提交、dirty 状态及源码树摘要。评估器升级
+不改变冻结 episode 的来源提交，也不要求重跑动力学仿真。
+
 正式学习数据生成必须在启动 episode 前验证训练 seed 与保留评估 seed 零重叠，并验证
 D5 主动视觉默认 20% 测试切分可提供至少 20 个唯一未见 seed。生成过程中逐 episode 检查
 剩余磁盘；容量不足时停止，不删除或覆盖既有制品。
