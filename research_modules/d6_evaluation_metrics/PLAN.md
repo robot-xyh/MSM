@@ -1,6 +1,33 @@
 # D6 Evaluation Metrics Plan
 
-## 2026-07-31 严格离线身份交换接线
+## 2026-07-31 D4 历史候选源漂移处置
+
+### 已完成
+
+- [x] 保留绑定 `fd85745` 和旧 `region_resource.py` 摘要 `1b534b4...` 的 v4/v5
+  配置及候选制品，不覆盖历史证据，不更新期望哈希。
+- [x] 将真实历史 v4 测试改为断言当前源触发
+  `source_current_file_differs_from_audited_commit`。
+- [x] 将真实历史 v5 测试改为断言当前源触发
+  `v4_source_external_anchor_mismatch`。
+- [x] 使用 12 条训练样本和 1 条验证样本的受控内存夹具，独立验证重叠诊断不一致返回
+  `validation_overlap_expected_crosscheck_mismatch`。
+- [x] 保持生产源锚点检查顺序和失败关闭语义不变；未修改生产代码。
+- [x] 运行三项专项测试和 D6 全量回归，结果分别为 `3 passed` 和
+  `1274 passed, 1 warning`。
+
+### 待执行
+
+- [ ] D4 为当前安全门版本生成新的候选版本、clean 源提交、源实现摘要、源身份和完整
+  实现文件摘要清单；不得复用 v4/v5 历史候选标识。
+- [ ] D4 提供新候选树、模型状态、训练/验证数据及划分清单、构建配置和权限全关闭声明；
+  若保留置信校准层，还需提供新的校准状态、校准摘要和开发门制品。
+- [ ] D6 为新候选建立独立版本的调用方外部锚点、审计配置、审计报告和校验和，不修改
+  2026-07-29 的 v4/v5 配置与报告。
+- [ ] 新候选完成独立 holdout、运行时预检和正式准入审计前，保持未注册、未准入和规则
+  回退。
+
+## 2026-07-31 正式 R0 前 450 项严格身份重聚合
 
 ### 已完成
 
@@ -13,14 +40,22 @@
   episode record/identity manifest 哈希损坏和禁止零回填增加回归测试。
 - [x] 正式 R0 full posterior 和实验矩阵 admission 只认可带严格来源、真值隔离、
   哈希验证和非回填声明的指标；来源提交和 evaluator 提交分别记录。
+- [x] main 使用 D6 v12 evaluator `b6289c5` 重聚合 clean producer `80e55eb` 的
+  shard 0-9，共 450 个 episode；派生输出与原 episode、冻结执行计划分离。
+- [x] 复核 `450/450` 有限状态和严格制品哈希/合同；严格身份交换
+  `414/450 available`、36 项失败关闭，可用项合计 893，169 项非零。
+- [x] 保留 27 项一轨多真值和 9 项谱系窗口外观测的真实不可用状态，不补 0；在线
+  producer 继续为 `0/450 available`。
+- [x] 保留修复前 90-cell 的 `0/90` 错误汇总与 `73/90` 严格离线诊断作为历史证据，
+  不再把原 135-cell 重聚合写成待办。
 
 ### 待执行
 
-- [ ] main 对现有 135 个 episode 重新生成 D6 per-episode CSV 和 aggregate JSON；该步骤
-  只重算派生制品，不重跑仿真，不覆盖原 episode。
-- [ ] main 随后重新运行 formal R0 full posterior audit 和 post-run matrix admission，
-  报告严格指标的 available/unavailable 分母及原始失败原因。
-- [ ] 正式 900-cell 后续执行继续使用同一 v12 语义；G1/A1/A2/A3/C1/F1 不得读取在线
+- [ ] main 完成 shard 10-19，使正式 R0 达到冻结的 900-cell 完整范围；450 项不得登记为
+  full posterior 或完整矩阵准入结论。
+- [ ] 900-cell 完整范围生成后，重新运行 formal R0 full posterior audit 和 post-run
+  matrix admission，报告严格指标的 available/unavailable 分母及原始失败原因。
+- [ ] 正式后续执行继续使用同一 v12 语义；G1/A1/A2/A3/C1/F1 不得读取在线
   producer IDSW 作为真值指标。
 
 ## 2026-07-31 高威胁 clean smoke 修复后复核

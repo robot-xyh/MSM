@@ -1,6 +1,32 @@
 # D6 实现差距审计
 
-## 2026-07-31 严格离线身份交换接线 GAP
+## 2026-07-31 D4 历史候选源漂移 GAP
+
+### P0 状态
+
+没有新增 D6 P0。生产审计已对 D4 源漂移失败关闭，历史配置、候选制品和外部锚点保持
+不可变。测试没有通过更新哈希、跳过源检查或改写错误顺序恢复历史候选通过状态。
+
+### 已关闭的测试缺口
+
+真实历史 v4/v5 测试现分别断言
+`source_current_file_differs_from_audited_commit` 和
+`v4_source_external_anchor_mismatch`。重叠诊断负例使用受控内存夹具，独立到达
+`validation_overlap_expected_crosscheck_mismatch`。生产代码未修改。专项测试
+`3 passed`，D6 全量 `1274 passed, 1 warning`。
+
+### 剩余 P1
+
+1. 当前 D4 安全门版本没有新候选。需要新的候选版本、clean 源提交、源实现摘要、源
+   身份和逐文件摘要清单。
+2. 新候选需要独立候选树、模型状态、训练/验证数据及划分、构建配置、权限关闭声明；
+   置信校准路线还需新的校准状态、摘要和开发门制品。
+3. D6 需要为新版本建立调用方外部锚点、审计配置、报告和校验和，并保留旧 v4/v5
+   审计链不变。
+4. 独立 holdout、运行时预检和正式准入尚未执行。新候选在这些证据齐备前保持未注册、
+   未准入和规则回退。
+
+## 2026-07-31 正式 R0 前 450 项严格身份重聚合 GAP
 
 ### 已关闭的 P0
 
@@ -13,17 +39,30 @@ formal R0 full posterior 和 experiment matrix admission 已要求严格来源�
 隔离和 `strict_id_switch_backfilled=false`。旧 CSV 不能凭同名字段通过。producer 来源
 提交和 evaluator 来源提交已分离。
 
-### 现有证据与剩余 P1
+### 已关闭的重聚合 P1
 
-clean source `80e55eb` 前 90 项已有 `73 available / 17 fail-closed`：16 项
-`multiple_truth_targets_for_global_track`，1 项
-`source_observation_outside_lineage_window`。这 17 项属于真实证据不可判定，不是接线
-缺陷，禁止补 0。
+main 已在 evaluator commit `b6289c5` 上，对 clean producer `80e55eb` 的 shard 0-9
+共 450 个 episode 完成 D6 v12 派生重聚合。有限状态与严格制品哈希/合同均为
+`450/450`。严格 ID Switch 为 `414 available / 36 fail-closed`，可用项合计 893，
+169 项非零。36 项原因分布为 27 项
+`multiple_truth_targets_for_global_track` 和 9 项
+`source_observation_outside_lineage_window`，没有补 0。
 
-剩余 P1 是 main 对现有 135 个 episode 重新生成派生 D6 汇总、正式后验审计和准入报告，
-并在后续完整 900-cell 及 G1/A1/A2/A3/C1/F1 中沿用新语义。该工作不需要重跑既有仿真，
-也不修改冻结 execution plan。若上游希望提高 17 项可用率，应由 D1/D2 改善谱系窗口和
-一轨多真值歧义处理，再生成新的 episode；D6 不在离线汇总中推断或补齐身份。
+在线 producer 指标继续为 `0/450 available`，原因均为
+`producer_declared_id_switch_count_unavailable`。producer/evaluator provenance 已分离，
+重聚合没有修改原 episode 或冻结 execution plan。原“main 待重聚合 135 个 episode”
+已经关闭。修复前 90-cell 的 `0/90` 通用汇总和 `73/90` 严格离线诊断保留为历史证据，
+不再写作当前状态。
+
+### 剩余 P1
+
+1. 正式 R0 当前只完成 shard 0-9 的 450-cell 派生汇总。main 仍需完成 shard 10-19。
+2. formal R0 full posterior audit 和 post-run experiment matrix admission 必须等待
+   900-cell 完整范围后执行；当前 450 项不能提前登记为完整准入结论。
+3. 36 项严格身份不可用属于当前 episode 证据不可判定。若要提高可用率，应由 D1/D2 在
+   新 episode 中改善谱系窗口和一轨多真值歧义处理；D6 不推断身份，也不补齐为 0。
+4. G1/A1/A2/A3/C1/F1 后续范围必须沿用 v12 严格离线语义，不得读取在线 producer IDSW
+   作为真值指标。
 
 ## 2026-07-31 高威胁 clean smoke 修复后 GAP
 

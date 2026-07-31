@@ -1,6 +1,28 @@
 # D6 Evaluation Metrics
 
-## 2026-07-31 严格离线身份交换接线
+## 2026-07-31 D4 历史候选源漂移审计
+
+D4 v4/v5 候选制品和审计配置固定绑定 clean commit
+`fd857457bb27a4a709a7c4937e22ebe1cbd7f848`。其中
+`region_resource.py` 的外部锚点为
+`1b534b4b3d73724e2ed778f05182eac45052087efc05afa8a7900daf3dbd65e4`。
+D4 在 `20895c7` 增加逐区域建议发布代次安全门后，当前文件摘要变为
+`1f47de6104f16c563ca6fc8cca3f1540437d77f3d3617225eef7b8b2423a78c2`。
+历史候选没有失效为历史证据，但已不再是当前 D4 源的候选。
+
+D6 生产审计继续失败关闭。v4 返回
+`source_current_file_differs_from_audited_commit`，v5 返回
+`v4_source_external_anchor_mismatch`。原配置、候选树和哈希均未覆盖，也没有把当前文件
+摘要写回历史锚点。重叠诊断负例已改用受控内存夹具，独立验证
+`validation_overlap_expected_crosscheck_mismatch`，不再依赖已经源漂移的真实候选前置链。
+本次没有修改生产审计代码。专项测试 `3 passed`，D6 全量测试
+`1274 passed, 1 warning`；warning 为既有 Matplotlib `Axes3D` 环境提示。
+
+新的当前候选仍需由 D4 生成新版本制品。D6 随后以新的 clean 源提交、源身份、实现文件
+清单、候选树、数据划分、校准制品和独立 holdout/runtime 证据建立新审计配置。完成前，
+v4/v5 历史候选保持未注册、未准入，规则路径继续生效。
+
+## 2026-07-31 正式 R0 前 450 项严格身份重聚合
 
 `scalable_3d_offline` 已把两类含义分开。`d2_online_producer_id_switch_count`
 保留在线 D2 的原始诊断声明；在线链路没有真值时，该字段通常为 unavailable。
@@ -13,12 +35,23 @@ SHA-256、离线身份清单 SHA-256、身份评价及四类源文件 SHA-256，
 且 `strict_id_switch_backfilled=false`。旧版 CSV 只有同名数值而没有上述来源声明时，
 正式后验审计和实验矩阵准入不把它计为严格指标。
 
-正式 R0 clean source `80e55eb` 的前 90 个 episode 无需重跑仿真。既有真值隔离制品中
-73 项严格指标可用，17 项失败关闭；其中 16 项为
-`multiple_truth_targets_for_global_track`，1 项为
-`source_observation_outside_lineage_window`。17 项继续保持 null，不补 0。修复属于 D6
-派生汇总接线，现有 135 个 episode 可由 main 重新运行离线汇总、正式审计和矩阵准入。
-episode 来源提交与本次 D6 评估器提交、dirty 状态和评估器源码树摘要分别记录。
+main 已使用 D6 v12 评估器提交
+`b6289c54ff0057a07148bfe906d48bcf5e2e099e`，对正式 R0 clean producer
+`80e55eb43bc4a5feeac9c9af0d718d461a46401f` 的 shard 0-9 共 450 个 episode 重新生成
+派生汇总。输出中有限状态为 `450/450`；严格 `id_switch_count` 为
+`414/450 available`、`36/450 fail-closed`。可用项合计 893 次身份交换，169 个 episode
+为非零。36 个不可用项中，27 个为 `multiple_truth_targets_for_global_track`，9 个为
+`source_observation_outside_lineage_window`，全部保持 null。
+
+在线 producer 指标仍为 `0/450 available`，450 项原因均为
+`producer_declared_id_switch_count_unavailable`。这符合在线真值隔离合同。严格制品的
+哈希和合同复核为 `450/450`，episode producer 来源与 evaluator 来源分开记录；重聚合
+没有改写原 episode 或冻结执行计划。
+
+修复前 90-cell 诊断继续作为历史证据保留：通用汇总曾错误得到 `0/90 available`，同批
+离线严格证据实际为 `73/90 available`、17 项失败关闭。原“main 待重聚合 135 项”已经
+由本次 450 项重聚合取代，不再是当前状态。当前结果仍是半程派生汇总；正式 full posterior
+和 post-run experiment matrix admission 必须等 900-cell 完整范围生成后执行。
 
 ## 2026-07-31 高威胁 clean smoke 修复后复核
 

@@ -1,5 +1,20 @@
 # D6 系统级离线评估：算法原理与实施说明
 
+## 历史候选源漂移测试
+
+生产审计的执行顺序保持不变。v4 审计从候选源实现摘要读取 `fd85745`，使用 Git 对象复算
+该提交的实现文件，再与当前工作树逐文件比较。v5 审计使用调用方冻结的 v4 源文件清单
+复算当前文件摘要。当前 D4 的 `region_resource.py` 已包含 `20895c7` 引入的建议发布
+代次门，因此两条真实历史候选链分别在
+`source_current_file_differs_from_audited_commit` 和
+`v4_source_external_anchor_mismatch` 处终止。
+
+测试将源漂移和算法内部负例分开。真实候选测试只验证源锚点失败关闭，并继续拦截 TEST
+payload 的语义读取。重叠诊断负例直接调用同一生产重叠计算函数，输入为受控的 12 条训练
+样本和 1 条验证样本，故意把预期 exact latent overlap 从 0 写为 1。该测试稳定到达
+`validation_overlap_expected_crosscheck_mismatch`，不修改或绕过生产源锚点检查。
+本次无需增加测试专用生产接口，也没有修改生产代码。
+
 ## 严格身份交换汇总
 
 汇总入口先读取在线 `modules.d2.associated_tracks`，把 producer 声明写入在线诊断字段。
@@ -20,6 +35,24 @@
 `source_observation_outside_lineage_window`。正式后验审计按严格可用项统计，实验矩阵
 准入要求每个 cell 的严格值及来源合同同时可用。旧 v11 CSV 不具备来源字段，不能直接
 进入新准入流程。
+
+## 正式 R0 前 450 项派生重聚合（2026-07-31）
+
+重聚合输入固定为 clean producer `80e55eb` 的 shard 0-9，共 450 个 episode；评估器固定
+为 D6 v12 commit `b6289c5`。执行只重新生成 per-episode CSV、aggregate JSON、中文报告
+和性能证据，不修改 episode、执行计划或 producer 制品。每项结果同时记录 producer 与
+evaluator 来源，避免把后续评估器修复写成仿真来源变化。
+
+450 项有限状态均通过，严格身份制品哈希/合同复核也为 `450/450`。公共严格指标为
+`414/450 available`，可用值合计 893，169 项非零。其余 36 项返回 null：27 项原因为
+`multiple_truth_targets_for_global_track`，9 项为
+`source_observation_outside_lineage_window`。在线诊断字段为 `0/450 available`，原因均为
+`producer_declared_id_switch_count_unavailable`。聚合器没有用离线值回填在线字段，也没有
+用 0 替换严格不可用项。
+
+修复前的 90-cell 诊断仍用于验证接线差异：旧通用路径为 `0/90 available`，严格离线路径
+为 `73/90 available`。本次 450 项结果取代原 135 项待重聚合状态。正式 full posterior
+审计和 post-run matrix admission 不对局部范围提前运行，必须等待 900-cell 全部完成。
 
 ## clean smoke 修复后只读复核（2026-07-31）
 

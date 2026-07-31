@@ -1,19 +1,39 @@
 # D6 系统评估指标综述及子方案
 
-## 2026-07-31 严格离线身份交换接线评审
+## 2026-07-31 D4 历史候选源漂移评审
+
+评审确认 D4 当前实现没有回归。历史 v4/v5 候选固定绑定 `fd85745` 和
+`region_resource.py` 的 `1b534b4...` 摘要；`20895c7` 引入建议发布代次安全门后，
+当前摘要为 `1f47de6...`。旧候选只能作为历史开发证据，不能作为当前实现候选。
+
+评审接受 D6 的失败关闭结果。v4/v5 分别返回
+`source_current_file_differs_from_audited_commit` 和
+`v4_source_external_anchor_mismatch`。生产检查未放宽，历史配置与制品未覆盖。重叠诊断
+负例已从失效的真实前置链分离，使用受控内存夹具直接验证目标错误码。专项测试 3 项、D6
+全量 1274 项均通过。
+
+下一步由 D4 生成新版本候选和 clean 来源制品，D6 建立新的外部锚点与独立审计。新
+holdout、运行时预检和正式准入完成前，候选权限保持关闭，规则路径不变。
+
+## 2026-07-31 正式 R0 前 450 项严格身份重聚合评审
 
 评审接受 D6 对在线诊断和严格离线指标的分离。在线 D2 在无真值条件下继续发布
 unavailable，D6 不改变该合同。公共 ID Switch 只来自经 episode record 哈希、离线身份
 manifest、五类身份源制品和现有 D6 adapter 复核的离线 `d2_identity`。
 
-前 90 个正式 R0 episode 的既有制品给出 73 项可用、17 项失败关闭。16 项失败原因为
-一轨多真值，1 项为源观测超出谱系窗口。17 项没有写成 0。正式后验审计只统计严格可用
-项；矩阵准入还要求来源、真值隔离、哈希验证和非回填声明。episode source commit 与
-evaluator commit 分开记录。
+main 已使用 D6 v12 evaluator `b6289c5`，对 clean producer `80e55eb` 的 shard 0-9 共
+450 个 episode 完成派生重聚合。有限状态和严格制品哈希/合同均为 `450/450`。严格
+ID Switch 为 `414/450 available`，可用项合计 893，169 项非零。36 项保持失败关闭：
+27 项一轨多真值，9 项源观测超出谱系窗口。在线 producer 指标为 `0/450 available`，
+原因均为 `producer_declared_id_switch_count_unavailable`，符合在线真值隔离合同。
 
-本次属于派生评估接线修复。既有仿真和执行计划无需重跑。main 应对当前 135 个 episode
-重新生成 per-episode CSV、aggregate JSON、formal posterior 和 post-run admission，再
-发布更新后的可用性分母。D6 不覆盖原 episode，也不把 17 项不可用样本移出分母。
+评审接受 producer/evaluator 来源分离和不回填语义。本次只重算派生 CSV、aggregate JSON、
+中文报告和性能证据，没有重跑或覆盖 episode。原 90-cell 的 `0/90` 错误通用汇总与
+`73/90` 严格离线诊断继续保留为修复前历史证据；原 135-cell 重聚合待办已经关闭。
+
+450 项不足以形成正式 full posterior 或 post-run admission。main 仍需完成 shard 10-19，
+随后对 900-cell 完整范围运行两项正式审计。D6 不把当前 414 项可用分母外推为 900 项结论，
+也不把 36 项不可用样本移出分母。
 
 ## 2026-07-31 高威胁 clean smoke 修复后评审
 
