@@ -74,6 +74,9 @@ EXPERIMENT_MATRIX_CELL_RESULT_SCHEMA = (
 EXPERIMENT_MATRIX_SCOPE_MERGE_SCHEMA = (
     "scalable3d-experiment-matrix-scope-merge-v1"
 )
+EXPERIMENT_MATRIX_SHARD_STORAGE_VALIDATION_SCHEMA = (
+    "scalable3d-experiment-matrix-shard-storage-validation-v1"
+)
 EXPERIMENT_MATRIX_MODEL_BUNDLE_BINDING_SCHEMA = (
     "scalable3d-experiment-matrix-model-bundle-binding-v1"
 )
@@ -738,6 +741,98 @@ def run_experiment_matrix_shard(
         "shard_dir": shard_dir,
         "checkpoint": checkpoint_path,
         "progress": progress_path,
+    }
+
+
+def validate_experiment_matrix_shard_for_storage(
+    *,
+    execution_plan_path: str | Path,
+    shard_index: int,
+) -> dict[str, Any]:
+    """Prove that one canonical shard is complete and archive-ready.
+
+    This performs the same static-plan, progress, cell-artifact, and
+    checkpoint validation required by the merge path.  It intentionally does
+    not validate the current Git checkout because archival may occur from a
+    separate control process after the clean execution has finished.
+    """
+
+    plan_path = Path(execution_plan_path).resolve()
+    execution = load_experiment_matrix_execution_plan(plan_path)
+    descriptors = execution["sharding"]["shards"]
+    index = int(shard_index)
+    if index < 0 or index >= len(descriptors):
+        raise ValueError("shard_index is out of range")
+
+    descriptor = descriptors[index]
+    execution_root = plan_path.parent
+    shard_dir = execution_root / "shards" / str(descriptor["shard_id"])
+    expected_cells = [
+        cell
+        for cell in execution["scope"]["cells"]
+        if int(cell["shard_index"]) == index
+    ]
+    _validate_static_shard_plan(
+        shard_dir,
+        execution=execution,
+        descriptor=descriptor,
+        expected_cells=expected_cells,
+    )
+    progress = _load_and_validate_progress(
+        execution_root,
+        shard_dir,
+        execution,
+        expected_cells,
+    )
+    checkpoint_path = shard_dir / _SHARD_CHECKPOINT_FILENAME
+    checkpoint = _load_checkpoint(checkpoint_path)
+    _validate_checkpoint_binding(
+        checkpoint,
+        execution=execution,
+        descriptor=descriptor,
+    )
+    if checkpoint.get("status") != "complete":
+        raise ExperimentMatrixShardError(
+            f"shard is not complete: {descriptor['shard_id']}"
+        )
+    if len(progress) != len(expected_cells):
+        raise ExperimentMatrixShardError(
+            f"shard progress is incomplete: {descriptor['shard_id']}"
+        )
+    if int(checkpoint.get("completed_cell_count", -1)) != len(
+        expected_cells
+    ):
+        raise ExperimentMatrixShardError(
+            f"shard completion count mismatch: {descriptor['shard_id']}"
+        )
+    progress_path = shard_dir / _SHARD_PROGRESS_FILENAME
+    progress_sha256 = _sha256_file(progress_path)
+    if checkpoint.get("progress_sha256") != progress_sha256:
+        raise ExperimentMatrixShardError(
+            f"shard progress digest mismatch: {descriptor['shard_id']}"
+        )
+
+    return {
+        "schema_version": (
+            EXPERIMENT_MATRIX_SHARD_STORAGE_VALIDATION_SCHEMA
+        ),
+        "status": "verified_complete",
+        "execution_plan_sha256": execution["execution_plan_sha256"],
+        "execution_plan_file_sha256": _sha256_file(plan_path),
+        "parent_plan_sha256": execution["parent"]["plan_sha256"],
+        "source_git_commit": execution["source"]["git_commit"],
+        "shard_index": index,
+        "shard_id": descriptor["shard_id"],
+        "expected_cell_count": len(expected_cells),
+        "completed_cell_count": len(progress),
+        "descriptor_sha256": _digest_json(descriptor),
+        "cells_sha256": _digest_json(expected_cells),
+        "shard_plan_sha256": _sha256_file(
+            shard_dir / _SHARD_PLAN_FILENAME
+        ),
+        "progress_sha256": progress_sha256,
+        "checkpoint_sha256": _sha256_file(checkpoint_path),
+        "shard_dir": shard_dir,
     }
 
 
@@ -2609,6 +2704,7 @@ __all__ = [
     "EXPERIMENT_MATRIX_SHARD_CHECKPOINT_SCHEMA",
     "EXPERIMENT_MATRIX_SHARD_PLAN_SCHEMA",
     "EXPERIMENT_MATRIX_SHARD_PROGRESS_SCHEMA",
+    "EXPERIMENT_MATRIX_SHARD_STORAGE_VALIDATION_SCHEMA",
     "FORMAL_PARENT_EXPECTED_CELL_COUNT",
     "FORMAL_R0_DEFAULT_MINIMUM_FREE_BYTES",
     "FORMAL_R0_DEFAULT_SHARD_COUNT",
@@ -2619,4 +2715,5 @@ __all__ = [
     "load_experiment_matrix_execution_plan",
     "merge_experiment_matrix_shards",
     "run_experiment_matrix_shard",
+    "validate_experiment_matrix_shard_for_storage",
 ]
