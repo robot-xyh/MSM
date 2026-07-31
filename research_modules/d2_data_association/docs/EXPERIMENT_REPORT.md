@@ -1743,8 +1743,9 @@ D6 可在同一落盘输入上增加严格的双锚 bounded coast bridge。bridg
 `b922ff5f95864345efa583da7256935694e5c675529989a659716522a0d7590e`。正式计划含 900
 个 cell；当前 shard 0--9 的 450 个 episode 和对应归档完整保留。
 
-本轮 D2 只实现并测试读取、校验和诊断能力，没有扫描或重跑 450 个正式 episode，也
-没有生成正式 36-case pack。以下正式统计来自 main 的独立只读核对，用于固定报告口径。
+D2 子模块实现并测试读取、校验和诊断能力后，main 使用 audit code commit
+`6eacfc93e355e5a4aec4814eb9ee060db57e6f1b` 完成正式只读运行。在线 producer 与既有 450
+个 episode 均未修改，以下统计来自最终 pack。
 
 ### 39.2 正式统计
 
@@ -1779,14 +1780,38 @@ multi-truth 分布为 100v100 的 4 episode/4 event 和 200v200 的 23 episode/3
 
 fixture 构造当前 `cells/*/episode` 布局和 37 个最小 completed episode，其中 36 个
 严格不可用，验证筛选结果恰为 27/9；另以合成 causal event 验证 517/1 年龄分类、最新
-观测引入新真值和 radar-to-camera 转换。篡改 identity source hash 后，发现阶段按预期失败关闭。fixture
-不复制正式 episode 树，不构成正式性能复跑。
+观测引入新真值和完整转换集合。篡改 identity source hash 后，发现阶段按预期失败关闭。
+fixture 不复制正式 episode 树，不构成正式性能复跑。
 
 ### 39.4 判定
 
 正式布局兼容、CLI、公共 API 和 causal pack 生成能力已经完成。在线关联算法没有修改。
-正式 36-case pack 仍待 main 在资源条件满足时运行并归档；truth-free 在线缓解策略、
-新的 clean producer/execution plan 和多 seed 正式复跑仍是 P1。`0.9 s` 身份承诺预算
-保持不变，unavailable 不得写成 0。2026-07-31 专项回归为 `8 passed in 0.60s`，D2
-全量为 `309 passed, 1 warning in 29.68s`；warning 为本机 Matplotlib `Axes3D` 导入
-冲突。CLI help、语法检查和限定路径差异检查均通过。
+正式 36-case pack 已生成，相关 P1 关闭。truth-free 在线缓解策略、新的 clean
+producer/execution plan 和多 seed 正式复跑仍是 P1。`0.9 s` 身份承诺预算保持不变，
+unavailable 不得写成 0。2026-07-31 专项回归为 `10 passed`；既有 D2 全量为
+`311 passed, 1 warning in 30.59s`。
+
+### 39.5 正式制品
+
+最终运行覆盖 450/900 个 episode，输出 36 个 case、556 个 blocker mapping event。
+10 个 archive payload SHA-256 全部重新计算，main 记录的 76 项派生制品校验全部通过。
+完整 21 MB pack 当前位于
+`/dev/shm/msm-formal-r0-d2-identity-causal-pack-20260731-80e55eb-6eacfc9`。该路径是临时
+存储，不作为长期仓库存储；完整内容可由 producer commit
+`80e55eb43bc4a5feeac9c9af0d718d461a46401f`、audit commit
+`6eacfc93e355e5a4aec4814eb9ee060db57e6f1b` 和 execution-plan hash
+`b922ff5f95864345efa583da7256935694e5c675529989a659716522a0d7590e` 确定性重建。
+
+仓内摘要目录为 `docs/formal_r0_identity_causal_pack_summary_20260731/`，只保留五项：
+
+| 摘要文件 | SHA-256 |
+| --- | --- |
+| `identity_blocker_causal_pack.json` | `ad76e06dbc18f8962165ba59f6656a943e0e877e8e2486d465e3147c59eb3a04` |
+| `D2_FORMAL_R0_IDENTITY_CAUSAL_AUDIT_CN.md` | `0b8a92e35e786617656a0caf3a7f5b980c1445221861db19935d088e0b97a678` |
+| `ARTIFACT_SHA256SUMS` | `c9bf5e479526cded07aa3d170540aa389b8083af3ec801496f41d620d4ffb68f` |
+| `artifact_inventory.json` | `590514ca516f6ae5d8a05a0f28a5409822240abe390903689b32bb79e9556885` |
+| `identity_blocker_cases.csv` | `dcc518823588868d5c9cf9d2b5709976bf4cd0b291e12abfb983b2c32dfb333a` |
+
+`ARTIFACT_SHA256SUMS` 保留完整 pack 的原始校验清单。由于逐案例和 mapping-events 明细
+未纳入仓内摘要，不能在摘要目录直接对该清单执行完整 `sha256sum -c`；完整校验应在确定性
+重建后的 pack 根目录执行。

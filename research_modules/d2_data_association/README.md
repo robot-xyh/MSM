@@ -1323,19 +1323,36 @@ commitment source 年龄，并区分 `historical_lineage_only_stale` 与
 `active_commitment_source_stale`。这些字段只解释既有严格结论，不重新评分、不按位置
 最近邻补身份，也不进入在线 D2。
 
-main 对 producer commit
+2026-07-31，main 使用 audit code commit
+`6eacfc93e355e5a4aec4814eb9ee060db57e6f1b` 对 producer commit
 `80e55eb43bc4a5feeac9c9af0d718d461a46401f`、execution-plan hash
-`b922ff5f95864345efa583da7256935694e5c675529989a659716522a0d7590e` 的正式证据完成了
-独立只读核对：450 个已完成 episode 中有 36 个严格身份不可用，其中 27 个
+`b922ff5f95864345efa583da7256935694e5c675529989a659716522a0d7590e` 的正式证据生成了
+最终因果诊断 pack。正式 scope 已完成 450/900 个 episode，其中 36 个严格身份不可用：
+27 个
 multi-truth episode 含 38 个 blocker mapping event，9 个 lineage-window episode 含
 518 个 event。518 个超窗 event 中 517 个仅历史最老来源超过固定 `0.9 s` 新鲜度预算，
 1 个连最新及 active commitment source 也超龄。38 个 multi-truth event 中 36 个由
 最新观测引入此前不存在的真值，2 个在历史中已含两个真值；最新观测传感器模态为
 camera 17 个、radar 21 个，完整来源模态转换为 `radar->camera` 17 个、
-`radar->radar` 19 个、`camera+radar->radar` 2 个。上述数字是 main 的正式证据核对结果，
-本轮 D2 未运行 450 个 episode，也尚未生成正式 36-case pack。
+`radar->radar` 19 个、`camera+radar->radar` 2 个。
 
-正式运行由 main 在资源条件满足时执行，例如：
+10 个 archive payload 的 SHA-256 均已重新计算，main 记录的 76 项派生制品校验全部通过。
+正式 pack 生成这一 P1 已关闭。完整 21 MB pack 当前位于
+`/dev/shm/msm-formal-r0-d2-identity-causal-pack-20260731-80e55eb-6eacfc9`，属于临时运行
+制品，不作为长期仓库存储；它可由上述冻结 producer、execution plan、原始目录和归档
+确定性重建。仓内只保留
+`docs/formal_r0_identity_causal_pack_summary_20260731/` 下的中文报告、aggregate、
+inventory、原始校验和清单和案例摘要 CSV，不包含逐案例文件和 mapping-events 明细。
+
+五个正式摘要文件的 SHA-256 为：
+
+- aggregate：`sha256:ad76e06dbc18f8962165ba59f6656a943e0e877e8e2486d465e3147c59eb3a04`；
+- 中文报告：`sha256:0b8a92e35e786617656a0caf3a7f5b980c1445221861db19935d088e0b97a678`；
+- `ARTIFACT_SHA256SUMS` 文件：`sha256:c9bf5e479526cded07aa3d170540aa389b8083af3ec801496f41d620d4ffb68f`；
+- inventory：`sha256:590514ca516f6ae5d8a05a0f28a5409822240abe390903689b32bb79e9556885`；
+- cases CSV：`sha256:dcc518823588868d5c9cf9d2b5709976bf4cd0b291e12abfb983b2c32dfb333a`。
+
+冻结输入下的确定性重建命令为：
 
 ```bash
 PYTHONPATH=.:research_modules/d2_data_association \
@@ -1350,6 +1367,6 @@ python3 research_modules/d2_data_association/scripts/run_scalable_3d_identity_bl
 
 小型 fixture 已覆盖正式 cells 布局、27/9 episode 原因计数、517/1 年龄分类、最新真值
 引入、传感器转换和来源哈希篡改失败关闭。诊断工具缺口已关闭；在线 truth-free 防止
-错误合轨、重新冻结 producer/execution plan 并执行新正式批次仍是 P1。2026-07-31
-专项回归为 `8 passed in 0.60s`，D2 全量为
-`309 passed, 1 warning in 29.68s`；warning 仍是本机 Matplotlib `Axes3D` 导入冲突。
+错误合轨、冻结新 producer/execution plan 并执行多 seed 正式批次仍是开放 P1。
+2026-07-31 专项回归为 `10 passed`，D2 全量为
+`311 passed, 1 warning in 30.59s`；warning 仍是本机 Matplotlib `Axes3D` 导入冲突。

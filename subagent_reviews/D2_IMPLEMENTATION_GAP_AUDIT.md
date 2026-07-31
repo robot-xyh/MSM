@@ -1664,22 +1664,32 @@ main 独立只读核对结果为 36 个 episode、556 个 blocker mapping event�
 - multi-truth 分布为 100v100 的 4 episode/4 event、200v200 的 23 episode/34 event，
   5/20/50 规模未出现该原因。证据显示它与密度和规模相关，不能据此断言单一算法根因。
 
-这些统计绑定 producer commit `80e55eb43bc4a5feeac9c9af0d718d461a46401f` 和
-execution-plan hash
-`b922ff5f95864345efa583da7256935694e5c675529989a659716522a0d7590e`。本轮 D2 未运行
-正式 450 episode，正式 36-case causal pack 仍待 main 调度生成。
+这些统计绑定 producer commit `80e55eb43bc4a5feeac9c9af0d718d461a46401f`、audit code
+commit `6eacfc93e355e5a4aec4814eb9ee060db57e6f1b` 和 execution-plan hash
+`b922ff5f95864345efa583da7256935694e5c675529989a659716522a0d7590e`。main 已完成
+450/900 scope 的正式 36-case、556-event pack；10 个 archive payload SHA-256 全部重算，
+main 记录的 76 项派生制品校验全部通过。因此“缺少可审计正式因果 pack”的 P1 已关闭。
+
+正式摘要位于 `research_modules/d2_data_association/docs/`
+`formal_r0_identity_causal_pack_summary_20260731/`。摘要哈希为：aggregate
+`ad76e06dbc18f8962165ba59f6656a943e0e877e8e2486d465e3147c59eb3a04`；report
+`0b8a92e35e786617656a0caf3a7f5b980c1445221861db19935d088e0b97a678`；checksum file
+`c9bf5e479526cded07aa3d170540aa389b8083af3ec801496f41d620d4ffb68f`；inventory
+`590514ca516f6ae5d8a05a0f28a5409822240abe390903689b32bb79e9556885`；cases CSV
+`dcc518823588868d5c9cf9d2b5709976bf4cd0b291e12abfb983b2c32dfb333a`。
 
 ### 保留 P1
 
-1. main 在不删除原目录/归档、不中断 20 GiB 保护底线的条件下运行只读 CLI，保存并
-   审核正式 36-case pack；这属于正式制品生成，不是算法修复。
-2. 在线根因缓解仍开放。未来候选只能使用几何、协方差、运动和来源一致性等 truth-free
+1. 在线根因缓解仍开放。未来候选只能使用几何、协方差、运动和来源一致性等 truth-free
    信号；诊断 truth 不得进入在线输入。候选必须绑定新的 clean producer/execution plan
    并重新跑正式多 seed，不能回写当前 450 episode。
-3. 固定 `0.9 s` 是身份承诺新鲜度预算。正式 delayed-noisy evaluator 中可能存在
+2. 固定 `0.9 s` 是身份承诺新鲜度预算。正式 delayed-noisy evaluator 中可能存在
    `1.05 s` lineage 配置，二者必须分别报告，不能通过放宽预算消除阻断。
+3. 完整 21 MB pack 当前位于
+   `/dev/shm/msm-formal-r0-d2-identity-causal-pack-20260731-80e55eb-6eacfc9`，只作为临时
+   运行制品；仓内不保存逐案例和 mapping-events 明细。冻结源数据可确定性重建完整包。
 
 2026-07-31 验收：37-entry 小 fixture 精确筛出 36 个严格不可用 episode，专项
-`8 passed in 0.60s`；D2 全量 `309 passed, 1 warning in 29.68s`；CLI help、全部变更
+`10 passed`；D2 全量 `311 passed, 1 warning in 30.59s`；CLI help、全部变更
 Python 文件 `py_compile` 和 scoped `git diff --check` 通过。唯一 warning 为本机
 Matplotlib `Axes3D` 多版本导入问题，与本次功能无关。

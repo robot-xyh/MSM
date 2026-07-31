@@ -18,6 +18,8 @@
   尚未执行。
 - D6 学习作用域归档审计：接口 P1 已关闭；真实 producer 紧凑 G1/R0 兼容夹具通过，正式
   G1/A1/A2/A3/C1/F1 归档作用域尚未运行。
+- D2 正式身份因果包：已在提交 `6eacfc9` 上完成。450 个 episode、10 个归档载荷和
+  76 个派生文件均通过哈希复核；36 个 strict unavailable 保持原判定。
 
 ### 已通过
 
@@ -28,14 +30,20 @@
    在线真值使用总数为 0。
 3. D6 v12 将在线 producer 诊断与严格离线身份指标分开。严格 ID Switch 为
    414/450 available，可用项合计 893，169 个 episode 非零；36 项保持失败关闭。
-4. 10 个分片原始合计 14,859,178,318 字节，压缩后合计 1,419,786,552 字节，
+4. D2 正式因果包将 36 个 episode 展开为 556 个阻断映射事件。一轨多真值为
+   27 episode/38 event，其中最新量测引入新真值 36 个；谱系超窗为 9 episode/518
+   event，其中仅历史谱系过旧 517 个、当前承诺来源也超龄 1 个。诊断未使用在线真值，
+   未修改 `global_track_id`，未放宽 `0.9 s` 门限。
+5. 10 个分片原始合计 14,859,178,318 字节，压缩后合计 1,419,786,552 字节，
    20,294 个文件全部通过源目录双端复核。
-5. 源目录和压缩包均未删除。`run-shard` 的 20 GiB 保护线保持启用；producer clean
+6. 源目录和压缩包均未删除。`run-shard` 的 20 GiB 保护线保持启用；producer clean
    `80e55eb` 与 evaluator clean `b6289c5` 分别记录。
 
 ### 开放 P1
 
-1. 36 个严格身份指标不可用项需要 D2 处理：27 项一轨多真值，9 项谱系超窗。D6 不补零。
+1. D2 在线无真值缓解仍未实现。下一候选只能使用几何、协方差、运动、来源一致性、候选
+   边和身份承诺状态，并须绑定新的 clean producer/execution plan 从 shard 0 重跑；
+   当前 36 项 strict unavailable 不重标注、不补零。
 2. 100 对 100 和 200 对 200 累计平均实时倍率为 0.447 和 0.193，部署实时性仍未关闭。
 3. shard 9 归档完成时可用空间约为 20.24 GiB。运行 shard 10 前，需明确是否允许在
    双端复核后人工移除原始分片，或提供独立归档存储。
@@ -47,6 +55,7 @@
 - `research_modules/scalable_3d_simulation/docs/SCALABLE_3D_FORMAL_R0_80E55EB_SHARD0_20260731_CN.md`
 - `research_modules/scalable_3d_simulation/docs/SCALABLE_3D_FORMAL_R0_80E55EB_SHARDS0_1_20260731_CN.md`
 - `research_modules/scalable_3d_simulation/docs/SCALABLE_3D_FORMAL_R0_80E55EB_SHARDS0_9_20260731_CN.md`
+- `research_modules/d2_data_association/docs/formal_r0_identity_causal_pack_summary_20260731/D2_FORMAL_R0_IDENTITY_CAUSAL_AUDIT_CN.md`
 
 ## 2026-07-31 正式分片压缩归档
 

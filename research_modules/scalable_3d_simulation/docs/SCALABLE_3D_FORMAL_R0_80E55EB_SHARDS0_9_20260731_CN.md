@@ -50,6 +50,30 @@ SHA-256 为 `86f812be3862ce4c464b39f2af17f6d4fbdc3df430373df1b4a61f433f10bc0b`�
 观测与发布航迹的时间关系超出冻结窗口。两类样本均不能据此判断实际切换次数，D6 保持
 空值并将原因交给 D1/D2 后续处理。
 
+## D2 因果复核
+
+D2 使用提交 `6eacfc93e355e5a4aec4814eb9ee060db57e6f1b` 的只读诊断器，对上述 36 个
+episode 生成正式因果包。诊断重新校验 execution plan、shard plan、checkpoint、
+progress、episode、D6 与离线身份来源哈希，重算 10 个归档载荷 SHA-256，并要求 36 个
+episode 的 evaluator 重放结果与持久化结果逐字段一致。76 个派生文件全部通过
+`ARTIFACT_SHA256SUMS`。
+
+一轨多真值的 27 个 episode 含 38 个阻断映射事件。36 个事件由最新量测引入历史中尚未
+出现的真值，2 个在最新量测前已含多个真值。最新来源传感器为相机 17 个、雷达 21 个；
+完整模态转换为 `radar->camera` 17、`radar->radar` 19、
+`camera+radar->radar` 2。谱系超窗的 9 个 episode 含 518 个事件，其中 517 个只因
+累计历史谱系超过 `0.9 s`，当前承诺来源仍在预算内；1 个事件的当前承诺来源也超龄。
+该拆分不回填严格身份值，也不把离线真值反馈给在线 D2。
+
+聚合 JSON SHA-256 为
+`ad76e06dbc18f8962165ba59f6656a943e0e877e8e2486d465e3147c59eb3a04`，中文报告
+SHA-256 为 `0b8a92e35e786617656a0caf3a7f5b980c1445221861db19935d088e0b97a678`，
+制品索引文件 SHA-256 为
+`c9bf5e479526cded07aa3d170540aa389b8083af3ec801496f41d620d4ffb68f`。长期摘要保存在
+`../../d2_data_association/docs/formal_r0_identity_causal_pack_summary_20260731/`；
+21 MiB 完整明细位于内存文件系统，可从冻结源数据确定性重建。该工作关闭正式因果包
+生成 P1，在线无真值缓解和新 producer 多 seed 验证仍开放。
+
 ## 运行性能
 
 | 规模 | episode | 平均实时倍率 | 最低 | 最高 |

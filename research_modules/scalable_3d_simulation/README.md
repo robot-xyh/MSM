@@ -14,6 +14,15 @@ D6 v12 使用哈希绑定的真值隔离制品重新汇总严格身份指标。�
 producer 诊断仍为 0/450 available，这是在线无真值合同，未被当成严格指标。episode
 来源提交为 clean `80e55eb`，评估器来源为 clean `b6289c5`，两类来源分别记录。
 
+D2 已在提交 `6eacfc9` 上完成这 36 个 episode 的正式只读因果包。工具重新校验 450 个
+episode、10 个分片和归档载荷，并对 76 个派生文件执行 SHA-256 复核。27 个一轨多真值
+episode 含 38 个阻断映射事件，其中 36 个由最新量测引入新真值，2 个在历史谱系中已
+含多个真值；最新来源为相机 17 个、雷达 21 个，完整模态转换拆分为
+`radar->camera` 17、`radar->radar` 19、`camera+radar->radar` 2。9 个谱系超窗
+episode 含 518 个事件，其中 517 个仅历史谱系过旧，1 个连当前承诺来源也超龄。该结果
+关闭“缺少正式因果包”的 P1，不改变 36 项 strict unavailable。摘要见
+[`../d2_data_association/docs/formal_r0_identity_causal_pack_summary_20260731/`](../d2_data_association/docs/formal_r0_identity_causal_pack_summary_20260731/)。
+
 5/20/50/100/200 规模的累计平均实时倍率分别为 8.278、2.646、1.003、0.447 和
 0.193。10 个分片原始大小合计 14,859,178,318 字节，确定性压缩后合计
 1,419,786,552 字节，占比 9.55%；20,294 个文件均通过压缩包与源目录双端复核。

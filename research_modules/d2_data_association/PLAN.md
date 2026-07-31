@@ -1753,12 +1753,24 @@ historical-only 与 1 active-stale、multi-truth newest-introduction、完整来
 `camera+radar->radar` 2。main 已独立核对正式 450 episode 的 36-case 统计，
 本轮 D2 不重新运行正式 episode，不修改正式制品，也不把 unavailable 改写为 0。
 
+main 已使用 audit commit `6eacfc93e355e5a4aec4814eb9ee060db57e6f1b`、producer
+commit `80e55eb43bc4a5feeac9c9af0d718d461a46401f` 和 execution-plan hash
+`b922ff5f95864345efa583da7256935694e5c675529989a659716522a0d7590e` 生成最终正式 pack。
+结果为 450/900、36 case、556 event；10 个 archive payload SHA-256 全部重算，main
+记录的 76 项派生制品校验全部通过。
+
+正式摘要固化在 `docs/formal_r0_identity_causal_pack_summary_20260731/`。摘要哈希为
+aggregate `ad76e06dbc18f8962165ba59f6656a943e0e877e8e2486d465e3147c59eb3a04`、report
+`0b8a92e35e786617656a0caf3a7f5b980c1445221861db19935d088e0b97a678`、checksum file
+`c9bf5e479526cded07aa3d170540aa389b8083af3ec801496f41d620d4ffb68f`、inventory
+`590514ca516f6ae5d8a05a0f28a5409822240abe390903689b32bb79e9556885`、cases CSV
+`dcc518823588868d5c9cf9d2b5709976bf4cd0b291e12abfb983b2c32dfb333a`。
+
 ### 41.3 后续 P1
 
-离线因果诊断工具缺口关闭。后续 P1 只保留两项：一是 main 在存储和调度条件满足时用
-同一 source/plan 生成正式 36-case pack；二是基于几何、协方差、运动连续性和来源一致性
-设计 truth-free 在线候选，经新 producer/execution plan 和多 seed 正式批次验证。在线
-候选不得读取诊断中的 truth cluster，不得放宽固定 `0.9 s` 身份承诺新鲜度预算，也不得
-改写 `global_track_id`。2026-07-31 专项回归为 `8 passed in 0.60s`，全量为
-`309 passed, 1 warning in 29.68s`；CLI help、变更 Python 文件 `py_compile` 和 scoped
-`git diff --check` 均通过。
+正式 pack 生成 P1 已关闭。后续只保留 truth-free 在线缓解：基于几何、协方差、运动和
+来源一致性设计候选，冻结新的 clean producer/execution plan 后执行多 seed 正式验证。
+候选不得读取诊断 truth cluster，不得放宽固定 `0.9 s` 身份承诺新鲜度预算，也不得改写
+`global_track_id`。完整 21 MB pack 当前仅在 `/dev/shm`，不进入长期仓库存储，可由冻结
+源数据确定性重建。2026-07-31 专项回归为 `10 passed`；既有全量回归为
+`311 passed, 1 warning in 30.59s`。

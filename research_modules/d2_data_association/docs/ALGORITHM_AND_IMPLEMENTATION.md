@@ -2477,6 +2477,13 @@ CLI 同时保留旧 episode-root 路径。
 
 该实现没有修改 GNN/匈牙利关联、航迹状态、身份承诺、`global_track_id` 或严格指标。
 诊断 truth 不进入在线 DTO。小 fixture 验证当前 cells 布局、36-case 选择、27/9 原因
-计数、517/1 超龄分类、最新真值引入、传感器转换及 hash 篡改失败关闭；正式 450
-episode 未在本轮执行。2026-07-31 专项测试为 `8 passed in 0.60s`，D2 全量为
-`309 passed, 1 warning in 29.68s`。
+计数、517/1 超龄分类、最新真值引入、完整传感器转换集合及 hash 篡改失败关闭。
+
+main 随后以 audit commit `6eacfc93e355e5a4aec4814eb9ee060db57e6f1b` 对 producer
+`80e55eb43bc4a5feeac9c9af0d718d461a46401f` 的冻结 execution plan 运行该算法，完成
+450/900 scope、36 case、556 event 的正式 pack。10 个 archive payload 均重新计算
+SHA-256，main 记录的 76 项派生制品校验全部通过。仓内摘要位于
+`docs/formal_r0_identity_causal_pack_summary_20260731/`；aggregate SHA-256 为
+`ad76e06dbc18f8962165ba59f6656a943e0e877e8e2486d465e3147c59eb3a04`。该运行没有改变
+在线关联、严格 verdict 或 `global_track_id`。正式 pack 生成已关闭，truth-free 在线
+缓解和新 producer 多 seed 验证仍开放。
