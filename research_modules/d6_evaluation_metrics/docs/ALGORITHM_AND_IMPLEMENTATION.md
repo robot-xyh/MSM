@@ -1,5 +1,63 @@
 # D6 系统级离线评估：算法原理与实施说明
 
+## 学习作用域归档原生流程
+
+`ScopeEvidenceArtifacts` 采用显式互斥输入。目录模式保留原有
+`execution_plan_path + merge_dir`；归档模式使用
+`execution_plan_path + archive_root + archive_merge_dir`。learned scope 和各 R0 scope
+分别实例化，因此归档候选可以与目录 R0 配对。构造阶段不读取目录来判断模式。
+
+归档审计按以下步骤执行：
+
+1. 使用既有 execution plan 校验器核对 clean source、formal parent、scope cell、shard
+   descriptor 和模型 bundle binding；
+2. 读取 archive-native merge 的 manifest、cell CSV 和 episode index，先核对 schema、
+   execution plan、parent、variant、cell 数、shard 顺序及逻辑 episode 路径；逻辑路径只做
+   字符串和相对路径安全检查；
+3. 要求 archive-native merge 由 producer 以 `write_d6_report=True` 生成，使 D6 能复核
+   `archive_d6_evaluation_binding.json` 与五类报告文件；该要求用于绑定复核，不导入 producer
+   的评价结论；
+4. 调用 D6-owned `audit_verified_formal_shard_archive_set()`，先独立验证 `sharding` 映射、
+   排除布尔值的正整数 `shard_count`、descriptor 数量、连续索引和规范 shard 名称，再对
+   archive root 的 shard 子目录做精确集合比较；普通文件作为 sidecar 记录，symlink、非普通项
+   和额外目录拒绝；
+5. 每片调用同一低层 `verify_and_restore_formal_shard_archive()`，复算 checksum、manifest、
+   payload、计划绑定和 inventory，并流式检查 tar 成员类型、路径、元数据、大小和摘要；
+6. 当前 shard 恢复到独立临时 execution root 后，复用
+   `_validate_one_shard_evidence()` 校验 shard plan、progress 和 checkpoint；
+7. 对该片每个 cell 调用原 `_audit_cell()`。cell_result、episode 文件树、学习运行诊断、
+   实际 assist adoption、在线真值隔离、物理结果及 D6 离线评价在临时目录清理前完成；
+8. 全片完成后调用 `audit_archive_merge_bundle()`，将 merge shard/archive binding 与 D6
+   独立归档记录对账，并复核 D6 报告文件 binding；producer 报告结论不进入候选指标；
+9. 按 execution plan 的 scope 顺序汇总 cell，检查重复、漏失和乱序，再执行原同键 R0
+   唯一配对和非退化比较。
+
+producer 兼容测试位于 D6 测试层。它构造满足正式字段约束的父计划，测试中只缩减 cell
+枚举、学习运行解析和 cell 执行，随后调用真实 execution-plan writer/loader、shard runner、
+`create_verified_formal_shard_archive()` 和
+`merge_verified_formal_shard_archives(write_d6_report=True)`。原始 shard 移走后，D6 使用
+生产归档和 merge 完成独立验证。D6 production module 不导入 scalable-3D producer，归档
+验证函数也不在该测试中 monkeypatch。
+
+公开结果按 scope 给出：
+
+```text
+storage_mode
+archive_root
+archive_verification_performed
+verified_archive_count
+peak_staged_shard_count
+sidecar_files
+```
+
+目录模式的 `archive_verification_performed=false`，归档计数和暂存峰值均为 0。归档模式在
+完整正例中峰值为 1。上述字段只陈述证据取得过程，不代表模型准入。
+
+CLI 保留 `--scope-merge-dir` 和 `--r0-scope`，新增 learned 的
+`--scope-archive-root/--scope-archive-merge-dir` 以及可重复
+`--r0-archive-scope EXECUTION_PLAN ARCHIVE_ROOT ARCHIVE_MERGE_DIR LABEL`。argparse 互斥组和
+输入数据类共同拒绝含混配置。
+
 ## 正式归档审计流程
 
 目录模式仍由 `audit_formal_r0_full_posterior()` 直接读取 canonical shard。v1 配置出现

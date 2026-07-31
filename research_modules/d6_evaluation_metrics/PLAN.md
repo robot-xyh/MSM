@@ -1,5 +1,45 @@
 # D6 Evaluation Metrics Plan
 
+## 2026-07-31 学习作用域归档原生审计
+
+### 已完成
+
+- [x] 保持 `ScopeEvidenceArtifacts(execution_plan_path, merge_dir, label)` 目录模式兼容，
+  增加显式 `archive_root + archive_merge_dir` 模式；learned scope 与每个 R0 scope 独立选择
+  存储方式，不按文件系统内容猜测。
+- [x] CLI 增加 learned archive 参数和可重复 R0 archive 参数，并拒绝同一 scope 同时提交
+  目录与归档存储输入。
+- [x] 在 D6 `formal_shard_archive_audit` 中增加通用归档集合逐片入口，复用独立的 checksum、
+  manifest、payload、计划绑定、inventory 和 tar 安全解析，不导入 main producer。
+- [x] 精确校验归档子目录集合，允许普通 sidecar；缺片、额外目录、symlink、非普通项、
+  payload 损坏和跨计划绑定均失败关闭。
+- [x] 每次只恢复一个 shard；在临时目录清理前完成 shard plan/progress/checkpoint 语义复核、
+  每个 cell 的既有学习证据审计和 D6 离线评价。逻辑 episode 路径不当作已 materialized 路径。
+- [x] 复核 archive-native merge 的 scope manifest、cell CSV、episode index、archive binding
+  和 D6 报告 binding；重复、漏失、乱序 cell 和 merge 篡改失败关闭。
+- [x] 明确 archive-native merge 必须由 producer 使用 `write_d6_report=True` 生成。D6 只用
+  该报告 bundle 复核执行计划、评价器来源和文件绑定，不采信 producer verdict。
+- [x] 通用 archive-set 入口独立校验 `sharding` 映射、排除布尔值的正整数 `shard_count`、
+  descriptor 数量、连续索引和 `shard_{index}_of_{count}` 身份，不依赖上游计划加载。
+- [x] 保留模型 bundle、实际 assist adoption、在线真值隔离、物理结果、同键 R0 配对和
+  非退化判据；不补零、不授予模型晋级或控制权限。
+- [x] 公开每个 scope 的 `storage_mode/archive_root/verified_archive_count/`
+  `peak_staged_shard_count/sidecar_files`。目录模式明确标记未执行归档验证。
+- [x] D6 自建夹具覆盖 G1/A1/A2/A3/C1/F1、归档 R0、混合存储、sidecar 及指定失败关闭
+  负例；测试专用耐久夹具另用真实 scalable-3D plan/shard/archive/merge producer 生成紧凑
+  G1/R0 正例，明确覆盖 `write_d6_report=True`，且不 monkeypatch D6 验证器。
+- [x] 2026-07-31 验证：学习专项 `68 passed, 1 warning in 8.35s`；learning/archive 组合
+  `89 passed, 1 warning in 9.61s`；D6 全量
+  `1330 passed, 1 warning in 120.34s`。
+
+### 待执行
+
+- [ ] main 在完整、clean、正式学习作用域生成后，为每个 learned/R0 scope 显式提供
+  execution plan、archive root、启用 D6 report 写出的 archive-native merge 和对应 bundle；
+  D6 再记录正式日期、scope/seed 数、逐 scope 归档计数、配对结果和失败原因。
+- [ ] 正式学习变体尚未运行。开发夹具通过只关闭 archive 模式代码 P1，不能登记模型准入、
+  非退化结论或控制许可。
+
 ## 2026-07-31 正式归档 full posterior
 
 ### 已完成
@@ -30,8 +70,8 @@
   20-shard 子目录集合和 archive-native merge 执行正式 900-cell 审计。
 - [ ] 正式运行后记录实际日期、producer/evaluator 提交、900 项通过数、严格身份可用性、
   失败原因和报告摘要。开发夹具结果不得替代正式结果。
-- [ ] `learning_scope_formal_audit` 的 archive 模式仍为 P1。本轮没有实现，也没有把 R0
-  archive 入口外推到 G1/A1/A2/A3 学习范围。
+- [x] `learning_scope_formal_audit` 的 archive 模式已由同日后续任务关闭，并覆盖
+  G1/A1/A2/A3/C1/F1 与显式 R0；正式学习 scope 执行仍待 main 提供完整证据。
 
 ## 2026-07-31 正式分片预评估行合并
 

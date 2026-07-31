@@ -1,5 +1,16 @@
 # D6 文档索引
 
+2026-07-31 关闭 `learning_scope_formal_audit` archive 模式 P1。learned scope 与每个
+R0 scope 显式选择目录或归档存储；归档路径逐片验证、恢复、执行原学习证据审计和 D6
+离线评价，再复核 archive-native merge。开发夹具覆盖 G1/A1/A2/A3/C1/F1、归档 R0、
+混合模式、sidecar 和指定失败关闭负例。通用入口另独立验证计划声明的正整数分片总数、
+descriptor 数量/索引和规范名称；测试专用耐久夹具使用真实 scalable-3D producer 生成紧凑
+G1/R0 计划、分片、归档及 `write_d6_report=True` merge，再由未打补丁的 D6 验证器消费。
+学习专项 `68 passed`、learning/archive 组合 `89 passed`、D6 全量 `1330 passed`。这些均为
+开发夹具结果，正式学习 scope 尚未运行。原理、实现和结果见
+`MODULE_PRINCIPLES_CN.md`、`ALGORITHM_AND_IMPLEMENTATION.md` 与
+`EXPERIMENT_REPORT.md`。
+
 2026-07-31 增加正式 R0 归档独立审计。full posterior v1 配置可显式指定
 `archive_root`，D6 独立校验精确分片子目录集合、manifest/checksum/payload/inventory/tar
 成员、执行计划绑定和 archive-native merge，并一次只恢复一个 shard。普通 pack/verify
@@ -8,7 +19,8 @@ sidecar 可保留；额外目录和任意 symlink 失败关闭。开发夹具专
 严格使用 `sha256:<64位小写十六进制>`，与当前 evaluator provenance 一致。低层完成数为
 0，尚未形成 900-cell 结论。原理、步骤和证据边界分别见
 `MODULE_PRINCIPLES_CN.md`、`ALGORITHM_AND_IMPLEMENTATION.md` 和
-`EXPERIMENT_REPORT.md`。学习范围 archive 审计仍为 P1。
+`EXPERIMENT_REPORT.md`。学习范围 archive 审计已由同日后续任务关闭；正式运行状态见
+上一段。
 
 2026-07-31 增加可扩展三维预评估行报告入口。main 可在每个正式归档临时恢复期间生成
 episode 评估行，释放归档后再统一写出 CSV、aggregate JSON、模块性能证据、中文报告和

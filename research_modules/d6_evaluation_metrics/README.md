@@ -1,5 +1,53 @@
 # D6 Evaluation Metrics
 
+## 2026-07-31 学习作用域归档原生审计
+
+`learning_scope_formal_audit` 现支持显式目录模式和归档模式。learned scope 与每个 R0
+scope 分别选择存储模式，允许 G1/A1/A2/A3/C1/F1 使用归档、R0 使用目录，也允许两侧都
+使用归档。接口不检查目录内容后自动猜测模式：目录模式提供 `merge_dir`；归档模式提供
+`archive_root` 和 `archive_merge_dir`，两组输入不能同时出现。原目录构造方式、审计顺序和
+CLI 参数继续兼容。
+
+归档模式先读取冻结 execution plan 和 archive-native merge 索引，再由 D6 的通用归档集合
+验证入口处理精确 shard 子目录集合。普通 sidecar 文件记录在结果中；缺片、额外目录、
+symlink 和非普通项失败关闭。每片依次完成 checksum、manifest、payload、计划绑定、
+inventory、tar 成员路径/元数据/大小/SHA-256 验证。验证后的 shard 单独恢复到系统临时
+目录，在清理前执行既有学习证据审计和 `evaluate_scalable_3d_episode()` 离线评价。
+
+全部分片处理后，D6 复核 archive-native merge 的 manifest、cell CSV、逻辑 episode index、
+archive binding 和 D6 报告 binding。逻辑 episode 路径只用于索引对账，不按 canonical
+materialized 路径读取。实际 assist adoption、模型 bundle、在线真值隔离、物理结果、同
+comparison key 的 R0 配对和非退化规则沿用目录模式，没有零填充，也不授予模型晋级或控制
+权限。
+
+archive-native merge 必须由 producer 使用 `write_d6_report=True`（CLI 为
+`--write-d6-report`）生成。D6 要求该输出是为了复核报告文件、评价器来源与执行计划绑定，
+不采信 producer 的 verified 状态或报告 verdict。通用归档集合入口还会在读取归档前独立
+校验 `plan.sharding`、排除布尔值的正整数 `shard_count`、descriptor 数量、连续索引和规范
+`shard_{index:03d}_of_{count:03d}` 名称，不依赖上游 learning scope 计划加载器兜底。
+
+公开 scope 结果新增 `storage_mode`、`archive_root`、`verified_archive_count`、
+`peak_staged_shard_count` 和 `sidecar_files`。目录模式明确报告未执行归档验证、归档计数 0 和
+峰值 0。CLI 新增 `--scope-archive-root`、`--scope-archive-merge-dir` 与可重复的
+`--r0-archive-scope`；同一 scope 的目录和归档参数冲突时由参数解析器拒绝。
+
+2026-07-31 使用两类开发夹具完成验证。D6 自建夹具覆盖六种学习变体、归档 R0、归档/目录
+混合、无 materialized shard、普通 sidecar 和安全负例。新增耐久兼容测试只在测试代码中导入
+`scalable_3d_simulation`，通过真实 execution-plan writer/loader、shard runner、正式归档创建器
+和 `write_d6_report=True` 归档 merge 生成一对紧凑 G1/R0 scope；D6 归档验证函数未被
+monkeypatch。该测试的父矩阵声明满足 producer 正式约束，cell 枚举和执行单元在测试中缩减，
+因此属于 producer 兼容开发夹具，不是正式学习运行。
+
+学习作用域专项为 `68 passed, 1 warning in 8.35s`；learning/archive 组合专项为
+`89 passed, 1 warning in 9.61s`；D6 全量为
+`1330 passed, 1 warning in 120.34s`。分片声明负例、缺片、额外目录、symlink、payload/
+计划错绑、merge 篡改和重复/缺失 cell 均失败关闭。warning 为既有 Matplotlib `Axes3D`
+环境提示。
+
+本轮没有启动正式 shard，没有读取或修改 `/tmp` 正式证据，也没有删除源目录或归档。
+正式 G1/A1/A2/A3/C1/F1 学习 scope 仍未运行；正式结果需由 main 提供完整归档集合、启用
+D6 report 写出的归档 merge 和模型 bundle 后再执行本入口。
+
 ## 2026-07-31 正式分片归档独立审计
 
 `formal_r0_full_posterior_audit` 的 v1 配置新增可选 `archive_root`。未配置时继续使用原始
@@ -32,7 +80,8 @@ evaluator provenance 合同的 `sha256:<64位小写十六进制>`；空值、裸
 D6 全量为 `1297 passed, 1 warning in 114.12s`；
 现有正式归档的 10/20 非破坏性预检只因缺 shard 10-19 失败关闭；sidecar 被接受，实际
 低层完成数为 0，未生成 merge 输出。正式 20-shard、
-900-cell 归档审计尚未运行。`learning_scope_formal_audit` 的 archive 模式保留为 P1。
+900-cell 归档审计尚未运行。`learning_scope_formal_audit` 的 archive 模式已在同日后续任务
+关闭，见本页顶部；该开发验证不改变正式 R0 的完成状态。
 
 ## 2026-07-31 预评估行报告接口
 

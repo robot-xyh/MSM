@@ -1,5 +1,44 @@
 # D6 正式实验矩阵准入预检报告
 
+## 学习作用域归档审计开发验证（2026-07-31）
+
+本次验证对象为 `learning_scope_formal_audit` 的归档原生入口。第一类夹具由 D6 独立构造，
+用于覆盖六种学习变体和篡改负例。第二类耐久夹具只在测试代码中导入
+`scalable_3d_simulation`，调用真实计划写入/加载、分片运行、正式归档创建和归档 merge API。
+该夹具保留满足 producer 正式约束的父矩阵声明，在测试中把 cell 枚举和执行缩为一对同键
+G1/R0。它验证 producer 与 D6 的持久化合同，不是正式学习实验。
+
+正例覆盖 G1、A1、A2、A3、C1、F1 六种学习变体及各自显式 R0。归档 learned 与归档 R0
+通过，归档 learned 与目录 R0 混合通过，普通 sidecar 被接受。每个通过 scope 的
+`verified_archive_count=1`、`peak_staged_shard_count=1`，源删除和归档删除均为 false。
+目录 R0 明确报告未执行归档验证、计数 0 和峰值 0。
+
+失败关闭测试覆盖：缺 archive、额外目录、archive root symlink、payload 篡改、execution
+plan 绑定错配、merge plan/cell 摘要篡改、重复 cell 和缺失 cell。CLI 帮助文本包含 learned
+和 R0 archive 参数，同一 learned scope 同时提交目录与归档参数时返回参数错误。原目录模式
+的 bundle、采用、物理结果、R0 配对和报告写出回归保持通过。
+
+通用 archive-set 入口另有直接负例，覆盖 `sharding` 非映射、`shard_count` 缺失、布尔值、
+零、浮点数、字符串、descriptor 非列表、声明总数与 descriptor 数量不一致、索引错误和
+`shard_id` 中索引/总数错误。所有负例均在归档恢复回调前失败关闭。
+
+真实 producer 兼容正例明确使用 `write_d6_report=True`。两个 archive-native merge 均声明
+`d6_evaluation_generated=true`，包含 D6 binding；原始 shard 移走后，D6 未打补丁的归档验证
+器得到 G1/R0 各 1 个 verified archive、峰值暂存 1、同键配对 1/1 且非退化 1/1。该报告
+binding 只用于来源和制品对账，producer 评价结论没有进入 D6 verdict。
+
+实际结果为：
+
+- `test_learning_scope_formal_audit.py`：`68 passed, 1 warning in 8.35s`；
+- learning scope、formal shard archive 和 producer 兼容测试合计：
+  `89 passed, 1 warning in 9.61s`；
+- D6 全量：`1330 passed, 1 warning in 120.34s`；
+- 修改 Python 入口 `py_compile`：通过。
+
+warning 为既有 Matplotlib `Axes3D` 环境提示，与本次归档审计无关。本轮没有运行 AirSim，
+没有启动正式 shard，没有读取或修改 `/tmp` 正式证据。正式 G1/A1/A2/A3/C1/F1 scope 尚未
+生成，因此本节不报告模型效果、非退化结论、模型晋级或控制许可。
+
 ## 正式归档审计开发验证（2026-07-31）
 
 开发夹具覆盖 v1 配置归档分派、有效 archive 独立恢复、普通 sidecar、额外目录、归档根
@@ -20,7 +59,8 @@ sidecar 均作为普通文件接受。D6 只报告缺 shard 10-19，返回 `fail
 
 正式验证仍需 shard 10-19 和 main 生成的 archive-native merge；现有普通 sidecar 不需要
 移动。完成后再记录 900 项低层通过数、严格身份可用性、归档报告
-绑定和全量 verdict。`learning_scope_formal_audit` archive 模式本轮未验证。
+绑定和全量 verdict。`learning_scope_formal_audit` archive 模式已在同日后续开发验证中完成，
+见本页顶部；该结果不替代正式 900-cell R0 审计。
 
 ## 预评估行接口验证（2026-07-31）
 

@@ -1,5 +1,38 @@
 # D6 系统评估指标综述及子方案
 
+## 2026-07-31 学习作用域归档原生审计评审
+
+评审接受显式双模式设计。目录 scope 继续使用 execution plan 与 materialized merge；归档
+scope 必须同时给出 execution plan、archive root 和 archive-native merge。learned scope
+与各 R0 scope 分别选择模式，可以混合使用。接口不扫描目录后推断模式，冲突输入在构造或
+CLI 参数解析阶段拒绝。
+
+归档安全解析继续由 D6-owned `formal_shard_archive_audit` 完成。新增通用逐片入口只负责
+集合和生命周期编排，学习审计回调负责原有 shard plan/progress/checkpoint、cell 学习证据、
+在线真值隔离和离线指标评价。临时 execution root 同时只包含一个恢复 shard，回调完成后
+立即清理。源 shard 和 archive 不在删除路径内。
+
+archive-native merge 中的 episode 路径按逻辑索引核对，不要求 canonical episode 目录存在。
+scope manifest、cell CSV、episode index、archive binding 和 D6 report binding 必须与同一
+execution plan 和独立验证归档一致。producer 的 verified 状态与 D6 报告结论均不作为学习
+审计结果。archive merge 必须以 `write_d6_report=True` 生成，使 D6 能复核报告文件和评价器
+来源绑定；缺少该 bundle 时失败关闭。模型 bundle、实际 assist adoption、物理结果、同
+comparison key R0 配对和非退化判据继续使用原严格口径。
+
+评审补充接受通用归档入口的独立计划检查。入口在恢复归档前核对 `sharding` 映射、排除
+布尔值的正整数 `shard_count`、descriptor 数量、连续索引和规范 shard 名称，不依赖学习
+作用域上游计划加载器。
+
+开发验证日期为 2026-07-31。六种学习变体、归档 R0、混合存储和无 materialized shard
+正例通过；缺片、额外目录、symlink、payload/计划/merge 篡改、非法分片声明和重复/缺 cell
+均失败关闭。新增耐久测试仅在测试代码中调用真实 scalable-3D plan/shard/archive/merge
+producer，使用 `write_d6_report=True` 生成紧凑 G1/R0 后由 D6 独立消费；D6 归档验证函数
+未被 monkeypatch。学习作用域专项 `68 passed`，learning/archive 组合 `89 passed`，D6 全量
+`1330 passed`。唯一 warning 为既有 Matplotlib `Axes3D` 环境提示。
+
+本次关闭的是 D6 archive 模式 P1。正式 G1/A1/A2/A3/C1/F1 尚未运行，不能从开发夹具
+形成模型准入、效果非退化或控制许可结论。正式 R0 缺 shard 10-19 的执行限制也未改变。
+
 ## 2026-07-31 正式归档独立审计评审
 
 评审接受在既有 full posterior v1 配置中增加可选 `archive_root`。未指定该字段时目录模式
@@ -17,7 +50,8 @@ dirty-source、formal scope 完整性或报告制品哈希门。归档/full post
 `32 passed`，D6 全量为 `1297 passed, 1 warning in 114.12s`。
 
 剩余工作由 main 完成 shard 10-19 并生成正式 archive-native merge；现有 sidecar 无需移动。
-D6 再执行正式全量审计。学习范围 archive 模式继续列为 P1，不与 R0 能力合并声明。
+D6 再执行正式全量审计。学习范围 archive 模式已由同日后续任务独立关闭；正式学习运行
+与正式 R0 仍分别按各自完整证据范围验收。
 
 ## 2026-07-31 预评估行报告接口评审
 

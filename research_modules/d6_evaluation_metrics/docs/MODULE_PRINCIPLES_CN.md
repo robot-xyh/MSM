@@ -1,5 +1,35 @@
 # D6 系统级离线评估模块原理
 
+## 学习作用域的显式存储边界
+
+学习作用域审计同时面对候选变体和同键 R0。每个 scope 必须自行声明目录模式或归档模式，
+不能因为当前机器上恰好存在某个目录就改变证据来源。目录模式读取 materialized shard；
+归档模式读取冻结 execution plan、完整 archive set 和 archive-native merge。候选与 R0 可以
+采用不同模式，但每一侧都必须形成完整、可复核的证据链。
+
+归档模式不改变学习判据。模型 bundle 的文件树、预检设备和版本必须与计划一致；运行中
+必须实际采用 assist，shadow、规则回退和仅加载 bundle 均不计采用。在线真值使用保持为 0，
+物理结果必须可用，同 comparison key 的 R0 必须唯一、同来源且同外生随机配置。缺失指标
+保持 unavailable，不以 0 代替。D6 只判定证据是否可接纳，不授予模型晋级或控制权限。
+
+归档只改变证据取得方式。D6 每次验证和恢复一个 shard，在临时目录内完成原有 cell 审计
+和离线评价，随后释放临时目录。archive-native merge 保存的是逻辑 episode 路径，D6 用它
+核对顺序和身份，不把该路径解释为当前磁盘上存在的 canonical 目录。峰值暂存分片数、验证
+归档数和 sidecar 清单随 scope 公开，便于区分实际归档验证与目录模式。
+
+archive-native merge 必须在 producer 侧启用 `write_d6_report=True`。该开关生成报告文件
+binding 和评价器来源，使 D6 能将 merge、执行计划、独立验证归档及五类报告制品逐项对账。
+D6 不读取 producer verdict 代替自身结论。缺少该 binding 时证据链不完整，作用域失败关闭。
+
+归档集合入口自身承担分片声明检查。`shard_count` 必须是排除布尔值的正整数，descriptor
+数量必须与其相等，索引必须从 0 连续排列，每个 `shard_id` 必须同时编码自己的索引和声明
+总数。即使调用方绕过学习作用域的计划加载器，这些条件仍在归档恢复前独立执行。
+
+2026-07-31 的 D6 自建夹具覆盖 G1/A1/A2/A3/C1/F1、显式 R0 和混合存储，且在移走原始
+shard 后仍通过。另一个耐久测试在测试边界调用真实 scalable-3D plan、shard、archive 和 merge
+producer，并由 D6 独立消费紧凑 G1/R0 归档。测试通过证明 producer 与 D6 合同兼容；正式
+父矩阵只保留声明，cell 枚举和执行单元为测试缩减，因此不代表正式学习模型已运行或准入。
+
 ## 归档证据独立性
 
 归档工具给出的 verified 状态属于 producer 声明，D6 不能直接采信。D6 从冻结执行计划

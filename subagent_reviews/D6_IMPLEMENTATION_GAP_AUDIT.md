@@ -1,5 +1,51 @@
 # D6 实现差距审计
 
+## 2026-07-31 学习作用域 archive 模式 P1 关闭
+
+### 已关闭范围
+
+`learning_scope_formal_audit` 已支持 G1/A1/A2/A3/C1/F1 和显式 R0 的归档原生审计。
+learned scope 与每个 R0 scope 可独立使用目录或归档，存储输入显式互斥，不按路径内容
+自动猜测。目录 API 和既有判定行为保持兼容。
+
+D6 复用自身 `formal_shard_archive_audit` 的低层验证能力，独立校验 execution plan、精确
+归档目录集合、普通 sidecar、checksum、manifest、payload、计划绑定、inventory 和 tar
+成员。每次只恢复一个 shard，在清理前执行 shard/cell 语义审计、学习采用证据检查和 D6
+离线评价。archive-native merge 的 manifest、cell CSV、逻辑 episode index、archive 与
+D6 report binding 均重新核对。缺片、额外目录、symlink、损坏、跨计划、重复/漏 cell 和
+merge 篡改均失败关闭。
+
+main 复核提出的 producer 兼容和通用入口两项已补齐。通用入口现在不依赖
+`learning_scope_formal_audit._load_execution_plan`，独立拒绝非法 `sharding`、非正整数或布尔
+`shard_count`、数量不等的 descriptor、非连续索引和不符合声明总数/索引的 shard 名称。
+archive-native merge 被明确要求以 `write_d6_report=True` 生成；该要求用于 D6 复核报告绑定
+和来源，不构成对 producer verified/verdict 的信任。
+
+输出已记录各 scope 的存储模式、归档根、独立验证归档数、峰值暂存分片数和 sidecar。
+目录模式明确报告归档验证未执行，不伪造 verified archive。模型 bundle、实际 assist
+adoption、在线真值隔离、物理结果、同键 R0 配对和非退化规则没有放宽；D6 不授予模型
+晋级或控制权限。
+
+### 验证证据
+
+2026-07-31 开发验证分为 D6 自建安全夹具和真实 producer 兼容夹具。后者只在测试代码中
+调用 scalable-3D 的真实 plan/shard/archive/merge API，明确使用 `write_d6_report=True`，并在
+移走原始 shard 后由 D6 未打补丁的验证器消费紧凑 G1/R0 正例。父矩阵正式字段完整，但
+cell 枚举与执行单元为测试缩减，不能作为正式学习证据。
+
+学习作用域专项 `68 passed, 1 warning in 8.35s`；learning/archive 组合专项
+`89 passed, 1 warning in 9.61s`；D6 全量
+`1330 passed, 1 warning in 120.34s`。唯一 warning 是既有 Matplotlib `Axes3D` 环境提示。
+
+### 未关闭限制
+
+1. 正式 G1/A1/A2/A3/C1/F1 作用域尚未运行。D6 自建夹具和 producer 兼容紧凑夹具通过均
+   不能形成正式模型非退化或准入结论。
+2. 正式执行仍需 main 提供完整且同计划绑定的 archive set、archive-native merge、模型
+   bundle 和 comparison key 对应 R0；archive-native merge 必须启用 D6 report 写出。该项
+   属于正式实验执行条件，不是 D6 archive API 缺口。
+3. 正式 R0 仍缺 shard 10-19，900-cell full posterior 状态未改变。
+
 ## 2026-07-31 正式归档 full posterior GAP
 
 ### 已关闭
@@ -12,15 +58,12 @@ archive-native merge、symlink 拒绝、evaluator provenance 和 D6 报告文件
 目录模式保持不变。归档/full posterior 专项 `32 passed`，D6 全量
 `1297 passed, 1 warning in 114.12s`，没有新增 P0。
 
-### 剩余 P1
+### 剩余正式执行项
 
 1. 正式归档当前只有 shard 0-9；shard 10-19 尚未生成，因此 900-cell full posterior
    不能运行。
 2. archive-native merge 尚未对正式 20-shard 生成。D6 对 merge schema 和 D6 report
    binding 的实现只有开发夹具证据。
-3. `learning_scope_formal_audit` 尚无 archive 模式。G1/A1/A2/A3 仍需 materialized scope
-   或后续独立实现，本轮未误标关闭。
-
 普通 pack/verify sidecar 已确认可以原位保留，不再是 P1。正式 10/20 预检只因缺
 shard 10-19 失败，实际低层完成数与父矩阵完成数均为 0。
 
