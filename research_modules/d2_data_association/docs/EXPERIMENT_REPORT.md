@@ -1756,7 +1756,9 @@ D6 可在同一落盘输入上增加严格的双锚 bounded coast bridge。bridg
 
 38 个 multi-truth event 的 commitment reason 均为
 `fresh_original_observation_accepted`。36 个由最新观测引入此前不存在的真值，2 个在
-历史来源中已含两个真值。来源转换为 radar-to-camera 17 个、radar-to-radar 21 个。
+历史来源中已含两个真值。最新观测传感器模态为 camera 17 个、radar 21 个；完整来源
+模态转换为 `radar->camera` 17 个、`radar->radar` 19 个、
+`camera+radar->radar` 2 个。
 multi-truth 分布为 100v100 的 4 episode/4 event 和 200v200 的 23 episode/34 event；
 5/20/50 规模没有该原因。结果显示阻断与密度、规模存在关联，现有证据不能确认单一算法
 根因。

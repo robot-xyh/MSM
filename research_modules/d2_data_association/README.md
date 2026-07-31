@@ -1330,8 +1330,9 @@ main 对 producer commit
 multi-truth episode 含 38 个 blocker mapping event，9 个 lineage-window episode 含
 518 个 event。518 个超窗 event 中 517 个仅历史最老来源超过固定 `0.9 s` 新鲜度预算，
 1 个连最新及 active commitment source 也超龄。38 个 multi-truth event 中 36 个由
-最新观测引入此前不存在的真值，2 个在历史中已含两个真值；来源转换为
-radar-to-camera 17 个、radar-to-radar 21 个。上述数字是 main 的正式证据核对结果，
+最新观测引入此前不存在的真值，2 个在历史中已含两个真值；最新观测传感器模态为
+camera 17 个、radar 21 个，完整来源模态转换为 `radar->camera` 17 个、
+`radar->radar` 19 个、`camera+radar->radar` 2 个。上述数字是 main 的正式证据核对结果，
 本轮 D2 未运行 450 个 episode，也尚未生成正式 36-case pack。
 
 正式运行由 main 在资源条件满足时执行，例如：

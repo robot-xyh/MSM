@@ -1747,8 +1747,10 @@ archive 只提供元数据绑定和 main 单 shard 临时恢复约束，不自�
 ### 41.2 验证边界
 
 小型 fixture 覆盖当前正式目录布局、36 个筛选结果及 27/9 原因计数、517
-historical-only 与 1 active-stale、multi-truth newest-introduction、radar-to-camera
-转换和 identity source hash 篡改。main 已独立核对正式 450 episode 的 36-case 统计，
+historical-only 与 1 active-stale、multi-truth newest-introduction、完整来源模态转换
+集合和 identity source hash 篡改。正式 multi-truth 的最新传感器模态为 camera/radar
+17/21，完整转换为 `radar->camera` 17、`radar->radar` 19、
+`camera+radar->radar` 2。main 已独立核对正式 450 episode 的 36-case 统计，
 本轮 D2 不重新运行正式 episode，不修改正式制品，也不把 unavailable 改写为 0。
 
 ### 41.3 后续 P1

@@ -1657,7 +1657,9 @@ main 独立只读核对结果为 36 个 episode、556 个 blocker mapping event�
 - 517/518 为 `historical_lineage_only_stale`，1/518 为
   `active_commitment_source_stale`；
 - 36/38 个 multi-truth event 由最新观测引入新真值，2/38 历史已含两个真值；
-- radar-to-camera 17 个，radar-to-radar 21 个；38/38 的承诺 reason 均为
+- 最新观测传感器模态为 camera 17 个、radar 21 个；完整来源模态转换为
+  `radar->camera` 17 个、`radar->radar` 19 个、`camera+radar->radar` 2 个；
+  38/38 的承诺 reason 均为
   `fresh_original_observation_accepted`；
 - multi-truth 分布为 100v100 的 4 episode/4 event、200v200 的 23 episode/34 event，
   5/20/50 规模未出现该原因。证据显示它与密度和规模相关，不能据此断言单一算法根因。

@@ -1790,11 +1790,7 @@ def _write_chinese_report(path: Path, aggregate: Mapping[str, Any]) -> None:
         "",
         (
             "来源模态转换计数为："
-            + "、".join(
-                f"`{name}` {count}"
-                for name, count in sorted(transitions.items())
-                if name in {"radar->camera", "radar->radar"}
-            )
+            + _count_text(transitions)
             + "。最新相机来源分别为："
             + "、".join(
                 f"`{name}` {count}"

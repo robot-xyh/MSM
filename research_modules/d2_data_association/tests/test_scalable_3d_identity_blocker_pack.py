@@ -439,10 +439,32 @@ def test_lineage_events_do_not_pollute_multi_truth_report(
             "scale": 200,
         },
         {
+            "reason": "multiple_truth_targets_for_global_track",
+            "causal_classification": (
+                "newest_observation_introduced_new_truth"
+            ),
+            "commitment_reason": "fresh_original_observation_accepted",
+            "modality_transition": "radar->radar",
+            "newest_sensor_ids": "RADAR-CENTER-001",
+            "scenario": "nominal",
+            "scale": 200,
+        },
+        {
+            "reason": "multiple_truth_targets_for_global_track",
+            "causal_classification": (
+                "historical_multi_truth_already_present"
+            ),
+            "commitment_reason": "fresh_original_observation_accepted",
+            "modality_transition": "camera+radar->radar",
+            "newest_sensor_ids": "RADAR-CENTER-002",
+            "scenario": "nominal",
+            "scale": 200,
+        },
+        {
             "reason": "source_observation_outside_lineage_window",
             "causal_classification": "historical_lineage_only_stale",
             "commitment_reason": "lineage_window_audit_only",
-            "modality_transition": "radar->radar",
+            "modality_transition": "camera->camera",
             "newest_sensor_ids": "CAM-INT-0055",
             "scenario": "nominal",
             "scale": 200,
@@ -465,21 +487,29 @@ def test_lineage_events_do_not_pollute_multi_truth_report(
     ]
 
     assert aggregate["sensor_modality_transition_event_counts"] == {
+        "camera+radar->radar": 1,
+        "camera->camera": 1,
         "radar->camera": 1,
         "radar->radar": 1,
     }
     assert aggregate["newest_sensor_event_counts"] == {
         "CAM-INT-0055": 1,
         "CAM-RECON-008": 1,
+        "RADAR-CENTER-001": 1,
+        "RADAR-CENTER-002": 1,
     }
     assert multi_truth["sensor_modality_transition_event_counts"] == {
+        "camera+radar->radar": 1,
         "radar->camera": 1,
+        "radar->radar": 1,
     }
     assert multi_truth["newest_sensor_event_counts"] == {
         "CAM-RECON-008": 1,
+        "RADAR-CENTER-001": 1,
+        "RADAR-CENTER-002": 1,
     }
     assert multi_truth["commitment_reason_event_counts"] == {
-        "fresh_original_observation_accepted": 1,
+        "fresh_original_observation_accepted": 3,
     }
 
     report_path = tmp_path / "report.md"
@@ -489,9 +519,11 @@ def test_lineage_events_do_not_pollute_multi_truth_report(
         "## 一航迹多真值",
         maxsplit=1,
     )[1].split("## 谱系超窗", maxsplit=1)[0]
-    assert "radar->camera` 1" in multi_truth_section
+    assert "camera+radar->radar=1" in multi_truth_section
+    assert "radar->camera=1" in multi_truth_section
+    assert "radar->radar=1" in multi_truth_section
     assert "CAM-RECON-008` 1" in multi_truth_section
-    assert "fresh_original_observation_accepted=1" in multi_truth_section
-    assert "radar->radar" not in multi_truth_section
+    assert "fresh_original_observation_accepted=3" in multi_truth_section
+    assert "camera->camera" not in multi_truth_section
     assert "CAM-INT-0055" not in multi_truth_section
     assert "lineage_window_audit_only" not in multi_truth_section
