@@ -20,9 +20,11 @@ shadow 证据发布，但 `planning_consumable=false`，不能授予分配、联
 `../d6_evaluation_metrics/reports/HIGH_THREAT_CLEAN_SMOKE_B063535_REVALIDATION_20260731_CN.md`。
 该结果关闭 D4 建议代次的运行前阻断，不替代正式 900-cell。
 
-正式矩阵当前受存储保护线约束。`/dev/shm` 总容量低于 20 GiB，根文件系统可用空间
-也不足以容纳既有口径下的正式输出并保留 20 GiB 余量。正式执行前需确定外部归档、
-可验证的分片压缩，或经审查的可重建输出清理方案。
+正式分片现可使用确定性 `tar.zst` 逐片压缩、复核和恢复。完整历史分片 17 的非破坏性
+探针将 1,086,483,308 字节压缩为 113,628,123 字节，1850 个文件恢复后树摘要一致，
+压缩包和历史源均保留。`run-shard` 的 20 GiB 保护线没有降低。正式 900-cell 仍需按片
+执行“完成、压缩、独立复核”，并在获得明确授权后才可移除已验证源分片；当前未执行该
+删除步骤。
 
 ## 高威胁时期租约开发复验（2026-07-30）
 
@@ -491,6 +493,43 @@ python3 -m research_modules.scalable_3d_simulation.artifact_archive \
 该工具没有删除入口。`source_deletion_eligible=true` 只表示指定源与归档再次逐文件相等，
 不等于已经删除，也不构成自动清理授权。当前没有可用的第二个大容量挂载点，既有正式
 输出保持原位，20 GiB 保护下限不降低。专项验证为 `12 passed`。
+
+面向 20 个正式 R0 分片，`formal_shard_archive.py` 增加确定性 PAX tar 与单线程
+Zstandard 压缩。归档冻结执行计划、父计划、源提交、分片编号、分片描述、单元清单以及
+`shard_plan.json`、`progress.jsonl`、`checkpoint.json` 的摘要。创建前后均调用与
+`merge-r0` 同口径的完整分片校验，压缩流逐文件复核。执行计划错配、源变化、压缩包损坏、
+危险路径、非普通文件和恢复后语义不一致均失败关闭。
+
+```bash
+python3 -m research_modules.scalable_3d_simulation.formal_shard_archive \
+  pack-shard \
+  --execution-plan /path/to/formal_r0/experiment_matrix_execution_plan.json \
+  --shard-index 0 \
+  --destination /path/to/formal_r0_archives/shard_000_of_020 \
+  --minimum-free-gib 20
+
+python3 -m research_modules.scalable_3d_simulation.formal_shard_archive \
+  verify-shard \
+  --execution-plan /path/to/formal_r0/experiment_matrix_execution_plan.json \
+  --shard-index 0 \
+  --archive /path/to/formal_r0_archives/shard_000_of_020 \
+  --source /path/to/formal_r0/shards/shard_000_of_020
+
+python3 -m research_modules.scalable_3d_simulation.formal_shard_archive \
+  restore-shard \
+  --execution-plan /path/to/formal_r0/experiment_matrix_execution_plan.json \
+  --shard-index 0 \
+  --archive /path/to/formal_r0_archives/shard_000_of_020
+```
+
+工具仍没有删除入口。`pack-shard` 默认按未压缩最坏情况预留 20 GiB，不能在压缩过程中
+越过正式运行保护线。`restore-shard` 只恢复证据，不执行新单元；全部分片恢复并重新校验后，
+仍由既有 `merge-r0 --write-d6-report` 完成确定性合并。专项回归为
+`19 passed, 1 warning`，scalable 3D 全量为 `423 passed, 1 warning`。完整分片 17
+实测压缩比例为 10.46%，恢复树摘要为
+`59cd7ba239b2e0a3c7c518be85544b5a0946c284e5fc4adf364da79c5067b42b`。
+验证记录见
+[`docs/SCALABLE_3D_FORMAL_SHARD_ARCHIVE_VALIDATION_20260731_CN.md`](docs/SCALABLE_3D_FORMAL_SHARD_ARCHIVE_VALIDATION_20260731_CN.md)。
 
 ## D3 共同检查点物理续跑
 
