@@ -1,18 +1,20 @@
 # D6 文档索引
 
-2026-07-31 完成 clean commit `49e43ea` 的高威胁 6-cell 准入审计。核心合同均为
-`6/6`，但 100/200 规模的 4 个重规划 cell 在新计划发布后又输出旧计划 D4 建议，且
-没有最终计划建议。clean formal 仅 `2/6`，900-cell 判断为“需先修复”。详细报告见
-`../reports/HIGH_THREAT_CLEAN_SMOKE_49E43EA_20260731_CN.md`，原理、审计方法和结果
-分别见 `MODULE_PRINCIPLES_CN.md`、`ALGORITHM_AND_IMPLEMENTATION.md` 和
-`EXPERIMENT_REPORT.md`。
+2026-07-31 完成 clean commit `b063535` 的高威胁 6-cell 修复后复核。核心合同均为
+`6/6`，12 条 D4 建议全部匹配发布时最新代次，旧代发布为 0；四个重规划 cell 均有
+最终 v2 建议。clean formal 为 `6/6`，D4 建议代次预准入通过。该 smoke 不含正式矩阵
+metadata，不能替代 900-cell targeted/full posterior。详细报告见
+`../reports/HIGH_THREAT_CLEAN_SMOKE_B063535_REVALIDATION_20260731_CN.md`；修复前
+`49e43ea` 报告保留作对照。原理、审计方法和结果分别见 `MODULE_PRINCIPLES_CN.md`、
+`ALGORITHM_AND_IMPLEMENTATION.md` 和 `EXPERIMENT_REPORT.md`。
 
 2026-07-31 完成 v5 高威胁 M 对 N 时期租约复验。100 个开发态 episode 的最终
 计划标识、版本、时期、租约和当前联盟闭合均为 `100/100`。151 次权威发布没有同身份
 重复，48 次评价刷新不续租。详细报告见
 `../reports/HIGH_THREAT_PRECHECK_V5_REVALIDATION_20260730_CN.md`。v4 的时期/租约
-availability P1 已在开发证据层关闭；dirty-source 正式重跑、51 项旧计划建议版本证据、
-12 项身份指标不可用和大规模实时性仍为 P1。
+availability P1 已在开发证据层关闭。51 项旧建议是 v5 历史批次证据，其运行时断点已由
+`b063535` clean smoke 关闭。当前 P1 为正式 900 项重跑、12 项身份指标不可用和大规模
+实时性。
 
 2026-07-30 完成高威胁 M 对 N v4 开发态 100 项修复复验。最终计划标识/版本、当前联盟
 闭合、有限状态和在线真值零使用均为 `100/100`。151 次权威 D3 发布没有同计划身份重复，

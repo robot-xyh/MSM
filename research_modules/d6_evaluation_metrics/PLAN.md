@@ -1,30 +1,32 @@
 # D6 Evaluation Metrics Plan
 
-## 2026-07-31 高威胁 clean smoke 准入审计
+## 2026-07-31 高威胁 clean smoke 修复后复核
 
 ### 已完成
 
-- [x] 只读复核 clean commit `49e43ea` 的 5/100/200 三档、seed `7/17`，共 6 个
-  episode；核心制品、配置哈希、有限状态和在线真值隔离均为 `6/6`。
+- [x] 只读复核 clean commit `b063535` 的 5/100/200 三档、seed `7/17`，共 6 个
+  episode；42 个核心制品、配置哈希、有限状态和在线真值隔离均为 `6/6`。
 - [x] 复核最终计划标识/版本/时期/租约及 49 个当前联盟目标均为 `6/6` 闭合。
 - [x] 复核 10 次权威发布、10 个不同计划身份和 10 次运行时确认守恒；16101 条通信
   处置在 6 项中全部通过逐记录验证。
-- [x] 将 D4 建议拆为当前建议、发布时有效但随后 superseded 的历史建议、发布时已
-  过时建议。4 个重规划 episode 均存在一条发布时已过时建议，且没有最终计划建议。
-- [x] 确认现有低层和 targeted/full formal 门会使上述 4 项失败关闭；900-cell 准入
-  判断为“需先修复”。
-- [x] 生成 clean smoke 中文报告并同步 D6 模块与评审文档。
-- [x] 6-cell 独立重算断言通过；计划绑定、targeted/full formal 和 scalable offline
-  四个测试文件合计 `95 passed, 1 warning`。
+- [x] 按发布时序复核 12 条 D4 建议。发布时当前代为 12、旧代为 0，四个重规划项均
+  补齐最终 v2 建议，最终计划建议覆盖为 `6/6`。
+- [x] 低层 `formal_acceptance_eligible=6/6`，旧批次的
+  `d4_advice_version_evidence_issue` 不再出现；未过滤旧记录、未放宽 D6 门。
+- [x] 区分当前代故障诊断与旧代建议。10 条诊断均为 shadow、非 assist、正式决策未变；
+  没有消费记录，控制采用保持 unavailable。
+- [x] 生成修复后中文复核报告并同步 D6 模块与评审文档。
+- [x] 6-cell 独立断言通过；低层、计划绑定、targeted/full posterior 四组专项测试
+  `95 passed, 1 warning`。
 
 ### 待执行
 
-- [ ] main/D4 在新计划发布后取消旧快照建议，或用显式 superseded 诊断合同阻断其
-  采用；当前计划应形成版本、时期和租约完整的建议。
-- [ ] 修复后复跑同一 clean 6-cell smoke，要求建议错代为 0、当前计划建议覆盖
-  `6/6`、`formal_acceptance_eligible=6/6`。
-- [ ] 上述 smoke 通过后再冻结并启动正式 900-cell；D6 不接受先运行后过滤旧建议。
+- [ ] main 在存储保护线满足后冻结 clean source、execution plan 和 20-shard 布局，
+  再启动正式 900-cell；6-cell smoke 不替代正式矩阵。
+- [ ] D6 对正式 900-cell 运行 targeted/full posterior，逐 cell 复核同一低层门、计划
+  绑定、联盟、通信和 artifact-tree 完整性。
 - [ ] D2 继续补齐本批 3 项不可用的完整 ID Switch 证据；部分下界不得替代完整分母。
+- [ ] 继续评估 100/200 规模非实时边界；两 seed、2 秒 smoke 不作为部署性能结论。
 
 ## 2026-07-31 高威胁 v5 时期租约复验
 
@@ -43,11 +45,11 @@
 
 ### 待执行
 
-- [ ] main/D4 明确旧计划区域建议的 superseded 生命周期；当前 51 个真实重规划
-  episode 含一条旧计划建议，D6 建议聚合继续失败关闭。
+- [x] main/D4 明确建议 supersession 和发布时当前代次合同；v5 的 51 项旧计划建议保留
+  为历史证据，`b063535` clean smoke 已验证发布时旧代 0、最终计划覆盖 `6/6`。
 - [ ] 上游补齐 12 项 D2 身份切换缺失证据，D6 保持 availability 分母。
-- [ ] 在 clean checkout 上先跑 smoke，再整体执行正式 900-cell R0；开发态 100 项不进入
-  正式分母。
+- [ ] clean smoke 已通过；在同一冻结合同上整体执行正式 900-cell R0。开发态 100 项不
+  进入正式分母。
 - [ ] 对 50、100、200 规模继续做性能剖析和部署处理器预算验证。
 
 ## 2026-07-30 高威胁开发态修复复验

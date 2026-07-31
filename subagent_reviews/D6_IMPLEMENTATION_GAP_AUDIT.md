@@ -1,31 +1,33 @@
 # D6 实现差距审计
 
-## 2026-07-31 高威胁 clean smoke GAP
+## 2026-07-31 高威胁 clean smoke 修复后 GAP
 
 ### 已关闭
 
-clean commit `49e43ea` 的 6 个 episode 已证明来源状态、核心制品、配置哈希、有限状态、
-在线真值隔离、当前计划标识/版本/时期/租约、联盟闭合和通信处置均可在干净来源上通过。
-10 次权威发布、10 个不同身份和 10 次运行时确认守恒。v5 的 dirty-source 限制不再是
-本次 smoke 的阻断项。
+clean commit `b063535` 的 6 个 episode 证明来源状态、42 个核心制品、配置哈希、有限
+状态、在线真值隔离、当前计划标识/版本/时期/租约、联盟闭合和通信处置均可在干净来源上
+通过。10 次权威发布、10 个不同身份和 10 次运行时确认守恒。12 条 D4 建议全部匹配发布
+时当前代次，发布时旧代为 0；最终计划建议覆盖和低层 clean formal 均为 `6/6`。
 
-### P1 阻断
+旧 `49e43ea` clean smoke 的 D4 建议代次阻断已关闭。D6 没有过滤历史 v1 记录，也没有
+放宽正式门。10 条当前代故障诊断建议保留为 shadow、非 assist 证据，正式决策未改变。
 
-1. 100 对 100 和 200 对 200 的 4 个重规划 episode 在 v2 计划发布后又发布 v1 建议。
-   每项第一条 v1 建议属于随后被取代的历史有效记录，第二条则在发布时已经错代。
-2. 四项都没有匹配最终 v2 的区域建议。现有低层
-   `formal_acceptance_eligible` 因此仅为 `2/6`，不是单纯的历史聚合误报。
-3. targeted/full posterior 都使用该低层正式门。若不修复，正式 900-cell 可能生成
-   制品，但受影响 cell 和全量 verdict 必然失败关闭。
-4. 该问题没有改写正式决策，最终 D3-D4 绑定和 49 个当前联盟目标仍全部通过。D6 不会
-   因控制结果未变而把错代建议改记为有效。
-5. 完整 ID Switch 仅 `3/6 available`；另三项保持 unavailable。该缺口不是本轮正式
-   失败的直接原因，但仍是 P1 证据完整性问题。
-6. 100 和 200 规模实时倍率均低于 1，2-seed smoke 不能形成部署性能结论。
+### 仍开放的 P1
 
-900-cell 准入状态为“需先修复”。修复后的同范围 clean smoke 应达到发布时过时建议为
-0、当前计划建议覆盖 `6/6` 和 clean formal `6/6`。详细证据见
-`research_modules/d6_evaluation_metrics/reports/HIGH_THREAT_CLEAN_SMOKE_49E43EA_20260731_CN.md`。
+1. 正式 900-cell 尚未从 `b063535` 或其后续冻结 clean commit 执行。6-cell smoke 没有
+   execution plan、20-shard 和矩阵 metadata，只能关闭运行前建议代次阻断。
+2. 完整 ID Switch 仅 `3/6 available`；100/17 因谱系窗口不足不可用，两个 200 规模
+   episode 因一轨多真值冲突不可用。部分下界合计 9，不能替代完整分母。
+3. 原始 episode 没有 `modules.d4.region_resource_consumption`，D4 advice 控制采用保持
+   unavailable。shadow、非 assist 和无消费记录足以证明未观测到采用，不构成独立控制
+   效果指标。
+4. 100 和 200 规模实时倍率均低于 1，2-seed、2 秒 smoke 不能形成部署性能结论。
+5. 正式运行还受 execution plan 冻结、分片输出空间和存储保护线约束；D6 不以抽样结果
+   替代完整 900-cell targeted/full posterior。
+
+D4 建议代次的 6-cell 准入状态调整为“通过”。正式 900-cell 的完整准入仍为待执行。
+详细证据见
+`research_modules/d6_evaluation_metrics/reports/HIGH_THREAT_CLEAN_SMOKE_B063535_REVALIDATION_20260731_CN.md`。
 
 ## 2026-07-31 高威胁 v5 时期租约复验 GAP
 
@@ -43,14 +45,14 @@ D3 当前权威发布的时期和租约对照由 v4 的 `0/100 available` 提升
 
 1. 100 项均为 `repository_dirty=true`。正式 900-cell R0 必须从 clean checkout 整体
    重跑，不能拼接旧来源。
-2. 51 个真实重规划 episode 含旧计划 D4 区域资源建议。后续 clean smoke 证明至少在
-   抽取的 4 个重规划 cell 中，第二条建议在新计划发布后仍绑定旧计划，且没有最终计划
-   建议。不能再把该项概括为“当前计划最终建议有效”；需由 main/D4 明确 superseded
-   生命周期并阻断发布时错代。
-3. D2 身份切换仅 `88/100 available`。12 项缺值由谱系窗口外观测和一轨多真值冲突造成，
+2. D2 身份切换仅 `88/100 available`。12 项缺值由谱系窗口外观测和一轨多真值冲突造成，
    不得补零。
-4. 50、100、200 规模未达到实时。200 对 200 墙钟均值/P95 为
+3. 50、100、200 规模未达到实时。200 对 200 墙钟均值/P95 为
    `14.209/15.566` 秒，部署处理器预算仍未验证。
+
+51 个真实重规划 episode 的旧计划 D4 建议继续保留为 v5 历史证据。修复前 smoke 证明
+抽取的 4 个 cell 存在发布时错代；修复后 `b063535` smoke 已验证发布时旧代为 0、最终
+计划覆盖 `6/6`，该项已在本文件顶部关闭。
 
 详细证据见
 `research_modules/d6_evaluation_metrics/reports/HIGH_THREAT_PRECHECK_V5_REVALIDATION_20260730_CN.md`。

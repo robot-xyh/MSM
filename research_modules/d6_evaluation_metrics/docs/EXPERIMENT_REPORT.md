@@ -1,20 +1,22 @@
 # D6 正式实验矩阵准入预检报告
 
-## 高威胁 clean smoke（2026-07-31）
+## 高威胁 clean smoke 修复后复核（2026-07-31）
 
-D6 对 clean commit `49e43ea` 的 6 个 episode 完成只读准入审计。范围为 5、100、200
+D6 对 clean commit `b063535` 的 6 个 episode 完成只读准入复核。范围为 5、100、200
 三档规模，每档 seed `7/17`。核心制品、配置哈希、有限状态、在线真值隔离、当前计划
 标识/版本/时期/租约和联盟闭合均为 `6/6`。权威发布、不同计划身份和计划确认均为 10；
 49 个当前联盟目标闭合，16101 条通信处置通过验证。
 
-100/200 规模的 4 个重规划 episode 在新计划发布后又产生一条绑定旧计划的 D4 区域
-建议，且没有匹配最终计划的建议。四条均为规则 shadow 输出，正式决策改写为 0，但
-现有 formal 门仍按版本证据失败关闭。clean formal 为 `2/6`。
+12 条 D4 建议全部匹配发布时最新代次，发布时旧代为 0。100/200 规模的 4 个重规划
+episode 均补齐最终 v2 建议，最终计划建议覆盖为 `6/6`。低层 clean formal 为 `6/6`。
+10 条故障诊断建议均为规则 shadow 输出、非 assist，正式决策改写为 0；没有消费记录，
+采用指标保持 unavailable。
 
-900-cell 准入判断为“需先修复”。先修复建议快照失效和发布前代次核对，再用相同 6-cell
-范围验证过时建议为 0、当前建议覆盖和 clean formal 均为 `6/6`。本次 smoke 不更新正式
-R0 结果。完整报告见
-`../reports/HIGH_THREAT_CLEAN_SMOKE_49E43EA_20260731_CN.md`。
+D4 建议代次的 6-cell 预准入通过。该 smoke 没有冻结 execution plan 和正式矩阵
+metadata，不更新正式 R0 结果。完整 ID Switch 仍为 `3/6 available`，100/200 规模
+低于实时。完整报告见
+`../reports/HIGH_THREAT_CLEAN_SMOKE_B063535_REVALIDATION_20260731_CN.md`；修复前报告
+继续保留作对照。
 
 ## 高威胁 M 对 N 时期租约复验（2026-07-31）
 
@@ -25,7 +27,8 @@ D6 对 v5 五档规模、每档 20 seeds 的 100 个 episode 进行只读复核�
 
 通信处置 195838 条，100 个文件均 available/verified。离线身份指标为
 `88/100 available`、可用部分合计 52。200 对 200 墙钟均值/P95 为
-`14.209/15.566` 秒。51 个重规划 episode 的旧计划区域建议继续使建议聚合失败关闭。
+`14.209/15.566` 秒。51 个重规划 episode 的旧计划区域建议保留为 v5 历史证据；该断点
+已在后续 `b063535` clean smoke 中关闭。
 
 时期/租约 availability P1 已在开发证据层关闭。100 个 manifest 均为
 `repository_dirty=true`，正式 R0 仍需 clean source 的完整 900 项。完整复验见
