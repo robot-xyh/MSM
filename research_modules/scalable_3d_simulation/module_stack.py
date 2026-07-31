@@ -243,6 +243,34 @@ class _D4AcceptedDelivery:
 
 
 @dataclass(frozen=True)
+class _D4PlanTrackEvidence:
+    """Last truth-free D2 state retained for one current D3 plan task."""
+
+    global_track_id: str
+    state_ned: tuple[float, float, float, float, float, float]
+    covariance_ned: tuple[
+        tuple[float, float, float, float, float, float],
+        tuple[float, float, float, float, float, float],
+        tuple[float, float, float, float, float, float],
+        tuple[float, float, float, float, float, float],
+        tuple[float, float, float, float, float, float],
+        tuple[float, float, float, float, float, float],
+    ]
+    last_update_time_s: float
+    region_id: str
+    captured_at_s: float
+    source: str = "d2_current"
+
+    @property
+    def state_array(self) -> np.ndarray:
+        return np.asarray(self.state_ned, dtype=float)
+
+    @property
+    def covariance_array(self) -> np.ndarray:
+        return np.asarray(self.covariance_ned, dtype=float)
+
+
+@dataclass(frozen=True)
 class _D4RegionAdvisorySource:
     snapshot: Any
     recommendation: Any
@@ -300,6 +328,9 @@ class IntegratedStackConfig:
     d4_readiness_period_s: float = 0.10
     d4_plan_broadcast_period_s: float = 0.10
     d4_communication_stale_after_s: float = 1.10
+    d4_plan_retry_limit: int = 2
+    d4_plan_retry_interval_s: float = 0.10
+    d4_terminal_drain_budget_s: float = 0.50
     terminal_switch_range_m: float = 120.0
     secondary_coverage_ratio: float = 0.90
     secondary_network_full_view_rate: float = 0.90
@@ -371,6 +402,8 @@ class IntegratedStackConfig:
             "d4_readiness_period_s",
             "d4_plan_broadcast_period_s",
             "d4_communication_stale_after_s",
+            "d4_plan_retry_interval_s",
+            "d4_terminal_drain_budget_s",
         ):
             value = float(getattr(self, name))
             if not np.isfinite(value) or value <= 0.0:
@@ -382,6 +415,10 @@ class IntegratedStackConfig:
             raise ValueError(
                 "d4_communication_stale_after_s must exceed the plan broadcast period"
             )
+        retry_limit = int(self.d4_plan_retry_limit)
+        if retry_limit < 0:
+            raise ValueError("d4_plan_retry_limit must be non-negative")
+        object.__setattr__(self, "d4_plan_retry_limit", retry_limit)
         if self.terminal_switch_range_m <= 0.0:
             raise ValueError("terminal_switch_range_m must be positive")
         active_mode = str(self.d5_active_vision_mode).strip().lower()
@@ -959,6 +996,7 @@ class IntegratedScalableModuleStack:
         self.latest_bindings: tuple[Any, ...] = ()
         self.latest_d4_decision: Any | None = None
         self.latest_d4_region_snapshot: Any | None = None
+        self.latest_d4_region_formal_decision: Any | None = None
         self.latest_d4_region_advice: Any | None = None
         self.latest_d4_region_consumption: Any | None = None
         self.latest_d5_result: Any | None = None
@@ -970,6 +1008,14 @@ class IntegratedScalableModuleStack:
         self._latest_terminal_by_pair: dict[tuple[str, str], tuple[dict[str, Any], Any]] = {}
         self._track_region_by_id: dict[str, str] = {}
         self._resource_index_by_id: dict[str, int] = {}
+        self._d3_authoritative_plan_by_identity: dict[
+            tuple[str, int], tuple[Any, tuple[Any, ...]]
+        ] = {}
+        self._d3_authoritative_publication_count = 0
+        self._d3_evaluation_refresh_suppressed_count = 0
+        self._d3_authority_plan_digest_conflict_count = 0
+        self._d3_duplicate_transport_reference_count = 0
+        self._d3_latest_evaluation_refresh: dict[str, Any] | None = None
         self._next_association_s = 0.0
         self._next_assignment_s = 0.0
         self._next_active_vision_s = 0.0
@@ -989,14 +1035,25 @@ class IntegratedScalableModuleStack:
         self._d4_last_broadcast_plan_key: tuple[
             str, int, int, int, bool
         ] | None = None
+        self._d4_plan_send_attempts: dict[
+            tuple[str, int, int, int, str], int
+        ] = {}
+        self._d4_last_plan_send_s: dict[
+            tuple[str, int, int, int, str], float
+        ] = {}
+        self._d4_retry_exhausted_keys: set[
+            tuple[str, int, int, int, str]
+        ] = set()
+        self._d4_plan_retry_count = 0
+        self._d4_frozen_plan_leases: dict[tuple[str, int, int], float] = {}
         self._d4_readiness_receptions: dict[
             tuple[str, str, int, int, int], _D4ReadinessReception
         ] = {}
         self._d4_plan_deliveries: dict[
-            tuple[str, int, int, int], _D4AcceptedDelivery
+            tuple[str, str, int, int, int], _D4AcceptedDelivery
         ] = {}
         self._d4_ack_deliveries: dict[
-            tuple[str, str, int, int, int], _D4AcceptedDelivery
+            tuple[str, str, str, int, int, int], _D4AcceptedDelivery
         ] = {}
         self._d4_runtime_ack_parser = RegionResourceRuntimeAckParser()
         self._d4_safe_adoption_assembler = RegionResourceSafeAdoptionAssembler()
@@ -1004,6 +1061,14 @@ class IntegratedScalableModuleStack:
         self._d4_plan_transport_references: dict[
             tuple[str, int], tuple[str, int]
         ] = {}
+        self._d4_plan_track_evidence: dict[
+            tuple[str, int], dict[str, _D4PlanTrackEvidence]
+        ] = {}
+        self._d4_plan_track_current_refresh_count = 0
+        self._d4_plan_track_fallback_snapshot_count = 0
+        self._d4_plan_track_tombstone_count = 0
+        self._d4_plan_track_fallback_target_ids: set[str] = set()
+        self._d4_latest_plan_track_fallback_target_ids: tuple[str, ...] = ()
         self._d4_advice_source_envelopes: dict[str, Any] = {}
         self._d4_advisory_sources: dict[str, _D4RegionAdvisorySource] = {}
         self._d4_a2_pending_by_plan: dict[
@@ -1393,6 +1458,7 @@ class IntegratedScalableModuleStack:
         self.latest_bindings = ()
         self.latest_d4_decision = None
         self.latest_d4_region_snapshot = None
+        self.latest_d4_region_formal_decision = None
         self.latest_d4_region_advice = None
         self.latest_d4_region_consumption = None
         self.latest_d5_result = None
@@ -1404,6 +1470,12 @@ class IntegratedScalableModuleStack:
         self._latest_terminal_by_pair.clear()
         self._track_region_by_id.clear()
         self._resource_index_by_id.clear()
+        self._d3_authoritative_plan_by_identity.clear()
+        self._d3_authoritative_publication_count = 0
+        self._d3_evaluation_refresh_suppressed_count = 0
+        self._d3_authority_plan_digest_conflict_count = 0
+        self._d3_duplicate_transport_reference_count = 0
+        self._d3_latest_evaluation_refresh = None
         self._next_association_s = 0.0
         self._next_assignment_s = 0.0
         self._next_active_vision_s = 0.0
@@ -1420,6 +1492,11 @@ class IntegratedScalableModuleStack:
         self._d4_message_sequence = 0
         self._d4_partition_generation = 0
         self._d4_last_broadcast_plan_key = None
+        self._d4_plan_send_attempts.clear()
+        self._d4_last_plan_send_s.clear()
+        self._d4_retry_exhausted_keys.clear()
+        self._d4_plan_retry_count = 0
+        self._d4_frozen_plan_leases.clear()
         self._d4_readiness_receptions.clear()
         self._d4_plan_deliveries.clear()
         self._d4_ack_deliveries.clear()
@@ -1429,6 +1506,12 @@ class IntegratedScalableModuleStack:
         )
         self._d4_plan_source_envelopes.clear()
         self._d4_plan_transport_references.clear()
+        self._d4_plan_track_evidence.clear()
+        self._d4_plan_track_current_refresh_count = 0
+        self._d4_plan_track_fallback_snapshot_count = 0
+        self._d4_plan_track_tombstone_count = 0
+        self._d4_plan_track_fallback_target_ids.clear()
+        self._d4_latest_plan_track_fallback_target_ids = ()
         self._d4_advice_source_envelopes.clear()
         self._d4_advisory_sources.clear()
         self._d4_a2_pending_by_plan.clear()
@@ -1649,9 +1732,7 @@ class IntegratedScalableModuleStack:
         if (
             d4_evidence_changed
             and not assignment_due
-            and center_health is C2Health.FAILED
             and self.latest_plan is not None
-            and self.latest_d2_tracks
         ):
             started = perf_counter()
             snapshot = self._d4_snapshot(
@@ -1666,7 +1747,7 @@ class IntegratedScalableModuleStack:
             )
             self._d4_communication_event_evaluation_count += 1
             self._record_timing(
-                "d4_communication_event_failover",
+                "d4_communication_event_recheck",
                 perf_counter() - started,
             )
             publications.append(self._d4_publication(now))
@@ -1684,7 +1765,11 @@ class IntegratedScalableModuleStack:
             ):
                 self._d3_learning_frames.append(self.d3.latest_planning_evidence)
             if self.latest_plan is not None:
-                publications.append(self._d3_publication(now))
+                authoritative_publication = (
+                    self._d3_authoritative_publication_if_required(now)
+                )
+                if authoritative_publication is not None:
+                    publications.append(authoritative_publication)
             if self.latest_d4_decision is not None:
                 publications.append(self._d4_publication(now))
             if self.latest_d4_region_consumption is not None:
@@ -1767,6 +1852,84 @@ class IntegratedScalableModuleStack:
             publications=tuple(publications),
             communication_intents=tuple(communication_intents),
             diagnostics=self._diagnostics(now),
+        )
+
+    def drain_communication(
+        self,
+        step_input: RuntimeStepInput,
+    ) -> RuntimeStepOutput:
+        """Consume a bounded post-horizon D4 tail without issuing control."""
+
+        config = self._require_ready()
+        now = float(step_input.timestamp)
+        if not np.isfinite(now) or now < config.duration_s - _EPS:
+            raise ValueError(
+                "communication drain timestamp must be at or after episode duration"
+            )
+        if (
+            step_input.arrived_sensor_batches
+            or step_input.arrived_camera_frame_events
+        ):
+            raise ValueError(
+                "communication drain accepts only delivered control messages"
+            )
+        self._validate_navigation(step_input.interceptors, "interceptor")
+        self._validate_navigation(step_input.recon, "recon")
+        self._resource_index_by_id = {
+            resource_id: index
+            for index, resource_id in enumerate(step_input.interceptors.platform_ids)
+        }
+        publications: list[RuntimePublication] = []
+        communication_intents, evidence_changed, delivery_seen = (
+            self._consume_d4_communication_deliveries(step_input, now=now)
+        )
+        if delivery_seen:
+            publications.append(self._d4_communication_publication(now))
+
+        horizon_health, horizon_secondary_failed = self._fault_state(
+            float(config.duration_s)
+        )
+        if (
+            evidence_changed
+            and self.latest_plan is not None
+        ):
+            started = perf_counter()
+            snapshot = self._d4_snapshot(
+                step_input,
+                now=now,
+                center_health=horizon_health,
+                secondary_failed=horizon_secondary_failed,
+            )
+            self.latest_d4_decision = self.d4.evaluate(snapshot)
+            self._remember_d4_vetted_secondaries(self.latest_d4_decision)
+            self._d4_communication_event_evaluation_count += 1
+            self._record_timing(
+                "d4_terminal_communication_recheck",
+                perf_counter() - started,
+            )
+            publications.append(self._d4_publication(now))
+
+        communication_intents.extend(
+            self._d4_periodic_communication_intents(
+                step_input,
+                now=now,
+                center_health=horizon_health,
+                secondary_failed=horizon_secondary_failed,
+                include_readiness=False,
+            )
+        )
+        return RuntimeStepOutput(
+            interceptor_acceleration_ned=np.zeros(
+                (config.resource_count, 3),
+                dtype=float,
+            ),
+            recon_acceleration_ned=np.zeros((config.recon_count, 3), dtype=float),
+            publications=tuple(publications),
+            communication_intents=tuple(communication_intents),
+            diagnostics=self._diagnostics(
+                now,
+                include_timing_distribution=True,
+            ),
         )
 
     def finalize(self, timestamp: float) -> RuntimeStepOutput:
@@ -2672,8 +2835,10 @@ class IntegratedScalableModuleStack:
     ) -> None:
         config = self._require_ready()
         previous_region_snapshot = self.latest_d4_region_snapshot
+        previous_region_formal_decision = (
+            self.latest_d4_region_formal_decision
+        )
         previous_region_advice = self.latest_d4_region_advice
-        previous_d4_decision = self.latest_d4_decision
         self.latest_d4_region_advice = None
         self.latest_d4_region_consumption = None
         self._d4_region_hint_bridge_rejection_reason = None
@@ -2683,10 +2848,12 @@ class IntegratedScalableModuleStack:
         self._record_timing("main_d3_adapter", perf_counter() - adapter_started)
         previous_plan = self.latest_plan
         preplanning_snapshot: RegionalFailoverSnapshot | None = None
+        preplanning_decision: Any | None = None
         if previous_plan is not None and not self._fault_generation_changed:
+            preplanning_now = float(np.nextafter(now, -np.inf))
             preplanning_snapshot = self._d4_snapshot(
                 step_input,
-                now=now,
+                now=preplanning_now,
                 center_health=center_health,
                 secondary_failed=secondary_failed,
             )
@@ -2694,6 +2861,7 @@ class IntegratedScalableModuleStack:
             self.latest_d4_decision = self.d4.evaluate(
                 preplanning_snapshot
             )
+            preplanning_decision = self.latest_d4_decision
             self._remember_d4_vetted_secondaries(
                 self.latest_d4_decision
             )
@@ -2799,7 +2967,7 @@ class IntegratedScalableModuleStack:
                     previous_plan=previous_plan,
                     advice_result=previous_region_advice,
                     source_snapshot=previous_region_snapshot,
-                    source_decision=previous_d4_decision,
+                    source_decision=previous_region_formal_decision,
                     now=now,
                     fault_generation_changed=self._fault_generation_changed,
                 )
@@ -2878,7 +3046,7 @@ class IntegratedScalableModuleStack:
                 previous_plan=previous_plan,
                 advice_result=previous_region_advice,
                 source_snapshot=previous_region_snapshot,
-                source_decision=previous_d4_decision,
+                source_decision=previous_region_formal_decision,
                 now=now,
                 fault_generation_changed=self._fault_generation_changed,
             )
@@ -2904,6 +3072,7 @@ class IntegratedScalableModuleStack:
             )
             self._record_timing("d3_assignment", perf_counter() - started)
             self._regional_plan_rejection_reason = None
+        self._bind_latest_d3_authority_generation(now=now)
         self.latest_bindings = guidance_bindings_from_assignment_plan(
             self.latest_plan,
             resource_vehicle_map={
@@ -2928,32 +3097,40 @@ class IntegratedScalableModuleStack:
             and not self._identity_commitment_binding_hold_target_ids
         ):
             self._identity_commitment_replan_required = False
-        if preplanning_snapshot is None:
-            adapter_started = perf_counter()
-            snapshot = self._d4_snapshot(
-                step_input,
-                now=now,
-                center_health=center_health,
-                secondary_failed=secondary_failed,
-            )
-            self._record_timing(
-                "main_d4_adapter",
-                perf_counter() - adapter_started,
-            )
-            started = perf_counter()
-            self.latest_d4_decision = self.d4.evaluate(snapshot)
-            self._remember_d4_vetted_secondaries(
-                self.latest_d4_decision
-            )
-            self._record_timing(
-                "d4_regional_failover",
-                perf_counter() - started,
-            )
-        else:
-            snapshot = preplanning_snapshot
+        adapter_started = perf_counter()
+        snapshot = self._d4_snapshot(
+            step_input,
+            now=now,
+            center_health=center_health,
+            secondary_failed=secondary_failed,
+        )
+        self._record_timing(
+            "main_d4_adapter",
+            perf_counter() - adapter_started,
+        )
+        started = perf_counter()
+        self.latest_d4_decision = self.d4.evaluate(snapshot)
+        self._remember_d4_vetted_secondaries(
+            self.latest_d4_decision
+        )
+        self._record_timing(
+            "d4_regional_failover",
+            perf_counter() - started,
+        )
+        advisory_snapshot = (
+            snapshot
+            if preplanning_snapshot is None
+            else preplanning_snapshot
+        )
+        advisory_decision = (
+            self.latest_d4_decision
+            if preplanning_decision is None
+            else preplanning_decision
+        )
         self._run_d4_region_resource_advisor(
             step_input,
-            formal_snapshot=snapshot,
+            formal_snapshot=advisory_snapshot,
+            formal_decision=advisory_decision,
             now=now,
         )
 
@@ -3131,11 +3308,12 @@ class IntegratedScalableModuleStack:
         step_input: RuntimeStepInput,
         *,
         formal_snapshot: RegionalFailoverSnapshot,
+        formal_decision: Any,
         now: float,
     ) -> None:
         """Publish aggregate advice without mutating D4 authority or D3 plans."""
 
-        if self.latest_d4_decision is None:
+        if formal_decision is None:
             return
         if (
             self.d4_region_advisor is None
@@ -3146,14 +3324,16 @@ class IntegratedScalableModuleStack:
         regional_snapshot = self._d4_region_resource_snapshot(
             step_input,
             formal_snapshot=formal_snapshot,
+            formal_decision=formal_decision,
             now=now,
         )
         self.latest_d4_region_snapshot = regional_snapshot
+        self.latest_d4_region_formal_decision = formal_decision
         recommendation = None
         if self.d4_region_advisor is not None:
             recommendation = self.d4_region_advisor.advise(
                 regional_snapshot,
-                formal_decision=self.latest_d4_decision,
+                formal_decision=formal_decision,
                 unseen_seed_count=self.d4_unseen_seed_count,
             )
             self.latest_d4_region_advice = recommendation
@@ -3165,7 +3345,7 @@ class IntegratedScalableModuleStack:
                         snapshot=regional_snapshot,
                         recommendation=candidate,
                         formal_snapshot=formal_snapshot,
-                        formal_decision=self.latest_d4_decision,
+                        formal_decision=formal_decision,
                     )
                 )
         if self.stack_config.capture_learning_artifacts:
@@ -3176,7 +3356,7 @@ class IntegratedScalableModuleStack:
                     snapshot=regional_snapshot,
                     recommendation=recommendation,
                     formal_snapshot=formal_snapshot,
-                    formal_decision=self.latest_d4_decision,
+                    formal_decision=formal_decision,
                 )
             )
         self._record_timing(
@@ -3421,6 +3601,96 @@ class IntegratedScalableModuleStack:
             ] += 1
             return ()
 
+    def record_assignment_evaluation_runtime(
+        self,
+        *,
+        source_publication_envelopes: Iterable[Any],
+        timestamp_s: float,
+        partition_generation: int,
+    ) -> None:
+        """Record a no-successor D3 evaluation without granting authority."""
+
+        envelopes = tuple(source_publication_envelopes)
+        consumption_envelope = next(
+            (
+                item
+                for item in envelopes
+                if getattr(item, "topic", "")
+                == "modules.d4.region_resource_consumption"
+            ),
+            None,
+        )
+        if consumption_envelope is None:
+            return
+        if any(
+            getattr(item, "topic", "")
+            == "modules.d3.assignment_plan"
+            for item in envelopes
+        ):
+            return
+        try:
+            consumption_payload = dict(consumption_envelope.payload)
+            successor_published = not (
+                consumption_payload.get("bridge_rejection_reason")
+                is not None
+                or consumption_payload.get("d3_hint_applied") is not True
+                or consumption_payload.get(
+                    "d3_successor_plan_available"
+                )
+                is not True
+                or consumption_payload.get("d3_successor_state")
+                != "successor_published"
+            )
+            if successor_published:
+                self._d4_a2_bridge_blocker_counts[
+                    "authoritative_successor_publication_missing"
+                ] += 1
+                return
+            nested_advisory = dict(consumption_payload["advisory"])
+            advisory_id = str(nested_advisory["advisory_id"])
+            source = self._d4_advisory_sources[advisory_id]
+            if self.latest_plan is None:
+                raise ValueError("D3 evaluation plan is unavailable")
+            advisory_version_value = self.latest_plan.metadata.get(
+                "regional_hint_advisory_version"
+            )
+            if not isinstance(advisory_version_value, Integral):
+                self._d4_a2_bridge_blocker_counts[
+                    "current_plan_advisory_version_missing"
+                ] += 1
+                return
+            context = self._d4_safe_adoption_context(
+                source,
+                advisory_version=int(advisory_version_value),
+                partition_generation=int(partition_generation),
+                consumption_timestamp_s=float(
+                    consumption_payload["evaluated_at_s"]
+                ),
+            )
+            preparation = self._d4_safe_adoption_assembler.prepare(
+                snapshot=source.snapshot,
+                candidate=source.recommendation,
+                context=context,
+                formal_decision=source.formal_decision,
+            )
+            partial = self._d4_safe_adoption_assembler.assemble(
+                preparation=preparation,
+                context=context,
+                evaluated_at_s=float(timestamp_s),
+            )
+            self._remember_d4_a2_evidence(partial)
+            self._d4_a2_bridge_blocker_counts[
+                (
+                    "candidate_preparation_unavailable"
+                    if not preparation.available
+                    else "consumption_not_applied_to_current_plan"
+                )
+            ] += 1
+        except (KeyError, TypeError, ValueError) as exc:
+            self._d4_a2_bridge_blocker_counts[
+                f"evaluation_bridge_{type(exc).__name__.lower()}"
+            ] += 1
+
     def _cache_d4_runtime_source_envelopes(
         self,
         envelopes: Iterable[Any],
@@ -3435,9 +3705,24 @@ class IntegratedScalableModuleStack:
                 plan_version = payload.get("plan_version")
                 if plan_id and isinstance(plan_version, Integral):
                     key = (plan_id, int(plan_version))
+                    payload_sha256 = canonical_runtime_payload_sha256(
+                        payload
+                    )
+                    existing_reference = (
+                        self._d4_plan_transport_references.get(key)
+                    )
+                    if existing_reference is not None:
+                        if existing_reference[0] != payload_sha256:
+                            self._d3_authority_plan_digest_conflict_count += 1
+                            raise RuntimeError(
+                                "D3 plan transport identity has conflicting "
+                                "payload digests"
+                            )
+                        self._d3_duplicate_transport_reference_count += 1
+                        continue
                     self._d4_plan_source_envelopes[key] = envelope
                     self._d4_plan_transport_references[key] = (
-                        canonical_runtime_payload_sha256(payload),
+                        payload_sha256,
                         int(getattr(envelope, "sequence")),
                     )
             elif topic == "modules.d4.region_resource_advice":
@@ -5501,6 +5786,7 @@ class IntegratedScalableModuleStack:
         step_input: RuntimeStepInput,
         *,
         formal_snapshot: RegionalFailoverSnapshot,
+        formal_decision: Any,
         now: float,
     ) -> RegionResourceSnapshot:
         """Aggregate online estimates into a truth-free regional graph."""
@@ -5532,7 +5818,7 @@ class IntegratedScalableModuleStack:
                 active_resources_by_region[region_id] += 1
 
         decision_by_region = {
-            item.region_id: item for item in self.latest_d4_decision.region_decisions
+            item.region_id: item for item in formal_decision.region_decisions
         }
         region_signals: dict[str, dict[str, Any]] = {}
         for region_id in region_ids:
@@ -5648,7 +5934,7 @@ class IntegratedScalableModuleStack:
             region_signals,
         )
         return RegionResourceSnapshot.from_regional_decision(
-            self.latest_d4_decision,
+            formal_decision,
             snapshot_id=(
                 f"{config.scenario_name}-s{config.seed}-"
                 f"p{formal_snapshot.plan_version}-t{now:.6f}"
@@ -5949,6 +6235,7 @@ class IntegratedScalableModuleStack:
                 key = (
                     member_ack.resource_id,
                     member_ack.global_track_id,
+                    member_ack.plan_id,
                     member_ack.plan_version,
                     member_ack.epoch,
                     delivery.partition_generation,
@@ -6046,6 +6333,7 @@ class IntegratedScalableModuleStack:
             ):
                 key = (
                     receipt.destination_node_id,
+                    str(payload["plan_id"]),
                     receipt.plan_version,
                     receipt.epoch,
                     receipt.partition_generation,
@@ -6067,6 +6355,7 @@ class IntegratedScalableModuleStack:
                 key = (
                     str(payload["resource_id"]),
                     str(payload["global_track_id"]),
+                    str(payload["plan_id"]),
                     receipt.plan_version,
                     receipt.epoch,
                     receipt.partition_generation,
@@ -6327,6 +6616,7 @@ class IntegratedScalableModuleStack:
         now: float,
         center_health: C2Health,
         secondary_failed: bool,
+        include_readiness: bool = True,
     ) -> list[RuntimeCommunicationIntent]:
         config = self._require_ready()
         plan = self.latest_plan
@@ -6343,6 +6633,8 @@ class IntegratedScalableModuleStack:
             config.region_policy_period_s,
         )
         if (
+            include_readiness
+            and
             not secondary_failed
             and now + _EPS >= self._next_d4_readiness_s
         ):
@@ -6425,6 +6717,7 @@ class IntegratedScalableModuleStack:
                 strict_transport_reference_available,
             )
             plan_changed = plan_key != self._d4_last_broadcast_plan_key
+            missing_required_members = self._d4_missing_required_member_ids()
             for index, resource_id in enumerate(
                 step_input.interceptors.platform_ids
             ):
@@ -6433,20 +6726,55 @@ class IntegratedScalableModuleStack:
                 delivery = self._d4_plan_deliveries.get(
                     (
                         resource_id,
+                        str(plan.plan_id),
                         int(plan.version),
                         int(epoch),
                         partition_generation,
                     )
                 )
-                refresh_due = bool(
+                attempt_key = (
+                    str(plan.plan_id),
+                    int(plan.version),
+                    int(epoch),
+                    partition_generation,
+                    resource_id,
+                )
+                attempt_count = self._d4_plan_send_attempts.get(
+                    attempt_key,
+                    0,
+                )
+                unresolved = bool(
                     delivery is None
-                    or now - delivery.receipt.arrival_timestamp_s
-                    >= (
-                        self.stack_config.d4_communication_stale_after_s
-                        - self.stack_config.d4_plan_broadcast_period_s
+                    or resource_id in missing_required_members
+                )
+                if not unresolved:
+                    self._d4_retry_exhausted_keys.discard(attempt_key)
+                retry_due = bool(
+                    strict_transport_reference_available
+                    and unresolved
+                    and attempt_count > 0
+                    and attempt_count
+                    < 1 + self.stack_config.d4_plan_retry_limit
+                    and now
+                    - self._d4_last_plan_send_s.get(attempt_key, -math.inf)
+                    + _EPS
+                    >= self.stack_config.d4_plan_retry_interval_s
+                )
+                initial_due = bool(
+                    plan_changed
+                    and (
+                        not strict_transport_reference_available
+                        or attempt_count == 0
                     )
                 )
-                if not plan_changed and not refresh_due:
+                if not initial_due and not retry_due:
+                    if (
+                        strict_transport_reference_available
+                        and unresolved
+                        and attempt_count
+                        >= 1 + self.stack_config.d4_plan_retry_limit
+                    ):
+                        self._d4_retry_exhausted_keys.add(attempt_key)
                     continue
                 authority_id = self._d4_authority_for_member(
                     plan,
@@ -6497,6 +6825,11 @@ class IntegratedScalableModuleStack:
                     if strict_transport_reference_available
                     else {}
                 )
+                retry_generation = (
+                    attempt_count
+                    if strict_transport_reference_available
+                    else 0
+                )
                 payload = self._d4_message_payload(
                     message_kind=(
                         CausalMessageKind.REGIONAL_PLAN_BROADCAST.value
@@ -6513,6 +6846,7 @@ class IntegratedScalableModuleStack:
                     extra={
                         "member_id": resource_id,
                         "member_assignments": member_assignments,
+                        "retry_generation": retry_generation,
                         **transport_binding,
                     },
                 )
@@ -6529,6 +6863,13 @@ class IntegratedScalableModuleStack:
                         ),
                     )
                 )
+                if strict_transport_reference_available:
+                    self._d4_plan_send_attempts[attempt_key] = (
+                        attempt_count + 1
+                    )
+                    self._d4_last_plan_send_s[attempt_key] = now
+                    if retry_generation > 0:
+                        self._d4_plan_retry_count += 1
             self._d4_last_broadcast_plan_key = plan_key
             if strict_transport_reference_available:
                 self._next_d4_plan_broadcast_s = _advance_schedule(
@@ -6537,6 +6878,217 @@ class IntegratedScalableModuleStack:
                     now,
                 )
         return intents
+
+    def _d4_missing_required_member_ids(self) -> frozenset[str]:
+        closure = self.d4_current_plan_execution_closure()
+        return frozenset(
+            str(item) for item in closure.get("missing_member_ids", ())
+        )
+
+    def d4_current_plan_execution_closure(self) -> dict[str, Any]:
+        """Verify that the aligned D4 decision can execute the current D3 plan."""
+
+        plan = self.latest_plan
+        decision = self.latest_d4_decision
+        if plan is None or decision is None:
+            return {
+                "schema_version": (
+                    "scalable3d-d3-d4-execution-closure-v1"
+                ),
+                "available": False,
+                "closed": None,
+                "reason": "d3_or_d4_output_unavailable",
+                "required_coalition_target_count": 0,
+                "audited_coalition_target_count": 0,
+                "unclosed_target_ids": [],
+                "missing_member_ids": [],
+                "fail_closed_region_ids": [],
+            }
+
+        alignment = self.d4_current_plan_alignment()
+        required_members_by_target: dict[str, set[str]] = {}
+        for assignment in plan.assignments:
+            if int(assignment.required_resource_count) <= 1:
+                continue
+            required_members_by_target.setdefault(
+                str(assignment.target_id),
+                set(),
+            ).add(str(assignment.resource_id))
+
+        commits_by_target: dict[str, list[Any]] = {}
+        fail_closed_region_ids: list[str] = []
+        for region in decision.region_decisions:
+            if bool(region.fail_closed) or not bool(region.execution_allowed):
+                fail_closed_region_ids.append(str(region.region_id))
+            for commit in region.coalition_commits:
+                commits_by_target.setdefault(
+                    str(commit.global_track_id),
+                    [],
+                ).append(commit)
+
+        missing_member_ids: set[str] = set()
+        unclosed_target_ids: list[str] = []
+        audited_target_count = 0
+        for target_id, expected_members in sorted(
+            required_members_by_target.items()
+        ):
+            commits = commits_by_target.get(target_id, ())
+            if len(commits) != 1:
+                unclosed_target_ids.append(target_id)
+                missing_member_ids.update(expected_members)
+                continue
+            audited_target_count += 1
+            commit = commits[0]
+            required_members = {
+                str(item) for item in commit.required_member_ids
+            }
+            acked_members = {
+                str(item) for item in commit.acked_member_ids
+            }
+            commit_closed = bool(
+                commit.commit_required
+                and commit.atomic_committed
+                and commit.execution_authorized
+                and str(commit.state) in {"committed", "executing"}
+                and required_members == expected_members
+                and acked_members == expected_members
+                and not commit.missing_member_ids
+            )
+            if commit_closed:
+                continue
+            unclosed_target_ids.append(target_id)
+            unresolved = expected_members - acked_members
+            missing_member_ids.update(
+                unresolved if unresolved else expected_members
+            )
+
+        aligned = bool(
+            alignment.get("available") is True
+            and alignment.get("aligned") is True
+        )
+        if not aligned:
+            missing_member_ids.update(
+                member_id
+                for members in required_members_by_target.values()
+                for member_id in members
+            )
+        closed = bool(
+            aligned
+            and not fail_closed_region_ids
+            and not unclosed_target_ids
+        )
+        if closed:
+            reason = "closed"
+        elif not aligned:
+            reason = "current_plan_generation_mismatch"
+        elif fail_closed_region_ids:
+            reason = "current_plan_region_fail_closed"
+        else:
+            reason = "current_plan_coalition_incomplete"
+        return {
+            "schema_version": "scalable3d-d3-d4-execution-closure-v1",
+            "available": True,
+            "closed": closed,
+            "reason": reason,
+            "required_coalition_target_count": len(
+                required_members_by_target
+            ),
+            "audited_coalition_target_count": audited_target_count,
+            "unclosed_target_ids": sorted(set(unclosed_target_ids)),
+            "missing_member_ids": sorted(missing_member_ids),
+            "fail_closed_region_ids": sorted(fail_closed_region_ids),
+        }
+
+    def d4_current_plan_alignment(self) -> dict[str, Any]:
+        """Expose a truth-free final D3/D4 generation invariant."""
+
+        plan = self.latest_plan
+        decision = self.latest_d4_decision
+        if plan is None or decision is None:
+            return {
+                "schema_version": "scalable3d-d3-d4-plan-alignment-v2",
+                "available": False,
+                "aligned": None,
+                "reason": "d3_or_d4_output_unavailable",
+                "d3_plan_id": None,
+                "d3_plan_version": None,
+                "d3_authority_epoch": None,
+                "d3_lease_expires_at_s": None,
+                "d4_plan_id_values": [],
+                "d4_plan_version_values": [],
+                "d4_epoch_values": [],
+                "d4_lease_expires_at_s_values": [],
+            }
+        expected_epoch = self._plan_authority_epoch(plan)
+        expected_lease = self._d4_frozen_plan_leases.get(
+            (
+                str(plan.plan_id),
+                int(plan.version),
+                int(expected_epoch),
+            )
+        )
+        d4_plan_ids = tuple(
+            sorted(
+                {
+                    str(region.ownership.plan_id)
+                    for region in decision.region_decisions
+                }
+            )
+        )
+        d4_plan_versions = tuple(
+            sorted(
+                {
+                    int(region.ownership.plan_version)
+                    for region in decision.region_decisions
+                }
+            )
+        )
+        d4_epochs = tuple(
+            sorted(
+                {
+                    int(region.ownership.epoch)
+                    for region in decision.region_decisions
+                }
+            )
+        )
+        d4_leases = tuple(
+            sorted(
+                {
+                    float(region.ownership.lease_expires_at_s)
+                    for region in decision.region_decisions
+                }
+            )
+        )
+        lease_aligned = bool(
+            expected_lease is not None
+            and len(d4_leases) == 1
+            and math.isclose(
+                d4_leases[0],
+                float(expected_lease),
+                rel_tol=0.0,
+                abs_tol=_EPS,
+            )
+        )
+        aligned = bool(
+            d4_plan_ids == (str(plan.plan_id),)
+            and d4_plan_versions == (int(plan.version),)
+            and d4_epochs == (int(expected_epoch),)
+            and lease_aligned
+        )
+        return {
+            "schema_version": "scalable3d-d3-d4-plan-alignment-v2",
+            "available": True,
+            "aligned": aligned,
+            "reason": "aligned" if aligned else "d3_d4_plan_generation_mismatch",
+            "d3_plan_id": str(plan.plan_id),
+            "d3_plan_version": int(plan.version),
+            "d3_authority_epoch": int(expected_epoch),
+            "d3_lease_expires_at_s": expected_lease,
+            "d4_plan_id_values": list(d4_plan_ids),
+            "d4_plan_version_values": list(d4_plan_versions),
+            "d4_epoch_values": list(d4_epochs),
+            "d4_lease_expires_at_s_values": list(d4_leases),
+        }
 
     def _d4_message_payload(
         self,
@@ -6720,32 +7272,110 @@ class IntegratedScalableModuleStack:
             return bool(step_input.interceptors.active[index])
         return False
 
-    @staticmethod
     def _d4_plan_lease_for_member(
+        self,
         plan: Any,
         resource_id: str,
         *,
         now: float,
         default_duration_s: float,
     ) -> float:
+        del resource_id
+        return self._d4_frozen_plan_lease(
+            plan,
+            now=now,
+            default_duration_s=default_duration_s,
+        )
+
+    def _bind_latest_d3_authority_generation(self, *, now: float) -> None:
+        """Bind one immutable D3 epoch and lease before downstream use."""
+
+        plan = self.latest_plan
+        if plan is None:
+            return
+        config = self._require_ready()
+        lease_duration_s = max(
+            config.assignment_period_s
+            * self.stack_config.assignment_lease_multiplier,
+            config.region_policy_period_s,
+        )
+        authority_epoch = self._plan_authority_epoch(plan)
+        lease_expires_at_s = self._d4_frozen_plan_lease(
+            plan,
+            now=now,
+            default_duration_s=lease_duration_s,
+        )
+        try:
+            self.latest_plan = (
+                self.d3.bind_published_authority_generation(
+                    plan,
+                    authority_epoch=authority_epoch,
+                    lease_expires_at_s=lease_expires_at_s,
+                )
+            )
+        except (TypeError, ValueError) as exc:
+            self._d3_authority_plan_digest_conflict_count += 1
+            raise RuntimeError(
+                "D3 plan authority generation binding failed closed"
+            ) from exc
+
+    def _d4_frozen_plan_lease(
+        self,
+        plan: Any,
+        *,
+        now: float,
+        default_duration_s: float,
+    ) -> float:
+        """Return one immutable authority deadline for a D3 plan generation."""
+
+        epoch = self._plan_authority_epoch(plan)
+        generation = (str(plan.plan_id), int(plan.version), int(epoch))
+        cached = self._d4_frozen_plan_leases.get(generation)
+        if cached is not None:
+            return cached
+
+        explicit_leases: list[float] = []
+        metadata = dict(plan.metadata)
+        for key in (
+            "lease_expires_at_s",
+            "regional_min_lease_expires_at_s",
+            "secondary_lease_expires_at_s",
+        ):
+            value = metadata.get(key)
+            if value is not None:
+                explicit_leases.append(
+                    self._validated_d4_plan_lease(value, source=key)
+                )
         for assignment in plan.assignments:
-            if assignment.resource_id != resource_id:
-                continue
-            metadata = dict(assignment.metadata)
+            assignment_metadata = dict(assignment.metadata)
             for key in (
                 "regional_lease_expires_at_s",
                 "secondary_lease_expires_at_s",
             ):
-                if metadata.get(key) is not None:
-                    return float(metadata[key])
-        metadata = dict(plan.metadata)
-        for key in (
-            "regional_min_lease_expires_at_s",
-            "secondary_lease_expires_at_s",
-        ):
-            if metadata.get(key) is not None:
-                return float(metadata[key])
-        return float(now) + float(default_duration_s)
+                value = assignment_metadata.get(key)
+                if value is not None:
+                    explicit_leases.append(
+                        self._validated_d4_plan_lease(
+                            value,
+                            source=f"assignment.{key}",
+                        )
+                    )
+
+        if explicit_leases:
+            lease_expires_at = min(explicit_leases)
+        else:
+            lease_expires_at = float(now) + float(default_duration_s)
+        self._d4_frozen_plan_leases[generation] = lease_expires_at
+        return lease_expires_at
+
+    @staticmethod
+    def _validated_d4_plan_lease(value: Any, *, source: str) -> float:
+        lease_expires_at = float(value)
+        if not np.isfinite(lease_expires_at) or lease_expires_at < 0.0:
+            raise ValueError(
+                f"{source} must be a finite, non-negative D4 lease deadline"
+            )
+        return lease_expires_at
 
     def _d4_communication_publication(
         self,
@@ -7146,6 +7776,83 @@ class IntegratedScalableModuleStack:
             )
         return tuple(resources)
 
+    def _d4_plan_track_evidence_for_target(
+        self,
+        plan: Any,
+        target_id: str,
+        current_track: Any | None,
+        *,
+        now: float,
+    ) -> tuple[_D4PlanTrackEvidence, bool]:
+        """Return current D2 evidence or the last evidence for this plan task."""
+
+        config = self._require_ready()
+        plan_key = (str(plan.plan_id), int(plan.version))
+        plan_cache = self._d4_plan_track_evidence.setdefault(plan_key, {})
+        if current_track is not None:
+            state = np.asarray(current_track.state, dtype=float)
+            covariance = np.asarray(current_track.covariance, dtype=float)
+            if state.shape != (6,) or covariance.shape != (6, 6):
+                raise ValueError("D4 plan track evidence requires a 6D D2 track")
+            if not np.all(np.isfinite(state)) or not np.all(
+                np.isfinite(covariance)
+            ):
+                raise ValueError("D4 plan track evidence must be finite")
+            region_id = _region_for_position(
+                state[:3],
+                config.region_count,
+            )
+            self._track_region_by_id[target_id] = region_id
+            evidence = _D4PlanTrackEvidence(
+                global_track_id=target_id,
+                state_ned=tuple(float(value) for value in state),
+                covariance_ned=tuple(
+                    tuple(float(value) for value in row)
+                    for row in covariance
+                ),
+                last_update_time_s=float(current_track.last_update_time),
+                region_id=region_id,
+                captured_at_s=float(now),
+            )
+            plan_cache[target_id] = evidence
+            self._d4_plan_track_current_refresh_count += 1
+            return evidence, False
+
+        evidence = plan_cache.get(target_id)
+        if evidence is None:
+            for prior_cache in reversed(
+                tuple(self._d4_plan_track_evidence.values())
+            ):
+                prior = prior_cache.get(target_id)
+                if prior is not None:
+                    evidence = replace(prior, source="prior_plan_cache")
+                    plan_cache[target_id] = evidence
+                    break
+        if evidence is None:
+            region_id = self._track_region_by_id.get(
+                target_id,
+                _region_ids(config.region_count)[0],
+            )
+            covariance = np.eye(6, dtype=float) * 1.0e12
+            evidence = _D4PlanTrackEvidence(
+                global_track_id=target_id,
+                state_ned=(0.0, 0.0, 0.0, 0.0, 0.0, 0.0),
+                covariance_ned=tuple(
+                    tuple(float(value) for value in row)
+                    for row in covariance
+                ),
+                last_update_time_s=0.0,
+                region_id=region_id,
+                captured_at_s=float(now),
+                source="track_unavailable_tombstone",
+            )
+            plan_cache[target_id] = evidence
+            self._d4_plan_track_tombstone_count += 1
+
+        self._d4_plan_track_fallback_snapshot_count += 1
+        self._d4_plan_track_fallback_target_ids.add(target_id)
+        return evidence, True
+
     def _d4_snapshot(
         self,
         step_input: RuntimeStepInput,
@@ -7158,9 +7865,14 @@ class IntegratedScalableModuleStack:
         plan = self.latest_plan
         scenario = RegionalScenarioMetadata.from_scalable_scenario(config.to_dict())
         regions = _region_definitions(scenario.region_ids)
-        lease_expires_at = now + max(
+        lease_duration_s = max(
             config.assignment_period_s * self.stack_config.assignment_lease_multiplier,
             config.region_policy_period_s,
+        )
+        lease_expires_at = self._d4_frozen_plan_lease(
+            plan,
+            now=now,
+            default_duration_s=lease_duration_s,
         )
         snapshot_epoch = self._plan_authority_epoch(plan)
         if self._fault_generation_changed:
@@ -7179,16 +7891,35 @@ class IntegratedScalableModuleStack:
         }
         tasks: list[RegionalTaskEvidence] = []
         task_target_ids = (
-            tuple(sorted(d3_track_by_id))
+            tuple(
+                sorted(
+                    set(d3_track_by_id)
+                    | set(assignments_by_target)
+                )
+            )
             if _regional_resource_locality_enabled(config)
             else tuple(sorted(assignments_by_target))
         )
+        task_position_ned: dict[str, np.ndarray] = {}
+        fallback_target_ids: set[str] = set()
         for target_id in task_target_ids:
             assignments = assignments_by_target.get(target_id, ())
             track = track_by_id.get(target_id)
-            if track is None:
-                continue
+            track_evidence, used_fallback = (
+                self._d4_plan_track_evidence_for_target(
+                    plan,
+                    target_id,
+                    track,
+                    now=now,
+                )
+            )
+            if used_fallback:
+                fallback_target_ids.add(target_id)
+            track_state = track_evidence.state_array
+            track_covariance = track_evidence.covariance_array
+            task_position_ned[f"task:{target_id}"] = track_state[:3]
             coalition = coalition_by_target.get(target_id)
+            d3_track = d3_track_by_id.get(target_id)
             required_count = (
                 coalition.required_resource_count
                 if coalition is not None
@@ -7196,8 +7927,8 @@ class IntegratedScalableModuleStack:
                     assignments[0].required_resource_count
                     if assignments
                     else (
-                        d3_track_by_id[target_id].demand.required_resource_count
-                        if d3_track_by_id[target_id].demand is not None
+                        d3_track.demand.required_resource_count
+                        if d3_track is not None and d3_track.demand is not None
                         else 1
                     )
                 )
@@ -7223,10 +7954,7 @@ class IntegratedScalableModuleStack:
                 RegionalTaskEvidence(
                     task_id=f"task:{target_id}",
                     global_track_id=target_id,
-                    region_id=self._track_region_by_id.get(
-                        target_id,
-                        _region_for_position(track.state[:3], config.region_count),
-                    ),
+                    region_id=track_evidence.region_id,
                     d3_plan_id=plan.plan_id,
                     d3_plan_version=plan.version,
                     d3_epoch=snapshot_epoch,
@@ -7236,8 +7964,13 @@ class IntegratedScalableModuleStack:
                     d3_assigned_member_ids=assigned_ids,
                     coalition_id=(None if coalition is None else coalition.coalition_id),
                     coalition_version=(None if coalition is None else coalition.version),
-                    d1_covariance_trace=float(np.trace(track.covariance[:3, :3])),
-                    d1_measurement_age_s=max(0.0, now - float(track.last_update_time)),
+                    d1_covariance_trace=float(
+                        np.trace(track_covariance[:3, :3])
+                    ),
+                    d1_measurement_age_s=max(
+                        0.0,
+                        now - track_evidence.last_update_time_s,
+                    ),
                     d2_ambiguity_score=float(
                         0.0
                         if self.latest_d2_result is None
@@ -7256,12 +7989,22 @@ class IntegratedScalableModuleStack:
                     d5_support_member_ids=support_ids,
                 )
             )
+        self._d4_latest_plan_track_fallback_target_ids = tuple(
+            sorted(fallback_target_ids)
+        )
         members = self._d4_members(
             step_input.interceptors,
             tuple(tasks),
+            task_position_ned=task_position_ned,
             now=now,
+            plan_id=plan.plan_id,
+            previous_plan_id=(
+                getattr(plan, "previous_plan_id", None)
+                or plan.metadata.get("supersedes_plan_id")
+            ),
             plan_version=plan.version,
             epoch=snapshot_epoch,
+            lease_expires_at=lease_expires_at,
             partition_generation=step_input.communication_partition_generation,
         )
         secondaries = () if secondary_failed else self._d4_secondaries(
@@ -7279,6 +8022,7 @@ class IntegratedScalableModuleStack:
             step_input.interceptors,
             now,
             lease_expires_at,
+            plan_id=plan.plan_id,
             plan_version=plan.version,
             epoch=snapshot_epoch,
             partition_generation=step_input.communication_partition_generation,
@@ -7315,26 +8059,26 @@ class IntegratedScalableModuleStack:
         navigation: PlatformNavigationBatch,
         tasks: tuple[RegionalTaskEvidence, ...],
         *,
+        task_position_ned: Mapping[str, np.ndarray],
         now: float,
+        plan_id: str,
+        previous_plan_id: str | None,
         plan_version: int,
         epoch: int,
+        lease_expires_at: float,
         partition_generation: int,
     ) -> tuple[RegionalFallbackMember, ...]:
         config = self._require_ready()
-        task_track = {
-            task.task_id: next(
-                track
-                for track in self.latest_d2_tracks
-                if track.global_track_id == task.global_track_id
-            )
-            for task in tasks
-        }
+        if set(task_position_ned) != {task.task_id for task in tasks}:
+            raise ValueError("every D4 task requires one plan-track position")
         all_regions = _region_ids(config.region_count)
         members: list[RegionalFallbackMember] = []
         for index, resource_id in enumerate(navigation.platform_ids):
+            bridged_delivery = False
             delivery = self._d4_plan_deliveries.get(
                 (
                     resource_id,
+                    str(plan_id),
                     int(plan_version),
                     int(epoch),
                     int(partition_generation),
@@ -7354,8 +8098,10 @@ class IntegratedScalableModuleStack:
                     candidate
                     for key, candidate in self._d4_plan_deliveries.items()
                     if key[0] == resource_id
-                    and key[1] == int(plan_version) - 1
-                    and key[3] == int(partition_generation)
+                    and previous_plan_id is not None
+                    and key[1] == str(previous_plan_id)
+                    and key[2] == int(plan_version) - 1
+                    and key[4] == int(partition_generation)
                     and {
                         str(item.get("global_track_id", ""))
                         for item in candidate.payload.get(
@@ -7373,10 +8119,20 @@ class IntegratedScalableModuleStack:
                             item.receipt.arrival_timestamp_s
                         ),
                     )
+                    bridged_delivery = True
+            expected_delivery_plan_id = (
+                str(previous_plan_id)
+                if bridged_delivery
+                else str(plan_id)
+            )
             communication_ready = bool(
                 delivery is not None
+                and str(delivery.payload.get("plan_id", ""))
+                == expected_delivery_plan_id
                 and delivery.receipt.arrival_timestamp_s <= now + _EPS
                 and delivery.receipt.lease_expires_at_s > now
+                and delivery.receipt.lease_expires_at_s + _EPS
+                >= float(lease_expires_at)
                 and now - delivery.receipt.arrival_timestamp_s
                 <= self.stack_config.d4_communication_stale_after_s
             )
@@ -7385,7 +8141,10 @@ class IntegratedScalableModuleStack:
                 distance = float(
                     np.linalg.norm(
                         navigation.state_ned[index, :3]
-                        - task_track[task.task_id].state[:3]
+                        - np.asarray(
+                            task_position_ned[task.task_id],
+                            dtype=float,
+                        )
                     )
                 )
                 assigned_bonus = 1_000.0 if resource_id in task.d3_assigned_member_ids else 0.0
@@ -7530,6 +8289,7 @@ class IntegratedScalableModuleStack:
         now: float,
         lease_expires_at: float,
         *,
+        plan_id: str,
         plan_version: int,
         epoch: int,
         partition_generation: int,
@@ -7547,6 +8307,7 @@ class IntegratedScalableModuleStack:
                     (
                         resource_id,
                         task.global_track_id,
+                        str(plan_id),
                         int(plan_version),
                         int(epoch),
                         int(partition_generation),
@@ -7559,6 +8320,10 @@ class IntegratedScalableModuleStack:
                 if (
                     receipt.lease_expires_at_s <= now
                     or float(payload.get("valid_until", 0.0)) <= now
+                    or receipt.lease_expires_at_s + _EPS
+                    < float(lease_expires_at)
+                    or float(payload.get("valid_until", 0.0)) + _EPS
+                    < float(lease_expires_at)
                     or str(payload.get("coalition_id", ""))
                     != str(task.coalition_id)
                     or int(payload.get("coalition_version", -1))
@@ -7571,9 +8336,9 @@ class IntegratedScalableModuleStack:
                         global_track_id=task.global_track_id,
                         coalition_id=str(task.coalition_id),
                         coalition_version=int(task.coalition_version or 0),
-                        plan_id=task.d3_plan_id,
-                        plan_version=task.d3_plan_version,
-                        epoch=task.d3_epoch,
+                        plan_id=str(payload["plan_id"]),
+                        plan_version=int(payload["plan_version"]),
+                        epoch=int(payload["epoch"]),
                         can_execute=bool(
                             active_by_id.get(resource_id, False)
                             and payload.get("can_execute", False)
@@ -7676,6 +8441,14 @@ class IntegratedScalableModuleStack:
             return D4GuidancePermission(
                 action="hold_for_review",
                 reason="d4_decision_missing",
+                requires_human_review=True,
+            )
+        current_plan_alignment = self.d4_current_plan_alignment()
+        if current_plan_alignment.get("aligned") is not True:
+            return D4GuidancePermission(
+                action="hold_for_review",
+                mode="hold",
+                reason="d4_current_plan_generation_mismatch",
                 requires_human_review=True,
             )
         region_id = self._track_region_by_id.get(target_id)
@@ -9243,6 +10016,83 @@ class IntegratedScalableModuleStack:
         )
         self._identity_commitment_replan_required = True
 
+    def _d3_authoritative_publication_if_required(
+        self,
+        now: float,
+    ) -> RuntimePublication | None:
+        """Publish one immutable authority payload per D3 plan identity."""
+
+        plan = self.latest_plan
+        binding_keys = (
+            "authority_epoch",
+            "lease_expires_at_s",
+            "regional_max_epoch",
+            "regional_min_lease_expires_at_s",
+        )
+        missing_binding_keys = tuple(
+            key for key in binding_keys if key not in plan.metadata
+        )
+        if missing_binding_keys:
+            self._d3_authority_plan_digest_conflict_count += 1
+            raise RuntimeError(
+                "D3 authoritative plan is missing authority generation "
+                f"binding: {', '.join(missing_binding_keys)}"
+            )
+        key = (str(plan.plan_id), int(plan.version))
+        stored = self._d3_authoritative_plan_by_identity.get(key)
+        if stored is None:
+            if plan.requires_authoritative_publication(None) is not True:
+                raise RuntimeError(
+                    "new D3 plan identity did not request authoritative publication"
+                )
+            self._d3_authoritative_plan_by_identity[key] = (
+                plan,
+                plan.authority_signature(),
+            )
+            self._d3_authoritative_publication_count += 1
+            return self._d3_publication(now)
+
+        authoritative_plan, authoritative_signature = stored
+        try:
+            publication_required = plan.requires_authoritative_publication(
+                authoritative_plan
+            )
+        except ValueError as exc:
+            self._d3_authority_plan_digest_conflict_count += 1
+            raise RuntimeError(
+                "D3 authoritative plan identity changed execution payload"
+            ) from exc
+        if (
+            publication_required
+            or plan.authority_signature() != authoritative_signature
+        ):
+            self._d3_authority_plan_digest_conflict_count += 1
+            raise RuntimeError(
+                "D3 authoritative plan identity changed execution payload"
+            )
+
+        self._d3_evaluation_refresh_suppressed_count += 1
+        metadata = dict(plan.metadata)
+        self._d3_latest_evaluation_refresh = {
+            "plan_id": key[0],
+            "plan_version": key[1],
+            "evaluated_at_s": float(
+                metadata.get("last_evaluated_at_s", now)
+            ),
+            "evaluation_refresh_only": bool(
+                metadata.get("evaluation_refresh_only", True)
+            ),
+            "decision_state": str(plan.decision_state),
+            "changed": bool(plan.changed),
+            "total_cost": float(plan.total_cost),
+            "candidate_total_cost": (
+                None
+                if plan.candidate_total_cost is None
+                else float(plan.candidate_total_cost)
+            ),
+        }
+        return None
+
     def _d3_publication(self, now: float) -> RuntimePublication:
         plan = self.latest_plan
         return RuntimePublication(
@@ -9557,6 +10407,8 @@ class IntegratedScalableModuleStack:
         a3_evidence = tuple(
             self._d5_a3_evidence_by_comparison_key.values()
         )
+        d4_plan_alignment = self.d4_current_plan_alignment()
+        d4_execution_closure = self.d4_current_plan_execution_closure()
         return {
             "schema_version": INTEGRATED_STACK_SCHEMA_VERSION,
             "timestamp": now,
@@ -9564,6 +10416,26 @@ class IntegratedScalableModuleStack:
             "d2_track_count": len(self.latest_d2_tracks),
             "d3_assignment_count": (
                 0 if self.latest_plan is None else len(self.latest_plan.assignments)
+            ),
+            "d3_authoritative_plan_identity_count": len(
+                self._d3_authoritative_plan_by_identity
+            ),
+            "d3_authoritative_publication_count": int(
+                self._d3_authoritative_publication_count
+            ),
+            "d3_evaluation_refresh_suppressed_count": int(
+                self._d3_evaluation_refresh_suppressed_count
+            ),
+            "d3_authority_plan_digest_conflict_count": int(
+                self._d3_authority_plan_digest_conflict_count
+            ),
+            "d3_duplicate_transport_reference_count": int(
+                self._d3_duplicate_transport_reference_count
+            ),
+            "d3_latest_evaluation_refresh": (
+                None
+                if self._d3_latest_evaluation_refresh is None
+                else dict(self._d3_latest_evaluation_refresh)
             ),
             "d3_identity_commitment_binding_hold_count": int(
                 self._identity_commitment_binding_hold_count
@@ -9613,6 +10485,34 @@ class IntegratedScalableModuleStack:
             ),
             "d4_communication_event_evaluation_count": (
                 self._d4_communication_event_evaluation_count
+            ),
+            "d4_current_plan_alignment": d4_plan_alignment,
+            "d4_current_plan_execution_closure": d4_execution_closure,
+            "d4_plan_track_evidence_identity_count": len(
+                self._d4_plan_track_evidence
+            ),
+            "d4_plan_track_current_refresh_count": int(
+                self._d4_plan_track_current_refresh_count
+            ),
+            "d4_plan_track_fallback_snapshot_count": int(
+                self._d4_plan_track_fallback_snapshot_count
+            ),
+            "d4_plan_track_tombstone_count": int(
+                self._d4_plan_track_tombstone_count
+            ),
+            "d4_plan_track_fallback_target_ids": tuple(
+                sorted(self._d4_plan_track_fallback_target_ids)
+            ),
+            "d4_latest_plan_track_fallback_target_ids": (
+                self._d4_latest_plan_track_fallback_target_ids
+            ),
+            "d4_plan_retry_limit": self.stack_config.d4_plan_retry_limit,
+            "d4_plan_retry_count": self._d4_plan_retry_count,
+            "d4_plan_retry_exhausted_count": len(
+                self._d4_retry_exhausted_keys
+            ),
+            "d4_missing_required_ack_count": len(
+                self._d4_missing_required_member_ids()
             ),
             "d4_readiness_reception_count": len(
                 self._d4_readiness_receptions

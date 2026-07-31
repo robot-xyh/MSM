@@ -100,6 +100,10 @@ def write_episode_outputs(
     _append_post_run_timing(timings, "core_metadata", stage_started)
 
     stage_started = perf_counter()
+    paths["communication_dispositions"] = _write_communication_dispositions_jsonl(
+        output_dir / "communication_dispositions.jsonl",
+        result,
+    )
     paths["online_observations"], prewritten_identity_records = _write_online_jsonl(
         output_dir / "online_observations.jsonl",
         result,
@@ -344,6 +348,24 @@ def _write_truth_jsonl(path: Path, result: EpisodeResult) -> Path:
             stream.write(
                 json.dumps(
                     jsonable(label),
+                    ensure_ascii=False,
+                    sort_keys=True,
+                    separators=(",", ":"),
+                )
+                + "\n"
+            )
+    return path
+
+
+def _write_communication_dispositions_jsonl(
+    path: Path,
+    result: EpisodeResult,
+) -> Path:
+    with path.open("w", encoding="utf-8") as stream:
+        for record in result.communication_disposition_records:
+            stream.write(
+                json.dumps(
+                    record,
                     ensure_ascii=False,
                     sort_keys=True,
                     separators=(",", ":"),

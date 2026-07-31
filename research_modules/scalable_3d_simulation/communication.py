@@ -2,7 +2,8 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from collections.abc import Mapping
+from dataclasses import dataclass, replace
 import hashlib
 import heapq
 import json
@@ -53,6 +54,41 @@ class CommunicationStats:
     delivered_bytes: int
 
 
+@dataclass(frozen=True)
+class CommunicationDisposition:
+    """Final per-message transport disposition for offline runtime audit."""
+
+    transport_id: int
+    message_id: str | None
+    envelope_sequence: int
+    topic: str
+    source: str
+    destination: str
+    send_timestamp: float
+    arrival_timestamp: float | None
+    disposition: str
+    payload_size_bytes: int
+    random_stream: str
+    retry_generation: int
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "schema_version": "scalable3d-communication-disposition-v1",
+            "transport_id": self.transport_id,
+            "message_id": self.message_id,
+            "envelope_sequence": self.envelope_sequence,
+            "topic": self.topic,
+            "source": self.source,
+            "destination": self.destination,
+            "send_timestamp": self.send_timestamp,
+            "arrival_timestamp": self.arrival_timestamp,
+            "disposition": self.disposition,
+            "payload_size_bytes": self.payload_size_bytes,
+            "random_stream": self.random_stream,
+            "retry_generation": self.retry_generation,
+        }
+
+
 class DeterministicCommunicationNetwork:
     """Seeded network queue with directed-link overrides."""
 
@@ -69,6 +105,7 @@ class DeterministicCommunicationNetwork:
         self._dropped_count = 0
         self._sent_bytes = 0
         self._delivered_bytes = 0
+        self._dispositions: dict[int, CommunicationDisposition] = {}
 
     def set_link_profile(self, source: str, destination: str, profile: LinkProfile) -> None:
         self._profiles[(str(source), str(destination))] = profile
@@ -98,9 +135,38 @@ class DeterministicCommunicationNetwork:
         )
         self._sent_count += 1
         self._sent_bytes += payload_size
+        self._counter += 1
+        transport_id = self._counter
+        payload = envelope.payload
+        message_id = (
+            str(payload.get("message_id")).strip()
+            if isinstance(payload, Mapping) and payload.get("message_id") is not None
+            else None
+        )
+        retry_generation = (
+            int(payload.get("retry_generation", 0))
+            if isinstance(payload, Mapping)
+            else 0
+        )
+        if retry_generation < 0:
+            raise ValueError("retry_generation must be non-negative")
         rng = self._random_stream(stream)
         if rng.random() < profile.drop_probability:
             self._dropped_count += 1
+            self._dispositions[transport_id] = CommunicationDisposition(
+                transport_id=transport_id,
+                message_id=message_id,
+                envelope_sequence=int(envelope.sequence),
+                topic=str(envelope.topic),
+                source=str(source),
+                destination=str(destination),
+                send_timestamp=float(send_timestamp),
+                arrival_timestamp=None,
+                disposition="dropped",
+                payload_size_bytes=payload_size,
+                random_stream=stream,
+                retry_generation=retry_generation,
+            )
             return False
         jitter = (
             float(rng.normal(0.0, profile.jitter_s))
@@ -117,8 +183,21 @@ class DeterministicCommunicationNetwork:
             envelope=envelope,
             payload_size_bytes=payload_size,
         )
-        self._counter += 1
-        heapq.heappush(self._queue, (arrival, self._counter, message))
+        self._dispositions[transport_id] = CommunicationDisposition(
+            transport_id=transport_id,
+            message_id=message_id,
+            envelope_sequence=int(envelope.sequence),
+            topic=str(envelope.topic),
+            source=str(source),
+            destination=str(destination),
+            send_timestamp=float(send_timestamp),
+            arrival_timestamp=arrival,
+            disposition="pending",
+            payload_size_bytes=payload_size,
+            random_stream=stream,
+            retry_generation=retry_generation,
+        )
+        heapq.heappush(self._queue, (arrival, transport_id, message))
         return True
 
     def _random_stream(self, stream: str) -> np.random.Generator:
@@ -142,11 +221,63 @@ class DeterministicCommunicationNetwork:
             raise ValueError("timestamp must be finite and non-negative")
         delivered: list[DeliveredMessage] = []
         while self._queue and self._queue[0][0] <= float(timestamp) + 1.0e-12:
-            _, _, message = heapq.heappop(self._queue)
+            _, transport_id, message = heapq.heappop(self._queue)
             delivered.append(message)
             self._delivered_count += 1
             self._delivered_bytes += message.payload_size_bytes
+            prior = self._dispositions[transport_id]
+            self._dispositions[transport_id] = replace(
+                prior,
+                disposition="delivered",
+            )
         return tuple(delivered)
+
+    def deliver_topics(
+        self,
+        timestamp: float,
+        *,
+        topics: frozenset[str],
+    ) -> tuple[DeliveredMessage, ...]:
+        """Release due messages for selected topics while retaining other traffic."""
+
+        if not np.isfinite(timestamp) or timestamp < 0.0:
+            raise ValueError("timestamp must be finite and non-negative")
+        if not topics:
+            return ()
+        delivered: list[DeliveredMessage] = []
+        retained: list[tuple[float, int, DeliveredMessage]] = []
+        while self._queue and self._queue[0][0] <= float(timestamp) + 1.0e-12:
+            arrival, transport_id, message = heapq.heappop(self._queue)
+            if message.envelope.topic not in topics:
+                retained.append((arrival, transport_id, message))
+                continue
+            delivered.append(message)
+            self._delivered_count += 1
+            self._delivered_bytes += message.payload_size_bytes
+            prior = self._dispositions[transport_id]
+            self._dispositions[transport_id] = replace(
+                prior,
+                disposition="delivered",
+            )
+        for item in retained:
+            heapq.heappush(self._queue, item)
+        return tuple(delivered)
+
+    def pending_topic_count(self, topics: frozenset[str]) -> int:
+        """Return queued message count for the selected topics."""
+
+        return sum(
+            message.envelope.topic in topics
+            for _, _, message in self._queue
+        )
+
+    def disposition_records(self) -> tuple[CommunicationDisposition, ...]:
+        """Return one final disposition for every attempted transport."""
+
+        return tuple(
+            self._dispositions[transport_id]
+            for transport_id in sorted(self._dispositions)
+        )
 
     def stats(self) -> CommunicationStats:
         return CommunicationStats(
@@ -170,3 +301,4 @@ class DeterministicCommunicationNetwork:
         self._dropped_count = 0
         self._sent_bytes = 0
         self._delivered_bytes = 0
+        self._dispositions.clear()

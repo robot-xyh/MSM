@@ -273,6 +273,56 @@ def test_bus_sequences_messages_and_network_applies_transport_delay() -> None:
     assert delivered[0].arrival_timestamp > 1.1
 
 
+def test_network_records_final_message_disposition_and_retry_generation() -> None:
+    envelope = VersionedEnvelope(
+        sequence=7,
+        topic="d4.regional_plan_broadcast.v1",
+        source="CENTER",
+        timestamp=1.0,
+        schema_version="d4-test-v1",
+        payload={
+            "message_id": "plan-message-7",
+            "retry_generation": 1,
+        },
+    )
+    network = DeterministicCommunicationNetwork(
+        seed=3,
+        default_profile=LinkProfile(
+            latency_s=0.1,
+            jitter_s=0.0,
+            drop_probability=0.0,
+            bandwidth_bytes_per_s=1_000_000.0,
+        ),
+    )
+
+    assert network.send(
+        source="CENTER",
+        destination="INT-001",
+        send_timestamp=1.0,
+        envelope=envelope,
+    )
+    pending = network.disposition_records()
+    assert len(pending) == 1
+    assert pending[0].disposition == "pending"
+    assert pending[0].retry_generation == 1
+    assert pending[0].message_id == "plan-message-7"
+    assert network.deliver_topics(
+        1.2,
+        topics=frozenset({"sensor.observations"}),
+    ) == ()
+    assert network.pending_topic_count(
+        frozenset({"d4.regional_plan_broadcast.v1"})
+    ) == 1
+
+    delivered = network.deliver_topics(
+        1.2,
+        topics=frozenset({"d4.regional_plan_broadcast.v1"}),
+    )
+
+    assert len(delivered) == 1
+    assert network.disposition_records()[0].disposition == "delivered"
+
+
 def test_separate_communication_random_stream_does_not_perturb_shared_transport() -> None:
     profile = LinkProfile(
         latency_s=0.1,
@@ -403,6 +453,20 @@ def test_small_episode_writes_separate_online_and_truth_artifacts(tmp_path: Path
     assert result.summary["finite_state"] is True
     assert result.summary["online_truth_use_count"] == 0
     assert result.output_paths is not None
+    dispositions = [
+        json.loads(line)
+        for line in (tmp_path / "communication_dispositions.jsonl")
+        .read_text(encoding="utf-8")
+        .splitlines()
+    ]
+    assert len(dispositions) == result.summary[
+        "communication_disposition_record_count"
+    ]
+    assert all(
+        item["schema_version"]
+        == "scalable3d-communication-disposition-v1"
+        for item in dispositions
+    )
     online_text = (tmp_path / "online_observations.jsonl").read_text(encoding="utf-8")
     truth_text = (tmp_path / "offline_truth_labels.jsonl").read_text(encoding="utf-8")
     assert "truth_entity_id" not in online_text

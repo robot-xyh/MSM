@@ -48,6 +48,15 @@ from .runtime_ports import (
 from .world import ProximityInterceptEvent, VectorizedPointMassWorld
 
 
+_D4_DRAIN_TOPICS = frozenset(
+    {
+        "d4.regional_plan_broadcast.v1",
+        "d4.coalition_member_ack.v1",
+        "d4.regional_plan_owner_ack.v1",
+    }
+)
+
+
 @dataclass(frozen=True)
 class StageTiming:
     stage: str
@@ -80,6 +89,7 @@ class EpisodeResult:
     intruder_ids: tuple[str, ...]
     proximity_intercepts: tuple[ProximityInterceptEvent, ...]
     online_messages: tuple[VersionedEnvelope, ...]
+    communication_disposition_records: tuple[dict[str, Any], ...]
     offline_truth_labels: tuple[OfflineTruthLabel, ...]
     d1_consistency_evidence_records: tuple[Any, ...]
     stage_timings: tuple[StageTiming, ...]
@@ -281,6 +291,11 @@ class Scalable3DEpisodeRunner:
         camera_empty_frame_queued_count = 0
         camera_empty_frame_dropped_count = 0
         camera_empty_frame_delivered_count = 0
+        d4_terminal_drain_step_count = 0
+        d4_terminal_drain_delivered_count = 0
+        d4_terminal_drain_intent_count = 0
+        d4_terminal_drain_completed = True
+        d4_terminal_drain_final_timestamp = float(timestamps[-1])
 
         for step_index in range(step_count):
             snapshot = self.world.snapshot()
@@ -672,6 +687,25 @@ class Scalable3DEpisodeRunner:
                             assignment_plan_post_ack_intent_count += len(
                                 post_ack_intents
                             )
+                    else:
+                        evaluation_recorder = getattr(
+                            self.module_stack,
+                            "record_assignment_evaluation_runtime",
+                            None,
+                        )
+                        if callable(evaluation_recorder):
+                            evaluation_recorder(
+                                source_publication_envelopes=tuple(
+                                    publication_envelopes
+                                ),
+                                timestamp_s=current_time,
+                                partition_generation=(
+                                    _communication_partition_generation(
+                                        self.config,
+                                        current_time,
+                                    )
+                                ),
+                            )
                     timing.add(
                         "module_publication_bus",
                         time.perf_counter() - publication_started,
@@ -765,9 +799,184 @@ class Scalable3DEpisodeRunner:
                 last_module_diagnostics = dict(final_output.diagnostics)
                 timing.add("module_stack_finalize", time.perf_counter() - started)
 
+        if self.module_stack is not None and self.config.communication_enabled:
+            drainer = getattr(self.module_stack, "drain_communication", None)
+            stack_config = getattr(self.module_stack, "stack_config", None)
+            drain_budget_s = float(
+                getattr(stack_config, "d4_terminal_drain_budget_s", 0.0)
+            )
+            if callable(drainer) and drain_budget_s > 0.0:
+                drain_started = time.perf_counter()
+                final_snapshot = self.world.snapshot()
+                drain_start_s = float(timestamps[-1])
+                drain_limit_s = drain_start_s + drain_budget_s
+                drain_dt_s = min(
+                    self.config.physics_dt_s,
+                    float(
+                        getattr(
+                            stack_config,
+                            "d4_plan_retry_interval_s",
+                            self.config.physics_dt_s,
+                        )
+                    ),
+                )
+                drain_dt_s = max(drain_dt_s, 1.0e-6)
+                drain_time_s = drain_start_s
+                drain_deliveries = tuple(delivered_control_messages)
+                d4_terminal_drain_completed = False
+                while drain_time_s <= drain_limit_s + 1.0e-12:
+                    drain_output = drainer(
+                        RuntimeStepInput(
+                            timestamp=drain_time_s,
+                            arrived_sensor_batches=(),
+                            interceptors=_platform_navigation_batch(
+                                "interceptor",
+                                final_snapshot.interceptors,
+                                drain_time_s,
+                            ),
+                            recon=_platform_navigation_batch(
+                                "recon",
+                                final_snapshot.recon,
+                                drain_time_s,
+                            ),
+                            cameras=tuple(
+                                camera_states[camera_id]
+                                for camera_id in sorted(camera_states)
+                            ),
+                            delivered_communication_messages=drain_deliveries,
+                            communication_partition_generation=(
+                                _communication_partition_generation(
+                                    self.config,
+                                    drain_start_s,
+                                )
+                            ),
+                        )
+                    ).validated(
+                        resource_count=self.config.resource_count,
+                        recon_count=self.config.recon_count,
+                    )
+                    if drain_output.camera_commands:
+                        raise ValueError(
+                            "communication drain must not emit camera commands"
+                        )
+                    if np.any(drain_output.interceptor_acceleration_ned) or np.any(
+                        drain_output.recon_acceleration_ned
+                    ):
+                        raise ValueError(
+                            "communication drain must not emit motion commands"
+                        )
+                    d4_terminal_drain_step_count += 1
+                    d4_terminal_drain_final_timestamp = drain_time_s
+                    last_module_diagnostics = dict(drain_output.diagnostics)
+                    for publication in drain_output.publications:
+                        self.bus.publish(
+                            topic=publication.topic,
+                            source=publication.source,
+                            timestamp=drain_time_s,
+                            schema_version=publication.schema_version,
+                            payload=publication.payload,
+                            copy_payload=publication.copy_payload,
+                        )
+                        module_publication_count += 1
+                        module_publication_topic_counts[publication.topic] = (
+                            module_publication_topic_counts.get(
+                                publication.topic,
+                                0,
+                            )
+                            + 1
+                        )
+                    for intent in drain_output.communication_intents:
+                        communication_intent_issued_count += 1
+                        d4_terminal_drain_intent_count += 1
+                        communication_intent_topic_counts[intent.topic] += 1
+                        transport_sequence += 1
+                        queued = self.communication.send(
+                            source=intent.source,
+                            destination=intent.destination,
+                            send_timestamp=drain_time_s,
+                            random_stream=intent.random_stream,
+                            envelope=VersionedEnvelope(
+                                sequence=transport_sequence,
+                                topic=intent.topic,
+                                source=intent.source,
+                                timestamp=drain_time_s,
+                                schema_version=intent.schema_version,
+                                payload=intent.payload,
+                            ),
+                        )
+                        if queued:
+                            communication_intent_queued_count += 1
+                        else:
+                            communication_intent_dropped_count += 1
+                    missing_ack_count = int(
+                        drain_output.diagnostics.get(
+                            "d4_missing_required_ack_count",
+                            0,
+                        )
+                    )
+                    alignment = drain_output.diagnostics.get(
+                        "d4_current_plan_alignment",
+                        {},
+                    )
+                    current_plan_aligned = bool(
+                        isinstance(alignment, Mapping)
+                        and alignment.get("available") is True
+                        and alignment.get("aligned") is True
+                    )
+                    execution_closure = drain_output.diagnostics.get(
+                        "d4_current_plan_execution_closure",
+                        {},
+                    )
+                    current_plan_execution_closed = bool(
+                        isinstance(execution_closure, Mapping)
+                        and execution_closure.get("available") is True
+                        and execution_closure.get("closed") is True
+                    )
+                    if (
+                        missing_ack_count == 0
+                        and current_plan_aligned
+                        and current_plan_execution_closed
+                    ):
+                        d4_terminal_drain_completed = True
+                        break
+                    next_time_s = drain_time_s + drain_dt_s
+                    if next_time_s > drain_limit_s + 1.0e-12:
+                        break
+                    drain_deliveries = self.communication.deliver_topics(
+                        next_time_s,
+                        topics=_D4_DRAIN_TOPICS,
+                    )
+                    for delivered in drain_deliveries:
+                        d4_terminal_drain_delivered_count += 1
+                        delivered_control_message_count += 1
+                        delivered_control_topic_counts[
+                            delivered.envelope.topic
+                        ] += 1
+                        self.bus.publish(
+                            topic=delivered.envelope.topic,
+                            source=delivered.source,
+                            timestamp=delivered.arrival_timestamp,
+                            schema_version=delivered.envelope.schema_version,
+                            payload=delivered.envelope.payload,
+                            copy_payload=False,
+                        )
+                    drain_time_s = next_time_s
+                timing.add(
+                    "d4_terminal_communication_drain",
+                    time.perf_counter() - drain_started,
+                )
+
         elapsed = time.perf_counter() - episode_start
         diagnostics = self.world.diagnostics()
         communication_stats = self.communication.stats()
+        communication_dispositions = tuple(
+            item.to_dict()
+            for item in self.communication.disposition_records()
+        )
+        communication_disposition_counts = Counter(
+            str(item["disposition"])
+            for item in communication_dispositions
+        )
         messages = self.bus.messages()
         d1_consistency_records = _d1_consistency_evidence_records(
             self.module_stack
@@ -875,6 +1084,15 @@ class Scalable3DEpisodeRunner:
             "communication_pending_count": communication_stats.pending_count,
             "communication_sent_bytes": communication_stats.sent_bytes,
             "communication_delivered_bytes": communication_stats.delivered_bytes,
+            "communication_disposition_schema_version": (
+                "scalable3d-communication-disposition-v1"
+            ),
+            "communication_disposition_record_count": len(
+                communication_dispositions
+            ),
+            "communication_disposition_counts": dict(
+                sorted(communication_disposition_counts.items())
+            ),
             "communication_intent_issued_count": (
                 communication_intent_issued_count
             ),
@@ -895,6 +1113,17 @@ class Scalable3DEpisodeRunner:
             ),
             "delivered_control_topic_counts": dict(
                 sorted(delivered_control_topic_counts.items())
+            ),
+            "d4_terminal_drain_step_count": d4_terminal_drain_step_count,
+            "d4_terminal_drain_delivered_count": (
+                d4_terminal_drain_delivered_count
+            ),
+            "d4_terminal_drain_intent_count": (
+                d4_terminal_drain_intent_count
+            ),
+            "d4_terminal_drain_completed": d4_terminal_drain_completed,
+            "d4_terminal_drain_final_timestamp": (
+                d4_terminal_drain_final_timestamp
             ),
             **learning_artifact_counts,
             "online_truth_use_count": 0,
@@ -1059,6 +1288,7 @@ class Scalable3DEpisodeRunner:
             intruder_ids=tuple(self.world.intruder_ids),
             proximity_intercepts=tuple(proximity_intercepts),
             online_messages=messages,
+            communication_disposition_records=communication_dispositions,
             offline_truth_labels=tuple(offline_labels),
             d1_consistency_evidence_records=d1_consistency_records,
             stage_timings=timing.records(),
@@ -1145,6 +1375,9 @@ def run_episode(
         intruder_ids=result.intruder_ids,
         proximity_intercepts=result.proximity_intercepts,
         online_messages=result.online_messages,
+        communication_disposition_records=(
+            result.communication_disposition_records
+        ),
         offline_truth_labels=result.offline_truth_labels,
         d1_consistency_evidence_records=(
             result.d1_consistency_evidence_records

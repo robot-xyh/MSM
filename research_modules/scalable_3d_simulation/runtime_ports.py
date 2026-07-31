@@ -296,3 +296,9 @@ class ScalableModuleStack(Protocol):
 
     def step(self, step_input: RuntimeStepInput) -> RuntimeStepOutput:
         ...
+
+    def drain_communication(
+        self,
+        step_input: RuntimeStepInput,
+    ) -> RuntimeStepOutput:
+        ...

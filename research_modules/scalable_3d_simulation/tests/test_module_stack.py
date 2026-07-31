@@ -31,9 +31,11 @@ from research_modules.d3_assignment_planner.src.d3_assignment_planner import (
 )
 from research_modules.d4_distributed_fallback.d4_distributed_fallback import (
     AdvisorMode,
+    C2Health,
     ConstrainedDevelopmentRegionResourceAdapter,
     DeterministicResourceProjector,
     RecommendationSource,
+    RegionalFailoverCoordinator,
     RegionResourceAdvisoryResult,
     RegionResourceDevelopmentInterventionConfig,
     RegionResourceProjectionConfig,
@@ -48,6 +50,7 @@ from research_modules.d5_terminal_association.src.d5_terminal_association import
 from research_modules.d6_evaluation_metrics.d6_evaluation_metrics.regional_planning_chain_audit import (
     audit_regional_planning_chain,
 )
+from research_modules.scalable_3d_simulation.communication import LinkProfile
 from research_modules.scalable_3d_simulation.models import ScenarioConfig
 from research_modules.scalable_3d_simulation.module_stack import (
     D1_PUBLICATION_EVIDENCE_SNAPSHOT_CANDIDATE_IMPLEMENTATION,
@@ -55,10 +58,17 @@ from research_modules.scalable_3d_simulation.module_stack import (
     IntegratedScalableModuleStack,
     IntegratedStackConfig,
 )
-from research_modules.scalable_3d_simulation.orchestrator import run_episode
+from research_modules.scalable_3d_simulation.orchestrator import (
+    Scalable3DEpisodeRunner,
+    run_episode,
+)
 from research_modules.scalable_3d_simulation.reporting import (
     STAGE_TIMING_SCHEMA_VERSION,
     write_batch_outputs,
+)
+from research_modules.scalable_3d_simulation.runtime_ports import (
+    PlatformNavigationBatch,
+    RuntimeStepInput,
 )
 from research_modules.scalable_3d_simulation.scenarios import make_curriculum_scenario
 from research_modules.scalable_3d_simulation.world import (
@@ -545,7 +555,7 @@ def test_d1_publication_metadata_selection_is_explicit_hashed_and_audited() -> N
         resource_count=2,
         recon_count=1,
         region_count=1,
-        duration_s=0.6,
+        duration_s=1.2,
         seed=23,
     )
     default = IntegratedStackConfig()
@@ -4037,6 +4047,1037 @@ def test_m_to_n_secondary_coalition_waits_for_all_delivered_acks() -> None:
     )
 
 
+def test_normal_center_rechecks_d4_against_the_current_d3_generation() -> None:
+    config = ScenarioConfig(
+        scenario_name="high_threat_m_to_n_20v20",
+        scenario_version="high_threat_m_to_n-20v20-v1",
+        target_count=20,
+        resource_count=20,
+        recon_count=1,
+        region_count=8,
+        duration_s=2.0,
+        seed=1007,
+        sensor_random_schedule_version="entity_fixed_v1",
+        metadata={
+            "demand_pattern": "hybrid_2_primary_1_reserve",
+            "high_threat_fraction": 0.1,
+        },
+    )
+    stack = IntegratedScalableModuleStack()
+
+    result = run_episode(config, module_stack=stack)
+
+    last_d3 = next(
+        message.payload
+        for message in reversed(result.online_messages)
+        if message.topic == "modules.d3.assignment_plan"
+    )
+    last_d4 = next(
+        message.payload
+        for message in reversed(result.online_messages)
+        if message.topic == "modules.d4.regional_failover"
+    )
+    d4_plan_generations = {
+        (
+            region["ownership"]["plan_id"],
+            region["ownership"]["plan_version"],
+        )
+        for region in last_d4["regions"]
+    }
+
+    assert last_d3["plan_version"] == 2
+    assert d4_plan_generations == {
+        (last_d3["plan_id"], last_d3["plan_version"])
+    }
+    diagnostics = result.summary["module_final_diagnostics"]
+    assert diagnostics["d4_current_plan_alignment"]["aligned"] is True
+    assert diagnostics["d4_communication_event_evaluation_count"] > 0
+    assert diagnostics["d4_missing_required_ack_count"] == 0
+
+
+def test_same_plan_identity_has_one_authoritative_runtime_publication() -> None:
+    config = ScenarioConfig(
+        scenario_name="high_threat_authority_publication",
+        scenario_version="high-threat-authority-publication-v1",
+        target_count=5,
+        resource_count=5,
+        recon_count=1,
+        region_count=8,
+        duration_s=2.0,
+        seed=1000,
+        sensor_random_schedule_version="entity_fixed_v1",
+        metadata={
+            "demand_pattern": "hybrid_2_primary_1_reserve",
+            "high_threat_fraction": 0.1,
+        },
+    )
+
+    stack = IntegratedScalableModuleStack()
+    result = run_episode(config, module_stack=stack)
+
+    plan_messages = tuple(
+        message
+        for message in result.online_messages
+        if message.topic == "modules.d3.assignment_plan"
+    )
+    plan_keys = tuple(
+        (
+            str(message.payload["plan_id"]),
+            int(message.payload["plan_version"]),
+        )
+        for message in plan_messages
+    )
+    diagnostics = result.summary["module_final_diagnostics"]
+
+    assert plan_messages
+    assert len(plan_keys) == len(set(plan_keys))
+    assert diagnostics["d3_authoritative_publication_count"] == len(
+        plan_messages
+    )
+    assert diagnostics["d3_authoritative_plan_identity_count"] == len(
+        plan_messages
+    )
+    assert diagnostics["d3_evaluation_refresh_suppressed_count"] >= 1
+    assert diagnostics["d3_authority_plan_digest_conflict_count"] == 0
+    assert result.summary["assignment_plan_ack_count"] == len(plan_messages)
+    for message in plan_messages:
+        metadata = message.payload["metadata"]
+        assert metadata["authority_epoch"] == metadata["regional_max_epoch"]
+        assert (
+            metadata["lease_expires_at_s"]
+            == metadata["regional_min_lease_expires_at_s"]
+        )
+        assert metadata["lease_expires_at_s"] > message.payload["created_at"]
+
+    final_plan_payload = plan_messages[-1].payload
+    final_plan_metadata = final_plan_payload["metadata"]
+    assert stack.latest_plan.plan_id == final_plan_payload["plan_id"]
+    assert stack.latest_plan.version == final_plan_payload["plan_version"]
+    assert (
+        stack.latest_plan.metadata["authority_epoch"]
+        == final_plan_metadata["authority_epoch"]
+    )
+    assert (
+        stack.latest_plan.metadata["lease_expires_at_s"]
+        == final_plan_metadata["lease_expires_at_s"]
+    )
+    final_d4_payload = next(
+        message.payload
+        for message in reversed(result.online_messages)
+        if message.topic == "modules.d4.regional_failover"
+    )
+    assert all(
+        region["ownership"]["epoch"]
+        == final_plan_metadata["authority_epoch"]
+        for region in final_d4_payload["regions"]
+    )
+    assert all(
+        region["ownership"]["lease_expires_at_s"]
+        == final_plan_metadata["lease_expires_at_s"]
+        for region in final_d4_payload["regions"]
+    )
+
+
+def test_same_plan_identity_authority_mutation_fails_before_publication() -> None:
+    config = ScenarioConfig(
+        scenario_name="authority_signature_conflict",
+        scenario_version="authority-signature-conflict-v1",
+        target_count=2,
+        resource_count=4,
+        recon_count=1,
+        region_count=1,
+        duration_s=0.8,
+        seed=1017,
+        radar_detection_probability=1.0,
+        acoustic_enabled=False,
+        visual_enabled=False,
+        metadata={
+            "demand_pattern": "hybrid_2_primary_1_reserve",
+            "high_threat_fraction": 0.5,
+        },
+    )
+    stack = IntegratedScalableModuleStack(
+        IntegratedStackConfig(d1_scan_max_lateness_s=0.0)
+    )
+    run_episode(config, module_stack=stack)
+    plan = stack.latest_plan
+    stack.latest_plan = replace(
+        plan,
+        metadata={
+            **dict(plan.metadata),
+            "active_plan_owner": "conflicting-owner",
+        },
+    )
+
+    with pytest.raises(
+        RuntimeError,
+        match="changed execution payload",
+    ):
+        stack._d3_authoritative_publication_if_required(
+            config.duration_s + 0.01
+        )
+
+    assert stack._d3_authority_plan_digest_conflict_count == 1
+
+
+def test_authoritative_publication_rejects_unbound_d3_plan() -> None:
+    config = ScenarioConfig(
+        scenario_name="authority_binding_required",
+        scenario_version="authority-binding-required-v1",
+        target_count=2,
+        resource_count=4,
+        recon_count=1,
+        region_count=1,
+        duration_s=0.8,
+        seed=1021,
+        radar_detection_probability=1.0,
+        acoustic_enabled=False,
+        visual_enabled=False,
+    )
+    stack = IntegratedScalableModuleStack(
+        IntegratedStackConfig(d1_scan_max_lateness_s=0.0)
+    )
+    run_episode(config, module_stack=stack)
+    metadata = {
+        key: value
+        for key, value in stack.latest_plan.metadata.items()
+        if key
+        not in {
+            "authority_epoch",
+            "lease_expires_at_s",
+            "regional_max_epoch",
+            "regional_min_lease_expires_at_s",
+        }
+    }
+    stack.latest_plan = replace(stack.latest_plan, metadata=metadata)
+    stack._d3_authoritative_plan_by_identity.clear()
+
+    with pytest.raises(
+        RuntimeError,
+        match="missing authority generation binding",
+    ):
+        stack._d3_authoritative_publication_if_required(
+            config.duration_s + 0.01
+        )
+
+    assert stack._d3_authority_plan_digest_conflict_count == 1
+
+
+def test_plan_transport_reference_is_first_payload_immutable() -> None:
+    config = ScenarioConfig(
+        scenario_name="authority_transport_digest_conflict",
+        scenario_version="authority-transport-digest-conflict-v1",
+        target_count=2,
+        resource_count=4,
+        recon_count=1,
+        region_count=1,
+        duration_s=0.8,
+        seed=1019,
+        radar_detection_probability=1.0,
+        acoustic_enabled=False,
+        visual_enabled=False,
+        metadata={
+            "demand_pattern": "hybrid_2_primary_1_reserve",
+            "high_threat_fraction": 0.5,
+        },
+    )
+    stack = IntegratedScalableModuleStack(
+        IntegratedStackConfig(d1_scan_max_lateness_s=0.0)
+    )
+    result = run_episode(config, module_stack=stack)
+    plan_envelope = next(
+        message
+        for message in result.online_messages
+        if message.topic == "modules.d3.assignment_plan"
+    )
+    key = (
+        str(plan_envelope.payload["plan_id"]),
+        int(plan_envelope.payload["plan_version"]),
+    )
+    first_reference = stack._d4_plan_transport_references[key]
+
+    stack._cache_d4_runtime_source_envelopes((plan_envelope,))
+    assert stack._d4_plan_transport_references[key] == first_reference
+    assert stack._d3_duplicate_transport_reference_count == 1
+
+    conflicting_payload = dict(plan_envelope.payload)
+    conflicting_payload["timestamp"] = (
+        float(conflicting_payload["timestamp"]) + 0.05
+    )
+    conflicting_envelope = SimpleNamespace(
+        topic="modules.d3.assignment_plan",
+        payload=conflicting_payload,
+        sequence=int(plan_envelope.sequence) + 10_000,
+    )
+    with pytest.raises(
+        RuntimeError,
+        match="conflicting payload digests",
+    ):
+        stack._cache_d4_runtime_source_envelopes(
+            (conflicting_envelope,)
+        )
+
+    assert stack._d4_plan_transport_references[key] == first_reference
+    assert stack._d3_authority_plan_digest_conflict_count == 1
+
+
+def test_temporary_d2_track_loss_retains_current_d4_coalition_only() -> None:
+    config = ScenarioConfig(
+        scenario_name="current_plan_track_evidence_coast",
+        scenario_version="current-plan-track-evidence-coast-v1",
+        target_count=2,
+        resource_count=4,
+        recon_count=1,
+        region_count=1,
+        duration_s=1.2,
+        seed=1013,
+        radar_detection_probability=1.0,
+        acoustic_enabled=False,
+        visual_enabled=False,
+        communication_drop_probability=0.0,
+        communication_jitter_s=0.0,
+        metadata={
+            "demand_pattern": "hybrid_2_primary_1_reserve",
+            "high_threat_fraction": 0.5,
+        },
+    )
+    stack = IntegratedScalableModuleStack(
+        IntegratedStackConfig(d1_scan_max_lateness_s=0.0)
+    )
+    runner = Scalable3DEpisodeRunner(config, module_stack=stack)
+    runner.run()
+    coalition = next(
+        item
+        for item in stack.latest_plan.coalitions
+        if item.required_resource_count > 1
+    )
+    target_id = coalition.target_id
+    assert any(
+        track.global_track_id == target_id
+        for track in stack.latest_d2_tracks
+    )
+
+    stack.latest_d2_tracks = tuple(
+        track
+        for track in stack.latest_d2_tracks
+        if track.global_track_id != target_id
+    )
+    commitment_by_track = dict(
+        stack.latest_d2_result.metadata["identity_commitment_by_track"]
+    )
+    commitment_by_track.pop(target_id)
+    stack.latest_d2_result.metadata = {
+        **dict(stack.latest_d2_result.metadata),
+        "identity_commitment_by_track": commitment_by_track,
+    }
+    now = config.duration_s + 0.01
+    step_input = _runtime_step_input_from_runner(
+        runner,
+        stack,
+        timestamp=now,
+    )
+    snapshot = stack._d4_snapshot(
+        step_input,
+        now=now,
+        center_health=C2Health.NORMAL,
+        secondary_failed=False,
+    )
+    task = next(
+        item for item in snapshot.tasks if item.global_track_id == target_id
+    )
+    stack.latest_d4_decision = stack.d4.evaluate(snapshot)
+    commit = next(
+        item
+        for region in stack.latest_d4_decision.region_decisions
+        for item in region.coalition_commits
+        if item.global_track_id == target_id
+    )
+    guidance_inputs = stack._guidance_inputs(step_input, now)
+
+    assert task.d3_is_current is True
+    assert task.d3_resource_feasible is True
+    assert target_id in stack._d4_latest_plan_track_fallback_target_ids
+    assert commit.state == "committed"
+    assert commit.execution_authorized is True
+    assert stack.d4_current_plan_execution_closure()["closed"] is True
+    assert all(
+        item.binding.assigned_global_track_id != target_id
+        for item in guidance_inputs
+    )
+
+
+def test_stale_d4_commit_cannot_authorize_a_different_d3_plan_id() -> None:
+    config = ScenarioConfig(
+        scenario_name="stale_d4_commit_injection",
+        scenario_version="stale-d4-commit-injection-v1",
+        target_count=2,
+        resource_count=4,
+        recon_count=1,
+        region_count=1,
+        duration_s=0.8,
+        seed=731,
+        radar_detection_probability=1.0,
+        acoustic_enabled=False,
+        visual_enabled=False,
+        communication_drop_probability=0.0,
+        communication_jitter_s=0.0,
+        metadata={
+            "demand_pattern": "hybrid_2_primary_1_reserve",
+            "high_threat_fraction": 0.5,
+        },
+    )
+    stack = IntegratedScalableModuleStack(
+        IntegratedStackConfig(d1_scan_max_lateness_s=0.0)
+    )
+    run_episode(config, module_stack=stack)
+    target_id = stack.latest_plan.assignments[0].target_id
+    assert stack.d4_current_plan_alignment()["aligned"] is True
+
+    stack.latest_plan = replace(
+        stack.latest_plan,
+        plan_id=f"{stack.latest_plan.plan_id}-NEW",
+    )
+
+    alignment = stack.d4_current_plan_alignment()
+    permission = stack._d4_permission(target_id)
+    assert alignment["aligned"] is False
+    assert alignment["d3_plan_version"] == max(
+        alignment["d4_plan_version_values"]
+    )
+    assert alignment["d3_plan_id"] not in alignment["d4_plan_id_values"]
+    assert permission.action == "hold_for_review"
+    assert permission.reason == "d4_current_plan_generation_mismatch"
+    assert permission.new_plan_id is None
+    assert permission.new_plan_version is None
+
+
+def test_d4_alignment_and_permission_reject_stale_authority_epoch() -> None:
+    config = ScenarioConfig(
+        scenario_name="stale_d4_epoch_injection",
+        scenario_version="stale-d4-epoch-injection-v1",
+        target_count=2,
+        resource_count=4,
+        recon_count=1,
+        region_count=1,
+        duration_s=0.8,
+        seed=733,
+        radar_detection_probability=1.0,
+        acoustic_enabled=False,
+        visual_enabled=False,
+        communication_drop_probability=0.0,
+        communication_jitter_s=0.0,
+        metadata={
+            "demand_pattern": "hybrid_2_primary_1_reserve",
+            "high_threat_fraction": 0.5,
+        },
+    )
+    stack = IntegratedScalableModuleStack(
+        IntegratedStackConfig(d1_scan_max_lateness_s=0.0)
+    )
+    run_episode(config, module_stack=stack)
+    target_id = stack.latest_plan.assignments[0].target_id
+    d4_lease = stack.latest_d4_decision.region_decisions[
+        0
+    ].ownership.lease_expires_at_s
+    expected_epoch = stack.latest_plan.version + 10
+    stack.latest_plan = replace(
+        stack.latest_plan,
+        metadata={
+            **stack.latest_plan.metadata,
+            "regional_max_epoch": expected_epoch,
+        },
+    )
+    stack._d4_frozen_plan_leases[
+        (
+            stack.latest_plan.plan_id,
+            stack.latest_plan.version,
+            expected_epoch,
+        )
+    ] = d4_lease
+
+    alignment = stack.d4_current_plan_alignment()
+    permission = stack._d4_permission(target_id)
+    assert alignment["aligned"] is False
+    assert alignment["d3_authority_epoch"] == expected_epoch
+    assert alignment["d4_epoch_values"] != [expected_epoch]
+    assert permission.action == "hold_for_review"
+    assert permission.reason == "d4_current_plan_generation_mismatch"
+
+
+def test_d4_alignment_and_permission_reject_stale_authority_lease() -> None:
+    config = ScenarioConfig(
+        scenario_name="stale_d4_lease_injection",
+        scenario_version="stale-d4-lease-injection-v1",
+        target_count=2,
+        resource_count=4,
+        recon_count=1,
+        region_count=1,
+        duration_s=0.8,
+        seed=737,
+        radar_detection_probability=1.0,
+        acoustic_enabled=False,
+        visual_enabled=False,
+        communication_drop_probability=0.0,
+        communication_jitter_s=0.0,
+        metadata={
+            "demand_pattern": "hybrid_2_primary_1_reserve",
+            "high_threat_fraction": 0.5,
+        },
+    )
+    stack = IntegratedScalableModuleStack(
+        IntegratedStackConfig(d1_scan_max_lateness_s=0.0)
+    )
+    run_episode(config, module_stack=stack)
+    target_id = stack.latest_plan.assignments[0].target_id
+    expected_epoch = stack._plan_authority_epoch(stack.latest_plan)
+    lease_key = (
+        stack.latest_plan.plan_id,
+        stack.latest_plan.version,
+        expected_epoch,
+    )
+    stack._d4_frozen_plan_leases[lease_key] += 1.0
+
+    alignment = stack.d4_current_plan_alignment()
+    permission = stack._d4_permission(target_id)
+
+    assert alignment["aligned"] is False
+    assert alignment["d3_plan_id"] in alignment["d4_plan_id_values"]
+    assert alignment["d3_plan_version"] in alignment[
+        "d4_plan_version_values"
+    ]
+    assert alignment["d3_authority_epoch"] in alignment["d4_epoch_values"]
+    assert alignment["d3_lease_expires_at_s"] not in alignment[
+        "d4_lease_expires_at_s_values"
+    ]
+    assert permission.action == "hold_for_review"
+    assert permission.reason == "d4_current_plan_generation_mismatch"
+
+
+def _runtime_step_input_from_runner(
+    runner: Scalable3DEpisodeRunner,
+    stack: IntegratedScalableModuleStack,
+    *,
+    timestamp: float,
+) -> RuntimeStepInput:
+    world_snapshot = runner.world.snapshot()
+    interceptor_ids = tuple(runner.world.interceptor_ids)
+    recon_ids = tuple(runner.world.recon_ids)
+    return RuntimeStepInput(
+        timestamp=timestamp,
+        arrived_sensor_batches=(),
+        interceptors=PlatformNavigationBatch(
+            platform_kind="interceptor",
+            platform_ids=interceptor_ids,
+            timestamp=timestamp,
+            state_ned=world_snapshot.interceptors.state,
+            covariance=np.repeat(
+                np.eye(6, dtype=float)[None, :, :],
+                len(interceptor_ids),
+                axis=0,
+            ),
+            active=world_snapshot.interceptors.active,
+        ),
+        recon=PlatformNavigationBatch(
+            platform_kind="recon",
+            platform_ids=recon_ids,
+            timestamp=timestamp,
+            state_ned=world_snapshot.recon.state,
+            covariance=np.repeat(
+                np.eye(6, dtype=float)[None, :, :],
+                len(recon_ids),
+                axis=0,
+            ),
+            active=world_snapshot.recon.active,
+        ),
+        communication_partition_generation=stack._d4_partition_generation,
+    )
+
+
+def test_old_ack_cache_cannot_rebind_to_a_different_plan_id() -> None:
+    config = ScenarioConfig(
+        scenario_name="old_ack_plan_id_rebind",
+        scenario_version="old-ack-plan-id-rebind-v1",
+        target_count=2,
+        resource_count=4,
+        recon_count=1,
+        region_count=1,
+        duration_s=0.8,
+        seed=743,
+        radar_detection_probability=1.0,
+        acoustic_enabled=False,
+        visual_enabled=False,
+        communication_drop_probability=0.0,
+        communication_jitter_s=0.0,
+        metadata={
+            "demand_pattern": "hybrid_2_primary_1_reserve",
+            "high_threat_fraction": 0.5,
+        },
+    )
+    stack = IntegratedScalableModuleStack(
+        IntegratedStackConfig(d1_scan_max_lateness_s=0.0)
+    )
+    runner = Scalable3DEpisodeRunner(config, module_stack=stack)
+    runner.run()
+    assert stack._d4_ack_deliveries
+
+    old_plan = stack.latest_plan
+    epoch = stack._plan_authority_epoch(old_plan)
+    old_lease = stack._d4_frozen_plan_leases[
+        (old_plan.plan_id, old_plan.version, epoch)
+    ]
+    stack.latest_plan = replace(
+        old_plan,
+        plan_id=f"{old_plan.plan_id}-DIFFERENT",
+    )
+    stack._d4_frozen_plan_leases[
+        (stack.latest_plan.plan_id, stack.latest_plan.version, epoch)
+    ] = old_lease
+    stack.d4 = RegionalFailoverCoordinator()
+
+    now = config.duration_s + 0.01
+    step_input = _runtime_step_input_from_runner(
+        runner,
+        stack,
+        timestamp=now,
+    )
+
+    snapshot = stack._d4_snapshot(
+        step_input,
+        now=now,
+        center_health=C2Health.NORMAL,
+        secondary_failed=False,
+    )
+    decision = stack.d4.evaluate(snapshot)
+    required_commits = [
+        commit
+        for region in decision.region_decisions
+        for commit in region.coalition_commits
+        if commit.commit_required
+    ]
+
+    assert snapshot.coalition_acks == ()
+    assert required_commits
+    assert all(not commit.execution_authorized for commit in required_commits)
+    assert {commit.state for commit in required_commits} == {
+        "collecting_acks"
+    }
+
+
+def test_old_plan_delivery_cannot_rebind_to_a_different_plan_id() -> None:
+    config = ScenarioConfig(
+        scenario_name="old_plan_delivery_id_rebind",
+        scenario_version="old-plan-delivery-id-rebind-v1",
+        target_count=2,
+        resource_count=2,
+        recon_count=1,
+        region_count=1,
+        duration_s=1.2,
+        seed=747,
+        radar_detection_probability=1.0,
+        acoustic_enabled=False,
+        visual_enabled=False,
+        communication_drop_probability=0.0,
+        communication_jitter_s=0.0,
+    )
+    stack = IntegratedScalableModuleStack(
+        IntegratedStackConfig(d1_scan_max_lateness_s=0.0)
+    )
+    runner = Scalable3DEpisodeRunner(config, module_stack=stack)
+    runner.run()
+    assert stack._d4_plan_deliveries
+
+    old_plan = stack.latest_plan
+    epoch = stack._plan_authority_epoch(old_plan)
+    old_lease = stack._d4_frozen_plan_leases[
+        (old_plan.plan_id, old_plan.version, epoch)
+    ]
+    stack.latest_plan = replace(
+        old_plan,
+        plan_id=f"{old_plan.plan_id}-DIFFERENT",
+    )
+    stack._d4_frozen_plan_leases[
+        (stack.latest_plan.plan_id, stack.latest_plan.version, epoch)
+    ] = old_lease
+    stack.d4 = RegionalFailoverCoordinator()
+
+    now = config.duration_s + 0.01
+    step_input = _runtime_step_input_from_runner(
+        runner,
+        stack,
+        timestamp=now,
+    )
+    snapshot = stack._d4_snapshot(
+        step_input,
+        now=now,
+        center_health=C2Health.FAILED,
+        secondary_failed=True,
+    )
+    stack.latest_d4_decision = stack.d4.evaluate(snapshot)
+    active_regions = [
+        region
+        for region in stack.latest_d4_decision.region_decisions
+        if region.task_ids
+    ]
+    target_id = stack.latest_plan.assignments[0].target_id
+    permission = stack._d4_permission(target_id)
+
+    assert snapshot.fallback_members
+    assert all(
+        not member.communication_ready
+        for member in snapshot.fallback_members
+    )
+    assert active_regions
+    assert all(region.fail_closed for region in active_regions)
+    assert permission.action == "hold_for_review"
+
+
+def test_old_ack_cannot_extend_a_fresh_coordinator_lease() -> None:
+    config = ScenarioConfig(
+        scenario_name="old_ack_lease_extension",
+        scenario_version="old-ack-lease-extension-v1",
+        target_count=2,
+        resource_count=4,
+        recon_count=1,
+        region_count=1,
+        duration_s=1.2,
+        seed=751,
+        radar_detection_probability=1.0,
+        acoustic_enabled=False,
+        visual_enabled=False,
+        communication_drop_probability=0.0,
+        communication_jitter_s=0.0,
+        metadata={
+            "demand_pattern": "hybrid_2_primary_1_reserve",
+            "high_threat_fraction": 0.5,
+        },
+    )
+    stack = IntegratedScalableModuleStack(
+        IntegratedStackConfig(d1_scan_max_lateness_s=0.0)
+    )
+    runner = Scalable3DEpisodeRunner(config, module_stack=stack)
+    runner.run()
+    assert stack._d4_ack_deliveries
+
+    plan = stack.latest_plan
+    epoch = stack._plan_authority_epoch(plan)
+    lease_key = (plan.plan_id, plan.version, epoch)
+    old_lease = stack._d4_frozen_plan_leases[lease_key]
+    stack._d4_frozen_plan_leases[lease_key] = old_lease + 1.0
+    stack.d4 = RegionalFailoverCoordinator()
+
+    now = config.duration_s + 0.01
+    step_input = _runtime_step_input_from_runner(
+        runner,
+        stack,
+        timestamp=now,
+    )
+    snapshot = stack._d4_snapshot(
+        step_input,
+        now=now,
+        center_health=C2Health.NORMAL,
+        secondary_failed=False,
+    )
+    stack.latest_d4_decision = stack.d4.evaluate(snapshot)
+    required_commits = [
+        commit
+        for region in stack.latest_d4_decision.region_decisions
+        for commit in region.coalition_commits
+        if commit.commit_required
+    ]
+    target_id = stack.latest_plan.assignments[0].target_id
+    permission = stack._d4_permission(target_id)
+
+    assert snapshot.coalition_acks == ()
+    assert required_commits
+    assert all(not commit.execution_authorized for commit in required_commits)
+    assert {commit.state for commit in required_commits} == {
+        "collecting_acks"
+    }
+    assert stack.d4_current_plan_alignment()["aligned"] is True
+    assert permission.action == "hold_for_review"
+
+
+def test_terminal_drain_closes_current_coalition_without_post_horizon_control() -> None:
+    config = ScenarioConfig(
+        scenario_name="terminal_d4_drain",
+        scenario_version="terminal-d4-drain-v1",
+        target_count=2,
+        resource_count=4,
+        recon_count=1,
+        region_count=1,
+        duration_s=0.6,
+        seed=7,
+        radar_detection_probability=1.0,
+        acoustic_enabled=False,
+        visual_enabled=False,
+        communication_latency_s=0.12,
+        communication_jitter_s=0.0,
+        communication_drop_probability=0.0,
+        metadata={
+            "demand_pattern": "hybrid_2_primary_1_reserve",
+            "high_threat_fraction": 0.5,
+        },
+    )
+    stack = IntegratedScalableModuleStack(
+        IntegratedStackConfig(
+            d1_scan_max_lateness_s=0.0,
+            d4_terminal_drain_budget_s=0.5,
+        )
+    )
+
+    result = run_episode(config, module_stack=stack)
+
+    final_d4 = next(
+        message.payload
+        for message in reversed(result.online_messages)
+        if message.topic == "modules.d4.regional_failover"
+    )
+    required_commits = [
+        commit
+        for region in final_d4["regions"]
+        for commit in region["coalition_commits"]
+        if commit["commit_required"]
+    ]
+    assert required_commits
+    assert {item["state"] for item in required_commits} == {"committed"}
+    assert result.summary["d4_terminal_drain_step_count"] > 1
+    assert result.summary["d4_terminal_drain_delivered_count"] > 0
+    assert result.summary["d4_terminal_drain_completed"] is True
+    assert result.timestamps[-1] == pytest.approx(config.duration_s)
+    assert result.summary["physics_step_count"] == len(result.timestamps) - 1
+    retries = [
+        item
+        for item in result.communication_disposition_records
+        if item["topic"] == "d4.regional_plan_broadcast.v1"
+        and item["retry_generation"] > 0
+    ]
+    assert retries
+    assert max(item["retry_generation"] for item in retries) <= (
+        stack.stack_config.d4_plan_retry_limit
+    )
+    final_owner = final_d4["regions"][0]["ownership"]
+    final_generation = (
+        final_owner["plan_id"],
+        final_owner["plan_version"],
+        final_owner["epoch"],
+    )
+    d4_generation_leases = {
+        region["ownership"]["lease_expires_at_s"]
+        for message in result.online_messages
+        if message.topic == "modules.d4.regional_failover"
+        for region in message.payload["regions"]
+        if (
+            region["ownership"]["plan_id"],
+            region["ownership"]["plan_version"],
+            region["ownership"]["epoch"],
+        )
+        == final_generation
+    }
+    broadcast_generation_leases = {
+        message.payload["lease_expires_at_s"]
+        for message in result.online_messages
+        if message.topic == "d4.regional_plan_broadcast.v1"
+        and (
+            message.payload["plan_id"],
+            message.payload["plan_version"],
+            message.payload["epoch"],
+        )
+        == final_generation
+    }
+    assert len(d4_generation_leases) == 1
+    assert broadcast_generation_leases == d4_generation_leases
+    assert max(
+        message.timestamp
+        for message in result.online_messages
+        if message.topic == "modules.d4.regional_failover"
+        and any(
+            (
+                region["ownership"]["plan_id"],
+                region["ownership"]["plan_version"],
+                region["ownership"]["epoch"],
+            )
+            == final_generation
+            for region in message.payload["regions"]
+        )
+    ) > config.duration_s
+
+
+class _PlanDigestConflictTerminalDrainStack(IntegratedScalableModuleStack):
+    def __init__(self, config):
+        super().__init__(config)
+        self._plan_digest_conflict_injected = False
+
+    def drain_communication(self, step_input):
+        if not self._plan_digest_conflict_injected:
+            old_plan = self.latest_plan
+            epoch = self._plan_authority_epoch(old_plan)
+            old_lease = self._d4_frozen_plan_leases[
+                (old_plan.plan_id, old_plan.version, epoch)
+            ]
+            self.latest_plan = replace(
+                old_plan,
+                plan_id=f"{old_plan.plan_id}-CONFLICT",
+            )
+            self._d4_frozen_plan_leases[
+                (self.latest_plan.plan_id, self.latest_plan.version, epoch)
+            ] = old_lease
+            config = self._require_ready()
+            center_health, secondary_failed = self._fault_state(
+                config.duration_s
+            )
+            snapshot = self._d4_snapshot(
+                step_input,
+                now=step_input.timestamp,
+                center_health=center_health,
+                secondary_failed=secondary_failed,
+            )
+            self.latest_d4_decision = self.d4.evaluate(snapshot)
+            self._plan_digest_conflict_injected = True
+        return super().drain_communication(step_input)
+
+
+def test_terminal_drain_does_not_complete_for_a_plan_digest_conflict() -> None:
+    config = ScenarioConfig(
+        scenario_name="plan_digest_conflict_terminal_drain",
+        scenario_version="plan-digest-conflict-terminal-drain-v1",
+        target_count=2,
+        resource_count=4,
+        recon_count=1,
+        region_count=1,
+        duration_s=1.2,
+        seed=739,
+        radar_detection_probability=1.0,
+        acoustic_enabled=False,
+        visual_enabled=False,
+        communication_latency_s=0.02,
+        communication_drop_probability=0.0,
+        communication_jitter_s=0.0,
+        metadata={
+            "demand_pattern": "hybrid_2_primary_1_reserve",
+            "high_threat_fraction": 0.5,
+        },
+    )
+    stack = _PlanDigestConflictTerminalDrainStack(
+        IntegratedStackConfig(
+            d1_scan_max_lateness_s=0.0,
+            d4_terminal_drain_budget_s=0.2,
+        )
+    )
+
+    result = run_episode(config, module_stack=stack)
+
+    assert result.summary["d4_terminal_drain_step_count"] > 1
+    assert result.summary["d4_terminal_drain_completed"] is False
+    diagnostics = result.summary["module_final_diagnostics"]
+    assert diagnostics["d4_current_plan_alignment"]["aligned"] is True
+    assert diagnostics["d4_current_plan_execution_closure"]["closed"] is False
+    assert diagnostics["d4_current_plan_execution_closure"]["reason"] == (
+        "current_plan_region_fail_closed"
+    )
+    assert diagnostics["d4_missing_required_ack_count"] > 0
+    assert any(
+        "authority_plan_digest_conflict"
+        in region.rejection_reasons
+        for region in stack.latest_d4_decision.region_decisions
+    )
+    assert not any(
+        region.coalition_commits
+        for region in stack.latest_d4_decision.region_decisions
+    )
+
+
+def test_d4_retry_exhaustion_and_terminal_drain_remain_fail_closed() -> None:
+    config = ScenarioConfig(
+        scenario_name="d4_retry_exhaustion",
+        scenario_version="d4-retry-exhaustion-v1",
+        target_count=2,
+        resource_count=4,
+        recon_count=1,
+        region_count=1,
+        duration_s=1.2,
+        seed=701,
+        radar_detection_probability=1.0,
+        acoustic_enabled=False,
+        visual_enabled=False,
+        communication_latency_s=0.02,
+        communication_jitter_s=0.0,
+        communication_drop_probability=0.0,
+        metadata={
+            "demand_pattern": "hybrid_2_primary_1_reserve",
+            "high_threat_fraction": 0.5,
+        },
+    )
+    stack = IntegratedScalableModuleStack(
+        IntegratedStackConfig(
+            d1_scan_max_lateness_s=0.0,
+            d4_plan_retry_limit=2,
+            d4_plan_retry_interval_s=0.1,
+            d4_terminal_drain_budget_s=0.3,
+        )
+    )
+    runner = Scalable3DEpisodeRunner(config, module_stack=stack)
+    dropped_link = LinkProfile(
+        latency_s=0.02,
+        jitter_s=0.0,
+        drop_probability=1.0,
+        bandwidth_bytes_per_s=1_000_000_000.0,
+    )
+    for resource_id in runner.world.interceptor_ids:
+        runner.communication.set_link_profile(
+            "d3_central",
+            resource_id,
+            dropped_link,
+        )
+
+    result = runner.run()
+
+    diagnostics = result.summary["module_final_diagnostics"]
+    strict_plan_transports = [
+        item
+        for item in result.communication_disposition_records
+        if item["topic"] == "d4.regional_plan_broadcast.v1"
+        and item["random_stream"] == "d4_strict_evidence_v1"
+    ]
+    attempts_by_resource = Counter(
+        item["destination"] for item in strict_plan_transports
+    )
+    assert set(attempts_by_resource) == set(runner.world.interceptor_ids)
+    assert set(attempts_by_resource.values()) == {
+        1 + stack.stack_config.d4_plan_retry_limit
+    }
+    assert {item["retry_generation"] for item in strict_plan_transports} == {
+        0,
+        1,
+        2,
+    }
+    assert {item["disposition"] for item in strict_plan_transports} == {
+        "dropped"
+    }
+    assert diagnostics["d4_plan_retry_exhausted_count"] == config.resource_count
+    assert diagnostics["d4_missing_required_ack_count"] > 0
+    assert result.summary["d4_terminal_drain_completed"] is False
+
+    final_d4 = next(
+        message.payload
+        for message in reversed(result.online_messages)
+        if message.topic == "modules.d4.regional_failover"
+    )
+    required_commits = [
+        commit
+        for region in final_d4["regions"]
+        for commit in region["coalition_commits"]
+        if commit["commit_required"]
+    ]
+    assert required_commits
+    assert all(not item["execution_authorized"] for item in required_commits)
+    final_d7 = next(
+        message.payload
+        for message in reversed(result.online_messages)
+        if message.topic == "modules.d7.guidance_commands"
+    )
+    assert {item["mode"] for item in final_d7["commands"]} == {"hold"}
+
+
 def test_partition_generation_change_rejects_in_flight_d4_evidence() -> None:
     config = ScenarioConfig(
         scenario_name="d4_partition_generation_change",
@@ -4659,7 +5700,7 @@ def test_d4_advisory_bridge_rejects_replay_and_strict_expiry() -> None:
     run_episode(config, module_stack=stack)
     advice = stack.latest_d4_region_advice
     snapshot = stack.latest_d4_region_snapshot
-    decision = stack.latest_d4_decision
+    decision = stack.latest_d4_region_formal_decision
     plan = stack.latest_plan
     advisory = advice.advisory_contract
 
@@ -4696,7 +5737,7 @@ def test_d4_advisory_bridge_rejects_replay_and_strict_expiry() -> None:
         previous_plan=expiry_stack.latest_plan,
         advice_result=expiry_advice,
         source_snapshot=expiry_stack.latest_d4_region_snapshot,
-        source_decision=expiry_stack.latest_d4_decision,
+        source_decision=expiry_stack.latest_d4_region_formal_decision,
         now=expiry_advice.advisory_contract.valid_until_s,
         fault_generation_changed=False,
     )
@@ -4732,7 +5773,7 @@ def test_fault_generation_blocks_d4_advisory_before_gate_consumption() -> None:
         previous_plan=stack.latest_plan,
         advice_result=advice,
         source_snapshot=stack.latest_d4_region_snapshot,
-        source_decision=stack.latest_d4_decision,
+        source_decision=stack.latest_d4_region_formal_decision,
         now=advice.advisory_contract.created_at_s + 0.1,
         fault_generation_changed=True,
     )
