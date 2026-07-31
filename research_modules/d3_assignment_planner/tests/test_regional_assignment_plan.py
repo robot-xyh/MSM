@@ -92,6 +92,11 @@ def test_multiple_secondary_owners_publish_one_monotonic_regional_plan() -> None
     tracks = (_track("T-A", "A", 100.0), _track("T-B", "B", 300.0))
     resources = (_resource("R-A", "A", 0.0), _resource("R-B", "B", 250.0))
     previous = planner.plan(tracks, resources, timestamp=0.0)
+    previous = planner.bind_published_authority_generation(
+        previous,
+        authority_epoch=0,
+        lease_expires_at_s=4.0,
+    )
     by_target = previous.assignments_by_target()
     authority = RegionalAuthorityInput(
         adjudicated_at_s=1.0,
@@ -102,6 +107,7 @@ def test_multiple_secondary_owners_publish_one_monotonic_regional_plan() -> None
                 target_id="T-A",
                 resource_ids=(by_target["T-A"][0].resource_id,),
                 owner_node_id="RECON-A",
+                epoch=2,
             ),
             _grant(
                 previous,
@@ -109,6 +115,7 @@ def test_multiple_secondary_owners_publish_one_monotonic_regional_plan() -> None
                 target_id="T-B",
                 resource_ids=(by_target["T-B"][0].resource_id,),
                 owner_node_id="RECON-B",
+                epoch=2,
             ),
         ),
     )
@@ -136,6 +143,22 @@ def test_multiple_secondary_owners_publish_one_monotonic_regional_plan() -> None
     )
     assert regional.metadata["regional_single_member_authority_count"] == 2
     assert regional.metadata["regional_atomic_coalition_commit_count"] == 0
+    assert "authority_epoch" not in regional.metadata
+    assert "lease_expires_at_s" not in regional.metadata
+    assert regional.metadata["regional_max_epoch"] == 2
+    assert regional.metadata["regional_min_lease_expires_at_s"] == 10.0
+    with pytest.raises(
+        ValueError,
+        match="same plan identity cannot change authority generation binding",
+    ):
+        regional.bind_authority_generation(0, 4.0)
+    regional = planner.bind_published_authority_generation(
+        regional,
+        authority_epoch=2,
+        lease_expires_at_s=10.0,
+    )
+    assert regional.metadata["authority_epoch"] == 2
+    assert regional.metadata["lease_expires_at_s"] == 10.0
     assert all(
         item.metadata["regional_commit_required"] is False
         and item.metadata["regional_commit_mode"] == "single_member_authority"

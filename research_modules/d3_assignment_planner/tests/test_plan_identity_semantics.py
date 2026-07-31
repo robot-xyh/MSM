@@ -13,9 +13,19 @@ from d3_assignment_planner import (
     TargetTrack,
     assignment_evidence_from_plan,
     assignment_records_from_plan,
+    continue_active_secondary_plan,
     guidance_bindings_from_assignment_plan,
     prepare_secondary_takeover_plan,
+    validated_assignment_plan_payload_sha256,
 )
+
+
+_AUTHORITY_BINDING_KEYS = {
+    "authority_epoch",
+    "lease_expires_at_s",
+    "regional_max_epoch",
+    "regional_min_lease_expires_at_s",
+}
 
 
 def _planner() -> AssignmentPlanner:
@@ -420,3 +430,358 @@ def test_direct_publish_uses_trusted_latest_signature_for_same_identity() -> Non
         match="cannot change execution semantics without a new identity",
     ):
         planner.publish_plan(tampered)
+
+
+def test_authority_publication_contract_separates_evaluation_diagnostics() -> None:
+    planner = _planner()
+    demand = TargetDemand(
+        required_resource_count=3,
+        primary_resource_count=2,
+        coordination_mode="hybrid",
+    )
+    resources = [ResourceState(f"R{i}") for i in range(1, 4)]
+    first = planner.plan([_track(demand=demand)], resources, timestamp=0.0)
+    refreshed = planner.plan(
+        [_track(demand=demand)],
+        resources,
+        timestamp=1.0,
+        previous_plan=first,
+    )
+
+    assert refreshed.plan_id == first.plan_id
+    assert refreshed.version == first.version
+    assert refreshed.execution_signature() == first.execution_signature()
+    assert refreshed.requires_authoritative_publication(first) is False
+    assert validated_assignment_plan_payload_sha256(refreshed) != (
+        validated_assignment_plan_payload_sha256(first)
+    )
+
+    reordered = replace(
+        refreshed,
+        assignments=tuple(reversed(refreshed.assignments)),
+    )
+    assert reordered.requires_authoritative_publication(first) is False
+
+    changed = planner.plan(
+        [_track(demand=demand, preferred="R2")],
+        [
+            ResourceState("R2"),
+            ResourceState("R3"),
+            ResourceState("R4"),
+        ],
+        timestamp=2.0,
+        previous_plan=refreshed,
+    )
+    assert changed.requires_authoritative_publication(refreshed) is True
+
+
+@pytest.mark.parametrize("tamper_kind", ("role", "owner", "lease", "count"))
+def test_same_identity_authority_mutation_fails_closed(tamper_kind: str) -> None:
+    planner = _planner()
+    resources = [ResourceState("R1"), ResourceState("R2")]
+    first = planner.plan([_track()], resources, timestamp=0.0)
+    if tamper_kind == "role":
+        tampered = replace(
+            first,
+            assignments=(
+                replace(first.assignments[0], member_role="reserve"),
+            ),
+        )
+    elif tamper_kind == "owner":
+        tampered = replace(
+            first,
+            metadata={**dict(first.metadata), "active_plan_owner": "secondary"},
+        )
+    elif tamper_kind == "lease":
+        tampered = replace(
+            first,
+            metadata={**dict(first.metadata), "lease_expires_at_s": 10.0},
+        )
+    else:
+        tampered = replace(first, resource_count=first.resource_count + 1)
+
+    with pytest.raises(
+        ValueError,
+        match="same plan identity cannot change authoritative execution payload",
+    ):
+        tampered.requires_authoritative_publication(first)
+
+
+def test_authority_generation_binding_is_opt_in_immutable_and_idempotent() -> None:
+    first = _planner().plan(
+        [_track()],
+        [ResourceState("R1"), ResourceState("R2")],
+        timestamp=2.0,
+    )
+    assert _AUTHORITY_BINDING_KEYS.isdisjoint(first.metadata)
+    bound = first.bind_authority_generation(
+        authority_epoch=0,
+        lease_expires_at_s=7.5,
+    )
+
+    assert bound is not first
+    assert (bound.plan_id, bound.version) == (first.plan_id, first.version)
+    assert _AUTHORITY_BINDING_KEYS.isdisjoint(first.metadata)
+    assert bound.metadata["authority_epoch"] == 0
+    assert bound.metadata["lease_expires_at_s"] == 7.5
+    assert bound.metadata["regional_max_epoch"] == 0
+    assert bound.metadata["regional_min_lease_expires_at_s"] == 7.5
+    assert bound.authority_signature() != first.authority_signature()
+    assert bound.bind_authority_generation(0, 7.5) is bound
+
+
+@pytest.mark.parametrize(
+    ("authority_epoch", "lease_expires_at_s", "message"),
+    (
+        (-1, 7.5, "authority_epoch"),
+        (1.0, 7.5, "authority_epoch"),
+        (True, 7.5, "authority_epoch"),
+        (0, float("nan"), "lease_expires_at_s must be finite"),
+        (0, float("inf"), "lease_expires_at_s must be finite"),
+        (0, 2.0, "later than plan.created_at"),
+        (0, 1.0, "later than plan.created_at"),
+    ),
+)
+def test_authority_generation_binding_rejects_invalid_values(
+    authority_epoch: object,
+    lease_expires_at_s: float,
+    message: str,
+) -> None:
+    first = _planner().plan(
+        [_track()],
+        [ResourceState("R1"), ResourceState("R2")],
+        timestamp=2.0,
+    )
+
+    with pytest.raises(ValueError, match=message):
+        first.bind_authority_generation(  # type: ignore[arg-type]
+            authority_epoch,
+            lease_expires_at_s,
+        )
+
+
+@pytest.mark.parametrize(
+    ("authority_epoch", "lease_expires_at_s"),
+    ((4, 12.0), (3, 13.0)),
+)
+def test_authority_generation_binding_rejects_same_identity_rebinding(
+    authority_epoch: int,
+    lease_expires_at_s: float,
+) -> None:
+    bound = _planner().plan(
+        [_track()],
+        [ResourceState("R1"), ResourceState("R2")],
+        timestamp=2.0,
+    ).bind_authority_generation(3, 12.0)
+
+    with pytest.raises(
+        ValueError,
+        match="same plan identity cannot change authority generation binding",
+    ):
+        bound.bind_authority_generation(authority_epoch, lease_expires_at_s)
+
+
+def test_same_identity_evaluation_refresh_does_not_renew_authority_lease() -> None:
+    planner = _planner()
+    resources = [ResourceState("R1"), ResourceState("R2")]
+    first = planner.plan([_track()], resources, timestamp=0.0)
+    authoritative = first.bind_authority_generation(3, 12.0)
+
+    refreshed = planner.plan(
+        [_track()],
+        resources,
+        timestamp=5.0,
+        previous_plan=first,
+    )
+
+    assert (refreshed.plan_id, refreshed.version) == (
+        authoritative.plan_id,
+        authoritative.version,
+    )
+    assert "authority_epoch" not in refreshed.metadata
+    assert "lease_expires_at_s" not in refreshed.metadata
+
+    refreshed_authority = refreshed.bind_authority_generation(3, 12.0)
+    assert refreshed_authority.metadata["lease_expires_at_s"] == 12.0
+    assert (
+        refreshed_authority.authority_signature()
+        == authoritative.authority_signature()
+    )
+    assert (
+        refreshed_authority.requires_authoritative_publication(authoritative)
+        is False
+    )
+    with pytest.raises(
+        ValueError,
+        match="same plan identity cannot change authority generation binding",
+    ):
+        refreshed_authority.bind_authority_generation(3, 13.0)
+
+
+def test_planner_post_publish_binding_rebases_refresh_execution_signature() -> None:
+    planner = _planner()
+    resources = [ResourceState("R1"), ResourceState("R2")]
+    first = planner.plan([_track()], resources, timestamp=0.0)
+
+    authoritative = planner.bind_published_authority_generation(
+        first,
+        authority_epoch=3,
+        lease_expires_at_s=12.0,
+    )
+    refreshed = planner.plan(
+        [_track()],
+        resources,
+        timestamp=13.0,
+        previous_plan=authoritative,
+    )
+
+    assert (refreshed.plan_id, refreshed.version) == (
+        authoritative.plan_id,
+        authoritative.version,
+    )
+    assert refreshed.metadata["authority_epoch"] == 3
+    assert refreshed.metadata["lease_expires_at_s"] == 12.0
+    assert refreshed.metadata["regional_max_epoch"] == 3
+    assert refreshed.metadata["regional_min_lease_expires_at_s"] == 12.0
+    assert refreshed.metadata["last_evaluated_at_s"] == 13.0
+    assert refreshed.requires_authoritative_publication(authoritative) is False
+    assert (
+        planner.bind_published_authority_generation(refreshed, 3, 12.0)
+        is refreshed
+    )
+    with pytest.raises(
+        ValueError,
+        match="same plan identity cannot change authority generation binding",
+    ):
+        planner.bind_published_authority_generation(refreshed, 3, 13.0)
+
+    changed = planner.plan(
+        [_track(preferred="R2")],
+        resources,
+        timestamp=14.0,
+        previous_plan=refreshed,
+    )
+    assert (changed.plan_id, changed.version) != (
+        refreshed.plan_id,
+        refreshed.version,
+    )
+    assert _AUTHORITY_BINDING_KEYS.isdisjoint(changed.metadata)
+
+    rebound = planner.bind_published_authority_generation(
+        changed,
+        authority_epoch=4,
+        lease_expires_at_s=20.0,
+    )
+    assert {
+        rebound.metadata[key] for key in _AUTHORITY_BINDING_KEYS
+    } == {4, 20.0}
+
+
+def test_bound_plan_fence_starts_unbound_and_accepts_new_generation() -> None:
+    planner = _planner()
+    resources = [ResourceState("R1"), ResourceState("R2")]
+    first = planner.plan([_track()], resources, timestamp=0.0)
+    authoritative = planner.bind_published_authority_generation(
+        first,
+        authority_epoch=1,
+        lease_expires_at_s=5.0,
+    )
+
+    fenced = planner.advance_authority_generation(
+        authoritative,
+        timestamp=1.0,
+        expected_previous_version=authoritative.version,
+        fence_reason="center_failure_before_regional_adjudication",
+    )
+
+    assert (fenced.plan_id, fenced.version) != (
+        authoritative.plan_id,
+        authoritative.version,
+    )
+    assert _AUTHORITY_BINDING_KEYS.isdisjoint(fenced.metadata)
+    rebound = planner.bind_published_authority_generation(
+        fenced,
+        authority_epoch=fenced.version,
+        lease_expires_at_s=6.0,
+    )
+    assert rebound.metadata["authority_epoch"] == fenced.version
+    assert rebound.metadata["lease_expires_at_s"] == 6.0
+    assert rebound.metadata["regional_max_epoch"] == fenced.version
+    assert rebound.metadata["regional_min_lease_expires_at_s"] == 6.0
+
+
+def test_secondary_successors_bind_only_their_namespaced_generation() -> None:
+    planner = _planner()
+    resources = [ResourceState("R1"), ResourceState("R2")]
+    center = planner.plan([_track()], resources, timestamp=0.0)
+    center = planner.bind_published_authority_generation(
+        center,
+        authority_epoch=1,
+        lease_expires_at_s=4.0,
+    )
+    takeover_candidate = planner.plan(
+        [_track()],
+        resources,
+        timestamp=1.0,
+        previous_plan=center,
+        publish=False,
+    )
+    takeover = prepare_secondary_takeover_plan(
+        takeover_candidate,
+        supersedes_plan=center,
+        secondary_node_id="secondary-node-2",
+        readiness_class="takeover_ready",
+        readiness_sustained=True,
+        activated_at_s=1.1,
+        lease_expires_at_s=5.0,
+        leader_epoch=2,
+    )
+
+    assert _AUTHORITY_BINDING_KEYS.isdisjoint(takeover.metadata)
+    assert takeover.metadata["secondary_leader_epoch"] == 2
+    assert takeover.metadata["secondary_lease_expires_at_s"] == 5.0
+    with pytest.raises(
+        ValueError,
+        match="authority_epoch must match secondary_leader_epoch",
+    ):
+        takeover.bind_authority_generation(3, 5.0)
+    with pytest.raises(
+        ValueError,
+        match="must match secondary_lease_expires_at_s",
+    ):
+        takeover.bind_authority_generation(2, 5.5)
+
+    takeover = planner.publish_plan(takeover)
+    takeover = planner.bind_published_authority_generation(
+        takeover,
+        authority_epoch=2,
+        lease_expires_at_s=5.0,
+    )
+    next_candidate = planner.plan(
+        [_track(preferred="R2")],
+        resources,
+        timestamp=2.0,
+        previous_plan=takeover,
+        publish=False,
+    )
+    continued = continue_active_secondary_plan(
+        next_candidate,
+        previous_plan=takeover,
+        readiness_class="takeover_ready",
+        readiness_sustained=True,
+        published_at_s=2.1,
+        lease_expires_at_s=8.0,
+        leader_epoch=3,
+    )
+
+    assert _AUTHORITY_BINDING_KEYS.isdisjoint(continued.metadata)
+    assert continued.metadata["secondary_leader_epoch"] == 3
+    assert continued.metadata["secondary_lease_expires_at_s"] == 8.0
+    continued = planner.publish_plan(continued)
+    continued = planner.bind_published_authority_generation(
+        continued,
+        authority_epoch=3,
+        lease_expires_at_s=8.0,
+    )
+    assert continued.metadata["authority_epoch"] == 3
+    assert continued.metadata["lease_expires_at_s"] == 8.0

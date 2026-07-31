@@ -600,6 +600,134 @@ class AssignmentPlan:
             ),
         )
 
+    def bind_authority_generation(
+        self,
+        authority_epoch: int,
+        lease_expires_at_s: float,
+    ) -> "AssignmentPlan":
+        """Return this identity bound to one immutable authority generation.
+
+        Binding is explicit and does not advance ``plan_id`` or ``version``.
+        Callers must bind before the first authoritative publication.
+        """
+
+        if isinstance(authority_epoch, bool) or not isinstance(authority_epoch, int):
+            raise ValueError("authority_epoch must be a non-negative integer")
+        if authority_epoch < 0:
+            raise ValueError("authority_epoch must be a non-negative integer")
+        if isinstance(lease_expires_at_s, bool):
+            raise ValueError("lease_expires_at_s must be finite")
+        try:
+            lease = float(lease_expires_at_s)
+            created_at = float(self.created_at)
+        except (TypeError, ValueError) as exc:
+            raise ValueError("lease_expires_at_s must be finite") from exc
+        if not isfinite(lease):
+            raise ValueError("lease_expires_at_s must be finite")
+        if not isfinite(created_at) or lease <= created_at:
+            raise ValueError(
+                "lease_expires_at_s must be later than plan.created_at"
+            )
+        if (
+            self.metadata.get("active_plan_owner") == "secondary"
+            and self.metadata.get("secondary_plan_executable") is True
+            and not self.metadata.get("fault_authority_generation_fence")
+        ):
+            secondary_epoch = self.metadata.get("secondary_leader_epoch")
+            secondary_lease = self.metadata.get("secondary_lease_expires_at_s")
+            if (
+                isinstance(secondary_epoch, bool)
+                or not isinstance(secondary_epoch, int)
+                or secondary_epoch != authority_epoch
+            ):
+                raise ValueError(
+                    "authority_epoch must match secondary_leader_epoch"
+                )
+            try:
+                secondary_lease_value = float(secondary_lease)
+            except (TypeError, ValueError) as exc:
+                raise ValueError(
+                    "secondary_lease_expires_at_s must be finite"
+                ) from exc
+            if (
+                not isfinite(secondary_lease_value)
+                or secondary_lease_value != lease
+            ):
+                raise ValueError(
+                    "lease_expires_at_s must match "
+                    "secondary_lease_expires_at_s"
+                )
+
+        binding = {
+            "authority_epoch": authority_epoch,
+            "lease_expires_at_s": lease,
+            "regional_max_epoch": authority_epoch,
+            "regional_min_lease_expires_at_s": lease,
+        }
+        metadata = dict(self.metadata)
+        for key, value in binding.items():
+            if key in metadata and metadata[key] != value:
+                raise ValueError(
+                    "same plan identity cannot change authority generation binding"
+                )
+        if all(metadata.get(key) == value for key, value in binding.items()):
+            return self
+        metadata.update(binding)
+        return replace(self, metadata=metadata)
+
+    def authority_signature(self) -> tuple[Any, ...]:
+        """Return fields that must remain fixed for one published identity.
+
+        Cost, hysteresis, and evaluation diagnostics are intentionally absent.
+        A transport must retain the first complete authoritative payload for
+        this signature and publish later diagnostics on a separate channel.
+        """
+
+        return (
+            self.plan_schema,
+            self.plan_id,
+            self.version,
+            self.previous_plan_id,
+            float(self.created_at),
+            float(self.last_changed_at),
+            self.source_node_id,
+            self.target_node_id,
+            self.link_type,
+            self.stale_after_s,
+            self.terminal_feedback_state,
+            self.duplicate_terminal_lock_risk,
+            self.resource_count,
+            self.target_count,
+            self.solver_name,
+            self.execution_signature(),
+            tuple(sorted(_demand_summary_signature(item) for item in self.demand_summaries)),
+        )
+
+    def requires_authoritative_publication(
+        self,
+        previous_plan: "AssignmentPlan | None",
+    ) -> bool:
+        """Whether this result represents a new authoritative plan payload.
+
+        A same-identity evaluation refresh is not a new authority publication.
+        If any authority-driving field changed under the same identity, fail
+        closed instead of allowing a second payload for one plan key.
+        """
+
+        if previous_plan is None:
+            return True
+        same_identity = (
+            self.plan_id == previous_plan.plan_id
+            and self.version == previous_plan.version
+        )
+        if not same_identity:
+            return True
+        if self.authority_signature() != previous_plan.authority_signature():
+            raise ValueError(
+                "same plan identity cannot change authoritative execution payload"
+            )
+        return False
+
     @property
     def stable_signature(self) -> tuple[tuple[Any, ...], ...]:
         return self.assignment_signature()
@@ -676,6 +804,13 @@ _PLAN_EXECUTION_METADATA_KEYS = (
     "regional_atomic_coalition_commit_count",
 )
 
+_AUTHORITY_GENERATION_BINDING_METADATA_KEYS = (
+    "authority_epoch",
+    "lease_expires_at_s",
+    "regional_max_epoch",
+    "regional_min_lease_expires_at_s",
+)
+
 _ASSIGNMENT_EXECUTION_METADATA_KEYS = (
     "coordination_mode",
     "primary_resource_count",
@@ -735,6 +870,19 @@ def _coalition_execution_signature(coalition: CoalitionPlan) -> tuple[Any, ...]:
             )
         ),
         _signature_value(coalition.metadata.get("demand_template")),
+    )
+
+
+def _demand_summary_signature(summary: DemandSatisfactionSummary) -> tuple[Any, ...]:
+    return (
+        summary.target_id,
+        summary.demand_required,
+        summary.demand_assigned,
+        summary.demand_shortfall,
+        summary.coalition_complete,
+        summary.coalition_id,
+        summary.coalition_version,
+        summary.primary_resource_count,
     )
 
 
@@ -3439,9 +3587,10 @@ def prepare_secondary_takeover_plan(
     if superseded_epoch is not None and activation_epoch <= superseded_epoch:
         raise ValueError("secondary leader epoch must be newer than the superseded epoch")
 
+    plan_metadata = _without_authority_generation_binding(plan.metadata)
     plan_target_node_id = target_node_id or plan.target_node_id or supersedes_plan.target_node_id
     metadata: dict[str, Any] = {
-        **dict(plan.metadata),
+        **plan_metadata,
         "plan_schema": SECONDARY_PLAN_SCHEMA_V2,
         "plan_owner": "secondary",
         "active_plan_owner": "secondary",
@@ -3615,8 +3764,9 @@ def continue_active_secondary_plan(
     secondary_activated_at_s = _metadata_float(
         previous_metadata.get("secondary_activated_at_s")
     )
+    plan_metadata = _without_authority_generation_binding(plan.metadata)
     metadata: dict[str, Any] = {
-        **dict(plan.metadata),
+        **plan_metadata,
         "plan_schema": SECONDARY_PLAN_SCHEMA_V2,
         "plan_owner": "secondary",
         "active_plan_owner": "secondary",
@@ -3703,6 +3853,15 @@ def continue_active_secondary_plan(
         link_type=link_type,
         metadata=metadata,
     )
+
+
+def _without_authority_generation_binding(
+    metadata: Mapping[str, Any],
+) -> dict[str, Any]:
+    result = dict(metadata)
+    for key in _AUTHORITY_GENERATION_BINDING_METADATA_KEYS:
+        result.pop(key, None)
+    return result
 
 
 def _vector3(value: Iterable[float] | None) -> tuple[float, float, float] | None:

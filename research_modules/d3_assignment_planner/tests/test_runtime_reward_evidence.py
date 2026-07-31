@@ -755,12 +755,10 @@ def test_real_main_d6_report_builds_observed_only_d3_evidence(tmp_path) -> None:
         if binding.guidance_command_present and not binding.held
     )
     assert ack_envelope.sequence == acknowledgements[0].sequence
-    last_binding_acks = verified_acknowledgements[-1][1].binding_acks
-    assert last_binding_acks
-    assert all(
-        item.held and item.guidance_gate_reason == "global_track_stale"
-        for item in last_binding_acks
-    )
+    diagnostics = result.summary["module_final_diagnostics"]
+    assert len(acknowledgements) == 1
+    assert diagnostics["d3_authoritative_publication_count"] == 1
+    assert diagnostics["d3_evaluation_refresh_suppressed_count"] == 1
     report = json.loads(
         (
             tmp_path

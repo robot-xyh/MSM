@@ -142,15 +142,11 @@ def _hint(source_plan) -> dict[str, object]:
 
 def _plans():
     tracks, resources = _inputs()
-    source = _planner().plan(tracks, resources, timestamp=0.0)
-    source = replace(
-        source,
-        metadata={
-            **dict(source.metadata),
-            "authority_epoch": 7,
-            "lease_expires_at_s": 10.0,
-        },
-    )
+    source = _planner().plan(
+        tracks,
+        resources,
+        timestamp=0.0,
+    ).bind_authority_generation(7, 10.0)
     next_resources = (
         resources[0],
         resources[1],
@@ -174,6 +170,7 @@ def _plans():
         regional_planning_hint=hint,
         publish=False,
     )
+    successor = successor.bind_authority_generation(7, 10.0)
     return source, r0, successor, hint
 
 
@@ -570,6 +567,8 @@ def test_ordinary_replan_is_not_misattributed_when_candidate_matches_r0() -> Non
         "current_plan_owner_node_id",
         "authority_epoch",
         "lease_expires_at_s",
+        "regional_max_epoch",
+        "regional_min_lease_expires_at_s",
     )
     same_authority_r0 = replace(
         r0,

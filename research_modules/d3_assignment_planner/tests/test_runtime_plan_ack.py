@@ -597,6 +597,12 @@ def test_public_consumer_validates_real_namespaced_main_3v3_runtime_ack() -> Non
         if guidance_sequence is None
         else source_by_sequence[guidance_sequence]
     )
+    authoritative_plan = stack._d3_authoritative_plan_by_identity[
+        (
+            str(d3_source.payload["plan_id"]),
+            int(d3_source.payload["plan_version"]),
+        )
+    ][0]
 
     evidence = validate_assignment_plan_runtime_ack(
         envelope_schema=ack_envelope.schema_version,
@@ -605,10 +611,13 @@ def test_public_consumer_validates_real_namespaced_main_3v3_runtime_ack() -> Non
         d7_source_publication=(
             None if d7_source is None else d7_source.to_dict()
         ),
-        expected_plan=stack.latest_plan,
+        expected_plan=authoritative_plan,
     )
 
-    assert len(acknowledgements) == 2
+    diagnostics = result.summary["module_final_diagnostics"]
+    assert len(acknowledgements) == 1
+    assert diagnostics["d3_authoritative_publication_count"] == 1
+    assert diagnostics["d3_evaluation_refresh_suppressed_count"] == 1
     assert evidence.assignment_count == 3
     assert evidence.binding_ack_count == 3
     assert evidence.control_applied_binding_count == 3

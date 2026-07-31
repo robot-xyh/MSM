@@ -234,6 +234,23 @@ def _assignment_pairs(plan) -> tuple[tuple[str, str], ...]:
     return tuple(sorted((item.target_id, item.resource_id) for item in plan.assignments))
 
 
+def _bind_published_regional_successor(
+    planner: AssignmentPlanner,
+    plan,
+):
+    assert "authority_epoch" not in plan.metadata
+    assert "lease_expires_at_s" not in plan.metadata
+    authority_epoch = plan.metadata["regional_max_epoch"]
+    lease_expires_at_s = plan.metadata[
+        "regional_min_lease_expires_at_s"
+    ]
+    return planner.bind_published_authority_generation(
+        plan,
+        authority_epoch=authority_epoch,
+        lease_expires_at_s=lease_expires_at_s,
+    )
+
+
 def _hint_after_source_plan(
     previous,
     *,
@@ -268,6 +285,7 @@ def _cross_region_source_plan():
         previous_plan=initial,
         regional_planning_hint=_hint_mapping(initial),
     )
+    source = _bind_published_regional_successor(planner, source)
     source_pair = next(
         item
         for item in source.assignments
@@ -376,7 +394,7 @@ def test_valid_hint_opens_a_real_bounded_cross_region_candidate_edge() -> None:
     )
 
 
-def test_applied_hint_binds_new_execution_plan_to_uniform_authority() -> None:
+def test_applied_hint_publishes_then_binds_uniform_authority() -> None:
     planner = _planner()
     tracks, resources = _baseline_inputs()
     previous = planner.plan(tracks, resources, timestamp=0.0)
@@ -417,8 +435,20 @@ def test_applied_hint_binds_new_execution_plan_to_uniform_authority() -> None:
     assert plan.metadata["current_plan_owner"] == "center"
     assert plan.metadata["owner_node_id"] == "CENTER"
     assert plan.metadata["current_plan_owner_node_id"] == "CENTER"
-    assert plan.metadata["authority_epoch"] == previous.version
-    assert plan.metadata["lease_expires_at_s"] == pytest.approx(10.0)
+    assert "authority_epoch" not in plan.metadata
+    assert "lease_expires_at_s" not in plan.metadata
+    assert plan.metadata["regional_max_epoch"] == previous.version
+    assert plan.metadata["regional_min_lease_expires_at_s"] == pytest.approx(
+        10.0
+    )
+
+    bound = _bind_published_regional_successor(planner, plan)
+    assert bound.metadata["authority_epoch"] == previous.version
+    assert bound.metadata["lease_expires_at_s"] == pytest.approx(10.0)
+    assert bound.metadata["regional_max_epoch"] == previous.version
+    assert bound.metadata["regional_min_lease_expires_at_s"] == pytest.approx(
+        10.0
+    )
 
 
 def test_nonzero_transfer_and_hold_produce_attributable_strict_successor() -> None:
@@ -744,8 +774,12 @@ def test_source_cross_region_commit_does_not_consume_incremental_allowance() -> 
     assert result.metadata["regional_hint_constraint_applied"] is True
     assert result.metadata["regional_hint_successor_state"] == "successor_published"
     assert result.metadata["regional_hint_successor_plan_available"] is True
-    assert result.metadata["authority_epoch"] == previous.version
-    assert result.metadata["lease_expires_at_s"] == pytest.approx(10.0)
+    assert "authority_epoch" not in result.metadata
+    assert "lease_expires_at_s" not in result.metadata
+    assert result.metadata["regional_max_epoch"] == previous.version
+    assert result.metadata["regional_min_lease_expires_at_s"] == pytest.approx(
+        10.0
+    )
     assert result.metadata[
         "regional_hint_transfer_allowance_semantics"
     ] == "incremental_beyond_source_plan_v1"
@@ -968,6 +1002,7 @@ def test_no_hint_refresh_preserves_live_successor_authority_signature() -> None:
         previous_plan=previous,
         regional_planning_hint=_hint_mapping(previous),
     )
+    successor = _bind_published_regional_successor(planner, successor)
     authority_keys = (
         "plan_owner",
         "active_plan_owner",
@@ -1038,6 +1073,7 @@ def test_no_hint_refresh_fails_closed_at_successor_lease_expiry() -> None:
         previous_plan=previous,
         regional_planning_hint=_three_region_intervention_hint_mapping(previous),
     )
+    successor = _bind_published_regional_successor(planner, successor)
 
     with pytest.raises(StalePlanError) as error:
         planner.plan(
@@ -1061,6 +1097,7 @@ def test_no_hint_refresh_rejects_epoch_tamper_and_inactive_owner() -> None:
         previous_plan=previous,
         regional_planning_hint=_hint_mapping(previous),
     )
+    successor = _bind_published_regional_successor(planner, successor)
     epoch_tampered = replace(
         successor,
         metadata={
@@ -1103,11 +1140,21 @@ def test_generation_fence_blocks_no_hint_successor_refresh() -> None:
         previous_plan=previous,
         regional_planning_hint=_hint_mapping(previous),
     )
+    successor = _bind_published_regional_successor(planner, successor)
     fenced = planner.advance_authority_generation(
         successor,
         timestamp=2.0,
         expected_previous_version=successor.version,
         fence_reason="fault_generation_changed",
+    )
+    assert "authority_epoch" not in fenced.metadata
+    assert "lease_expires_at_s" not in fenced.metadata
+    assert "regional_max_epoch" not in fenced.metadata
+    assert "regional_min_lease_expires_at_s" not in fenced.metadata
+    fenced = planner.bind_published_authority_generation(
+        fenced,
+        authority_epoch=fenced.version,
+        lease_expires_at_s=9.0,
     )
 
     with pytest.raises(StalePlanError) as error:

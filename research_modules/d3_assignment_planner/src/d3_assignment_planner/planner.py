@@ -142,6 +142,8 @@ _REGIONAL_HINT_AUTHORITY_REFRESH_KEYS = (
     *_PLAN_OWNER_CONTROL_KEYS,
     "authority_epoch",
     "lease_expires_at_s",
+    "regional_max_epoch",
+    "regional_min_lease_expires_at_s",
 )
 _REGIONAL_HINT_SUCCESSOR_BINDING_KEYS = (
     "regional_hint_successor_schema",
@@ -187,6 +189,12 @@ _REGIONAL_HINT_NO_SUCCESSOR_REASON = (
 )
 _REGIONAL_HINT_TRANSFER_ALLOWANCE_SEMANTICS = (
     "incremental_beyond_source_plan_v1"
+)
+_AUTHORITY_GENERATION_BINDING_KEYS = (
+    "authority_epoch",
+    "lease_expires_at_s",
+    "regional_max_epoch",
+    "regional_min_lease_expires_at_s",
 )
 
 
@@ -628,13 +636,20 @@ class AssignmentPlanner:
             latest.metadata.get("fault_authority_fence_generation", 0)
         ) + 1
         source_execution_signature = (
-            latest_execution_signature
-            if source_plan is latest
-            else source_plan.execution_signature()
+            self._without_authority_generation_binding(
+                source_plan
+            ).execution_signature()
+        )
+        latest_execution_signature_without_binding = (
+            self._without_authority_generation_binding(
+                latest
+            ).execution_signature()
         )
         target_inventory_changed = (
-            source_execution_signature != latest_execution_signature
+            source_execution_signature
+            != latest_execution_signature_without_binding
         )
+        source_plan = self._without_authority_generation_binding(source_plan)
         fence_metadata = {
             "fault_authority_fence_schema": (
                 FAULT_AUTHORITY_GENERATION_FENCE_SCHEMA_V1
@@ -3291,8 +3306,13 @@ class AssignmentPlanner:
             previous_plan=previous_plan,
             timestamp=timestamp,
         )
+        plan = self._preserve_authority_generation_binding_for_refresh(
+            plan,
+            previous_plan=previous_plan,
+            previous_execution_signature=previous_execution_signature,
+        )
         plan_execution_signature = plan.execution_signature()
-        result = self._finalize_identity(
+        identity_result = self._finalize_identity(
             plan,
             previous_plan=previous_plan,
             evaluated_at_s=timestamp,
@@ -3302,7 +3322,7 @@ class AssignmentPlanner:
             previous_execution_signature=previous_execution_signature,
         )
         result = self._finalize_regional_hint_successor_contract(
-            result,
+            identity_result,
             previous_plan=previous_plan,
             execution_changed=(
                 previous_plan is None
@@ -3310,11 +3330,80 @@ class AssignmentPlanner:
             ),
         )
         if publish:
+            publication_execution_signature = plan_execution_signature
+            if result is not identity_result:
+                publication_execution_signature = result.execution_signature()
             self._publish_plan(
                 result,
-                plan_execution_signature=plan_execution_signature,
+                plan_execution_signature=publication_execution_signature,
             )
         return result
+
+    @classmethod
+    def _preserve_authority_generation_binding_for_refresh(
+        cls,
+        plan: AssignmentPlan,
+        *,
+        previous_plan: AssignmentPlan | None,
+        previous_execution_signature: tuple[Any, ...] | None,
+    ) -> AssignmentPlan:
+        """Carry an existing binding only across a true evaluation refresh."""
+
+        if previous_plan is None or previous_execution_signature is None:
+            return plan
+        binding = cls._authority_generation_binding(previous_plan)
+        if binding is None:
+            return plan
+        if any(key in plan.metadata for key in _AUTHORITY_GENERATION_BINDING_KEYS):
+            return plan
+
+        authority_epoch, lease_expires_at_s = binding
+        comparison_plan = replace(plan, created_at=previous_plan.created_at)
+        comparison_plan = comparison_plan.bind_authority_generation(
+            authority_epoch,
+            lease_expires_at_s,
+        )
+        if comparison_plan.execution_signature() != previous_execution_signature:
+            return plan
+        return comparison_plan
+
+    @staticmethod
+    def _authority_generation_binding(
+        plan: AssignmentPlan,
+    ) -> tuple[int, float] | None:
+        metadata = plan.metadata
+        if not all(key in metadata for key in _AUTHORITY_GENERATION_BINDING_KEYS):
+            return None
+        authority_epoch = metadata["authority_epoch"]
+        lease_expires_at_s = metadata["lease_expires_at_s"]
+        if (
+            metadata["regional_max_epoch"] != authority_epoch
+            or metadata["regional_min_lease_expires_at_s"] != lease_expires_at_s
+        ):
+            return None
+        try:
+            rebound = plan.bind_authority_generation(
+                authority_epoch,
+                lease_expires_at_s,
+            )
+        except ValueError:
+            return None
+        if rebound is not plan:
+            return None
+        return authority_epoch, float(lease_expires_at_s)
+
+    @staticmethod
+    def _without_authority_generation_binding(
+        plan: AssignmentPlan,
+    ) -> AssignmentPlan:
+        if not any(
+            key in plan.metadata for key in _AUTHORITY_GENERATION_BINDING_KEYS
+        ):
+            return plan
+        metadata = dict(plan.metadata)
+        for key in _AUTHORITY_GENERATION_BINDING_KEYS:
+            metadata.pop(key, None)
+        return replace(plan, metadata=metadata)
 
     def _normalize_regional_hint_authority_refresh(
         self,
@@ -3703,6 +3792,14 @@ class AssignmentPlanner:
                     "regional_hint_successor_plan_id": plan.plan_id,
                     "regional_hint_successor_plan_version": plan.version,
                     "regional_hint_successor_rejection_reason": None,
+                }
+            )
+            for key in _AUTHORITY_GENERATION_BINDING_KEYS:
+                metadata.pop(key, None)
+            metadata.update(
+                {
+                    "regional_max_epoch": owner_epoch,
+                    "regional_min_lease_expires_at_s": lease_value,
                 }
             )
             return replace(plan, metadata=metadata)
@@ -4365,6 +4462,87 @@ class AssignmentPlanner:
 
         return self._publish_plan(plan)
 
+    def bind_published_authority_generation(
+        self,
+        plan: AssignmentPlan,
+        authority_epoch: int,
+        lease_expires_at_s: float,
+    ) -> AssignmentPlan:
+        """Bind the current published identity and rebase planner stale checks."""
+
+        latest = self._latest_published_plan
+        if latest is None:
+            raise StalePlanError(
+                "authority generation binding requires a published plan",
+                reason="authority_binding_requires_published_plan",
+                previous_plan_id=plan.plan_id,
+                previous_version=plan.version,
+            )
+        if plan.plan_id != latest.plan_id or plan.version != latest.version:
+            raise StalePlanError(
+                "authority generation binding requires the latest published identity",
+                reason="authority_binding_stale_plan_identity",
+                previous_plan_id=plan.plan_id,
+                previous_version=plan.version,
+                latest_plan_id=latest.plan_id,
+                latest_version=latest.version,
+            )
+
+        latest_execution_signature = (
+            self._trusted_latest_published_execution_signature()
+        )
+        if latest_execution_signature is None:
+            raise RuntimeError("published plan execution signature is unavailable")
+        if plan.execution_signature() != latest_execution_signature:
+            raise StalePlanError(
+                "authority generation binding payload does not match the "
+                "published execution semantics",
+                reason="authority_binding_execution_semantics_mismatch",
+                previous_plan_id=plan.plan_id,
+                previous_version=plan.version,
+                latest_plan_id=latest.plan_id,
+                latest_version=latest.version,
+            )
+        if plan.authority_signature() != latest.authority_signature():
+            raise ValueError(
+                "authority generation binding payload does not match the "
+                "published authority semantics"
+            )
+
+        bound_latest = latest.bind_authority_generation(
+            authority_epoch,
+            lease_expires_at_s,
+        )
+        bound_plan = plan.bind_authority_generation(
+            authority_epoch,
+            lease_expires_at_s,
+        )
+        if bound_plan.authority_signature() != bound_latest.authority_signature():
+            raise ValueError(
+                "authority generation binding changed published authority semantics"
+            )
+        validated_assignment_plan_payload_sha256(bound_plan)
+
+        self._latest_published_plan = bound_plan
+        self._latest_published_execution_signature = (
+            bound_plan.execution_signature()
+        )
+        context = self._latest_planning_context
+        if (
+            context is not None
+            and context.plan.plan_id == plan.plan_id
+            and context.plan.version == plan.version
+            and context.plan.authority_signature() == plan.authority_signature()
+        ):
+            self._latest_planning_context = replace(
+                context,
+                plan=context.plan.bind_authority_generation(
+                    authority_epoch,
+                    lease_expires_at_s,
+                ),
+            )
+        return bound_plan
+
     def _publish_plan(
         self,
         plan: AssignmentPlan,
@@ -4511,7 +4689,20 @@ class AssignmentPlanner:
         ):
             raise ValueError("authority generation fence cannot change owner or authorization")
         validated_assignment_plan_payload_sha256(plan)
-        if plan_execution_signature != latest_execution_signature:
+        plan_execution_signature_without_binding = (
+            AssignmentPlanner._without_authority_generation_binding(
+                plan
+            ).execution_signature()
+        )
+        latest_execution_signature_without_binding = (
+            AssignmentPlanner._without_authority_generation_binding(
+                latest
+            ).execution_signature()
+        )
+        if (
+            plan_execution_signature_without_binding
+            != latest_execution_signature_without_binding
+        ):
             if not metadata.get("fault_authority_fence_target_inventory_changed"):
                 raise ValueError(
                     "authority generation fence inventory change is not declared"
