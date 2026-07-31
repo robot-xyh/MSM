@@ -198,26 +198,19 @@ def real_noop_chain() -> dict[str, Any]:
         if item.topic == "modules.d4.region_resource_consumption"
         and item.payload["advisory"]["advisory_id"] == advisory_id
     )
-    current_plan = next(
-        item
-        for item in messages
-        if item.topic == "modules.d3.assignment_plan"
-        and item.payload["metadata"].get("regional_hint_advisory_id")
-        == advisory_id
-    )
     source_plan_id, source_plan_version = advisory[
         "source_plan_versions"
     ][0]
-    source_plan = min(
-        (
-            item
-            for item in messages
-            if item.topic == "modules.d3.assignment_plan"
-            and item.sequence < current_plan.sequence
-            and item.payload["plan_id"] == source_plan_id
-            and item.payload["plan_version"] == source_plan_version
-        ),
-        key=lambda item: item.sequence,
+    plan_messages = tuple(
+        item
+        for item in messages
+        if item.topic == "modules.d3.assignment_plan"
+    )
+    source_plan = next(
+        item
+        for item in plan_messages
+        if item.payload["plan_id"] == source_plan_id
+        and item.payload["plan_version"] == source_plan_version
     )
     applied_acks = tuple(
         item
@@ -230,9 +223,13 @@ def real_noop_chain() -> dict[str, Any]:
     return {
         "advisory": _envelope_dict(advice),
         "consumption": _envelope_dict(consumption),
-        "current_plan": _envelope_dict(current_plan),
         "source_plan": _envelope_dict(source_plan),
+        "latest_plan": stack.latest_plan,
+        "plan_messages": tuple(
+            _envelope_dict(item) for item in plan_messages
+        ),
         "applied_acks": applied_acks,
+        "diagnostics": result.summary["module_final_diagnostics"],
     }
 
 
@@ -339,18 +336,39 @@ def test_real_main_5v5_noop_has_no_successor_or_adoption_ack(
     )
 
     source_payload = real_noop_chain["source_plan"]["payload"]
-    current_payload = real_noop_chain["current_plan"]["payload"]
-    metadata = current_payload["metadata"]
-    assert current_payload["plan_id"] == source_payload["plan_id"]
-    assert current_payload["plan_version"] == source_payload["plan_version"]
+    source_metadata = source_payload["metadata"]
+    current_plan = real_noop_chain["latest_plan"]
+    metadata = current_plan.metadata
+    assert current_plan.plan_id == source_payload["plan_id"]
+    assert current_plan.version == source_payload["plan_version"]
     assert metadata["regional_hint_applied"] is False
     assert metadata["regional_hint_rejected"] is True
     assert metadata["regional_hint_successor_state"] == "no_successor"
     assert metadata["regional_hint_successor_plan_available"] is False
     assert metadata["regional_hint_successor_plan_id"] is None
     assert metadata["regional_hint_successor_plan_version"] is None
-    assert "authority_epoch" not in metadata
-    assert "lease_expires_at_s" not in metadata
+    authority_generation_fields = (
+        "authority_epoch",
+        "lease_expires_at_s",
+        "regional_max_epoch",
+        "regional_min_lease_expires_at_s",
+    )
+    assert all(
+        field in source_metadata
+        for field in authority_generation_fields
+    )
+    assert {
+        field: metadata[field]
+        for field in authority_generation_fields
+    } == {
+        field: source_metadata[field]
+        for field in authority_generation_fields
+    }
+    assert len(real_noop_chain["plan_messages"]) == 1
+    diagnostics = real_noop_chain["diagnostics"]
+    assert diagnostics["d3_authoritative_publication_count"] == 1
+    assert diagnostics["d3_evaluation_refresh_suppressed_count"] >= 1
+    assert diagnostics["d3_authority_plan_digest_conflict_count"] == 0
     assert real_noop_chain["applied_acks"] == ()
 
 
