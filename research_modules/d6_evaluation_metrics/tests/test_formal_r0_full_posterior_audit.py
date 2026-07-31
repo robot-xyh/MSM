@@ -100,6 +100,9 @@ def _passing_row(index: int) -> dict[str, object]:
         "observation_governance_generation_contract_status": "verified",
         "d4_advice_resource_quota_conservation_violation_count": 0,
         "d4_advice_formal_decision_mutation_count": 0,
+        "d4_current_d3_plan_binding_verified": True,
+        "d4_current_plan_coalition_commit_verified": True,
+        "d4_communication_disposition_validation_verified": True,
         "d5_active_vision_target_reference_violation_count": 0,
         "d5_active_vision_ack_target_mismatch_count": 0,
     }

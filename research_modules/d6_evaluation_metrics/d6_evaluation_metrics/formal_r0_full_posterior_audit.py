@@ -31,10 +31,10 @@ FORMAL_R0_FULL_POSTERIOR_INPUT_SCHEMA_VERSION = (
     "d6.formal-r0-full-posterior-audit-input.v1"
 )
 FORMAL_R0_FULL_POSTERIOR_AUDIT_SCHEMA_VERSION = (
-    "d6.formal-r0-full-posterior-audit.v1"
+    "d6.formal-r0-full-posterior-audit.v2"
 )
 FORMAL_R0_FULL_POSTERIOR_COMPACT_SCHEMA_VERSION = (
-    "d6.formal-r0-full-posterior-audit-compact.v1"
+    "d6.formal-r0-full-posterior-audit-compact.v2"
 )
 FORMAL_R0_FULL_POSTERIOR_AUDIT_DATE = "2026-07-30"
 
@@ -60,6 +60,8 @@ _REQUIRED_EVIDENCE_FIELDS = (
     "d2_pending_generation_empty",
     "observation_governance_generation_integrity",
     "observation_governance_generation_contract_status",
+    "d4_current_d3_plan_binding_verified",
+    "d4_current_plan_coalition_commit_verified",
 )
 _SAFETY_ZERO_FIELDS = (
     "online_truth_use_count",
@@ -372,6 +374,10 @@ def audit_formal_r0_full_posterior(
             "generation_recompute_inputs": (
                 "episode/online_observations.jsonl",
                 "episode/summary.json",
+            ),
+            "current_plan_binding_inputs": (
+                "episode/online_observations.jsonl",
+                "episode/communication_dispositions.jsonl (optional)",
             ),
         },
         "source": core_result.get("source", {}),
@@ -1047,6 +1053,21 @@ def aggregate_formal_r0_full_posterior_rows(
             "d2_id_switch_count",
             denominator=denominator,
         ),
+        "current_d3_d4_plan_binding": boolean_availability_summary(
+            rows,
+            "d4_current_d3_plan_binding_verified",
+            denominator=denominator,
+        ),
+        "current_plan_coalition_commit": boolean_availability_summary(
+            rows,
+            "d4_current_plan_coalition_commit_verified",
+            denominator=denominator,
+        ),
+        "communication_disposition_validation": boolean_availability_summary(
+            rows,
+            "d4_communication_disposition_validation_verified",
+            denominator=denominator,
+        ),
         "safety_zero_counts": {
             field: metric_availability_summary(
                 rows,
@@ -1366,6 +1387,7 @@ def render_formal_r0_full_posterior_audit_markdown(
         "3. 将 merged scope 的 manifest、episode index 和 CSV 仅作为待复核索引，逐项核对其 SHA-256、路径和身份。",
         "4. 逐 episode 重算 artifact tree，并从在线观测总线和 summary 重新评估真值隔离、有限状态、clean formal 和实验矩阵资格。",
         "5. 重算 D1 发布代次、D2 消费代次、节拍前合并、末尾跳过、pending 和 generation integrity。缺值不补零，矛盾项失败关闭。",
+        "6. 以最后 D3 计划为当前代次，逐区域核对最后 D4 的 plan_id、plan_version、可用的权威 epoch/lease 和当前联盟 ACK 闭合状态。旧代 committed 不计入当前计划通过。",
         "",
         "未读取 `merged_scope/d6_evaluation`、旧 `targeted_formal_d6` 或 episode 内 producer 生成的 `observation_governance_audit.json`。",
         "",
@@ -1378,6 +1400,9 @@ def render_formal_r0_full_posterior_audit_markdown(
         f"| clean formal | {aggregate.get('clean_formal_cell_count')}/{aggregate.get('audit_denominator')} |",
         f"| 实验矩阵资格 | {aggregate.get('experiment_matrix_formal_cell_count')}/{aggregate.get('audit_denominator')} |",
         f"| generation verified | {aggregate.get('generation_verified_cell_count')}/{aggregate.get('audit_denominator')} |",
+        f"| D3-D4 当前计划绑定 | {aggregate.get('current_d3_d4_plan_binding', {}).get('true_cell_count')}/{aggregate.get('audit_denominator')} |",
+        f"| 当前计划联盟提交 | {aggregate.get('current_plan_coalition_commit', {}).get('true_cell_count')}/{aggregate.get('audit_denominator')} |",
+        f"| 逐消息处置证据可用 | {aggregate.get('communication_disposition_validation', {}).get('available_cell_count')}/{aggregate.get('audit_denominator')} |",
         f"| 20 分片哈希通过 | {merged.get('shard_hashes', {}).get('verified_shard_count')}/{merged.get('shard_hashes', {}).get('expected_shard_count')} |",
         "",
         "## 后验守恒",
@@ -1557,6 +1582,19 @@ def _write_cell_csv(
         "d2_id_switch_count_availability",
         "d4_advice_resource_quota_conservation_violation_count",
         "d4_advice_formal_decision_mutation_count",
+        "d4_current_d3_plan_binding_verified",
+        "d4_current_d3_plan_binding_verified_availability",
+        "d4_current_d3_plan_id_match",
+        "d4_current_d3_plan_version_match",
+        "d4_current_d3_authority_epoch_match",
+        "d4_current_d3_authority_lease_match",
+        "d4_current_plan_coalition_commit_verified",
+        "d4_current_plan_coalition_commit_verified_availability",
+        "d4_current_plan_coalition_state_distribution_json",
+        "d4_current_plan_uncommitted_target_ids_json",
+        "d4_communication_disposition_validation_verified",
+        "d4_communication_disposition_validation_verified_availability",
+        "d4_communication_disposition_record_count",
         "d5_active_vision_target_reference_violation_count",
         "d5_active_vision_ack_target_mismatch_count",
         "verified",

@@ -17,6 +17,10 @@ from pathlib import Path
 import subprocess
 from typing import Any, Mapping, Sequence
 
+from .formal_r0_plan_binding_audit import (
+    audit_formal_r0_plan_binding_episode,
+    formal_r0_plan_binding_row_metrics,
+)
 from .scalable_3d_offline import evaluate_scalable_3d_episode
 
 
@@ -24,7 +28,7 @@ FORMAL_R0_TARGETED_POSTERIOR_INPUT_SCHEMA_VERSION = (
     "d6.formal-r0-targeted-posterior-audit-input.v1"
 )
 FORMAL_R0_TARGETED_POSTERIOR_AUDIT_SCHEMA_VERSION = (
-    "d6.formal-r0-targeted-posterior-audit.v1"
+    "d6.formal-r0-targeted-posterior-audit.v2"
 )
 FORMAL_R0_TARGETED_POSTERIOR_AUDIT_DATE = "2026-07-30"
 
@@ -339,6 +343,10 @@ def audit_formal_r0_targeted_posterior(
                 "episode/online_observations.jsonl",
                 "episode/summary.json",
             ),
+            "current_plan_binding_inputs": (
+                "episode/online_observations.jsonl",
+                "episode/communication_dispositions.jsonl (optional)",
+            ),
         },
         "source": source_audit,
         "execution_plan": plan_audit,
@@ -450,6 +458,16 @@ def write_formal_r0_targeted_posterior_audit(
         "d2_pending_generation_empty",
         "observation_governance_generation_integrity",
         "observation_governance_generation_contract_status",
+        "d4_current_d3_plan_binding_verified",
+        "d4_current_d3_plan_id_match",
+        "d4_current_d3_plan_version_match",
+        "d4_current_d3_authority_epoch_match",
+        "d4_current_d3_authority_lease_match",
+        "d4_current_plan_coalition_commit_verified",
+        "d4_current_plan_coalition_state_distribution_json",
+        "d4_current_plan_uncommitted_target_ids_json",
+        "d4_communication_disposition_validation_verified",
+        "d4_communication_disposition_record_count",
         "verified",
         "failure_reasons",
     )
@@ -1059,12 +1077,20 @@ def _audit_target_cell(
             artifact_tree_verified = True
 
     low_level: dict[str, Any] = {}
+    plan_binding_audit = audit_formal_r0_plan_binding_episode(episode_dir)
+    plan_binding_metrics = formal_r0_plan_binding_row_metrics(
+        plan_binding_audit
+    )
     if not missing_artifacts:
         try:
             low_level = evaluate_scalable_3d_episode(episode_dir)
         except (OSError, ValueError) as exc:
             reasons.append(f"d6_low_level_episode_evaluation_failed:{exc}")
     reasons.extend(_low_level_gate_reasons(low_level))
+    reasons.extend(
+        f"d3_d4_current_plan:{reason}"
+        for reason in plan_binding_audit.get("failure_reasons", ())
+    )
     if low_level:
         if low_level.get("git_commit") != inputs.expected_source_git_commit:
             reasons.append("episode_manifest_source_commit_mismatch")
@@ -1162,6 +1188,7 @@ def _audit_target_cell(
         "verified": not reasons,
         "failure_reasons": reasons,
     }
+    row.update(plan_binding_metrics)
     for field in _POSTERIOR_AUDIT_LOW_LEVEL_EVIDENCE_FIELDS:
         if field not in row:
             row[field] = low_level.get(field)

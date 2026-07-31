@@ -1576,7 +1576,7 @@ def test_same_identity_evaluation_refresh_creates_a_distinct_occurrence_window(
     assert first["window_end_timestamp"] == second["window_start_timestamp"] == 2.0
 
 
-def test_real_main_3v3_refresh_episode_joins_every_ack_occurrence(
+def test_real_main_3v3_single_authoritative_plan_joins_once(
     tmp_path: Path,
 ) -> None:
     output_dir = tmp_path / "integrated_3v3"
@@ -1602,14 +1602,14 @@ def test_real_main_3v3_refresh_episode_joins_every_ack_occurrence(
     result = evaluate_runtime_plan_outcomes(_episode_output_inputs(output_dir))
 
     runtime = result["runtime_ack_evidence"]
-    assert runtime["ack_count"] == 2
-    assert runtime["unique_occurrence_count"] == 2
+    assert runtime["ack_count"] == 1
+    assert runtime["unique_occurrence_count"] == 1
     assert runtime["new_plan_identity_occurrence_count"] == 1
-    assert runtime["same_identity_refresh_occurrence_count"] == 1
-    assert runtime["binding_count"] == 6
+    assert runtime["same_identity_refresh_occurrence_count"] == 0
+    assert runtime["binding_count"] == 3
     windows = result["binding_windows"]
-    assert len({item["occurrence_id"] for item in windows}) == 2
-    assert {item["occurrence_index"] for item in windows} == {1, 2}
+    assert len({item["occurrence_id"] for item in windows}) == 1
+    assert {item["occurrence_index"] for item in windows} == {1}
     assert len({item["execution_signature_sha256"] for item in windows}) == 1
     assert result["runtime_ack_evidence"]["online_truth_use_count"] == 0
     recovery = result["d2_identity_recovery_config_provenance"]
