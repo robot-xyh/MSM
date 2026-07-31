@@ -4,10 +4,14 @@ import csv
 import hashlib
 import json
 from pathlib import Path
+import subprocess
+import sys
+import tarfile
 from typing import Mapping
 
 import pytest
 
+import d6_evaluation_metrics.formal_shard_archive_audit as archive_audit_module
 import d6_evaluation_metrics.learning_scope_formal_audit as audit_module
 
 from d6_evaluation_metrics.learning_scope_formal_audit import (
@@ -16,6 +20,9 @@ from d6_evaluation_metrics.learning_scope_formal_audit import (
     ScopeEvidenceArtifacts,
     audit_learning_scope_formal_evidence,
     write_learning_scope_formal_audit_report,
+)
+from d6_evaluation_metrics.formal_shard_archive_audit import (
+    audit_verified_formal_shard_archive_set,
 )
 
 
@@ -60,6 +67,72 @@ def _digest(value: object) -> str:
 
 def _file_sha(path: Path) -> str:
     return hashlib.sha256(path.read_bytes()).hexdigest()
+
+
+def _archive_inventory(root: Path) -> dict[str, object]:
+    files: list[dict[str, object]] = []
+    digest = hashlib.sha256()
+    total = 0
+    for path in sorted(item for item in root.rglob("*") if item.is_file()):
+        relative = path.relative_to(root).as_posix()
+        size = path.stat().st_size
+        sha256 = _file_sha(path)
+        files.append(
+            {
+                "relative_path": relative,
+                "size_bytes": size,
+                "sha256": sha256,
+            }
+        )
+        total += size
+        digest.update(f"{sha256}  {size}  {relative}\n".encode())
+    return {
+        "schema_version": "scalable3d-artifact-inventory-v1",
+        "file_count": len(files),
+        "total_size_bytes": total,
+        "tree_sha256": digest.hexdigest(),
+        "files": files,
+    }
+
+
+def _write_deterministic_tar_zst(
+    source: Path,
+    inventory: Mapping[str, object],
+    destination: Path,
+) -> None:
+    process = subprocess.Popen(
+        ["zstd", "-1", "-T1", "--quiet", "-o", str(destination)],
+        stdin=subprocess.PIPE,
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.PIPE,
+    )
+    assert process.stdin is not None
+    assert process.stderr is not None
+    archive = tarfile.open(
+        fileobj=process.stdin,
+        mode="w|",
+        format=tarfile.PAX_FORMAT,
+    )
+    try:
+        for record in inventory["files"]:  # type: ignore[index]
+            relative = str(record["relative_path"])
+            info = tarfile.TarInfo(relative)
+            info.size = int(record["size_bytes"])
+            info.mtime = 0
+            info.mode = 0o644
+            info.uid = 0
+            info.gid = 0
+            info.uname = ""
+            info.gname = ""
+            info.pax_headers = {}
+            with (source / relative).open("rb") as stream:
+                archive.addfile(info, stream)
+    finally:
+        archive.close()
+        if not process.stdin.closed:
+            process.stdin.close()
+    stderr = process.stderr.read().decode(errors="replace")
+    assert process.wait() == 0, stderr
 
 
 def _write_json(path: Path, value: object) -> None:
@@ -669,6 +742,249 @@ def _write_scope(
         execution_plan_path=plan_path,
         merge_dir=merge,
         label=label or variant,
+    )
+
+
+def _archive_scope(
+    source: ScopeEvidenceArtifacts,
+    root: Path,
+) -> ScopeEvidenceArtifacts:
+    plan_path = source.execution_plan_path
+    plan = json.loads(plan_path.read_text(encoding="utf-8"))
+    descriptor = plan["sharding"]["shards"][0]
+    shard_id = descriptor["shard_id"]
+    shard_dir = plan_path.parent / "shards" / shard_id
+    archive_root = root / "archives"
+    archive_root.mkdir(parents=True)
+    archive_dir = archive_root / shard_id
+    archive_dir.mkdir()
+    inventory = _archive_inventory(shard_dir)
+    payload_path = archive_dir / "shard_payload.tar.zst"
+    _write_deterministic_tar_zst(shard_dir, inventory, payload_path)
+    scope_cells = [
+        cell
+        for cell in plan["scope"]["cells"]
+        if cell["shard_index"] == descriptor["shard_index"]
+    ]
+    binding = {
+        "execution_plan_sha256": plan["execution_plan_sha256"],
+        "execution_plan_file_sha256": _file_sha(plan_path),
+        "parent_plan_sha256": plan["parent"]["plan_sha256"],
+        "source_git_commit": plan["source"]["git_commit"],
+        "shard_index": descriptor["shard_index"],
+        "shard_id": shard_id,
+        "expected_cell_count": descriptor["cell_count"],
+        "completed_cell_count": descriptor["cell_count"],
+        "descriptor_sha256": _digest(descriptor),
+        "cells_sha256": _digest(scope_cells),
+        "storage_validation_schema": (
+            "scalable3d-experiment-matrix-shard-storage-validation-v1"
+        ),
+        "storage_validation_status": "verified_complete",
+        "shard_plan_sha256": _file_sha(shard_dir / "shard_plan.json"),
+        "progress_sha256": _file_sha(shard_dir / "progress.jsonl"),
+        "checkpoint_sha256": _file_sha(shard_dir / "checkpoint.json"),
+    }
+    manifest = {
+        "schema_version": "scalable3d-formal-shard-archive-manifest-v1",
+        "created_at_utc": "2026-07-31T00:00:00+00:00",
+        "archive_format": "deterministic-pax-tar-zstd-v1",
+        "compression": {
+            "algorithm": "zstd",
+            "level": 1,
+            "threads": 1,
+            "runtime": "fixture-zstd-1.5.5",
+        },
+        "source": {
+            "name": shard_id,
+            "canonical_relative_path": f"shards/{shard_id}",
+            "preserved_at_creation": True,
+            "deletion_performed_by_tool": False,
+        },
+        "binding": binding,
+        "inventory": inventory,
+        "payload": {
+            "filename": payload_path.name,
+            "size_bytes": payload_path.stat().st_size,
+            "sha256": _file_sha(payload_path),
+        },
+    }
+    manifest_path = archive_dir / "shard_archive_manifest.json"
+    _write_json(manifest_path, manifest)
+    (archive_dir / "SHA256SUMS").write_text(
+        f"{_file_sha(manifest_path)}  {manifest_path.name}\n"
+        f"{_file_sha(payload_path)}  {payload_path.name}\n",
+        encoding="utf-8",
+    )
+    archive_record = {
+        "shard_index": descriptor["shard_index"],
+        "shard_id": shard_id,
+        "archive_manifest_sha256": _file_sha(manifest_path),
+        "archive_checksum_file_sha256": _file_sha(
+            archive_dir / "SHA256SUMS"
+        ),
+        "payload_sha256": _file_sha(payload_path),
+        "payload_tree_sha256": inventory["tree_sha256"],
+        "archive_size_bytes": payload_path.stat().st_size,
+        "file_count": inventory["file_count"],
+        "total_size_bytes": inventory["total_size_bytes"],
+        "binding": binding,
+    }
+
+    merge_dir = root / "archive_merge"
+    merge_dir.mkdir()
+    cells_path = merge_dir / "experiment_matrix_scope_cells.csv"
+    cells_path.write_bytes(
+        (source.merge_dir / "experiment_matrix_scope_cells.csv").read_bytes()
+    )
+    with cells_path.open(newline="", encoding="utf-8") as stream:
+        rows = list(csv.DictReader(stream))
+    logical_paths = [row["episode_relative_path"] for row in rows]
+    episode_dirs_path = merge_dir / "episode_dirs.json"
+    _write_json(
+        episode_dirs_path,
+        {
+            "schema_version": (
+                "scalable3d-formal-shard-archive-scope-merge-v1"
+            ),
+            "storage_mode": "verified_formal_shard_archives_v1",
+            "execution_plan_sha256": plan["execution_plan_sha256"],
+            "episode_count": len(rows),
+            "canonical_directories_materialized": False,
+            "paths_relative_to_execution_root": logical_paths,
+        },
+    )
+    artifacts: dict[str, dict[str, object]] = {}
+    for index, name in enumerate(
+        (
+            "aggregate_json",
+            "markdown",
+            "module_performance_evidence",
+            "per_episode_seed_csv",
+            "stage_timing_curve",
+        )
+    ):
+        path = merge_dir / "d6_evaluation" / f"artifact_{index}.bin"
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_bytes(name.encode())
+        artifacts[name] = {
+            "relative_path": path.relative_to(merge_dir).as_posix(),
+            "size_bytes": path.stat().st_size,
+            "sha256": _file_sha(path),
+        }
+    binding_path = merge_dir / "archive_d6_evaluation_binding.json"
+    _write_json(
+        binding_path,
+        {
+            "schema_version": "scalable3d-formal-shard-archive-d6-binding-v1",
+            "storage_mode": "verified_formal_shard_archives_v1",
+            "execution_plan_sha256": plan["execution_plan_sha256"],
+            "episode_count": len(rows),
+            "scope_indices": list(range(len(rows))),
+            "evaluator_schema_versions": ["fixture-d6-offline-v1"],
+            "evaluator_git_commits": [_COMMIT],
+            "evaluator_repository_dirty_values": [False],
+            "evaluator_source_tree_sha256s": ["sha256:" + "a" * 64],
+            "artifacts": artifacts,
+        },
+    )
+    manifest_path = merge_dir / "experiment_matrix_scope_manifest.json"
+    _write_json(
+        manifest_path,
+        {
+            "schema_version": (
+                "scalable3d-formal-shard-archive-scope-merge-v1"
+            ),
+            "storage_mode": "verified_formal_shard_archives_v1",
+            "source_git_commit": plan["source"]["git_commit"],
+            "source_repository_dirty": False,
+            "execution_plan_sha256": plan["execution_plan_sha256"],
+            "parent_plan_sha256": plan["parent"]["plan_sha256"],
+            "parent_formal": True,
+            "parent_full_cell_count": plan["parent"]["full_cell_count"],
+            "scope_variants": plan["scope"]["variants"],
+            "scope_expected_cell_count": plan["scope"]["cell_count"],
+            "scope_completed_cell_count": plan["scope"]["cell_count"],
+            "scope_complete": True,
+            "formal_scope_complete": True,
+            "full_matrix_complete": False,
+            "formal_matrix_complete": False,
+            "legacy_full_matrix_manifest_written": False,
+            "shard_strategy": "scope_index_modulo_v1",
+            "shard_count": plan["sharding"]["shard_count"],
+            "shards": [
+                {
+                    **binding,
+                    "cell_count": descriptor["cell_count"],
+                    "archive": {
+                        "directory_name": shard_id,
+                        "archive_format": "deterministic-pax-tar-zstd-v1",
+                        **{
+                            key: archive_record[key]
+                            for key in (
+                                "archive_manifest_sha256",
+                                "archive_checksum_file_sha256",
+                                "payload_sha256",
+                                "payload_tree_sha256",
+                                "archive_size_bytes",
+                                "file_count",
+                                "total_size_bytes",
+                            )
+                        },
+                    },
+                }
+            ],
+            "paired_random_schedule_version": _SENSOR_SCHEDULE,
+            "canonical_episode_directories_materialized": False,
+            "archive_set_complete": True,
+            "peak_restored_shard_count": 1,
+            "status": "formal_scope_complete",
+            "d6_evaluation_generated": True,
+            "d6_evaluation_binding_sha256": _file_sha(binding_path),
+        },
+    )
+    checksum_path = merge_dir / "SHA256SUMS"
+    checksum_path.write_text(
+        "".join(
+            f"{_file_sha(path)}  {path.name}\n"
+            for path in sorted(
+                (manifest_path, cells_path, episode_dirs_path, binding_path),
+                key=lambda value: value.name,
+            )
+        ),
+        encoding="utf-8",
+    )
+    return ScopeEvidenceArtifacts(
+        execution_plan_path=source.execution_plan_path,
+        merge_dir=None,
+        label=source.label,
+        archive_root=archive_root,
+        archive_merge_dir=merge_dir,
+    )
+
+
+def _rewrite_archive_checksums(archive_dir: Path) -> None:
+    manifest = archive_dir / "shard_archive_manifest.json"
+    payload = archive_dir / "shard_payload.tar.zst"
+    (archive_dir / "SHA256SUMS").write_text(
+        f"{_file_sha(manifest)}  {manifest.name}\n"
+        f"{_file_sha(payload)}  {payload.name}\n",
+        encoding="utf-8",
+    )
+
+
+def _rewrite_archive_merge_checksums(merge_dir: Path) -> None:
+    names = (
+        "archive_d6_evaluation_binding.json",
+        "episode_dirs.json",
+        "experiment_matrix_scope_cells.csv",
+        "experiment_matrix_scope_manifest.json",
+    )
+    (merge_dir / "SHA256SUMS").write_text(
+        "".join(
+            f"{_file_sha(merge_dir / name)}  {name}\n" for name in names
+        ),
+        encoding="utf-8",
     )
 
 
@@ -1299,3 +1615,484 @@ def test_d5_graph_zero_candidate_edges_is_not_actual_adoption(
         "cell_actual_assist_not_adopted:d5_graph"
         in cell["failure_reasons"]
     )
+
+
+@pytest.mark.parametrize("variant", ("G1", "A1", "A2", "A3", "C1", "F1"))
+def test_archive_learning_scope_and_archive_r0_pass_for_all_variants(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    variant: str,
+) -> None:
+    inputs, bundles = _variant_pair(tmp_path, variant)
+    _patch_learned_offline_metrics(monkeypatch, _positive_adoption_metrics())
+    learned = _archive_scope(inputs.learned_scope, tmp_path / "learned_archive")
+    baseline = _archive_scope(inputs.r0_scopes[0], tmp_path / "r0_archive")
+    detached_learned = tmp_path / "detached_learned_raw"
+    detached_r0 = tmp_path / "detached_r0_raw"
+    (learned.execution_plan_path.parent / "shards").rename(detached_learned)
+    (baseline.execution_plan_path.parent / "shards").rename(detached_r0)
+
+    result = audit_learning_scope_formal_evidence(
+        LearningScopeFormalAuditInputs(
+            learned_scope=learned,
+            r0_scopes=(baseline,),
+            expected_preflight_device="cpu",
+        ),
+        model_bundles=bundles,
+    )
+
+    assert result["verdict"] == "pass"
+    assert result["learned_scope"]["storage_mode"] == (
+        "verified_formal_shard_archives_v1"
+    )
+    assert result["learned_scope"]["verified_archive_count"] == 1
+    assert result["learned_scope"]["peak_staged_shard_count"] == 1
+    assert result["learned_scope"]["source_deletion_performed"] is False
+    assert result["learned_scope"]["archive_deletion_performed"] is False
+    assert result["r0_scopes"][0]["verified_archive_count"] == 1
+    assert detached_learned.is_dir()
+    assert detached_r0.is_dir()
+    assert learned.archive_root.is_dir()
+    assert baseline.archive_root.is_dir()
+
+
+def test_archive_learned_scope_with_directory_r0_passes(
+    tmp_path: Path,
+) -> None:
+    inputs, bundle = _complete_inputs(tmp_path)
+    learned = _archive_scope(inputs.learned_scope, tmp_path / "learned_archive")
+
+    result = audit_learning_scope_formal_evidence(
+        LearningScopeFormalAuditInputs(
+            learned_scope=learned,
+            r0_scopes=inputs.r0_scopes,
+            expected_preflight_device="cpu",
+        ),
+        model_bundles={"d5_graph": bundle},
+    )
+
+    assert result["verdict"] == "pass"
+    assert result["learned_scope"]["archive_verification_performed"] is True
+    baseline = result["r0_scopes"][0]
+    assert baseline["storage_mode"] == "materialized_scope_directories_v1"
+    assert baseline["archive_root"] is None
+    assert baseline["archive_verification_performed"] is False
+    assert baseline["verified_archive_count"] == 0
+    assert baseline["peak_staged_shard_count"] == 0
+    assert baseline["sidecar_files"] == []
+
+
+def test_archive_scope_accepts_regular_sidecar_and_reports_it(
+    tmp_path: Path,
+) -> None:
+    inputs, bundle = _complete_inputs(tmp_path)
+    learned = _archive_scope(inputs.learned_scope, tmp_path / "learned_archive")
+    (learned.archive_root / "pack_report.json").write_text(
+        "{}\n",
+        encoding="utf-8",
+    )
+
+    result = audit_learning_scope_formal_evidence(
+        LearningScopeFormalAuditInputs(
+            learned_scope=learned,
+            r0_scopes=inputs.r0_scopes,
+            expected_preflight_device="cpu",
+        ),
+        model_bundles={"d5_graph": bundle},
+    )
+
+    assert result["verdict"] == "pass"
+    assert result["learned_scope"]["sidecar_files"] == ["pack_report.json"]
+
+
+@pytest.mark.parametrize("archive_fault", ("missing", "extra", "symlink"))
+def test_archive_scope_rejects_inexact_or_unsafe_archive_set(
+    tmp_path: Path,
+    archive_fault: str,
+) -> None:
+    inputs, bundle = _complete_inputs(tmp_path)
+    learned = _archive_scope(inputs.learned_scope, tmp_path / "learned_archive")
+    shard = next(path for path in learned.archive_root.iterdir() if path.is_dir())
+    if archive_fault == "missing":
+        shard.rename(tmp_path / "removed_archive")
+    elif archive_fault == "extra":
+        (learned.archive_root / "unexpected_directory").mkdir()
+    else:
+        (learned.archive_root / "unsafe_link").symlink_to(shard)
+
+    result = audit_learning_scope_formal_evidence(
+        LearningScopeFormalAuditInputs(
+            learned_scope=learned,
+            r0_scopes=inputs.r0_scopes,
+        ),
+        model_bundles={"d5_graph": bundle},
+    )
+
+    assert result["verdict"] == "fail_closed"
+    assert result["learned_scope"]["verified_archive_count"] == 0
+    assert any(
+        "archive_set_mismatch" in reason
+        or "archive_root_symlink_entry" in reason
+        for reason in result["blockers"]
+    )
+
+
+@pytest.mark.parametrize("archive_fault", ("payload", "plan_binding"))
+def test_archive_scope_rejects_payload_or_execution_plan_tamper(
+    tmp_path: Path,
+    archive_fault: str,
+) -> None:
+    inputs, bundle = _complete_inputs(tmp_path)
+    learned = _archive_scope(inputs.learned_scope, tmp_path / "learned_archive")
+    archive_dir = next(
+        path for path in learned.archive_root.iterdir() if path.is_dir()
+    )
+    if archive_fault == "payload":
+        with (archive_dir / "shard_payload.tar.zst").open("ab") as stream:
+            stream.write(b"tamper")
+    else:
+        manifest_path = archive_dir / "shard_archive_manifest.json"
+        manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+        manifest["binding"]["execution_plan_sha256"] = "f" * 64
+        _write_json(manifest_path, manifest)
+        _rewrite_archive_checksums(archive_dir)
+
+    result = audit_learning_scope_formal_evidence(
+        LearningScopeFormalAuditInputs(
+            learned_scope=learned,
+            r0_scopes=inputs.r0_scopes,
+        ),
+        model_bundles={"d5_graph": bundle},
+    )
+
+    assert result["verdict"] == "fail_closed"
+    assert result["learned_scope"]["verified_archive_count"] == 0
+    assert any(
+        "archive_or_shard_audit_failed" in reason
+        for reason in result["blockers"]
+    )
+
+
+@pytest.mark.parametrize(
+    "merge_fault",
+    ("plan_binding", "cell_digest", "duplicate_cell", "missing_cell"),
+)
+def test_archive_scope_rejects_merge_tamper_or_cell_inventory_fault(
+    tmp_path: Path,
+    merge_fault: str,
+) -> None:
+    inputs, bundle = _complete_inputs(tmp_path)
+    learned = _archive_scope(inputs.learned_scope, tmp_path / "learned_archive")
+    merge_dir = learned.archive_merge_dir
+    assert merge_dir is not None
+    if merge_fault == "plan_binding":
+        manifest_path = merge_dir / "experiment_matrix_scope_manifest.json"
+        manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+        manifest["execution_plan_sha256"] = "f" * 64
+        _write_json(manifest_path, manifest)
+    else:
+        cells_path = merge_dir / "experiment_matrix_scope_cells.csv"
+        with cells_path.open(newline="", encoding="utf-8") as stream:
+            reader = csv.DictReader(stream)
+            rows = list(reader)
+            fields = tuple(reader.fieldnames or ())
+        if merge_fault == "cell_digest":
+            rows[0]["cell_result_sha256"] = "0" * 64
+        elif merge_fault == "duplicate_cell":
+            rows.append(dict(rows[0]))
+        else:
+            rows.clear()
+        with cells_path.open("w", newline="", encoding="utf-8") as stream:
+            writer = csv.DictWriter(stream, fieldnames=fields)
+            writer.writeheader()
+            writer.writerows(rows)
+    _rewrite_archive_merge_checksums(merge_dir)
+
+    result = audit_learning_scope_formal_evidence(
+        LearningScopeFormalAuditInputs(
+            learned_scope=learned,
+            r0_scopes=inputs.r0_scopes,
+        ),
+        model_bundles={"d5_graph": bundle},
+    )
+
+    assert result["verdict"] == "fail_closed"
+    assert result["formal_evidence_eligible"] is False
+
+
+def test_scope_storage_inputs_are_explicit_and_mutually_exclusive(
+    tmp_path: Path,
+) -> None:
+    plan = tmp_path / "plan.json"
+    merge = tmp_path / "merge"
+    archives = tmp_path / "archives"
+    archive_merge = tmp_path / "archive_merge"
+
+    with pytest.raises(ValueError, match="exactly one storage mode"):
+        ScopeEvidenceArtifacts(execution_plan_path=plan)
+    with pytest.raises(ValueError, match="exactly one storage mode"):
+        ScopeEvidenceArtifacts(
+            execution_plan_path=plan,
+            merge_dir=merge,
+            archive_root=archives,
+            archive_merge_dir=archive_merge,
+        )
+    with pytest.raises(ValueError, match="requires archive_root"):
+        ScopeEvidenceArtifacts(
+            execution_plan_path=plan,
+            archive_root=archives,
+        )
+
+
+def test_learning_scope_cli_exposes_archive_inputs_and_rejects_conflict(
+    tmp_path: Path,
+) -> None:
+    script = (
+        Path(__file__).resolve().parents[1]
+        / "scripts"
+        / "run_learning_scope_formal_audit.py"
+    )
+    help_result = subprocess.run(
+        [sys.executable, str(script), "--help"],
+        check=False,
+        capture_output=True,
+        text=True,
+    )
+    assert help_result.returncode == 0
+    assert "--scope-archive-root" in help_result.stdout
+    assert "--scope-archive-merge-dir" in help_result.stdout
+    assert "--r0-archive-scope" in help_result.stdout
+
+    conflict = subprocess.run(
+        [
+            sys.executable,
+            str(script),
+            "--execution-plan",
+            str(tmp_path / "plan.json"),
+            "--scope-merge-dir",
+            str(tmp_path / "merge"),
+            "--scope-archive-root",
+            str(tmp_path / "archives"),
+            "--scope-archive-merge-dir",
+            str(tmp_path / "archive_merge"),
+            "--output-dir",
+            str(tmp_path / "output"),
+        ],
+        check=False,
+        capture_output=True,
+        text=True,
+    )
+    assert conflict.returncode == 2
+    assert "not allowed with argument" in conflict.stderr
+
+
+def test_generic_archive_set_releases_each_shard_before_staging_next(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    plan_path = tmp_path / "experiment_matrix_execution_plan.json"
+    plan_path.write_text("{}\n", encoding="utf-8")
+    descriptors = [
+        {
+            "shard_index": index,
+            "shard_id": f"shard_{index:03d}_of_002",
+            "cell_count": 1,
+        }
+        for index in range(2)
+    ]
+    plan = {
+        "sharding": {"shard_count": 2, "shards": descriptors},
+        "scope": {"cells": []},
+    }
+    archive_root = tmp_path / "archives"
+    archive_root.mkdir()
+    for descriptor in descriptors:
+        (archive_root / descriptor["shard_id"]).mkdir()
+    (archive_root / "pack_sidecar.json").write_text("{}\n", encoding="utf-8")
+
+    staged_roots: list[Path] = []
+
+    def fake_restore(**kwargs: object) -> tuple[dict[str, object], dict[str, object]]:
+        destination = Path(str(kwargs["destination"]))
+        (destination / "verified.txt").write_text("ok\n", encoding="utf-8")
+        index = int(kwargs["shard_index"])
+        return (
+            {"inventory": {"tree_sha256": str(index)}},
+            {
+                "shard_index": index,
+                "shard_id": descriptors[index]["shard_id"],
+                "binding": {"completed_cell_count": 1},
+            },
+        )
+
+    def inspect_shard(
+        index: int,
+        temporary_root: Path,
+        staged_shard: Path,
+        manifest: Mapping[str, object],
+        archive_record: Mapping[str, object],
+    ) -> Mapping[str, object]:
+        del manifest, archive_record
+        assert all(not previous.exists() for previous in staged_roots)
+        assert (staged_shard / "verified.txt").is_file()
+        staged_roots.append(temporary_root)
+        return {"shard_index": index}
+
+    monkeypatch.setattr(
+        archive_audit_module,
+        "verify_and_restore_formal_shard_archive",
+        fake_restore,
+    )
+    result = audit_verified_formal_shard_archive_set(
+        execution_plan_path=plan_path,
+        archive_root=archive_root,
+        expected_source_git_commit=_COMMIT,
+        expected_execution_plan_sha256="b" * 64,
+        plan=plan,
+        shard_auditor=inspect_shard,
+    )
+
+    assert result["verified"] is True
+    assert result["verified_archive_count"] == 2
+    assert result["peak_staged_shard_count"] == 1
+    assert result["sidecar_files"] == ["pack_sidecar.json"]
+    assert all(not root.exists() for root in staged_roots)
+
+
+@pytest.mark.parametrize(
+    ("sharding", "expected_reason", "expected_count"),
+    (
+        (None, "execution_plan_sharding_invalid", 0),
+        ({"shards": []}, "execution_plan_shard_count_invalid", 0),
+        (
+            {"shard_count": True, "shards": []},
+            "execution_plan_shard_count_invalid",
+            0,
+        ),
+        (
+            {"shard_count": 0, "shards": []},
+            "execution_plan_shard_count_invalid",
+            0,
+        ),
+        (
+            {"shard_count": 1.0, "shards": []},
+            "execution_plan_shard_count_invalid",
+            0,
+        ),
+        (
+            {"shard_count": "1", "shards": []},
+            "execution_plan_shard_count_invalid",
+            0,
+        ),
+        (
+            {"shard_count": 1, "shards": {}},
+            "execution_plan_shard_descriptors_invalid",
+            1,
+        ),
+        (
+            {"shard_count": 1, "shards": []},
+            "execution_plan_shard_count_descriptor_mismatch",
+            1,
+        ),
+    ),
+)
+def test_generic_archive_set_rejects_invalid_declared_sharding_contract(
+    tmp_path: Path,
+    sharding: object,
+    expected_reason: str,
+    expected_count: int,
+) -> None:
+    plan_path = tmp_path / "experiment_matrix_execution_plan.json"
+    plan_path.write_text("{}\n", encoding="utf-8")
+    archive_root = tmp_path / "archives"
+    archive_root.mkdir()
+
+    result = audit_verified_formal_shard_archive_set(
+        execution_plan_path=plan_path,
+        archive_root=archive_root,
+        expected_source_git_commit=_COMMIT,
+        expected_execution_plan_sha256="b" * 64,
+        plan={"sharding": sharding},
+        shard_auditor=lambda *_args: pytest.fail(
+            "invalid sharding must fail before shard audit"
+        ),
+    )
+
+    assert result["verified"] is False
+    assert result["expected_shard_count"] == expected_count
+    assert result["failure_reasons"] == [expected_reason]
+
+
+@pytest.mark.parametrize(
+    ("descriptors", "expected_reason"),
+    (
+        (
+            [
+                {
+                    "shard_index": True,
+                    "shard_id": "shard_000_of_001",
+                    "cell_count": 1,
+                }
+            ],
+            "execution_plan_shard_index_set_invalid",
+        ),
+        (
+            [
+                {
+                    "shard_index": 1,
+                    "shard_id": "shard_001_of_001",
+                    "cell_count": 1,
+                }
+            ],
+            "execution_plan_shard_index_set_invalid",
+        ),
+        (
+            [
+                {
+                    "shard_index": 0,
+                    "shard_id": "shard_000_of_002",
+                    "cell_count": 1,
+                }
+            ],
+            "execution_plan_shard_id_invalid:0",
+        ),
+        (
+            [
+                {
+                    "shard_index": 0,
+                    "shard_id": "shard_001_of_001",
+                    "cell_count": 1,
+                }
+            ],
+            "execution_plan_shard_id_invalid:0",
+        ),
+    ),
+)
+def test_generic_archive_set_rejects_invalid_descriptor_identity(
+    tmp_path: Path,
+    descriptors: list[dict[str, object]],
+    expected_reason: str,
+) -> None:
+    plan_path = tmp_path / "experiment_matrix_execution_plan.json"
+    plan_path.write_text("{}\n", encoding="utf-8")
+    archive_root = tmp_path / "archives"
+    archive_root.mkdir()
+
+    result = audit_verified_formal_shard_archive_set(
+        execution_plan_path=plan_path,
+        archive_root=archive_root,
+        expected_source_git_commit=_COMMIT,
+        expected_execution_plan_sha256="b" * 64,
+        plan={
+            "sharding": {
+                "shard_count": len(descriptors),
+                "shards": descriptors,
+            }
+        },
+        shard_auditor=lambda *_args: pytest.fail(
+            "invalid descriptor must fail before shard audit"
+        ),
+    )
+
+    assert result["verified"] is False
+    assert result["failure_reasons"] == [expected_reason]

@@ -24,7 +24,22 @@ from d6_evaluation_metrics.learning_scope_formal_audit import (  # noqa: E402
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--execution-plan", type=Path, required=True)
-    parser.add_argument("--scope-merge-dir", type=Path, required=True)
+    learned_storage = parser.add_mutually_exclusive_group(required=True)
+    learned_storage.add_argument(
+        "--scope-merge-dir",
+        type=Path,
+        help="materialized directory-mode merged scope",
+    )
+    learned_storage.add_argument(
+        "--scope-archive-root",
+        type=Path,
+        help="complete verified archive root for the learned scope",
+    )
+    parser.add_argument(
+        "--scope-archive-merge-dir",
+        type=Path,
+        help="archive-native merge bundle for --scope-archive-root",
+    )
     parser.add_argument("--scope-label", default="learned_scope")
     parser.add_argument(
         "--r0-scope",
@@ -34,13 +49,54 @@ def parse_args() -> argparse.Namespace:
         default=[],
         help="repeatable explicit R0 execution-plan/merge-dir/label triple",
     )
+    parser.add_argument(
+        "--r0-archive-scope",
+        nargs=4,
+        action="append",
+        metavar=(
+            "EXECUTION_PLAN",
+            "ARCHIVE_ROOT",
+            "ARCHIVE_MERGE_DIR",
+            "LABEL",
+        ),
+        default=[],
+        help=(
+            "repeatable explicit R0 execution-plan/archive-root/"
+            "archive-merge-dir/label tuple"
+        ),
+    )
     parser.add_argument("--expected-preflight-device")
     parser.add_argument("--d3-bundle", type=Path)
     parser.add_argument("--d4-bundle", type=Path)
     parser.add_argument("--d5-graph-bundle", type=Path)
     parser.add_argument("--d5-active-vision-bundle", type=Path)
     parser.add_argument("--output-dir", type=Path, required=True)
-    return parser.parse_args()
+    args = parser.parse_args()
+    if (args.scope_archive_root is None) != (
+        args.scope_archive_merge_dir is None
+    ):
+        parser.error(
+            "archive learned scope requires both --scope-archive-root and "
+            "--scope-archive-merge-dir"
+        )
+    if (
+        args.scope_merge_dir is not None
+        and args.scope_archive_merge_dir is not None
+    ):
+        parser.error(
+            "learned scope directory and archive storage inputs are mutually "
+            "exclusive"
+        )
+    r0_plans = [
+        Path(row[0]).expanduser().absolute()
+        for row in (*args.r0_scope, *args.r0_archive_scope)
+    ]
+    if len(set(r0_plans)) != len(r0_plans):
+        parser.error(
+            "each R0 execution plan must select exactly one directory or "
+            "archive evidence source"
+        )
+    return args
 
 
 def main() -> int:
@@ -51,14 +107,29 @@ def main() -> int:
                 execution_plan_path=args.execution_plan,
                 merge_dir=args.scope_merge_dir,
                 label=args.scope_label,
+                archive_root=args.scope_archive_root,
+                archive_merge_dir=args.scope_archive_merge_dir,
             ),
             r0_scopes=tuple(
-                ScopeEvidenceArtifacts(
-                    execution_plan_path=Path(plan),
-                    merge_dir=Path(merge),
-                    label=label,
-                )
-                for plan, merge, label in args.r0_scope
+                [
+                    ScopeEvidenceArtifacts(
+                        execution_plan_path=Path(plan),
+                        merge_dir=Path(merge),
+                        label=label,
+                    )
+                    for plan, merge, label in args.r0_scope
+                ]
+                + [
+                    ScopeEvidenceArtifacts(
+                        execution_plan_path=Path(plan),
+                        merge_dir=None,
+                        label=label,
+                        archive_root=Path(archive_root),
+                        archive_merge_dir=Path(archive_merge),
+                    )
+                    for plan, archive_root, archive_merge, label
+                    in args.r0_archive_scope
+                ]
             ),
             expected_preflight_device=args.expected_preflight_device,
         ),

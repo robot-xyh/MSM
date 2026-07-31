@@ -280,6 +280,228 @@ def audit_formal_shard_archives(
     }
 
 
+def audit_verified_formal_shard_archive_set(
+    *,
+    execution_plan_path: Path,
+    archive_root: Path,
+    expected_source_git_commit: str,
+    expected_execution_plan_sha256: str,
+    plan: Mapping[str, Any],
+    shard_auditor: Callable[
+        [int, Path, Path, Mapping[str, Any], Mapping[str, Any]],
+        Mapping[str, Any],
+    ],
+) -> dict[str, Any]:
+    """Verify a complete archive set and inspect one staged shard at a time.
+
+    The callback runs after the archive bytes and restored inventory have been
+    independently verified.  Its arguments are the shard index, isolated
+    execution root, staged shard directory, frozen archive manifest, and the
+    D6-computed archive record.  The temporary execution root is removed as
+    soon as the callback returns.
+    """
+
+    plan_path = Path(execution_plan_path).resolve()
+    unresolved_archives = Path(archive_root).expanduser().absolute()
+    sharding = plan.get("sharding")
+    if not isinstance(sharding, Mapping):
+        return _generic_archive_set_failure(
+            "execution_plan_sharding_invalid",
+            archive_root=unresolved_archives,
+            expected_shard_count=0,
+        )
+    declared_shard_count = sharding.get("shard_count")
+    if (
+        isinstance(declared_shard_count, bool)
+        or not isinstance(declared_shard_count, int)
+        or declared_shard_count <= 0
+    ):
+        return _generic_archive_set_failure(
+            "execution_plan_shard_count_invalid",
+            archive_root=unresolved_archives,
+            expected_shard_count=0,
+        )
+    descriptor_rows = sharding.get("shards")
+    if not isinstance(descriptor_rows, list):
+        return _generic_archive_set_failure(
+            "execution_plan_shard_descriptors_invalid",
+            archive_root=unresolved_archives,
+            expected_shard_count=declared_shard_count,
+        )
+    if len(descriptor_rows) != declared_shard_count:
+        return _generic_archive_set_failure(
+            "execution_plan_shard_count_descriptor_mismatch",
+            archive_root=unresolved_archives,
+            expected_shard_count=declared_shard_count,
+        )
+    for index, descriptor in enumerate(descriptor_rows):
+        if not isinstance(descriptor, Mapping):
+            return _generic_archive_set_failure(
+                f"execution_plan_shard_descriptor_invalid:{index}",
+                archive_root=unresolved_archives,
+                expected_shard_count=declared_shard_count,
+            )
+        descriptor_index = descriptor.get("shard_index")
+        if (
+            isinstance(descriptor_index, bool)
+            or not isinstance(descriptor_index, int)
+            or descriptor_index != index
+            or descriptor_index >= declared_shard_count
+        ):
+            return _generic_archive_set_failure(
+                "execution_plan_shard_index_set_invalid",
+                archive_root=unresolved_archives,
+                expected_shard_count=declared_shard_count,
+            )
+        expected_shard_id = (
+            f"shard_{index:03d}_of_{declared_shard_count:03d}"
+        )
+        if descriptor.get("shard_id") != expected_shard_id:
+            return _generic_archive_set_failure(
+                f"execution_plan_shard_id_invalid:{index}",
+                archive_root=unresolved_archives,
+                expected_shard_count=declared_shard_count,
+            )
+    descriptors = _plan_shard_descriptors(plan)
+    expected_indices = list(range(declared_shard_count))
+    if sorted(descriptors) != expected_indices:
+        return _generic_archive_set_failure(
+            "execution_plan_shard_index_set_invalid",
+            archive_root=unresolved_archives,
+            expected_shard_count=declared_shard_count,
+        )
+    expected_names = {
+        str(descriptors[index].get("shard_id")) for index in expected_indices
+    }
+    if (
+        len(expected_names) != len(descriptors)
+        or "" in expected_names
+        or "None" in expected_names
+    ):
+        return _generic_archive_set_failure(
+            "execution_plan_shard_name_set_invalid",
+            archive_root=unresolved_archives,
+            expected_shard_count=declared_shard_count,
+        )
+    if (
+        _path_contains_symlink(unresolved_archives)
+        or not unresolved_archives.is_dir()
+    ):
+        return _generic_archive_set_failure(
+            f"archive_root_unavailable_or_unsafe:{unresolved_archives}",
+            archive_root=unresolved_archives,
+            expected_shard_count=declared_shard_count,
+        )
+
+    archives = unresolved_archives.resolve()
+    archive_directories: set[str] = set()
+    sidecar_files: list[str] = []
+    for entry in archives.iterdir():
+        if entry.is_symlink():
+            return _generic_archive_set_failure(
+                f"archive_root_symlink_entry:{entry.name}",
+                archive_root=archives,
+                expected_shard_count=declared_shard_count,
+            )
+        if entry.is_dir():
+            archive_directories.add(entry.name)
+        elif entry.is_file():
+            sidecar_files.append(entry.name)
+        else:
+            return _generic_archive_set_failure(
+                f"archive_root_non_regular_entry:{entry.name}",
+                archive_root=archives,
+                expected_shard_count=declared_shard_count,
+            )
+    if archive_directories != expected_names:
+        missing = sorted(expected_names - archive_directories)
+        extra = sorted(archive_directories - expected_names)
+        return _generic_archive_set_failure(
+            "archive_set_mismatch:"
+            f"missing={','.join(missing)}:extra={','.join(extra)}",
+            archive_root=archives,
+            expected_shard_count=declared_shard_count,
+            sidecar_files=sidecar_files,
+        )
+
+    zstd = shutil.which("zstd")
+    if zstd is None:
+        return _generic_archive_set_failure(
+            "zstd_runtime_unavailable",
+            archive_root=archives,
+            expected_shard_count=declared_shard_count,
+            sidecar_files=sidecar_files,
+        )
+
+    archive_rows: list[dict[str, Any]] = []
+    shard_results: list[dict[str, Any]] = []
+    failure_reasons: list[str] = []
+    for index in expected_indices:
+        descriptor = descriptors[index]
+        shard_id = str(descriptor["shard_id"])
+        try:
+            with tempfile.TemporaryDirectory(
+                prefix=f"d6-{shard_id}-archive-scope-audit-"
+            ) as temporary_name:
+                temporary_root = Path(temporary_name).resolve()
+                staged_shard = temporary_root / "shards" / shard_id
+                staged_shard.mkdir(parents=True)
+                manifest, archive_record = verify_and_restore_formal_shard_archive(
+                    archive=archives / shard_id,
+                    destination=staged_shard,
+                    plan_path=plan_path,
+                    plan=plan,
+                    descriptor=descriptor,
+                    shard_index=index,
+                    expected_source_git_commit=expected_source_git_commit,
+                    expected_execution_plan_sha256=(
+                        expected_execution_plan_sha256
+                    ),
+                    expected_cells_per_shard=int(descriptor["cell_count"]),
+                    zstd_path=zstd,
+                )
+                callback_result = shard_auditor(
+                    index,
+                    temporary_root,
+                    staged_shard,
+                    manifest,
+                    archive_record,
+                )
+                if not isinstance(callback_result, Mapping):
+                    raise FormalShardArchiveAuditError(
+                        "shard auditor result is not an object"
+                    )
+                archive_rows.append(dict(archive_record))
+                shard_results.append(dict(callback_result))
+        except (OSError, ValueError, tarfile.TarError) as exc:
+            failure_reasons.append(
+                f"{shard_id}:archive_or_shard_audit_failed:{exc}"
+            )
+            break
+
+    if len(archive_rows) != declared_shard_count:
+        failure_reasons.append(
+            "verified_archive_count_mismatch:"
+            f"expected={declared_shard_count}:actual={len(archive_rows)}"
+        )
+    return {
+        "schema_version": FORMAL_SHARD_ARCHIVE_AUDIT_SCHEMA_VERSION,
+        "verified": not failure_reasons,
+        "storage_mode": FORMAL_SHARD_ARCHIVE_STORAGE_MODE,
+        "archive_root": str(archives),
+        "expected_shard_count": declared_shard_count,
+        "verified_archive_count": len(archive_rows),
+        "peak_staged_shard_count": 1 if archive_rows else 0,
+        "sidecar_files": sorted(sidecar_files),
+        "source_deletion_performed": False,
+        "archive_deletion_performed": False,
+        "archive_source_preserved": archives.is_dir(),
+        "archives": archive_rows,
+        "shard_results": shard_results,
+        "failure_reasons": list(dict.fromkeys(failure_reasons)),
+    }
+
+
 def verify_and_restore_formal_shard_archive(
     *,
     archive: Path,
@@ -1013,6 +1235,31 @@ def _archive_failure(
     }
 
 
+def _generic_archive_set_failure(
+    reason: str,
+    *,
+    archive_root: Path,
+    expected_shard_count: int,
+    sidecar_files: Sequence[str] = (),
+) -> dict[str, Any]:
+    return {
+        "schema_version": FORMAL_SHARD_ARCHIVE_AUDIT_SCHEMA_VERSION,
+        "verified": False,
+        "storage_mode": FORMAL_SHARD_ARCHIVE_STORAGE_MODE,
+        "archive_root": str(archive_root),
+        "expected_shard_count": expected_shard_count,
+        "verified_archive_count": 0,
+        "peak_staged_shard_count": 0,
+        "sidecar_files": sorted(str(value) for value in sidecar_files),
+        "source_deletion_performed": False,
+        "archive_deletion_performed": False,
+        "archive_source_preserved": Path(archive_root).is_dir(),
+        "archives": [],
+        "shard_results": [],
+        "failure_reasons": [reason],
+    }
+
+
 def _require_mapping(value: Any, label: str) -> Mapping[str, Any]:
     if not isinstance(value, Mapping):
         raise FormalShardArchiveAuditError(f"{label} missing")
@@ -1068,5 +1315,6 @@ __all__ = [
     "FormalShardArchiveAuditError",
     "audit_archive_merge_bundle",
     "audit_formal_shard_archives",
+    "audit_verified_formal_shard_archive_set",
     "verify_and_restore_formal_shard_archive",
 ]

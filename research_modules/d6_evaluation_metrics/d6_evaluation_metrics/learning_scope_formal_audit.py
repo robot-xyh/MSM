@@ -12,10 +12,16 @@ import csv
 from dataclasses import dataclass
 import hashlib
 import json
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 import re
+import shutil
 from typing import Any, Mapping, Sequence
 
+from .formal_shard_archive_audit import (
+    FORMAL_SHARD_ARCHIVE_STORAGE_MODE,
+    audit_archive_merge_bundle,
+    audit_verified_formal_shard_archive_set,
+)
 from .scalable_3d_offline import (
     Scalable3DOfflineEvaluationError,
     evaluate_scalable_3d_episode,
@@ -25,7 +31,8 @@ from .scalable_3d_offline import (
 LEARNING_SCOPE_FORMAL_AUDIT_SCHEMA_VERSION = (
     "d6.learning-scope-formal-evidence-audit.v1"
 )
-LEARNING_SCOPE_FORMAL_AUDIT_DATE = "2026-07-26"
+LEARNING_SCOPE_FORMAL_AUDIT_DATE = "2026-07-31"
+LEARNING_SCOPE_DIRECTORY_STORAGE_MODE = "materialized_scope_directories_v1"
 
 _EXECUTION_PLAN_SCHEMA = "scalable3d-experiment-matrix-execution-plan-v1"
 _MODEL_BINDING_SCHEMA = (
@@ -120,11 +127,13 @@ class LearningScopeFormalAuditError(ValueError):
 
 @dataclass(frozen=True, slots=True)
 class ScopeEvidenceArtifacts:
-    """One execution plan and its deterministic merged-scope directory."""
+    """One explicitly selected directory or archive scope evidence source."""
 
     execution_plan_path: Path
-    merge_dir: Path
+    merge_dir: Path | None = None
     label: str = "scope"
+    archive_root: Path | None = None
+    archive_merge_dir: Path | None = None
 
     def __post_init__(self) -> None:
         object.__setattr__(
@@ -132,11 +141,61 @@ class ScopeEvidenceArtifacts:
             "execution_plan_path",
             Path(self.execution_plan_path).resolve(),
         )
-        object.__setattr__(self, "merge_dir", Path(self.merge_dir).resolve())
+        directory_mode = self.merge_dir is not None
+        archive_mode = (
+            self.archive_root is not None or self.archive_merge_dir is not None
+        )
+        if directory_mode == archive_mode:
+            raise ValueError(
+                "scope evidence must select exactly one storage mode: "
+                "merge_dir or archive_root+archive_merge_dir"
+            )
+        if archive_mode and (
+            self.archive_root is None or self.archive_merge_dir is None
+        ):
+            raise ValueError(
+                "archive scope evidence requires archive_root and "
+                "archive_merge_dir"
+            )
+        if self.merge_dir is not None:
+            object.__setattr__(
+                self,
+                "merge_dir",
+                Path(self.merge_dir).resolve(),
+            )
+        if self.archive_root is not None:
+            object.__setattr__(
+                self,
+                "archive_root",
+                Path(self.archive_root).expanduser().absolute(),
+            )
+        if self.archive_merge_dir is not None:
+            object.__setattr__(
+                self,
+                "archive_merge_dir",
+                Path(self.archive_merge_dir).expanduser().absolute(),
+            )
         label = str(self.label).strip()
         if not label:
             raise ValueError("scope evidence label must be non-empty")
         object.__setattr__(self, "label", label)
+
+    @property
+    def storage_mode(self) -> str:
+        """Return the explicit storage mode without probing the filesystem."""
+
+        if self.archive_root is not None:
+            return FORMAL_SHARD_ARCHIVE_STORAGE_MODE
+        return LEARNING_SCOPE_DIRECTORY_STORAGE_MODE
+
+    @property
+    def evidence_merge_dir(self) -> Path:
+        """Return the selected mode's merge evidence directory."""
+
+        path = self.archive_merge_dir or self.merge_dir
+        if path is None:  # guarded by __post_init__
+            raise ValueError("scope merge evidence directory is unavailable")
+        return path
 
 
 @dataclass(frozen=True, slots=True)
@@ -149,9 +208,18 @@ class LearningScopeFormalAuditInputs:
 
     def __post_init__(self) -> None:
         scopes = tuple(self.r0_scopes)
+        if len({item.execution_plan_path for item in scopes}) != len(scopes):
+            raise ValueError(
+                "each R0 execution plan must select exactly one evidence source"
+            )
         if len(
             {
-                (item.execution_plan_path, item.merge_dir)
+                (
+                    item.execution_plan_path,
+                    item.storage_mode,
+                    item.evidence_merge_dir,
+                    item.archive_root,
+                )
                 for item in scopes
             }
         ) != len(scopes):
@@ -359,6 +427,15 @@ def render_learning_scope_formal_audit_markdown(
         "",
         "## 证据链",
         "",
+        f"- 存储模式：`{learned.get('storage_mode')}`",
+        f"- archive root：`{learned.get('archive_root')}`",
+        (
+            "- 已独立验证归档："
+            f"{learned.get('verified_archive_count', 0)}，"
+            "峰值暂存分片："
+            f"{learned.get('peak_staged_shard_count', 0)}"
+        ),
+        f"- sidecar 文件：`{learned.get('sidecar_files', [])}`",
         f"- execution plan：`{learned.get('execution_plan_path')}`",
         f"- merge 目录：`{learned.get('merge_dir')}`",
         f"- 来源提交：`{learned.get('source_git_commit')}`",
@@ -414,7 +491,17 @@ def _audit_scope(
     base: dict[str, Any] = {
         "label": source.label,
         "execution_plan_path": str(source.execution_plan_path),
-        "merge_dir": str(source.merge_dir),
+        "storage_mode": source.storage_mode,
+        "merge_dir": str(source.evidence_merge_dir),
+        "archive_root": (
+            None if source.archive_root is None else str(source.archive_root)
+        ),
+        "archive_verification_performed": False,
+        "verified_archive_count": 0,
+        "peak_staged_shard_count": 0,
+        "sidecar_files": [],
+        "source_deletion_performed": False,
+        "archive_deletion_performed": False,
         "source_git_commit": None,
         "parent_plan_sha256": None,
         "execution_plan_sha256": None,
@@ -465,40 +552,81 @@ def _audit_scope(
         "available_and_valid" if not bundle_blockers else "fail_closed"
     )
 
-    try:
-        merge = _load_merge_evidence(source, plan)
-        base["scope_completeness_status"] = "complete"
-    except (OSError, csv.Error, json.JSONDecodeError, LearningScopeFormalAuditError) as exc:
-        code = getattr(exc, "code", "scope_merge_unreadable")
-        blockers.append(str(code))
-        base["blockers"] = sorted(set(blockers))
-        return base
-
     expected_by_id = {
         str(cell["cell_id"]): cell for cell in plan["scope"]["cells"]
     }
-    rows_by_id = merge["rows_by_cell_id"]
     internal_cells: list[dict[str, Any]] = []
-    for cell_id, expected in expected_by_id.items():
+    if source.archive_root is not None:
+        archive_result = _audit_archive_scope(
+            source=source,
+            plan=plan,
+        )
+        base.update(
+            archive_verification_performed=bool(
+                archive_result.get("archive_verification_performed", False)
+            ),
+            verified_archive_count=int(
+                archive_result.get("verified_archive_count", 0)
+            ),
+            peak_staged_shard_count=int(
+                archive_result.get("peak_staged_shard_count", 0)
+            ),
+            sidecar_files=list(archive_result.get("sidecar_files", ())),
+            source_deletion_performed=bool(
+                archive_result.get("source_deletion_performed", False)
+            ),
+            archive_deletion_performed=bool(
+                archive_result.get("archive_deletion_performed", False)
+            ),
+        )
+        blockers.extend(archive_result.get("blockers", ()))
+        internal_cells.extend(archive_result.get("cells", ()))
+        base["scope_completeness_status"] = (
+            "complete"
+            if archive_result.get("verified") is True
+            else "fail_closed"
+        )
+    else:
         try:
-            audited = _audit_cell(
-                source=source,
-                plan=plan,
-                expected=expected,
-                merged_row=rows_by_id[cell_id],
-                progress_row=merge["progress_by_cell_id"][cell_id],
-            )
+            merge = _load_merge_evidence(source, plan)
+            base["scope_completeness_status"] = "complete"
         except (
             OSError,
             csv.Error,
             json.JSONDecodeError,
-            Scalable3DOfflineEvaluationError,
             LearningScopeFormalAuditError,
         ) as exc:
-            code = getattr(exc, "code", "cell_evidence_unreadable")
-            audited = _failed_cell(source.label, expected, str(code))
-        internal_cells.append(audited)
-        blockers.extend(audited["failure_reasons"])
+            code = getattr(exc, "code", "scope_merge_unreadable")
+            blockers.append(str(code))
+            base["blockers"] = sorted(set(blockers))
+            return base
+
+        rows_by_id = merge["rows_by_cell_id"]
+        for cell_id, expected in expected_by_id.items():
+            try:
+                audited = _audit_cell(
+                    source=source,
+                    plan=plan,
+                    expected=expected,
+                    merged_row=rows_by_id[cell_id],
+                    progress_row=merge["progress_by_cell_id"][cell_id],
+                )
+            except (
+                OSError,
+                csv.Error,
+                json.JSONDecodeError,
+                Scalable3DOfflineEvaluationError,
+                LearningScopeFormalAuditError,
+            ) as exc:
+                code = getattr(exc, "code", "cell_evidence_unreadable")
+                audited = _failed_cell(source.label, expected, str(code))
+            internal_cells.append(audited)
+
+    blockers.extend(
+        reason
+        for audited in internal_cells
+        for reason in audited["failure_reasons"]
+    )
 
     accepted_count = sum(
         row["evidence_status"] == "accepted" for row in internal_cells
@@ -508,10 +636,322 @@ def _audit_scope(
     base["cells"] = [_public_cell(row) for row in internal_cells]
     if accepted_count != len(expected_by_id):
         blockers.append("scope_contains_failed_or_unavailable_cells")
+    if len(internal_cells) != len(expected_by_id):
+        blockers.append("scope_audited_cell_count_mismatch")
     blockers = sorted(set(blockers))
     base["blockers"] = blockers
     base["formal_evidence_eligible"] = not blockers
     return base
+
+
+def _audit_archive_scope(
+    *,
+    source: ScopeEvidenceArtifacts,
+    plan: Mapping[str, Any],
+) -> dict[str, Any]:
+    expected_cells = list(plan["scope"]["cells"])
+    try:
+        merge = _load_archive_merge_evidence(source, plan)
+    except (
+        OSError,
+        csv.Error,
+        json.JSONDecodeError,
+        LearningScopeFormalAuditError,
+    ) as exc:
+        code = str(getattr(exc, "code", "archive_scope_merge_unreadable"))
+        return {
+            "verified": False,
+            "archive_verification_performed": False,
+            "verified_archive_count": 0,
+            "peak_staged_shard_count": 0,
+            "sidecar_files": [],
+            "source_deletion_performed": False,
+            "archive_deletion_performed": False,
+            "cells": [
+                _failed_cell(source.label, cell, code)
+                for cell in expected_cells
+            ],
+            "blockers": [code],
+        }
+
+    merge_shards_by_index = {
+        int(row["shard_index"]): row for row in merge["manifest"]["shards"]
+    }
+
+    def audit_staged_shard(
+        shard_index: int,
+        temporary_root: Path,
+        staged_shard: Path,
+        archive_manifest: Mapping[str, Any],
+        archive_record: Mapping[str, Any],
+    ) -> Mapping[str, Any]:
+        del staged_shard, archive_manifest, archive_record
+        temporary_plan = temporary_root / source.execution_plan_path.name
+        shutil.copy2(source.execution_plan_path, temporary_plan)
+        staged_source = ScopeEvidenceArtifacts(
+            execution_plan_path=temporary_plan,
+            merge_dir=temporary_root,
+            label=source.label,
+        )
+        descriptor = plan["sharding"]["shards"][shard_index]
+        shard_cells = [
+            cell
+            for cell in expected_cells
+            if int(cell["shard_index"]) == shard_index
+        ]
+        progress = _validate_one_shard_evidence(
+            execution_root=temporary_root,
+            plan=plan,
+            merged=merge_shards_by_index[shard_index],
+            descriptor=descriptor,
+        )
+        expected_ids = [str(cell["cell_id"]) for cell in shard_cells]
+        _require(
+            list(progress) == expected_ids,
+            f"archive_shard_progress_inventory_mismatch:{shard_index}",
+            "staged shard progress differs from the execution-plan shard",
+        )
+        cells: list[dict[str, Any]] = []
+        for expected in shard_cells:
+            cell_id = str(expected["cell_id"])
+            try:
+                audited = _audit_cell(
+                    source=staged_source,
+                    plan=plan,
+                    expected=expected,
+                    merged_row=merge["rows_by_cell_id"][cell_id],
+                    progress_row=progress[cell_id],
+                )
+            except (
+                OSError,
+                csv.Error,
+                json.JSONDecodeError,
+                Scalable3DOfflineEvaluationError,
+                LearningScopeFormalAuditError,
+            ) as exc:
+                code = str(getattr(exc, "code", "cell_evidence_unreadable"))
+                audited = _failed_cell(source.label, expected, code)
+            cells.append(audited)
+        return {
+            "shard_index": shard_index,
+            "cell_ids": expected_ids,
+            "cells": cells,
+            "offline_evaluation_completed_before_cleanup": True,
+        }
+
+    archive_set = audit_verified_formal_shard_archive_set(
+        execution_plan_path=source.execution_plan_path,
+        archive_root=source.archive_root,
+        expected_source_git_commit=str(plan["source"]["git_commit"]),
+        expected_execution_plan_sha256=str(plan["execution_plan_sha256"]),
+        plan=plan,
+        shard_auditor=audit_staged_shard,
+    )
+    blockers = list(archive_set.get("failure_reasons", ()))
+    audited_cells = [
+        dict(cell)
+        for shard in archive_set.get("shard_results", ())
+        for cell in shard.get("cells", ())
+    ]
+
+    if archive_set.get("verified") is True:
+        merge_audit = audit_archive_merge_bundle(
+            merged_scope_dir=source.archive_merge_dir,
+            expected_source_git_commit=str(plan["source"]["git_commit"]),
+            expected_execution_plan_sha256=str(
+                plan["execution_plan_sha256"]
+            ),
+            expected_scope_cell_count=int(plan["scope"]["cell_count"]),
+            expected_parent_cell_count=int(
+                plan["parent"]["full_cell_count"]
+            ),
+            expected_shard_count=int(plan["sharding"]["shard_count"]),
+            archive_records=archive_set.get("archives", ()),
+        )
+        blockers.extend(merge_audit.get("failure_reasons", ()))
+
+    audited_ids = [str(cell.get("cell_id")) for cell in audited_cells]
+    expected_ids = [str(cell["cell_id"]) for cell in expected_cells]
+    if audited_ids != expected_ids or len(set(audited_ids)) != len(audited_ids):
+        blockers.append("archive_scope_cell_order_or_inventory_mismatch")
+    audited_by_id = {
+        str(cell.get("cell_id")): cell for cell in audited_cells
+    }
+    complete_cells = [
+        audited_by_id.get(str(expected["cell_id"]))
+        or _failed_cell(
+            source.label,
+            expected,
+            "archive_scope_cell_not_audited",
+        )
+        for expected in expected_cells
+    ]
+    blockers = sorted(set(str(value) for value in blockers))
+    return {
+        "verified": not blockers,
+        "archive_verification_performed": True,
+        "verified_archive_count": int(
+            archive_set.get("verified_archive_count", 0)
+        ),
+        "peak_staged_shard_count": int(
+            archive_set.get("peak_staged_shard_count", 0)
+        ),
+        "sidecar_files": list(archive_set.get("sidecar_files", ())),
+        "source_deletion_performed": bool(
+            archive_set.get("source_deletion_performed", False)
+        ),
+        "archive_deletion_performed": bool(
+            archive_set.get("archive_deletion_performed", False)
+        ),
+        "cells": complete_cells,
+        "blockers": blockers,
+    }
+
+
+def _load_archive_merge_evidence(
+    source: ScopeEvidenceArtifacts,
+    plan: Mapping[str, Any],
+) -> dict[str, Any]:
+    merge_dir = source.archive_merge_dir
+    _require(
+        merge_dir is not None
+        and not _path_contains_symlink(merge_dir)
+        and merge_dir.is_dir(),
+        "archive_scope_merge_root_unavailable_or_unsafe",
+        "archive scope merge directory is unavailable or uses a symlink",
+    )
+    manifest_path = merge_dir / "experiment_matrix_scope_manifest.json"
+    cells_path = merge_dir / "experiment_matrix_scope_cells.csv"
+    episode_dirs_path = merge_dir / "episode_dirs.json"
+    for path in (manifest_path, cells_path, episode_dirs_path):
+        _require(
+            path.is_file() and not path.is_symlink(),
+            f"archive_scope_merge_artifact_missing:{path.name}",
+            f"archive scope merge artifact is missing or unsafe: {path.name}",
+        )
+    manifest = _read_json_object(
+        manifest_path,
+        "archive_scope_merge_manifest",
+    )
+    expected_count = int(plan["scope"]["cell_count"])
+    expected_manifest_fields = {
+        "schema_version": "scalable3d-formal-shard-archive-scope-merge-v1",
+        "storage_mode": FORMAL_SHARD_ARCHIVE_STORAGE_MODE,
+        "source_git_commit": plan["source"]["git_commit"],
+        "source_repository_dirty": False,
+        "execution_plan_sha256": plan["execution_plan_sha256"],
+        "parent_plan_sha256": plan["parent"]["plan_sha256"],
+        "parent_formal": True,
+        "parent_full_cell_count": plan["parent"]["full_cell_count"],
+        "scope_variants": plan["scope"]["variants"],
+        "scope_expected_cell_count": expected_count,
+        "scope_completed_cell_count": expected_count,
+        "scope_complete": True,
+        "formal_scope_complete": True,
+        "shard_strategy": "scope_index_modulo_v1",
+        "shard_count": plan["sharding"]["shard_count"],
+        "canonical_episode_directories_materialized": False,
+        "archive_set_complete": True,
+        "peak_restored_shard_count": 1,
+    }
+    for field, expected in expected_manifest_fields.items():
+        _require(
+            manifest.get(field) == expected,
+            f"archive_scope_merge_field_mismatch:{field}",
+            f"archive scope merge differs from the execution plan: {field}",
+        )
+    _require(
+        manifest.get("status")
+        in {"formal_scope_complete", "formal_matrix_complete"},
+        "archive_scope_merge_status_not_formal_complete",
+        "archive scope merge is not formally complete",
+    )
+    shards = manifest.get("shards")
+    _require(
+        isinstance(shards, list)
+        and len(shards) == int(plan["sharding"]["shard_count"]),
+        "archive_scope_merge_shard_inventory_invalid",
+        "archive scope merge shard inventory differs from the plan",
+    )
+    shard_indices = [
+        row.get("shard_index") if isinstance(row, Mapping) else None
+        for row in shards
+    ]
+    _require(
+        shard_indices == list(range(len(shards)))
+        and len(set(shard_indices)) == len(shard_indices),
+        "archive_scope_merge_shard_order_or_identity_invalid",
+        "archive scope merge shard indices are missing, duplicated, or unordered",
+    )
+
+    with cells_path.open(newline="", encoding="utf-8") as stream:
+        rows = list(csv.DictReader(stream))
+    _require(
+        len(rows) == expected_count,
+        "archive_scope_merge_cell_row_count_mismatch",
+        "archive scope merge cell row count differs from the plan",
+    )
+    expected_cells = list(plan["scope"]["cells"])
+    rows_by_cell_id: dict[str, dict[str, Any]] = {}
+    logical_paths: list[str] = []
+    for scope_index, row in enumerate(rows):
+        expected = expected_cells[scope_index]
+        _require(
+            _strict_int_text(row.get("scope_index")) == scope_index,
+            "archive_scope_merge_cell_order_invalid",
+            "archive scope merge cells are not in canonical scope order",
+        )
+        for field in ("variant", "scenario", "comparison_key"):
+            _require(
+                row.get(field) == str(expected[field]),
+                f"archive_scope_merge_cell_field_mismatch:{field}",
+                f"archive scope merge cell identity mismatch: {field}",
+            )
+        for field in ("scale", "seed"):
+            _require(
+                _strict_int_text(row.get(field)) == int(expected[field]),
+                f"archive_scope_merge_cell_field_mismatch:{field}",
+                f"archive scope merge cell identity mismatch: {field}",
+            )
+        relative = _logical_relative_path(
+            row.get("episode_relative_path"),
+            "archive_scope_merge_episode_path_invalid",
+        )
+        rows_by_cell_id[str(expected["cell_id"])] = row
+        logical_paths.append(relative)
+    _require(
+        len(rows_by_cell_id) == expected_count
+        and len(set(logical_paths)) == expected_count,
+        "archive_scope_merge_cell_duplicate_or_missing",
+        "archive scope merge contains duplicate or missing cells",
+    )
+
+    episode_dirs = _read_json_object(
+        episode_dirs_path,
+        "archive_scope_episode_dirs",
+    )
+    _require(
+        episode_dirs.get("schema_version")
+        == "scalable3d-formal-shard-archive-scope-merge-v1"
+        and episode_dirs.get("storage_mode")
+        == FORMAL_SHARD_ARCHIVE_STORAGE_MODE
+        and episode_dirs.get("execution_plan_sha256")
+        == plan["execution_plan_sha256"]
+        and episode_dirs.get("episode_count") == expected_count
+        and episode_dirs.get("canonical_directories_materialized") is False,
+        "archive_scope_merge_episode_inventory_invalid",
+        "archive episode index is not bound to the archive scope",
+    )
+    _require(
+        episode_dirs.get("paths_relative_to_execution_root") == logical_paths,
+        "archive_scope_merge_episode_inventory_mismatch",
+        "archive episode index differs from the merge cell inventory",
+    )
+    return {
+        "manifest": manifest,
+        "rows_by_cell_id": rows_by_cell_id,
+        "logical_episode_paths": logical_paths,
+    }
 
 
 def _load_execution_plan(path: Path) -> dict[str, Any]:
@@ -916,7 +1356,7 @@ def _load_merge_evidence(
     source: ScopeEvidenceArtifacts,
     plan: Mapping[str, Any],
 ) -> dict[str, Any]:
-    merge_dir = source.merge_dir
+    merge_dir = source.evidence_merge_dir
     manifest_path = merge_dir / "experiment_matrix_scope_manifest.json"
     cells_path = merge_dir / "experiment_matrix_scope_cells.csv"
     episode_dirs_path = merge_dir / "episode_dirs.json"
@@ -1056,101 +1496,129 @@ def _validate_shard_evidence(
         "scope_merge_shard_inventory_invalid",
         "merged shard inventory count mismatch",
     )
-    descriptor_by_id = {
-        str(item["shard_id"]): item for item in plan["sharding"]["shards"]
-    }
-    progress_by_cell: dict[str, dict[str, Any]] = {}
-    for merged in merge_shards:
-        shard_id = str(merged.get("shard_id", ""))
-        descriptor = descriptor_by_id.get(shard_id)
-        _require(
-            descriptor is not None,
-            "scope_merge_unknown_shard",
-            f"merged scope references unknown shard: {shard_id}",
-        )
-        shard_dir = execution_root / "shards" / shard_id
-        plan_path = shard_dir / "shard_plan.json"
-        progress_path = shard_dir / "progress.jsonl"
-        checkpoint_path = shard_dir / "checkpoint.json"
-        for name, path in (
-            ("shard_plan_sha256", plan_path),
-            ("progress_sha256", progress_path),
-            ("checkpoint_sha256", checkpoint_path),
-        ):
-            _require(
-                path.is_file()
-                and _sha256_file(path) == merged.get(name),
-                f"scope_merge_shard_digest_mismatch:{shard_id}:{name}",
-                f"merged shard digest mismatch: {shard_id}:{name}",
-            )
-        expected_cells = [
-            cell
-            for cell in plan["scope"]["cells"]
-            if int(cell["shard_index"]) == int(descriptor["shard_index"])
+    descriptors = list(plan["sharding"]["shards"])
+    _require(
+        [
+            row.get("shard_index") if isinstance(row, Mapping) else None
+            for row in merge_shards
         ]
-        static = _read_json_object(plan_path, "shard_plan")
+        == list(range(len(descriptors))),
+        "scope_merge_shard_order_or_identity_invalid",
+        "merged shards are missing, duplicated, or out of order",
+    )
+    progress_by_cell: dict[str, dict[str, Any]] = {}
+    for descriptor, merged in zip(descriptors, merge_shards, strict=True):
         _require(
-            static.get("schema_version") == _SHARD_PLAN_SCHEMA
-            and static.get("execution_plan_sha256")
+            isinstance(merged, Mapping)
+            and merged.get("shard_id") == descriptor.get("shard_id"),
+            "scope_merge_unknown_shard",
+            "merged scope references an unknown shard",
+        )
+        progress_by_cell.update(
+            _validate_one_shard_evidence(
+                execution_root=execution_root,
+                plan=plan,
+                merged=merged,
+                descriptor=descriptor,
+            )
+        )
+    return progress_by_cell
+
+
+def _validate_one_shard_evidence(
+    *,
+    execution_root: Path,
+    plan: Mapping[str, Any],
+    merged: Mapping[str, Any],
+    descriptor: Mapping[str, Any],
+) -> dict[str, dict[str, Any]]:
+    shard_id = str(descriptor["shard_id"])
+    _require(
+        merged.get("shard_id") == shard_id
+        and merged.get("shard_index") == descriptor.get("shard_index"),
+        f"scope_merge_unknown_shard:{shard_id}",
+        f"merged scope references the wrong shard: {shard_id}",
+    )
+    shard_dir = execution_root / "shards" / shard_id
+    plan_path = shard_dir / "shard_plan.json"
+    progress_path = shard_dir / "progress.jsonl"
+    checkpoint_path = shard_dir / "checkpoint.json"
+    for name, path in (
+        ("shard_plan_sha256", plan_path),
+        ("progress_sha256", progress_path),
+        ("checkpoint_sha256", checkpoint_path),
+    ):
+        _require(
+            path.is_file() and _sha256_file(path) == merged.get(name),
+            f"scope_merge_shard_digest_mismatch:{shard_id}:{name}",
+            f"merged shard digest mismatch: {shard_id}:{name}",
+        )
+    expected_cells = [
+        cell
+        for cell in plan["scope"]["cells"]
+        if int(cell["shard_index"]) == int(descriptor["shard_index"])
+    ]
+    static = _read_json_object(plan_path, "shard_plan")
+    _require(
+        static.get("schema_version") == _SHARD_PLAN_SCHEMA
+        and static.get("execution_plan_sha256")
+        == plan["execution_plan_sha256"]
+        and static.get("source_git_commit") == plan["source"]["git_commit"]
+        and static.get("parent_plan_sha256")
+        == plan["parent"]["plan_sha256"]
+        and static.get("descriptor") == descriptor
+        and static.get("cells") == expected_cells
+        and static.get("cells_sha256") == _digest_json(expected_cells),
+        f"shard_plan_binding_mismatch:{shard_id}",
+        f"stored shard plan differs from execution plan: {shard_id}",
+    )
+    progress_rows = _read_jsonl_objects(progress_path, "shard_progress")
+    _require(
+        len(progress_rows) == len(expected_cells),
+        f"shard_progress_count_mismatch:{shard_id}",
+        f"shard progress is incomplete: {shard_id}",
+    )
+    progress_by_cell: dict[str, dict[str, Any]] = {}
+    for sequence, (row, expected) in enumerate(
+        zip(progress_rows, expected_cells, strict=True)
+    ):
+        _require(
+            row.get("schema_version") == _SHARD_PROGRESS_SCHEMA
+            and row.get("execution_plan_sha256")
             == plan["execution_plan_sha256"]
-            and static.get("source_git_commit")
-            == plan["source"]["git_commit"]
-            and static.get("parent_plan_sha256")
-            == plan["parent"]["plan_sha256"]
-            and static.get("descriptor") == descriptor
-            and static.get("cells") == expected_cells
-            and static.get("cells_sha256") == _digest_json(expected_cells),
-            f"shard_plan_binding_mismatch:{shard_id}",
-            f"stored shard plan differs from execution plan: {shard_id}",
+            and row.get("sequence") == sequence
+            and row.get("cell_id") == expected["cell_id"]
+            and row.get("scope_index") == expected["scope_index"]
+            and row.get("shard_index") == expected["shard_index"]
+            and row.get("shard_sequence") == expected["shard_sequence"],
+            f"shard_progress_binding_mismatch:{expected['cell_id']}",
+            f"shard progress row differs from expected cell: {expected['cell_id']}",
         )
-        progress_rows = _read_jsonl_objects(progress_path, "shard_progress")
-        _require(
-            len(progress_rows) == len(expected_cells),
-            f"shard_progress_count_mismatch:{shard_id}",
-            f"shard progress is incomplete: {shard_id}",
+        _required_sha256(
+            row.get("cell_result_sha256"),
+            f"shard_progress_cell_digest_invalid:{expected['cell_id']}",
         )
-        for sequence, (row, expected) in enumerate(
-            zip(progress_rows, expected_cells, strict=True)
-        ):
-            _require(
-                row.get("schema_version") == _SHARD_PROGRESS_SCHEMA
-                and row.get("execution_plan_sha256")
-                == plan["execution_plan_sha256"]
-                and row.get("sequence") == sequence
-                and row.get("cell_id") == expected["cell_id"]
-                and row.get("scope_index") == expected["scope_index"]
-                and row.get("shard_index") == expected["shard_index"]
-                and row.get("shard_sequence")
-                == expected["shard_sequence"],
-                f"shard_progress_binding_mismatch:{expected['cell_id']}",
-                f"shard progress row differs from expected cell: {expected['cell_id']}",
-            )
-            _required_sha256(
-                row.get("cell_result_sha256"),
-                f"shard_progress_cell_digest_invalid:{expected['cell_id']}",
-            )
-            _required_sha256(
-                row.get("episode_artifact_tree_sha256"),
-                f"shard_progress_episode_digest_invalid:{expected['cell_id']}",
-            )
-            progress_by_cell[str(expected["cell_id"])] = row
-        checkpoint = _read_json_object(checkpoint_path, "shard_checkpoint")
-        _require(
-            checkpoint.get("schema_version") == _SHARD_CHECKPOINT_SCHEMA
-            and checkpoint.get("execution_plan_sha256")
-            == plan["execution_plan_sha256"]
-            and checkpoint.get("source_git_commit")
-            == plan["source"]["git_commit"]
-            and checkpoint.get("shard_id") == shard_id
-            and checkpoint.get("status") == "complete"
-            and checkpoint.get("expected_cell_count") == len(expected_cells)
-            and checkpoint.get("completed_cell_count") == len(expected_cells)
-            and checkpoint.get("next_sequence") == len(expected_cells)
-            and checkpoint.get("progress_sha256")
-            == _sha256_file(progress_path),
-            f"shard_checkpoint_incomplete_or_invalid:{shard_id}",
-            f"shard checkpoint is incomplete or invalid: {shard_id}",
+        _required_sha256(
+            row.get("episode_artifact_tree_sha256"),
+            f"shard_progress_episode_digest_invalid:{expected['cell_id']}",
         )
+        progress_by_cell[str(expected["cell_id"])] = row
+    checkpoint = _read_json_object(checkpoint_path, "shard_checkpoint")
+    _require(
+        checkpoint.get("schema_version") == _SHARD_CHECKPOINT_SCHEMA
+        and checkpoint.get("execution_plan_sha256")
+        == plan["execution_plan_sha256"]
+        and checkpoint.get("source_git_commit")
+        == plan["source"]["git_commit"]
+        and checkpoint.get("shard_id") == shard_id
+        and checkpoint.get("status") == "complete"
+        and checkpoint.get("expected_cell_count") == len(expected_cells)
+        and checkpoint.get("completed_cell_count") == len(expected_cells)
+        and checkpoint.get("next_sequence") == len(expected_cells)
+        and checkpoint.get("progress_sha256") == _sha256_file(progress_path),
+        f"shard_checkpoint_incomplete_or_invalid:{shard_id}",
+        f"shard checkpoint is incomplete or invalid: {shard_id}",
+    )
     return progress_by_cell
 
 
@@ -1970,6 +2438,33 @@ def _resolve_within(root: Path, raw: Any, code: str) -> Path:
     return resolved
 
 
+def _logical_relative_path(raw: Any, code: str) -> str:
+    _require(
+        isinstance(raw, str) and bool(raw) and "\\" not in raw,
+        code,
+        "logical episode path is missing or uses an unsafe separator",
+    )
+    path = PurePosixPath(raw)
+    _require(
+        not path.is_absolute()
+        and path.as_posix() == raw
+        and all(part not in {"", ".", ".."} for part in path.parts),
+        code,
+        "logical episode path is unsafe",
+    )
+    return raw
+
+
+def _path_contains_symlink(path: Path) -> bool:
+    candidate = Path(path).absolute()
+    current = Path(candidate.anchor)
+    for part in candidate.parts[1:]:
+        current = current / part
+        if current.is_symlink():
+            return True
+    return False
+
+
 def _mapping(value: Any, code: str) -> Mapping[str, Any]:
     if not isinstance(value, Mapping):
         raise LearningScopeFormalAuditError(code, f"{code} must be an object")
@@ -2064,6 +2559,7 @@ def _sha256_file(path: Path) -> str:
 
 
 __all__ = [
+    "LEARNING_SCOPE_DIRECTORY_STORAGE_MODE",
     "LEARNING_SCOPE_FORMAL_AUDIT_DATE",
     "LEARNING_SCOPE_FORMAL_AUDIT_SCHEMA_VERSION",
     "LearningScopeFormalAuditError",
