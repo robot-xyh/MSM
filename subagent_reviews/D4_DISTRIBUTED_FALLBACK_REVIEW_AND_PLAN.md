@@ -1,5 +1,27 @@
 # D4 分布式协同与降级接管综述及子方案
 
+## 2026-07-31 区域建议发布双层合同评审
+
+D6 clean smoke 证明最终 D3-D4 计划和联盟可以闭合，同时暴露建议发布时序缺口：4 个
+重规划 episode 在 v2 发布后仍输出 v1 建议。该 shadow 建议未改变正式决策，但正式
+准入必须失败关闭，不能由 D6 后过滤改成有效。
+
+D4 已提供独立 publication gate。`generation_publishable` 使用当前 D4 区域快照逐区域
+比较计划标识、版本、authority epoch、lease 和 owner 绑定，并检查快照、回滚和合同
+完整性。`planning_consumable` 独立复用 ACK、fault fence、正式裁决、守恒、备用和
+transfer 安全门。当前代次但 fault-fenced 的 shadow advice 因而可以进入诊断总线，
+同时保持不可采用；真正的 publication rejection 和旧代次仍失败关闭。
+
+发布判定保留时间语义，历史有效 v1 与发布时已过时 v1 分开记录。同身份刷新不续租，
+重规划后旧 snapshot 不得回滚为当前代次。两层结果均不改变正式 decision，也不授予
+assignment、coalition、takeover 或 control 权限。
+
+专项 10/10、相关回归 75/75、D4 全量 913/913、原 scalable 故障代次定向回归 1/1
+通过；D4 全量仅有既有 Matplotlib `Axes3D` 环境警告。D4-owned 代码子项关闭，main
+已完成最小总线接线；preplanning/online 时序拆分和 D6 clean 6-cell 复验仍是 formal
+R0 前的跨模块 P0。main 必须在旧建议被拒后生成当前计划建议，只抑制旧记录不能满足
+6/6 当前建议覆盖。
+
 ## 2026-07-31 D3 权威代次合同评审
 
 D4 接受当前 main-D3 发布合同补全。每个首次权威计划现在显式携带中心和区域的

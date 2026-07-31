@@ -1,5 +1,53 @@
 # D4 分布式协同与降级接管算法及实施方案
 
+## 2026-07-31 区域建议发布与采用保护
+
+### 接口
+
+`region_resource.py` 新增三类公开对象：
+
+- `RegionResourceAuthorityGeneration`：逐区域保存 owner、layer、plan ID/version、
+  authority epoch 和 lease；
+- `RegionResourceAdvisoryPublicationDecision`：保存发布时刻、当前快照、来源/当前
+  代次、`generation_publishable`、`planning_consumable` 及两层稳定拒绝原因；
+- `RegionResourceAdvisoryPublicationGate`：维护一个 episode 内的代次账本和不可变
+  发布判定历史。
+
+main 已有 recommendation 时，调用 `build_current_and_authorize(current_snapshot,
+recommendation, publication_timestamp_s=...)`。已有 advisory 时，调用
+`authorize(advisory, current_snapshot, publication_timestamp_s=...)`。第二种入口用于
+发现计算期间发生重规划的旧快照结果。接口不写 D3 计划或 D7 命令，也不授予联盟或
+接管权限。
+
+### 判定顺序
+
+1. 将当前快照转换为逐区域 authority generation，检查是否相对本 episode 已观察代次
+   回滚或冲突。
+2. 相同不可变身份必须保持同一 lease。更晚 lease 返回
+   `same_identity_lease_renewal_forbidden`，更早 lease 返回
+   `same_identity_lease_change_forbidden`。
+3. 独立执行 `DeterministicResourceProjector.validate_for_consumption()`，形成
+   `planning_consumable` 和规划拒绝原因；该结果不直接决定诊断发布资格。
+4. 比较 advisory 与当前计划的 plan ID、版本、epoch 和 lease，检查快照、TTL、
+   projector 合同及真正的 `advisory.publication_rejections`，输出
+   `source_plan_id_superseded`、`source_plan_version_superseded`、
+   `source_authority_epoch_superseded` 或 `source_authority_lease_mismatch`。
+5. 发布层通过时返回 `generation_publishable=true/current_generation_accepted`。
+   fault fence、ACK 不完整、authority inactive、正式执行围栏或安全投影拒绝可使
+   `planning_consumable=false`，但不会自动抑制当前代次 shadow advice。
+6. 两层拒绝结果和先前接受结果都追加到只读历史；后续重规划不会修改早先判定。两层
+   结果的四项执行权限始终为 false。
+
+### 测试
+
+新增 10 项纯 Python 合同测试。正向覆盖同代发布、同身份新快照、序列化，以及当前代次
+fault-fenced diagnostic 可发布但不可采用；负向覆盖旧 plan ID、旧 version、旧 epoch、
+错 lease、严格 lease 到期、同身份续租、重规划后旧 advisory 对当前 v2 和旧快照回滚。
+专项 10/10，区域资源建议、规划权限及发布门相关回归 75/75、D4 全量 913/913 通过；
+原 scalable 故障代次定向回归 1/1 通过。D4 全量仅有既有 Matplotlib `Axes3D` 环境
+警告。main 已完成最小总线接线；preplanning learning frame 与 current online
+publication 的时序拆分及 clean 6-cell 重跑仍由 main/D6 完成。
+
 ## 2026-07-31 D3 发布代次消费
 
 当前集成顺序为：D3 生成计划，main 绑定不可变权威代次，随后在总线上首次发布。D4

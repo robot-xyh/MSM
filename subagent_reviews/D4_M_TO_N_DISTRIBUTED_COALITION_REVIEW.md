@@ -1,5 +1,27 @@
 # D4 M 对 N 分布式联盟形成与降级接管调研
 
+## 2026-07-31 高威胁建议发布双层保护
+
+高威胁 M 对 N clean smoke 的多成员联盟最终闭合，但 4 个 100/200 规模重规划 episode
+在 v2 后发布了 v1 区域资源建议。该问题位于建议发布边界，不位于 required-member ACK
+或原子联盟提交状态机。
+
+D4 新增逐区域 publication generation gate。旧 plan ID/version、旧 authority epoch、
+错或到期 lease、同身份续租、代次回滚和真正的 advisory publication rejection 继续
+阻断建议写总线。当前代次的 ACK 不完整、fault fence 或一般消费安全拒绝只使
+`planning_consumable=false`，shadow advice 仍可作为诊断证据发布。合法 v1 历史记录
+保持原判定，不能反向标成违规。
+
+发布门不改变联盟成员、任务绑定、D3 计划或 D7 权限。诊断发布不能代替 required-member
+ACK、原子 commit 或执行许可；assignment、coalition、takeover 和 control 权限始终为
+false。
+
+专项 10/10、相关回归 75/75、D4 全量 913/913、原 scalable 故障代次定向回归 1/1
+通过；D4 全量仅有既有 Matplotlib `Axes3D` 环境警告。main 已完成最小 gate 接入，
+仍需拆分 preplanning learning frame 与 current online publication，并在 v2 上重算
+建议；D6 需复跑 6-cell smoke。完成 6/6 当前建议覆盖和 formal 资格前，900-cell
+高威胁矩阵继续阻断。
+
 ## 2026-07-31 多成员计划代次绑定
 
 同一 M 对 N 计划中的全部必要成员现在共享首次权威发布的四项 epoch/lease 绑定。

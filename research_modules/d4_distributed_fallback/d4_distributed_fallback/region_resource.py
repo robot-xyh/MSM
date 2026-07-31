@@ -29,6 +29,9 @@ REGION_RESOURCE_RECOMMENDATION_SCHEMA = "d4-region-resource-recommendation-v1"
 REGION_RESOURCE_ADVISORY_SCHEMA = "d4-region-resource-advisory-v1"
 REGION_RESOURCE_PLANNING_ADVISORY_SCHEMA = "d4-region-resource-advisory-v2"
 REGION_RESOURCE_CONSUMPTION_SCHEMA = "d4-region-resource-consumption-v1"
+REGION_RESOURCE_ADVISORY_PUBLICATION_SCHEMA = (
+    "d4-region-resource-advisory-publication-v1"
+)
 REGION_RESOURCE_SHADOW_REPORT_SCHEMA = "d4-region-resource-shadow-report-v1"
 REGION_RESOURCE_FEATURE_SCHEMA = "d4-region-resource-features-v1"
 REGION_RESOURCE_AUTHORITY_CAPABILITIES_SCHEMA = (
@@ -54,6 +57,15 @@ _PLANNING_HARD_SAFETY_INDICATORS = frozenset(
         "network_partition",
     }
 )
+_ADVISORY_CONSUMPTION_ONLY_BLOCK_REASONS = frozenset(
+    {
+        "authority_not_active",
+        "coalition_ack_incomplete",
+        "fault_fence_active",
+        "formal_d4_commit_incomplete",
+        "formal_d4_execution_fenced",
+    }
+)
 
 _FORBIDDEN_ID_KEYS = {
     "actor_id",
@@ -75,6 +87,28 @@ class AdvisorMode(str, Enum):
     DISABLED = "disabled"
     SHADOW = "shadow"
     ASSIST = "assist"
+
+
+class RegionResourceAdvisoryPublicationCode(str, Enum):
+    """Stable main-facing result codes for publication-time authority checks."""
+
+    CURRENT_GENERATION_ACCEPTED = "current_generation_accepted"
+    ADVISORY_CONTRACT_REJECTED = "advisory_contract_rejected"
+    ADVISORY_EXPIRED = "advisory_expired"
+    SOURCE_SNAPSHOT_STALE = "source_snapshot_stale"
+    SOURCE_REGION_SET_MISMATCH = "source_region_set_mismatch"
+    SOURCE_PLAN_ID_SUPERSEDED = "source_plan_id_superseded"
+    SOURCE_PLAN_VERSION_SUPERSEDED = "source_plan_version_superseded"
+    SOURCE_AUTHORITY_EPOCH_SUPERSEDED = "source_authority_epoch_superseded"
+    SOURCE_AUTHORITY_LEASE_MISMATCH = "source_authority_lease_mismatch"
+    CURRENT_AUTHORITY_LEASE_EXPIRED = "current_authority_lease_expired"
+    CURRENT_GENERATION_ROLLBACK = "current_generation_rollback"
+    CURRENT_GENERATION_CONFLICT = "current_generation_conflict"
+    SAME_IDENTITY_LEASE_RENEWAL_FORBIDDEN = (
+        "same_identity_lease_renewal_forbidden"
+    )
+    SAME_IDENTITY_LEASE_CHANGE_FORBIDDEN = "same_identity_lease_change_forbidden"
+    AUTHORITY_BINDING_MISMATCH = "authority_binding_mismatch"
 
 
 @dataclass(frozen=True)
@@ -1413,6 +1447,280 @@ class RegionResourceConsumptionView:
 
 
 @dataclass(frozen=True)
+class RegionResourceAuthorityGeneration:
+    """One truth-free authority generation used at advice publication time."""
+
+    region_id: str
+    owner_id: str | None
+    owner_layer: RegionalAuthorityLayer | str
+    plan_id: str
+    plan_version: int
+    authority_epoch: int
+    lease_expires_at_s: float
+
+    def __post_init__(self) -> None:
+        if not self.region_id or not self.plan_id:
+            raise ValueError("publication authority region and plan must not be empty")
+        layer = (
+            self.owner_layer
+            if isinstance(self.owner_layer, RegionalAuthorityLayer)
+            else RegionalAuthorityLayer(str(self.owner_layer))
+        )
+        object.__setattr__(self, "owner_layer", layer)
+        if layer == RegionalAuthorityLayer.HOLD:
+            if self.owner_id is not None:
+                raise ValueError("hold publication authority cannot expose an owner")
+        elif not self.owner_id:
+            raise ValueError("active publication authority requires an owner")
+        object.__setattr__(
+            self,
+            "plan_version",
+            _strict_integer(self.plan_version, name="plan_version", minimum=0),
+        )
+        object.__setattr__(
+            self,
+            "authority_epoch",
+            _strict_integer(
+                self.authority_epoch,
+                name="authority_epoch",
+                minimum=0,
+            ),
+        )
+        if not _finite_non_negative(self.lease_expires_at_s):
+            raise ValueError(
+                "publication authority lease must be finite and non-negative"
+            )
+
+    @property
+    def immutable_identity(self) -> tuple[str | None, str, str, int, int]:
+        return (
+            self.owner_id,
+            self.owner_layer.value,
+            self.plan_id,
+            self.plan_version,
+            self.authority_epoch,
+        )
+
+    def to_dict(self) -> dict[str, Any]:
+        return to_jsonable(self)
+
+    @classmethod
+    def from_dict(
+        cls,
+        value: Mapping[str, Any],
+    ) -> "RegionResourceAuthorityGeneration":
+        _reject_truth_identifiers(value, path="advisory.publication_generation")
+        return cls(**dict(value))
+
+
+@dataclass(frozen=True)
+class RegionResourceAdvisoryPublicationDecision:
+    """Separate diagnostic publication from downstream planning consumption."""
+
+    advisory: RegionResourceAdvisoryContract
+    publication_timestamp_s: float
+    current_snapshot_id: str
+    current_snapshot_version: int
+    current_authority_digest: str
+    source_generations: tuple[RegionResourceAuthorityGeneration, ...]
+    current_generations: tuple[RegionResourceAuthorityGeneration, ...]
+    generation_publishable: bool
+    planning_consumable: bool
+    publication_reason_code: RegionResourceAdvisoryPublicationCode | str
+    publication_rejection_codes: tuple[
+        RegionResourceAdvisoryPublicationCode | str, ...
+    ]
+    publication_rejection_reasons: tuple[str, ...]
+    planning_rejection_reasons: tuple[str, ...]
+    schema: str = REGION_RESOURCE_ADVISORY_PUBLICATION_SCHEMA
+    assignment_execution_authorized: bool = False
+    coalition_execution_authorized: bool = False
+    takeover_execution_authorized: bool = False
+    control_execution_authorized: bool = False
+
+    def __post_init__(self) -> None:
+        if self.schema != REGION_RESOURCE_ADVISORY_PUBLICATION_SCHEMA:
+            raise ValueError("unsupported region resource publication schema")
+        if not _finite_non_negative(self.publication_timestamp_s):
+            raise ValueError(
+                "publication_timestamp_s must be finite and non-negative"
+            )
+        if not self.current_snapshot_id or not self.current_authority_digest:
+            raise ValueError(
+                "publication current snapshot and authority must not be empty"
+            )
+        if int(self.current_snapshot_version) <= 0:
+            raise ValueError("publication current snapshot version must be positive")
+        if type(self.generation_publishable) is not bool:
+            raise ValueError("generation_publishable must be a boolean")
+        if type(self.planning_consumable) is not bool:
+            raise ValueError("planning_consumable must be a boolean")
+        reason_code = (
+            self.publication_reason_code
+            if isinstance(
+                self.publication_reason_code,
+                RegionResourceAdvisoryPublicationCode,
+            )
+            else RegionResourceAdvisoryPublicationCode(
+                str(self.publication_reason_code)
+            )
+        )
+        rejection_codes = tuple(
+            code
+            if isinstance(code, RegionResourceAdvisoryPublicationCode)
+            else RegionResourceAdvisoryPublicationCode(str(code))
+            for code in self.publication_rejection_codes
+        )
+        rejection_codes = tuple(dict.fromkeys(rejection_codes))
+        rejection_reasons = _unique(self.publication_rejection_reasons)
+        planning_rejection_reasons = _unique(self.planning_rejection_reasons)
+        if self.generation_publishable:
+            if (
+                reason_code
+                != RegionResourceAdvisoryPublicationCode.CURRENT_GENERATION_ACCEPTED
+                or rejection_codes
+                or rejection_reasons
+            ):
+                raise ValueError(
+                    "generation-publishable advice must carry only the accepted code"
+                )
+        elif (
+            reason_code
+            == RegionResourceAdvisoryPublicationCode.CURRENT_GENERATION_ACCEPTED
+            or not rejection_codes
+            or reason_code != rejection_codes[0]
+            or not rejection_reasons
+        ):
+            raise ValueError(
+                "generation-rejected advice requires stable publication reasons"
+            )
+        if self.planning_consumable:
+            if not self.generation_publishable or planning_rejection_reasons:
+                raise ValueError(
+                    "planning-consumable advice requires a publishable generation"
+                )
+        elif not planning_rejection_reasons:
+            raise ValueError(
+                "planning-rejected advice requires stable planning reasons"
+            )
+        for name in (
+            "assignment_execution_authorized",
+            "coalition_execution_authorized",
+            "takeover_execution_authorized",
+            "control_execution_authorized",
+        ):
+            if getattr(self, name) is not False:
+                raise ValueError(
+                    "advice publication cannot grant assignment or control authority"
+                )
+        source_generations = tuple(
+            sorted(self.source_generations, key=lambda item: item.region_id)
+        )
+        current_generations = tuple(
+            sorted(self.current_generations, key=lambda item: item.region_id)
+        )
+        if len({item.region_id for item in source_generations}) != len(
+            source_generations
+        ):
+            raise ValueError("source publication generations must be unique")
+        if len({item.region_id for item in current_generations}) != len(
+            current_generations
+        ):
+            raise ValueError("current publication generations must be unique")
+        object.__setattr__(self, "publication_reason_code", reason_code)
+        object.__setattr__(
+            self,
+            "publication_rejection_codes",
+            rejection_codes,
+        )
+        object.__setattr__(
+            self,
+            "publication_rejection_reasons",
+            rejection_reasons,
+        )
+        object.__setattr__(
+            self,
+            "planning_rejection_reasons",
+            planning_rejection_reasons,
+        )
+        object.__setattr__(self, "source_generations", source_generations)
+        object.__setattr__(self, "current_generations", current_generations)
+
+    @property
+    def advisory_id(self) -> str:
+        return self.advisory.advisory_id
+
+    @property
+    def publishable(self) -> bool:
+        """Compatibility alias for main callers during the contract migration."""
+
+        return self.generation_publishable
+
+    @property
+    def reason_code(self) -> RegionResourceAdvisoryPublicationCode:
+        return self.publication_reason_code
+
+    @property
+    def rejection_codes(self) -> tuple[RegionResourceAdvisoryPublicationCode, ...]:
+        return self.publication_rejection_codes
+
+    @property
+    def rejection_reasons(self) -> tuple[str, ...]:
+        return self.publication_rejection_reasons
+
+    def to_dict(self) -> dict[str, Any]:
+        return to_jsonable(self)
+
+    @classmethod
+    def from_dict(
+        cls,
+        value: Mapping[str, Any],
+    ) -> "RegionResourceAdvisoryPublicationDecision":
+        _reject_truth_identifiers(value, path="advisory.publication")
+        payload = dict(value)
+        if "generation_publishable" not in payload and "publishable" in payload:
+            payload["generation_publishable"] = payload.pop("publishable")
+        if "publication_reason_code" not in payload and "reason_code" in payload:
+            payload["publication_reason_code"] = payload.pop("reason_code")
+        if (
+            "publication_rejection_codes" not in payload
+            and "rejection_codes" in payload
+        ):
+            payload["publication_rejection_codes"] = payload.pop(
+                "rejection_codes"
+            )
+        if (
+            "publication_rejection_reasons" not in payload
+            and "rejection_reasons" in payload
+        ):
+            payload["publication_rejection_reasons"] = payload.pop(
+                "rejection_reasons"
+            )
+        if "planning_consumable" not in payload:
+            payload["planning_consumable"] = bool(
+                payload.get("generation_publishable", False)
+            )
+        if "planning_rejection_reasons" not in payload:
+            payload["planning_rejection_reasons"] = (
+                ()
+                if payload["planning_consumable"]
+                else ("legacy_publication_not_planning_consumable",)
+            )
+        payload["advisory"] = RegionResourceAdvisoryContract.from_dict(
+            payload["advisory"]
+        )
+        payload["source_generations"] = tuple(
+            RegionResourceAuthorityGeneration.from_dict(item)
+            for item in payload.get("source_generations", ())
+        )
+        payload["current_generations"] = tuple(
+            RegionResourceAuthorityGeneration.from_dict(item)
+            for item in payload.get("current_generations", ())
+        )
+        return cls(**payload)
+
+
+@dataclass(frozen=True)
 class RegionResourceProjectionConfig:
     minimum_reserve_ratio: float = 0.10
     minimum_reserve_resources: int = 1
@@ -1753,7 +2061,9 @@ class DeterministicResourceProjector:
                 allow_planning_only=region_id in planning_only_regions,
             )
             publication_rejections.extend(
-                f"region:{region_id}:{reason}" for reason in block_reasons
+                f"region:{region_id}:{reason}"
+                for reason in block_reasons
+                if reason not in _ADVISORY_CONSUMPTION_ONLY_BLOCK_REASONS
             )
             if recommendation.created_at_s >= node.lease_expires_at_s:
                 publication_rejections.append(f"region:{region_id}:lease_expired_at_creation")
@@ -1901,9 +2211,6 @@ class DeterministicResourceProjector:
         total_after = sum(item.resources_after for item in advisory_regions)
         if total_delta != 0 or total_after != total_before:
             publication_rejections.append("total_resource_quota_not_conserved")
-        for rejection in recommendation.projection_rejections:
-            if not rejection.endswith(":clipped_by_safety_projection"):
-                publication_rejections.append(f"unsafe_projection_rejection:{rejection}")
         if recommendation.source == RecommendationSource.LEARNED and not _valid_sha256(
             recommendation.model_sha256
         ):
@@ -1977,6 +2284,11 @@ class DeterministicResourceProjector:
         if not _finite_non_negative(evaluated_at_s):
             raise ValueError("evaluated_at_s must be finite and non-negative")
         reasons: list[str] = list(advisory.publication_rejections)
+        reasons.extend(
+            f"unsafe_projection_rejection:{rejection}"
+            for rejection in advisory.projection_rejections
+            if not rejection.endswith(":clipped_by_safety_projection")
+        )
         if not advisory.projected:
             reasons.append("recommendation_not_projected")
         if (
@@ -2618,6 +2930,373 @@ class RegionResourceAdvisoryGate:
         if view.consumable:
             self._consumed_advisory_ids.add(advisory.advisory_id)
         return view
+
+
+class RegionResourceAdvisoryPublicationGate:
+    """Authorize advice publication against the current immutable D3/D4 generation.
+
+    The gate observes, but never edits, the caller-supplied authority snapshot.
+    Accepted and rejected decisions are retained as immutable point-in-time audit
+    records.  A later replan therefore does not retroactively invalidate an
+    advice item that was valid when it was published.
+    """
+
+    def __init__(
+        self,
+        projector: DeterministicResourceProjector | None = None,
+    ) -> None:
+        self.projector = projector or DeterministicResourceProjector()
+        self._history: list[RegionResourceAdvisoryPublicationDecision] = []
+        self._current_generations: dict[
+            tuple[str, str, int, str],
+            RegionResourceAuthorityGeneration,
+        ] = {}
+
+    @property
+    def publication_history(
+        self,
+    ) -> tuple[RegionResourceAdvisoryPublicationDecision, ...]:
+        return tuple(self._history)
+
+    @property
+    def accepted_publications(
+        self,
+    ) -> tuple[RegionResourceAdvisoryPublicationDecision, ...]:
+        return tuple(
+            item for item in self._history if item.generation_publishable
+        )
+
+    @property
+    def current_authority_generations(
+        self,
+    ) -> tuple[RegionResourceAuthorityGeneration, ...]:
+        return tuple(
+            sorted(
+                self._current_generations.values(),
+                key=lambda item: item.region_id,
+            )
+        )
+
+    def build_current_and_authorize(
+        self,
+        current_snapshot: RegionResourceSnapshot,
+        recommendation: RegionResourceRecommendation,
+        *,
+        publication_timestamp_s: float,
+        formal_decision: RegionalFailoverDecision | None = None,
+    ) -> RegionResourceAdvisoryPublicationDecision:
+        """Build advice from the current snapshot, then run the publication gate."""
+
+        advisory = self.projector.build_advisory_contract(
+            current_snapshot,
+            recommendation,
+            formal_decision=formal_decision,
+        )
+        return self.authorize(
+            advisory,
+            current_snapshot,
+            publication_timestamp_s=publication_timestamp_s,
+            formal_decision=formal_decision,
+        )
+
+    def authorize(
+        self,
+        advisory: RegionResourceAdvisoryContract,
+        current_snapshot: RegionResourceSnapshot,
+        *,
+        publication_timestamp_s: float,
+        formal_decision: RegionalFailoverDecision | None = None,
+    ) -> RegionResourceAdvisoryPublicationDecision:
+        """Return a fail-closed publication decision for a main-owned bus writer."""
+
+        if not _finite_non_negative(publication_timestamp_s):
+            raise ValueError(
+                "publication_timestamp_s must be finite and non-negative"
+            )
+        source_generations = self._source_generations(advisory)
+        current_generations = self._snapshot_generations(current_snapshot)
+        codes: list[RegionResourceAdvisoryPublicationCode] = []
+        reasons: list[str] = []
+
+        generation_codes, generation_reasons, updates = (
+            self._current_generation_updates(
+                current_snapshot,
+                current_generations,
+            )
+        )
+        codes.extend(generation_codes)
+        reasons.extend(generation_reasons)
+        if not generation_codes:
+            self._current_generations.update(updates)
+
+        consumption = self.projector.validate_for_consumption(
+            advisory,
+            current_snapshot,
+            evaluated_at_s=publication_timestamp_s,
+            formal_decision=formal_decision,
+        )
+        if advisory.publication_rejections:
+            codes.append(
+                RegionResourceAdvisoryPublicationCode.ADVISORY_CONTRACT_REJECTED
+            )
+            reasons.extend(advisory.publication_rejections)
+        if not advisory.projected:
+            codes.append(
+                RegionResourceAdvisoryPublicationCode.ADVISORY_CONTRACT_REJECTED
+            )
+            reasons.append("recommendation_not_projected")
+        if (
+            advisory.projector_name != DETERMINISTIC_RESOURCE_PROJECTOR_NAME
+            or advisory.projector_version
+            != DETERMINISTIC_RESOURCE_PROJECTOR_VERSION
+            or advisory.minimum_reserve_ratio
+            != self.projector.config.minimum_reserve_ratio
+            or advisory.minimum_reserve_resources
+            != self.projector.config.minimum_reserve_resources
+            or advisory.advisory_ttl_s
+            != self.projector.config.advisory_ttl_s
+        ):
+            codes.append(
+                RegionResourceAdvisoryPublicationCode.ADVISORY_CONTRACT_REJECTED
+            )
+            reasons.append("publication_projector_contract_mismatch")
+        if advisory.formal_decision_required and formal_decision is None:
+            codes.append(
+                RegionResourceAdvisoryPublicationCode.ADVISORY_CONTRACT_REJECTED
+            )
+            reasons.append("current_formal_decision_missing")
+        formal_snapshot_rejections = (
+            self.projector._formal_snapshot_rejections(
+                current_snapshot,
+                formal_decision,
+            )
+            if formal_decision is not None
+            else ()
+        )
+        if formal_snapshot_rejections:
+            codes.append(
+                RegionResourceAdvisoryPublicationCode.ADVISORY_CONTRACT_REJECTED
+            )
+            reasons.extend(formal_snapshot_rejections)
+        if publication_timestamp_s < advisory.valid_from_s:
+            codes.append(
+                RegionResourceAdvisoryPublicationCode.ADVISORY_CONTRACT_REJECTED
+            )
+            reasons.append("advisory_not_yet_valid")
+        if publication_timestamp_s >= advisory.valid_until_s:
+            codes.append(RegionResourceAdvisoryPublicationCode.ADVISORY_EXPIRED)
+            reasons.append("advisory_expired")
+        if (
+            advisory.snapshot_id != current_snapshot.snapshot_id
+            or advisory.snapshot_version != current_snapshot.snapshot_version
+            or advisory.snapshot_timestamp_s != current_snapshot.timestamp_s
+            or advisory.authority_digest != current_snapshot.authority_digest
+            or advisory.scenario_id != current_snapshot.scenario_id
+            or advisory.scenario_version != current_snapshot.scenario_version
+            or int(advisory.seed) != int(current_snapshot.seed)
+            or (
+                advisory.planning_authority_digest
+                and advisory.planning_authority_digest
+                != current_snapshot.planning_authority_digest
+            )
+            or publication_timestamp_s < current_snapshot.timestamp_s
+        ):
+            codes.append(
+                RegionResourceAdvisoryPublicationCode.SOURCE_SNAPSHOT_STALE
+            )
+            reasons.append("source_snapshot_or_scenario_not_current")
+
+        source_by_region = {
+            item.region_id: item for item in source_generations
+        }
+        current_by_region = {
+            item.region_id: item for item in current_generations
+        }
+        if set(source_by_region) != set(current_by_region):
+            codes.append(
+                RegionResourceAdvisoryPublicationCode.SOURCE_REGION_SET_MISMATCH
+            )
+            reasons.append("source_region_set_mismatch")
+        for region_id in sorted(set(source_by_region) & set(current_by_region)):
+            source = source_by_region[region_id]
+            current = current_by_region[region_id]
+            if source.plan_id != current.plan_id:
+                codes.append(
+                    RegionResourceAdvisoryPublicationCode.SOURCE_PLAN_ID_SUPERSEDED
+                )
+                reasons.append(f"region:{region_id}:source_plan_id_superseded")
+            if source.plan_version != current.plan_version:
+                codes.append(
+                    RegionResourceAdvisoryPublicationCode.SOURCE_PLAN_VERSION_SUPERSEDED
+                )
+                reasons.append(f"region:{region_id}:source_plan_version_superseded")
+            if source.authority_epoch != current.authority_epoch:
+                codes.append(
+                    RegionResourceAdvisoryPublicationCode.SOURCE_AUTHORITY_EPOCH_SUPERSEDED
+                )
+                reasons.append(
+                    f"region:{region_id}:source_authority_epoch_superseded"
+                )
+            if source.lease_expires_at_s != current.lease_expires_at_s:
+                codes.append(
+                    RegionResourceAdvisoryPublicationCode.SOURCE_AUTHORITY_LEASE_MISMATCH
+                )
+                reasons.append(
+                    f"region:{region_id}:source_authority_lease_mismatch"
+                )
+            if publication_timestamp_s >= current.lease_expires_at_s:
+                codes.append(
+                    RegionResourceAdvisoryPublicationCode.CURRENT_AUTHORITY_LEASE_EXPIRED
+                )
+                reasons.append(f"region:{region_id}:current_authority_lease_expired")
+            if (
+                source.owner_id != current.owner_id
+                or source.owner_layer != current.owner_layer
+            ):
+                codes.append(
+                    RegionResourceAdvisoryPublicationCode.AUTHORITY_BINDING_MISMATCH
+                )
+                reasons.append(f"region:{region_id}:authority_binding_mismatch")
+
+        unique_codes = tuple(dict.fromkeys(codes))
+        unique_reasons = _unique(reasons)
+        generation_publishable = not unique_codes
+        planning_rejection_reasons = list(consumption.rejection_reasons)
+        if not generation_publishable:
+            planning_rejection_reasons.append("generation_not_publishable")
+        planning_rejection_reasons = list(_unique(planning_rejection_reasons))
+        planning_consumable = bool(
+            generation_publishable and consumption.consumable
+        )
+        decision = RegionResourceAdvisoryPublicationDecision(
+            advisory=advisory,
+            publication_timestamp_s=float(publication_timestamp_s),
+            current_snapshot_id=current_snapshot.snapshot_id,
+            current_snapshot_version=current_snapshot.snapshot_version,
+            current_authority_digest=current_snapshot.authority_digest,
+            source_generations=source_generations,
+            current_generations=current_generations,
+            generation_publishable=generation_publishable,
+            planning_consumable=planning_consumable,
+            publication_reason_code=(
+                RegionResourceAdvisoryPublicationCode.CURRENT_GENERATION_ACCEPTED
+                if generation_publishable
+                else unique_codes[0]
+            ),
+            publication_rejection_codes=unique_codes,
+            publication_rejection_reasons=unique_reasons,
+            planning_rejection_reasons=tuple(planning_rejection_reasons),
+        )
+        self._history.append(decision)
+        return decision
+
+    def _current_generation_updates(
+        self,
+        snapshot: RegionResourceSnapshot,
+        current_generations: tuple[RegionResourceAuthorityGeneration, ...],
+    ) -> tuple[
+        tuple[RegionResourceAdvisoryPublicationCode, ...],
+        tuple[str, ...],
+        dict[
+            tuple[str, str, int, str],
+            RegionResourceAuthorityGeneration,
+        ],
+    ]:
+        codes: list[RegionResourceAdvisoryPublicationCode] = []
+        reasons: list[str] = []
+        updates: dict[
+            tuple[str, str, int, str],
+            RegionResourceAuthorityGeneration,
+        ] = {}
+        for current in current_generations:
+            key = (
+                snapshot.scenario_id,
+                snapshot.scenario_version,
+                int(snapshot.seed),
+                current.region_id,
+            )
+            previous = self._current_generations.get(key)
+            if previous is None:
+                updates[key] = current
+                continue
+            if current.immutable_identity == previous.immutable_identity:
+                if current.lease_expires_at_s > previous.lease_expires_at_s:
+                    codes.append(
+                        RegionResourceAdvisoryPublicationCode.SAME_IDENTITY_LEASE_RENEWAL_FORBIDDEN
+                    )
+                    reasons.append(
+                        f"region:{current.region_id}:same_identity_lease_renewal_forbidden"
+                    )
+                elif current.lease_expires_at_s < previous.lease_expires_at_s:
+                    codes.append(
+                        RegionResourceAdvisoryPublicationCode.SAME_IDENTITY_LEASE_CHANGE_FORBIDDEN
+                    )
+                    reasons.append(
+                        f"region:{current.region_id}:same_identity_lease_change_forbidden"
+                    )
+                continue
+            if current.authority_epoch < previous.authority_epoch or (
+                current.authority_epoch == previous.authority_epoch
+                and current.plan_version < previous.plan_version
+            ):
+                codes.append(
+                    RegionResourceAdvisoryPublicationCode.CURRENT_GENERATION_ROLLBACK
+                )
+                reasons.append(
+                    f"region:{current.region_id}:current_generation_rollback"
+                )
+                continue
+            if (
+                current.authority_epoch == previous.authority_epoch
+                and current.plan_version == previous.plan_version
+            ):
+                codes.append(
+                    RegionResourceAdvisoryPublicationCode.CURRENT_GENERATION_CONFLICT
+                )
+                reasons.append(
+                    f"region:{current.region_id}:current_generation_conflict"
+                )
+                continue
+            updates[key] = current
+        return (
+            tuple(dict.fromkeys(codes)),
+            _unique(reasons),
+            updates,
+        )
+
+    @staticmethod
+    def _source_generations(
+        advisory: RegionResourceAdvisoryContract,
+    ) -> tuple[RegionResourceAuthorityGeneration, ...]:
+        return tuple(
+            RegionResourceAuthorityGeneration(
+                region_id=region.region_id,
+                owner_id=region.source_version.owner_id,
+                owner_layer=region.source_version.owner_layer,
+                plan_id=region.source_version.plan_id,
+                plan_version=region.source_version.plan_version,
+                authority_epoch=region.source_version.epoch,
+                lease_expires_at_s=region.source_version.lease_expires_at_s,
+            )
+            for region in advisory.regions
+        )
+
+    @staticmethod
+    def _snapshot_generations(
+        snapshot: RegionResourceSnapshot,
+    ) -> tuple[RegionResourceAuthorityGeneration, ...]:
+        return tuple(
+            RegionResourceAuthorityGeneration(
+                region_id=node.region_id,
+                owner_id=node.current_owner_id,
+                owner_layer=node.current_owner_layer,
+                plan_id=node.plan_id,
+                plan_version=node.plan_version,
+                authority_epoch=node.epoch,
+                lease_expires_at_s=node.lease_expires_at_s,
+            )
+            for node in snapshot.regions
+        )
 
 
 @dataclass(frozen=True)

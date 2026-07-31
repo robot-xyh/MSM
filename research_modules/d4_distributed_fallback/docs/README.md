@@ -1,5 +1,16 @@
 # D4 文档索引
 
+2026-07-31 新增区域资源建议发布与规划采用双层门。D6 的 clean 6-cell 冒烟在 4 个
+重规划 episode 发现 v2 发布后仍输出 v1 建议，clean formal 因而为 2/6。D4 现分别
+输出 `generation_publishable` 与 `planning_consumable`：前者只核对 current snapshot、
+owner、plan ID/version、authority epoch、冻结 lease、回滚和合同完整性；后者继续
+执行 ACK、故障围栏、正式裁决和资源安全门。当前代次但不可采用的 shadow advice 可以
+发布为诊断证据，所有执行权限保持 false；真正的 publication rejection 和旧代次仍
+阻断发布。同身份刷新不能续租，历史有效建议保留原判定。专项 10/10、相关回归 75/75、
+D4 全量 913/913、原 scalable 故障代次定向回归 1/1 通过；D4 全量仅有既有 Matplotlib
+`Axes3D` 环境警告。main 已完成最小接线，preplanning/online 时序拆分和 D6 6-cell
+clean 复跑尚未完成，不能启动正式 900-cell。
+
 2026-07-31 完成 D3 权威代次绑定接口复核。main 在首次权威发布前绑定四项 epoch/lease
 字段；同身份 no-op 评价重评保留原值、不续租、不产生 successor 或 adoption ACK。
 D4 集成文件 6/6、全量 903/903 通过，模块算法和安全门未改。v4 的字段可用率

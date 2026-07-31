@@ -1,5 +1,35 @@
 # D4 实现差距审计：分布式协同与降级接管
 
+## 2026-07-31 区域建议发布双层合同缺口
+
+- **发现依据。** clean commit `49e43ea` 的 6-cell 高威胁 smoke 中，100v100 和
+  200v200 的 4 个重规划 episode 在最终 v2 发布后又发布 v1 区域建议；4 项均无最终
+  v2 建议，clean formal 为 2/6。先于 v2 发布的 v1 建议是合法历史记录。
+- **D4-owned 实现子项已关闭。** publication generation gate 现分别输出
+  `generation_publishable` 和 `planning_consumable`。前者重验 current snapshot、
+  owner/layer、plan ID/version、authority epoch、冻结 lease、回滚和 advisory 合同；
+  后者继续执行 ACK、fault fence、正式裁决及资源安全门。接口不会修改 D3 计划或授予
+  执行权限。
+- **故障诊断证据恢复。** 当前代次但处于故障围栏、ACK 不完整、authority inactive、
+  正式执行围栏或安全投影拒绝的 advice 可发布为 shadow/诊断证据，同时必须标记
+  `planning_consumable=false`。一般消费拒绝不再伪装成 publication rejection；真正的
+  `advisory.publication_rejections` 仍阻断总线发布。
+- **同身份租约不可刷新。** 一个 episode 内的同 owner/plan/version/epoch 只能保留首次
+  观察 lease；续租、缩短、代次回滚和同代身份冲突均有稳定失败关闭原因。
+- **历史审计边界已关闭。** 发布判定不可变保存。后来被 v2 取代的合法 v1 记录不追溯
+  标错；v2 生效后新提交的 v1 建议被拒绝。
+- **模块测试。** 发布专项 10/10、区域建议相关回归 75/75、D4 全量 913/913；原
+  scalable 故障代次定向回归 1/1。D4 全量仅有
+  既有 Matplotlib `Axes3D` 环境警告。未使用 truth ID，未写死规模，未放宽
+  authority/coalition/lease 门。
+- **跨模块 P0 证据仍开放。** main 已完成最小 gate 接线并通过原故障代次定向回归，
+  仍需拆分 preplanning learning frame 与 current online publication，并在旧建议拒绝后
+  为当前 v2 重算建议。D6 尚未复跑相同 clean 6-cell。完成前不得启动 900-cell formal
+  R0。
+- **验收。** main 接线后要求发布时错代为 0、当前计划建议覆盖 6/6、
+  `formal_acceptance_eligible=6/6`，并保持计划绑定、49 个联盟闭合、真值隔离和通信
+  证据不退化。
+
 ## 2026-07-31 权威代次绑定状态
 
 - **发布合同实现子项已关闭。** main 在 D3 首次权威发布前绑定

@@ -1,5 +1,50 @@
 # D4 分布式协同与降级接管计划
 
+## 2026-07-31 区域建议发布双层合同收口计划
+
+### D4 已完成
+
+- 新增类型化 `RegionResourceAuthorityGeneration` 和
+  `RegionResourceAdvisoryPublicationDecision`，显式携带每个区域的 owner、plan、
+  authority epoch、lease、`generation_publishable` 和 `planning_consumable`。
+- 新增有状态 `RegionResourceAdvisoryPublicationGate`。总线发布层检查当前快照、发布
+  合同和代次单调；规划采用层独立复用完整确定性消费门。
+- 当前代次的 fault-fenced、ACK 不完整、authority inactive、正式执行围栏或安全投影
+  拒绝 advice 可以作为 shadow/诊断证据发布，但必须保持 `planning_consumable=false`。
+- 真正的 `advisory.publication_rejections`、旧代次、过期租约、回滚和合同完整性错误
+  继续阻断总线发布。
+- 保留每次发布判定的只读历史。历史有效建议不追溯改写；重规划后新的旧代建议失败关闭。
+- 提供 `build_current_and_authorize()` 和 `authorize()` 两个 main-facing 入口。接口不
+  修改 D3 计划，不形成联盟，不授予 D7 控制。
+- 10 项发布合同专项、75 项区域建议相关回归和 D4 全量 913 项通过；原 scalable
+  故障代次定向回归 1/1 通过。D4 全量仅有既有
+  Matplotlib `Axes3D` 环境警告。
+
+### main 接线语义与剩余动作
+
+1. 每个 episode 创建一个发布门实例，不能在每条建议前重新创建以绕过代次历史。
+2. D3/D4 当前计划更新后，先重建当前 `RegionResourceSnapshot`。建议写总线前调用
+   `authorize()`；只有 `generation_publishable=true` 才发布 advisory contract。
+   兼容属性 `publishable` 仅是该字段的别名。
+3. 旧快照被拒绝后，从当前计划快照重新计算 recommendation，再调用
+   `build_current_and_authorize()`。不能只丢弃旧建议而缺失当前计划建议。
+4. 只有 `planning_consumable=true` 才允许 D3 在下一规划边界采用建议。已发布但不可
+   采用的 shadow advice 只进入诊断和 D6 审计，不得生成 assignment、coalition、
+   takeover 或 control 权限。
+5. 将 publication decision 作为独立诊断记录保存。合法历史建议、发布时错代建议和当前
+   shadow 建议必须分开，不得覆盖原 advisory ID。
+6. 同一计划身份的评价刷新继承原 epoch/lease。执行身份变化必须由 D3 发布新计划，D4
+   不补造代次或延长租约。
+7. main 已完成最小在线 gate 接线；下一步独立拆分 preplanning learning frame 与 current
+   online publication，避免改变离线数据集时序。
+
+### 准入验证
+
+main 接线后先复跑 commit `49e43ea` 所用的 5/100/200、seed 7/17 六项 clean smoke。
+验收要求：发布时过时建议为 0；最终当前计划建议覆盖 6/6；clean formal 为 6/6；计划
+ID/版本/epoch/lease、49 个联盟闭合、真值隔离和通信处置结果不退化。D6 签署该 smoke
+后再评估正式 900-cell。当前跨模块准入阻断仍开放。
+
 ## 2026-07-31 权威代次发布合同计划
 
 当前源码已补齐 D3 首次权威发布的不可变代次绑定。main 在发布前写入

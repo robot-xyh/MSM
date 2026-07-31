@@ -1,5 +1,51 @@
 # 分布式协同与降级接管模块原理（模块编号 D4）
 
+## 2026-07-31 建议发布与规划采用判定
+
+区域资源建议是下一轮规划输入，发布本身不授予分配或控制权限。对区域 \(r\)，建议来源
+代次和发布时当前代次分别写为
+
+\[
+G_r^s=(o_r^s,l_r^s,p_r^s,v_r^s,e_r^s,t_{l,r}^s),\qquad
+G_r^c=(o_r^c,l_r^c,p_r^c,v_r^c,e_r^c,t_{l,r}^c),
+\]
+
+其中 \(o\) 为 owner，\(l\) 为 authority layer，\(p/v\) 为计划标识和版本，\(e\)
+为 authority epoch，\(t_l\) 为冻结租约截止时刻。系统分别计算诊断发布资格和规划采用
+资格：
+
+\[
+P_{pub}=C_{snapshot}\land C_{contract}\land
+\left(\forall r,\ G_r^s=G_r^c\right)\land
+\left(t_{pub}<\min(t_{valid},t_{l,r}^c)\right),
+\]
+
+\[
+P_{plan}=P_{pub}\land \mathrm{SafetyValidate}(A,S_c).
+\]
+
+\(C_{snapshot}\) 校验当前场景、快照和 authority digest，\(C_{contract}\) 校验
+advisory schema、投影器参数、有效期以及真正的 `publication_rejections`。发布层还核对
+owner/layer 绑定和代次单调。`SafetyValidate` 复用既有消费门，包含 authority active、
+联盟 ACK、fault fence、正式 D4 裁决以及资源和 transfer 安全约束。
+
+两层判定不能互相替代。当前代次的故障围栏或投影拒绝 advice 可以满足 \(P_{pub}\)，
+作为 shadow/诊断证据进入总线；它不满足 \(P_{plan}\)，D3 不得采用。一般消费拒绝只
+写入 `planning_rejection_reasons`，不能混入 `advisory.publication_rejections`。合同
+本身的 publication rejection、旧代次和过期 lease 仍使 \(P_{pub}=false\)。
+
+发布判定是一个带时间戳的不可变事实。v1 在成为当前计划时发布成功，之后出现 v2，
+原 v1 记录仍是合法历史证据；v2 生效后再次提交 v1 快照则按发布时错代拒绝。门内按
+场景、seed 和 region 保存最近当前代次。相同 owner/plan/version/epoch 的快照刷新
+必须保留原 lease；延长或缩短 lease 都失败关闭。新代次被观察后，旧代次不能重新成为
+当前发布依据。
+
+D4 输出 `RegionResourceAdvisoryPublicationDecision`，给出
+`generation_publishable`、`planning_consumable`、两层稳定原因、来源代次和当前代次。
+兼容属性 `publishable` 只映射诊断发布资格。assignment、coalition、takeover 和
+control execution 权限均固定为 false。main 只发布 `generation_publishable=true` 的
+advisory；D3 只采用 `planning_consumable=true` 的 advisory。
+
 ## 2026-07-31 权威代次不可变性
 
 D4 将计划执行权限绑定到首次权威发布的计划身份和代次。设权威代次元组为

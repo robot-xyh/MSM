@@ -1,5 +1,39 @@
 # D4 分布式协同与降级接管
 
+## 2026-07-31 区域建议发布与规划采用双层门
+
+D6 对 clean commit `49e43ea` 的 6-cell 高威胁冒烟审计发现，4 个 100/200 规模重规划
+episode 在 v2 成为当前计划后仍发布了绑定 v1 的区域资源建议。v1 生效期间发布的第一条
+建议属于合法历史记录；v2 发布后的第二条 v1 建议属于发布时错代。该问题没有改写正式
+分配或控制，但使 clean formal 资格只有 2/6。
+
+D4 新增 `RegionResourceAdvisoryPublicationGate`。main 在写入建议总线前传入候选
+`RegionResourceAdvisoryContract`、发布时刻和当前 `RegionResourceSnapshot`。接口
+分别输出 `generation_publishable` 和 `planning_consumable`，不再把诊断发布资格与
+后续 D3 采用资格合并为一个布尔量。
+
+`generation_publishable` 只校验发布时的 current snapshot/scenario、owner/layer
+绑定、plan ID/version、authority epoch、冻结 lease、代次单调性和 advisory 合同
+完整性。真正写入 `advisory.publication_rejections` 的合同错误继续阻断总线发布；旧
+快照、旧计划、旧版本、旧 epoch、错或到期 lease 也继续失败关闭。
+
+`planning_consumable` 继续复用确定性消费与安全门。当前代次但处于故障围栏、authority
+inactive、成员 ACK 不完整、正式执行围栏或安全投影拒绝的 shadow advice 可以作为诊断
+证据发布，同时必须标记 `planning_consumable=false` 并携带稳定的规划拒绝原因。一般
+消费拒绝不会再被复制为 publication rejection。两种结果的 assignment、coalition、
+takeover 和 control execution 权限都固定为 false。
+
+发布门按 episode 保存不可变判定历史。先前发布时有效的 v1 记录不会因后来出现 v2 被
+追溯改判；当前代次只会阻断新的旧快照发布。同一计划身份允许使用最新快照重新生成建议，
+但 lease 必须保持首次观察值，不能通过评价刷新续租。
+
+发布合同专项 10/10、区域建议相关回归 75/75、D4 全量 913/913 通过。原 scalable
+故障代次定向回归 1/1 通过，证明 current-generation fault-fenced advice 可发布但
+不可采用，且正式 decision 不被改写。全量仅有既有 Matplotlib `Axes3D` 环境警告。
+main 已完成最小 gate 接入；其后仍需拆分 preplanning learning frame 与 current online
+publication，并由 D6 复跑相同 6-cell clean smoke。正式 900-cell 前要求发布时错代为
+0、最终当前计划建议覆盖 6/6、`formal_acceptance_eligible=6/6`。
+
 ## 2026-07-31 D3 权威代次绑定复核
 
 main 现在于 D3 计划首次权威发布前绑定 `authority_epoch`、
