@@ -1,5 +1,12 @@
 # D6 文档索引
 
+2026-07-31 完成 clean commit `49e43ea` 的高威胁 6-cell 准入审计。核心合同均为
+`6/6`，但 100/200 规模的 4 个重规划 cell 在新计划发布后又输出旧计划 D4 建议，且
+没有最终计划建议。clean formal 仅 `2/6`，900-cell 判断为“需先修复”。详细报告见
+`../reports/HIGH_THREAT_CLEAN_SMOKE_49E43EA_20260731_CN.md`，原理、审计方法和结果
+分别见 `MODULE_PRINCIPLES_CN.md`、`ALGORITHM_AND_IMPLEMENTATION.md` 和
+`EXPERIMENT_REPORT.md`。
+
 2026-07-31 完成 v5 高威胁 M 对 N 时期租约复验。100 个开发态 episode 的最终
 计划标识、版本、时期、租约和当前联盟闭合均为 `100/100`。151 次权威发布没有同身份
 重复，48 次评价刷新不续租。详细报告见

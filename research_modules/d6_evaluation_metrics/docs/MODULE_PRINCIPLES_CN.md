@@ -1,5 +1,24 @@
 # D6 系统级离线评估模块原理
 
+## 建议证据的代次分类（2026-07-31）
+
+D4 区域建议必须按发布时刻判断，而不能只按 episode 最终计划过滤。设建议 \(a_i\) 绑定
+计划键 \(k_i=(p_i,v_i,e_i,\ell_i)\)，建议发布前最后一条正式 D4 快照键为
+\(k_i^{\mathrm{formal}}\)，episode 最终计划键为 \(k^*\)。D6 区分三类：
+
+\[
+\begin{aligned}
+\text{current} &: k_i=k_i^{\mathrm{formal}}=k^*,\\
+\text{superseded-valid} &: k_i=k_i^{\mathrm{formal}}\ne k^*,\\
+\text{stale-at-publication} &: k_i\ne k_i^{\mathrm{formal}}.
+\end{aligned}
+\]
+
+第二类记录在生成时有效，随后被新计划取代，可以保留为历史诊断。第三类在发布时已经
+错代，不能因其为 shadow 输出或没有改写正式决策而计为有效。clean smoke 中四个重规划
+episode 均同时出现一条 superseded-valid 和一条 stale-at-publication，且没有当前计划
+建议。因此，问题不只是最终聚合包含历史记录，运行时还缺少发布前的当前代次核对。
+
 ## 时期租约可用性闭环（2026-07-31）
 
 v5 开发态批次验证了“缺证据不补默认值”的完整闭环。D3 当前权威发布携带通用时期、

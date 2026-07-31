@@ -1,5 +1,22 @@
 # D6 系统级离线评估：算法原理与实施说明
 
+## clean smoke 只读审计（2026-07-31）
+
+D6 复用 `scalable_3d_offline` 和 `formal_r0_plan_binding_audit`，读取 clean commit
+`49e43ea` 的 6 个 episode。没有新增或修改审计算法。每项先重算核心制品 availability、
+配置哈希、有限状态和在线真值隔离，再以最后 D3/D4 发布核对当前计划标识、版本、时期、
+租约和联盟提交。D3 在线发布、计划身份和 summary ACK 独立计数，逐消息通信处置从
+JSONL 重算。
+
+建议审计按总线序列遍历。每遇到 `modules.d4.region_resource_advice`，使用该记录之前
+最后一条 `modules.d4.regional_failover` 作为发布时正式快照。建议 action 的
+`expected_plan_id/version/epoch/lease` 必须逐区域匹配。随后再与最终 D3 计划比较，
+区分当前建议、发布时有效但后来 superseded 的建议和发布时已经错代的建议。
+
+本批 12 条建议中，8 条在发布时有效，4 条在发布时错代。四个重规划 episode 的第二条
+建议均在 v2 正式快照后仍绑定 v1，且没有 v2 建议。现有审计器据此正确触发
+`d4_advice_version_evidence_issue`；这不是需要放宽的 D6 误报，因此本轮不改算法代码。
+
 ## v5 只读复验（2026-07-31）
 
 D6 使用既有 `formal_r0_plan_binding_audit` 和 `scalable_3d_offline` 读取 v5 的 100 个
@@ -9,7 +26,8 @@ episode，没有新增或修改审计算法。计划绑定审计得到时期、�
 
 正式 full/targeted posterior 入口要求 clean source 和规范 900-cell 分片，本轮不将开发
 目录改造成该输入。共享门禁通过 24 项专项回归。离线消费者另保留 51 项旧计划区域建议
-版本证据，说明当前计划绑定通过与全时序建议证据有效是两个独立指标。
+版本证据。后续 clean smoke 证明抽取的重规划样本存在发布时错代，不能只按最终计划过滤
+历史记录。当前计划绑定通过与全时序建议证据有效仍是两个独立指标。
 
 ## 当前计划目标域门控（2026-07-30）
 
