@@ -1,5 +1,60 @@
 # D6 系统级离线评估：算法原理与实施说明
 
+## v5 只读复验（2026-07-31）
+
+D6 使用既有 `formal_r0_plan_binding_audit` 和 `scalable_3d_offline` 读取 v5 的 100 个
+episode，没有新增或修改审计算法。计划绑定审计得到时期、租约、当前联盟和通信处置
+`100/100`；四项权威 metadata 在 151 次 D3 发布中完整。48 次同身份刷新均由诊断记录
+表达，没有形成新权威发布。
+
+正式 full/targeted posterior 入口要求 clean source 和规范 900-cell 分片，本轮不将开发
+目录改造成该输入。共享门禁通过 24 项专项回归。离线消费者另保留 51 项旧计划区域建议
+版本证据，说明当前计划绑定通过与全时序建议证据有效是两个独立指标。
+
+## 当前计划目标域门控（2026-07-30）
+
+当前联盟集合先由最新 D3 assignments 构造。最新 D4 中任何
+`commit_required=true` 提交都必须满足其 `global_track_id` 属于该集合的目标域；否则
+记录
+`current_plan_coalition_target_not_in_latest_d3_assignments` 并失败关闭。该门控处理
+“旧提交被夹带在最新 D4 快照”这一边界，补足只比较外层 `plan_id/plan_version` 仍可能
+漏过的情况。
+
+同一当前目标在最终 D4 中必须恰有一个提交。零提交表示联盟未完成或最终快照丢失任务，
+两个及以上提交表示重复授权；两种情况均使用
+`current_plan_coalition_commit_count_mismatch` 拒绝。开发态 100 项中未发现重复提交，
+但发现三个零提交样本，均指向 `GT3D-000011`。
+
+## 正式 R0 当前计划绑定审计（2026-07-30）
+
+实现位于 `formal_r0_plan_binding_audit.py`。入口读取 episode 的
+`online_observations.jsonl`，按时间戳和总线序号选取最后 D3 assignment plan 与最后 D4
+regional failover。实现不导入 main runtime，也不调用 D3 或 D4 控制代码。
+
+审计顺序如下：
+
+1. 提取最后 D3 的 `plan_id/plan_version`，逐区域提取最后 D4 ownership 的同名字段；
+2. 任一区域错代或缺字段时立即将当前计划绑定判为失败；
+3. 从 D3 assignments 提取区域 epoch；未来合同提供逐区域 lease 时按区域比较，现阶段
+   也支持 metadata 中的最大 epoch 和最小 lease；
+4. 按 `global_track_id` 汇总 D3 分配。资源数大于一的目标进入必需联盟集合；同代 D4
+   `commit_required=true` 的目标也进入该集合。单成员 assignment 的 `coalition_id`
+   不作为原子提交判据；
+5. 核对 commit 唯一性、D3/D4 成员集合、ACK 闭合、原子提交、执行授权、状态和租约；
+6. 把失败原因和扁平化 availability 字段写入 targeted/full posterior 的逐 cell 行；
+7. full audit 将当前计划绑定和当前联盟提交列为必需证据，聚合时单列通过数。
+
+`communication_dispositions.jsonl` 是可选 episode 输入，schema 为
+`scalable3d-communication-disposition-v1`。验证器拒绝重复或非法 transport ID、未知最终
+状态、空源宿、非法时间戳和负重试代次，并汇总 D4 计划广播与联盟 ACK 的最终处置。缺文件
+返回 unavailable；存在但内容非法会进入正式失败原因。
+
+正式 targeted/full 输出 schema 已升级到 v2。代表性测试覆盖同代 committed 通过、最后
+D3 v2 对旧 D4 v1 拒绝、当前计划 collecting ACK 拒绝、proposed 拒绝、epoch/lease
+错代拒绝、逐消息处置文件缺失 availability，以及多个单成员 assignment 均携带
+`coalition_id` 的混合合同。main runtime 实际落盘文件名和 schema 已与 D6 消费端核对
+一致。代码没有对既有正式目录执行写操作，也没有生成新的正式结果。
+
 ## D4 v7 来源独立外部评价盲审（2026-07-30）
 
 实现入口为

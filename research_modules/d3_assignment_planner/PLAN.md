@@ -1,5 +1,34 @@
 # D3 集中式 Assignment Planner 计划
 
+## 2026-07-30 A1 来源独立评价器 v2
+
+状态：`evaluator_v2_ready_evaluation_not_run`。
+
+1. [x] 保留 v1 合同、评价代码、冻结 bundle 和原门限。v1 唯一一次运行记录为
+   `source_scenario_scale_mismatch`、退出码 `1`、无结果目录、无模型指标。
+2. [x] 将 cell 的目标数显式改名为 `configured_scenario_target_count`。在线
+   `anonymous_targets` 是动态匿名航迹集合，不再与配置目标数作等式检查。
+3. [x] 保留配置资源数精确匹配；继续使用 `LearningFrameRecord` 检查成本矩阵、动作掩码、
+   候选边、匿名实体、需求槽、有限值和身份隔离。
+4. [x] 为逐帧结构失败增加 scenario、seed、episode、frame、匿名目标/资源数量、成本矩阵
+   和动作掩码形状。错误上下文不包含目标或资源身份。
+5. [x] v2 逐项继承 v1 bundle 三摘要、`20000-20099`、10 个 cell、60/20/20 split、
+   训练/正式 seed 隔离、五项机器门和全关闭权限。
+6. [x] 固定 v2 合同 SHA
+   `f47ec9d095af11042c670b0e358e3e7285a166fa48e3df57829b14c1da8497e7`
+   和源码树 SHA
+   `b31d0b86f53ff4dc32a01dc9ecc7988539a5635cbc31b674cd74b55a69de2438`。
+7. [x] 验证匿名航迹数小于、等于和大于配置数均可读取；资源数、矩阵形状、seed/cell
+   不一致继续失败；v1 历史行为不变。新增 `9 passed`，v1/v2 专项 `26 passed`，
+   D3 全量 `649 passed, 1 skipped`。
+8. [ ] main 另行授权后，只允许使用新的 v2 contract/output identity 运行一次。不得复用
+   v1 输出身份，不得在看到结果后修改合同、bundle、归一化、教师、门限或安全投影。
+9. [ ] D6 独立复核 v2 逐帧结果、聚合指标和 `SHA256SUMS`。当前不得进入正式
+   `1000-1019`。
+
+本阶段没有运行 v2 评价。运行、辅助、分配、计划、控制、物理、正式和生产准入权限均为
+false。
+
 ## 2026-07-30 A1 来源独立评价预注册
 
 状态：`evaluator ready / evaluation not run`。
@@ -2462,3 +2491,81 @@ TRAIN/VALIDATION 分别为 962/320 帧，教师正例为 294/95。第 7 轮检�
    assignment、control、physical 和 formal-holdout 权限保持 false。
 5. 当前开发教师优化可辨识连续性干预，不是收益教师；不得据 13 个验证正例声明成本收益、
    泛化或物理拦截改善。
+
+## 66. 权威计划载荷不可变合同（2026-07-30）
+
+### 已完成
+
+1. [x] 对 main 的 100-cell 高威胁 M 对 N 预检进行同配置字段级复现，确认 48 个重复
+   `plan_id/version` 组。
+2. [x] 逐组核对 assignment、资源-目标、角色、联盟、owner、epoch、lease、未分配清单
+   和规模字段；执行投影变化为 0/48。
+3. [x] 确认 48/48 完整载荷摘要变化，33/48 还存在相同 assignment 集合的序列顺序变化。
+4. [x] 精确复核 200v200 seed1017：198 条执行绑定集合不变，990 处载荷叶差异，
+   D4 记录 37 次摘要错配和 37 次交叉绑定拒绝。
+5. [x] 增加 `AssignmentPlan.authority_signature()` 和
+   `requires_authoritative_publication()`；同身份诊断刷新返回不需要权威发布，同身份执行
+   字段篡改失败关闭。
+6. [x] 增加版本、诊断分流、顺序无关和角色/owner/lease/count 篡改合同测试。
+7. [x] 形成中文专项审计报告，并同步 README、原则、算法、实验、GAP 和 review。
+
+### 开发态关闭证据与正式待办
+
+1. [x] main 在 `assignment_due` 后只对新权威身份发布
+   `modules.d3.assignment_plan`。同身份 evaluation refresh 不得再次进入该 topic。
+2. [x] main 缓存每个权威身份首次发布的完整载荷、bus sequence 和 SHA-256；传输重试
+   必须复用同一载荷，不能重新序列化本轮时刻或 metadata。
+3. [x] 动态 `last_evaluated_at_s`、迟滞、成本、输入指纹和性能诊断使用独立、无执行权限
+   的 evaluation/history 记录。D7 freshness 如需续期，应使用显式心跳合同。
+4. [x] main 增加同身份去重、不同摘要发送前失败、精确引用和新版本 ACK 回归；D7
+   继续使用既有 current-plan 门控。
+5. [x] 重跑 100-cell；`payload_digest_mismatch` 和
+   `coalition_member_ack_cross_binding_invalid` 必须均为 0，且不得降低 stale/version/
+   owner/lease 校验。
+6. [ ] 在 clean commit、冻结配置和结果清单下执行正式 R0；开发态 v4 结果不得替代正式
+   批次、AirSim 或物理拦截证据。
+
+D3 只读审查了 main-owned scalable runtime。开发态 v4 批次覆盖 5、20、50、100、200
+规模，各 20 个 seed，共 100 个 2 秒 episode。结果为 100/100 finite、在线真值使用 0、
+D3-D4 当前计划对齐 100/100、当前联盟闭合 100/100；151 个权威身份对应 151 次权威发布
+和 151 次计划 ACK，48 次同身份评估刷新被抑制，权威摘要冲突和重复传输引用计数均为 0。
+100v100 seed1010、200v200 seed1013 和 seed1017 均恢复。该 P0 状态更新为“开发态验证
+关闭、正式 R0 待执行”。D3 全量收集 655 项，结果为 `654 passed, 1 skipped`；跳过项
+为未安装的可选 OR-Tools。
+
+`docs/AIRSIM_INTEGRATION_PLAN.md` 已同步同身份发布、精确重试和诊断分流规则；AirSim
+settings、传感器 DTO 和控制算法不变。
+
+## 67. Opt-in 权威代际绑定 API（2026-07-31）
+
+### 已完成
+
+1. [x] 增加 `AssignmentPlan.bind_authority_generation()`；严格拒绝负 epoch、非整数
+   epoch、非有限 lease，以及不晚于 `created_at` 的 lease。
+2. [x] 首次绑定保持 `plan_id/version`，复制 metadata 并写入 generic/regional
+   epoch/lease 四键；原冻结对象不变。
+3. [x] 同值绑定幂等；同一已绑定身份修改 epoch 或 lease 抛出 `ValueError`。
+4. [x] 保持四键在 `authority_signature()` 覆盖范围内，同身份载荷不能通过诊断刷新
+   改写代际。
+5. [x] 增加 `AssignmentPlanner.bind_published_authority_generation()`，使 main 在
+   planner 内部发布后、外部权威发布前可原子同步已发布对象与可信 execution signature。
+6. [x] 同身份 evaluation refresh 继承原绑定且不续租；真实执行变化生成未绑定新身份，
+   必须重新显式绑定。
+7. [x] 默认 planner 不自动绑定，Hungarian、需求槽、迟滞和 stale version 算法不变。
+8. [x] authority fence、普通执行变化和 secondary helper 新身份清除旧四键；
+   secondary 绑定必须匹配新 `secondary_*`，regional 新身份只保留当前 grant/successor
+   重新生成的 regional epoch/lease 摘要，禁止旧 generic pair 泄漏。
+9. [x] 身份专项 `28 passed`；D3 全量 669 项为
+   `668 passed, 1 skipped`，达到“专项全通过、D3 无新增失败”的验收门。
+
+### 调用与剩余边界
+
+main 的安全顺序是 `plan()`、`bind_published_authority_generation()`、外部权威发布，
+下一轮将返回的绑定对象作为 `previous_plan`。不得只调用 plan 级绑定后，把该副本传回
+仍缓存未绑定签名的 planner。API 不分配 authority epoch、不计算 lease 时长、不续租；
+租约过期后仍保留原截止值，由既有 owner/lease 消费门失败关闭。新执行身份必须获得新的
+显式绑定。secondary helper 输出必须先 `publish_plan()`，再调用 planner 级绑定；不得
+对未登记 candidate 直接后置绑定。
+
+`docs/AIRSIM_INTEGRATION_PLAN.md`、`docs/EXPERIMENT_REPORT.md` 和 M-to-N 专项已检查。
+本项不改变 AirSim DTO/settings/episode、实验样本或多成员调度，因此不修改这些文件。

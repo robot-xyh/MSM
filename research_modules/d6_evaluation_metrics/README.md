@@ -1,5 +1,76 @@
 # D6 Evaluation Metrics
 
+## 2026-07-31 高威胁 M 对 N v5 时期租约复验
+
+D6 只读复核
+`/dev/shm/msm-high-threat-r0-p0-precheck-v5-20260730` 的 100 个 episode。五档规模均为
+20 seeds、2 秒质点仿真。制品完整、配置哈希、有限状态、在线真值零使用、最终
+D3-D4 计划标识/版本、时期、租约和当前联盟闭合均为 `100/100`。
+
+151 次 D3 权威发布对应 151 个不同计划身份和 151 次运行时计划确认。同身份重复权威发布
+为 0，48 次同身份评价刷新只保留诊断，不续租。逐消息通信处置
+`100/100 available/verified`，当前联盟目标为 644 个。D4 航迹回退出现在 28 项，共
+391 个快照；D7 的当前航迹和身份门控没有因此放宽。
+
+v4 的时期/租约不可用 P1 已在开发证据层关闭。仍开放的 P1 包括 dirty source 的正式
+900 项重跑、51 项旧计划区域建议版本证据、12 项离线身份切换不可用，以及 50 以上规模
+未达到实时。200 对 200 墙钟均值/P95 为 `14.209/15.566` 秒，实时倍率均值为 0.142。
+完整报告见
+`reports/HIGH_THREAT_PRECHECK_V5_REVALIDATION_20260730_CN.md`。
+
+## 2026-07-30 高威胁 M 对 N 开发态 100 项修复复验
+
+D6 只读重算
+`/dev/shm/msm-high-threat-r0-p0-precheck-v4-20260730` 的 100 个 episode。范围为
+5、20、50、100、200 五个规模，每个规模 seed `1000-1019`，仿真时长 2 秒。该批次来自
+提交 `2790b165` 对应的未提交工作树，不是 clean formal shard，也不替代 900 项正式 R0。
+
+最终 D3-D4 计划标识、版本和当前联盟闭合均为 `100/100`。151 次 D3 权威发布对应 151
+个不同的 `(plan_id, plan_version)`，同身份重复发布为 0。v3 的三个最终快照断点已关闭，
+`payload_digest_mismatch` 和 `cross_binding_invalid` 均为 0。当前计划共审计 644 个
+多成员联盟目标，均在最终 D4 快照中完成原子提交。
+
+有限状态和在线真值零使用均为 `100/100`。逐消息通信处置
+`100/100 available/verified`，共 195838 条，其中 delivered 186213、dropped 1950、
+pending 7675。离线 D2 身份切换为 `88/100 available`，可用部分合计 52；其余 12 项
+保持 unavailable。D3 未发布区域时期编号和租约对照字段，因此两项 D3-D4 交叉核对仍为
+`0/100 available`，不能写成一致。
+
+200 对 200 的实时倍率均值为 0.156，墙钟时间均值/P95 为 `12.928/14.296` 秒。该结果
+只说明 2 秒开发态三维质点批次的运行成本，不证明部署实时性。完整复验见
+`reports/HIGH_THREAT_PRECHECK_V4_REVALIDATION_20260730_CN.md`。下一步仍需补齐时期和
+租约对照，并在 clean source 上整体执行正式 900 项。
+
+## 2026-07-30 正式 R0 当前计划绑定审计器
+
+D6 已补充最后 D3 计划与最后 D4 决策的严格绑定审计。审计以
+`modules.d3.assignment_plan` 的最后一次发布为当前代次，逐区域核对 D4 `ownership`
+中的 `plan_id` 和 `plan_version`。D3 发布中存在区域 epoch 或 lease 时继续交叉核对；
+缺少可比较字段时保留明确的 unavailable，不用默认值补齐。
+
+当前计划包含多成员联盟或 D4 声明 `commit_required=true` 时，审计要求当前 D4 决策中
+存在唯一对应提交，状态为 `committed/executing`，required 与 acked 成员闭合、
+missing 为空、`atomic_committed=true`、`execution_authorized=true`，且租约在决策时刻
+有效。必需联盟目标只由同一 `global_track_id` 的多个当前 D3 资源分配，或同代 D4 的
+`commit_required=true` 确定。单成员 assignment 的非空 `coalition_id` 只作为来源信息，
+不触发原子提交要求。`collecting_acks` 和 `proposed` 均失败关闭。D4 即使对旧计划已经
+committed，只要与最后 D3 的计划标识或版本不同，也不能替代当前计划的联盟证据。
+
+审计器可选读取 episode 下的 `communication_dispositions.jsonl`，合同为
+`scalable3d-communication-disposition-v1`。文件存在时核对逐消息 transport ID、主题、
+源宿、最终处置、时间戳和重试代次；文件不存在时只报告 availability 和缺失原因，不从
+summary 计数推造逐消息记录。
+
+正式 targeted/full posterior 输出 schema 已升级到 v2。新增专项与既有正式审计测试合计
+`27 passed`，D6 全量为 `1261 passed, 1 warning in 128.21s`。warning 是既有
+Matplotlib `Axes3D` 环境提示。
+
+main runtime 已按 `(plan_id, plan_version, epoch)` 冻结 D4 租约，并实现 ACK 到达重评、
+有限重发、重发耗尽失败关闭、终止尾部排空且不续租，以及逐消息处置落盘。D6 已只读核对
+落盘文件名、schema 和字段合同。本轮没有读取或运行新的正式保留集，也没有覆盖既有正式
+制品。历史 `872/900` 仍是旧门禁结果；必须在新的 clean source 上整体重跑 900 项，再由
+D6 v2 给出新结论。
+
 ## 2026-07-30 D4 v7 来源独立外部评价盲审
 
 D6 新增版本隔离的 v7 审计器、固定哈希配置、命令行入口和 11 项专项测试。审计器只使用

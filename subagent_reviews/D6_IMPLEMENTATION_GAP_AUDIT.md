@@ -1,5 +1,89 @@
 # D6 实现差距审计
 
+## 2026-07-31 高威胁 v5 时期租约复验 GAP
+
+### 已关闭的开发态 P1
+
+D3 当前权威发布的时期和租约对照由 v4 的 `0/100 available` 提升为 v5 的
+`100/100 available/matched`。151 次权威发布的四项 metadata 全部存在，151 个计划
+身份没有重复，151 次运行时计划确认守恒。48 次同身份评价刷新没有形成权威发布或续租。
+
+最终计划标识/版本和当前联盟闭合继续为 `100/100`，共 644 个当前联盟目标。通信处置
+`100/100 available/verified`，有限状态和在线真值零使用为 `100/100`。本轮没有发现
+新的 D6-owned P0。
+
+### 仍开放的 P1
+
+1. 100 项均为 `repository_dirty=true`。正式 900-cell R0 必须从 clean checkout 整体
+   重跑，不能拼接旧来源。
+2. 51 个真实重规划 episode 含一条旧计划 D4 区域资源建议。当前计划最终建议有效，
+   但全 episode 建议聚合按现有失败关闭规则为 unavailable。需要 main/D4 明确
+   superseded 建议生命周期并形成可审计合同。
+3. D2 身份切换仅 `88/100 available`。12 项缺值由谱系窗口外观测和一轨多真值冲突造成，
+   不得补零。
+4. 50、100、200 规模未达到实时。200 对 200 墙钟均值/P95 为
+   `14.209/15.566` 秒，部署处理器预算仍未验证。
+
+详细证据见
+`research_modules/d6_evaluation_metrics/reports/HIGH_THREAT_PRECHECK_V5_REVALIDATION_20260730_CN.md`。
+
+## 2026-07-30 高威胁 100 项开发态修复复验 GAP
+
+### D6-owned 缺口状态
+
+D6 使用现有失败关闭审计器复核 v4 批次。最终计划标识/版本和当前联盟闭合均为
+`100/100`，151 次权威发布没有同身份重复，摘要错绑拒绝原因均为 0。v3 暴露的三个最终
+快照断点已在开发证据层关闭。未发现新的 D6-owned P0。
+
+### 系统级 P0/P1 状态
+
+当前计划/联盟的开发态修复证据为 `100/100`。逐消息处置为
+`100/100 available/verified`，共 195838 条；真值隔离和有限状态均为 `100/100`。
+区域 epoch/lease 的 D3 对照值仍为 `100/100 unavailable`，这是开放的跨模块 P1。
+离线身份指标为 `88/100 available`，其余 12 项因
+`source_observation_outside_lineage_window` 或
+`multiple_truth_targets_for_global_track` 保持不可用。
+
+100 项均来自 dirty source，formal acceptance 为 false；实验矩阵正式资格保持
+unavailable。本批次只形成开发态修复复验。D3 区域时期/租约对照补齐后，仍需 clean
+formal 900-cell 完整重跑。
+
+## 2026-07-30 正式 R0 当前计划绑定 GAP
+
+### 已关闭的 D6-owned P1
+
+1. 最后 D4 决策现在必须绑定最后 D3 的 `plan_id/plan_version`。旧代 D4 即使已经
+   committed，也不能使当前 D3 计划通过。
+2. 当前计划的多成员联盟必须具备唯一 D4 commit、完整 required/acked 集合、空 missing、
+   原子提交、执行授权和有效租约。`collecting_acks/proposed` 均有明确失败原因。
+3. D3 发布中存在区域 epoch 或 lease 时执行交叉核对；合同未发布比较字段时保留
+   unavailable，不伪造一致。
+4. D6 已能消费 `communication_dispositions.jsonl` 的逐消息最终处置。文件缺失时明确
+   availability；文件存在但 schema、transport ID、路由、状态、时间戳或重试代次非法时
+   失败关闭。
+5. targeted/full formal R0 输出升级到 v2，当前计划绑定和联盟提交进入 full audit 的
+   required evidence gate。
+6. 真实 runtime 合同中的单成员 assignment 可携带非空 `coalition_id`。D6 不再据此
+   扩大原子提交分母；必需联盟只由 D3 同目标多资源分配或同代 D4
+   `commit_required=true` 确定。
+
+20 对 20 合同 smoke 已由错误的期望 16、提交 2 修正为期望 2、已审计 2，状态 pass。
+专项组合测试 `27 passed, 1 warning in 2.77s`，D6 全量
+`1261 passed, 1 warning in 128.21s`。本轮未读取或运行新的正式保留集，既有正式制品
+未改写。
+
+### 仍开放的跨模块 P1
+
+1. main runtime 已完成同代发布、`(plan_id, plan_version, epoch)` 租约冻结、ACK 事件
+   重评、有限重发、重发耗尽失败关闭、终止排空且不续租，以及逐消息处置文件持久化。
+   D6 已只读核对文件名、schema 和字段合同。
+2. 上述修复会改变 D4 最终状态和 D7 门控，仍须在新的 clean source 上整体重跑 900 项
+   R0，再由 D6 v2 独立审计。
+3. 历史 `872/900` 不能按新门禁沿用。D4 后验诊断识别的 63 个受影响样本只能用于修复
+   预检，不能替代完整 900 项重跑。
+
+当前没有新的 D6-owned P0。D6 审计器代码已就绪，正式运行证据尚未更新。
+
 ## 2026-07-30 正式 R0 全量后验审计 GAP
 
 ### 已关闭的 D6-owned 项

@@ -1,5 +1,88 @@
 # D6 Evaluation Metrics Plan
 
+## 2026-07-31 高威胁 v5 时期租约复验
+
+### 已完成
+
+- [x] 只读复核 v5 五档规模、每档 20 seeds 的 100 个 episode；核心和离线消费制品、
+  配置哈希、有限状态及在线真值隔离均为 `100/100`。
+- [x] 复核最终计划标识/版本、时期、租约和当前联盟闭合均为 `100/100`；v4 的时期/
+  租约 availability P1 在开发证据层关闭。
+- [x] 复核 151 次权威发布、151 个计划身份、151 次运行时计划确认；同身份重复为 0，
+  48 次评价刷新抑制不续租。
+- [x] 复核 644 个当前联盟目标、28 个航迹回退 episode/391 个回退快照，以及
+  195838 条逐消息通信处置。
+- [x] 保留 D2 身份切换 `88/100 available`、可用部分合计 52；12 项没有补零。
+- [x] 生成 v5 中文复验报告并同步 D6 模块和评审文档。
+
+### 待执行
+
+- [ ] main/D4 明确旧计划区域建议的 superseded 生命周期；当前 51 个真实重规划
+  episode 含一条旧计划建议，D6 建议聚合继续失败关闭。
+- [ ] 上游补齐 12 项 D2 身份切换缺失证据，D6 保持 availability 分母。
+- [ ] 在 clean checkout 上先跑 smoke，再整体执行正式 900-cell R0；开发态 100 项不进入
+  正式分母。
+- [ ] 对 50、100、200 规模继续做性能剖析和部署处理器预算验证。
+
+## 2026-07-30 高威胁开发态修复复验
+
+### 已完成
+
+- [x] 只读重算 v4 五个规模、每规模 20 seeds 的 100 个 episode；有限状态、在线真值
+  零使用、最终计划标识/版本和当前联盟闭合均为 `100/100`。
+- [x] 复核 151 次权威 D3 发布对应 151 个不同计划身份，同一
+  `(plan_id, plan_version)` 重复权威发布为 0。
+- [x] 复核 `payload_digest_mismatch`、`cross_binding_invalid` 均为 0；v3 三个最终
+  快照断点在开发证据层关闭。
+- [x] 逐消息处置 `100/100 available/verified`，195838 条记录与 episode summary
+  对账一致。
+- [x] 单列离线 D2 ID switch `88/100 available`、合计 52，12 项缺值保持 unavailable。
+- [x] 形成中文专项报告，明确 dirty source、2 秒 episode 和非正式 R0 边界。
+- [x] 更新真实 main 3v3 回归预期为单次权威发布/单次 ACK；定向测试 `12 passed`，
+  D6 全量 `1263 passed, 1 warning`。
+
+### 待执行
+
+- [ ] D3 合同补充可比较的区域 epoch/lease 后，D6 才能把当前 `100/100 unavailable`
+  转为可审计布尔值。
+- [ ] 12 项离线 D2 ID switch 不可用样本仍需上游补齐谱系窗口和一轨多真值冲突证据；
+  不得补零。
+- [ ] 开发态通过后仍须在 clean source 上整体重跑正式 900 项；本批次不得进入正式
+  分母。
+
+## 2026-07-30 正式 R0 当前计划绑定审计
+
+### 已完成
+
+- [x] 新增独立离线审计器，以最后 D3 `plan_id/plan_version` 作为当前代次，不接受
+  旧 D4 committed 状态替代当前计划。
+- [x] 逐区域核对 D4 ownership 的计划身份；D3 合同提供 epoch/lease 时交叉核对，
+  缺少比较依据时输出 unavailable。
+- [x] 对当前计划多成员联盟核对 required/acked/missing、原子提交、执行授权和租约；
+  `collecting_acks`、`proposed` 及其他未提交状态失败关闭。
+- [x] 必需联盟分母按同目标当前 D3 资源数大于一，或同代 D4
+  `commit_required=true` 确定；单成员 assignment 的 `coalition_id` 不触发提交要求。
+- [x] 接入 targeted/full formal R0 逐 cell 门禁，输出 schema 升级为 v2，并在聚合
+  中单列当前计划绑定、当前联盟提交和通信处置可用性。
+- [x] 支持可选 `communication_dispositions.jsonl`。存在时严格验证逐消息处置，
+  缺失时保留 unavailable，不从汇总计数反推消息级事实。
+- [x] 覆盖同代通过、D3 v2 对 D4 v1 拒绝、当前计划 ACK 未闭合拒绝、proposed
+  拒绝、epoch/lease 错代拒绝、通信处置文件缺失 availability，以及单成员
+  `coalition_id` 与真实多成员目标混合合同。专项组合 `27 passed`，D6 全量
+  `1261 passed, 1 warning in 128.21s`。
+- [x] 只读核对 main runtime 已按 `(plan_id, plan_version, epoch)` 冻结租约，并写出
+  `communication_dispositions.jsonl`；文件名、schema 和字段与 D6 消费合同一致。
+
+### 待执行
+
+- [ ] 在新的 clean source 和冻结执行计划上整体重跑 900 项 R0。不得只补 28 项，
+  不得与旧来源结果拼接。
+- [ ] D6 对新 900 项运行 v2 审计，发布逐 cell、按场景/规模/seed 聚合、失败原因和
+  通信处置可用性。当前不得把代码就绪写成正式运行通过。
+
+本轮没有读取 seed `1000-1019` 的新正式保留集，没有改写既有正式结果文件。历史
+`872/900` 只保留为旧审计门禁下的基线。
+
 ## 2026-07-30 D4 v7 来源独立外部评价盲审
 
 ### 已完成

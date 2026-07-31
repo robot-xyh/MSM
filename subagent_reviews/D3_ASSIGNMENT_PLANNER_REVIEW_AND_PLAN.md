@@ -1,5 +1,23 @@
 # D3 中心化资源-目标分配综述及子方案
 
+## 2026-07-30 来源独立评价 v2 复核
+
+v1 官方命令只运行一次。预检通过，逐帧读取因 `source_scenario_scale_mismatch` 失败，
+没有结果目录和模型指标。main 的纯结构统计确认，配置目标数描述场景规模，在线
+`anonymous_targets` 描述 D1/D2 航迹集合。两者基数不具备逐帧相等关系。
+
+D3 已新增 v2 合同和评价入口。v2 将 cell 目标数字段定义为
+`configured_scenario_target_count`，允许匿名航迹数随漏检、虚警和航迹起落变化。匿名
+资源数仍须与配置资源数相同，成本矩阵、动作掩码、候选边、需求槽、有限值和匿名身份检查
+保持不变。失败上下文只携带场景、seed、帧序号、匿名数量和矩阵形状。
+
+v2 没有改变冻结 bundle、归一化、教师、安全投影、性能门或权限。合同 SHA 为
+`f47ec9d0...a8497e7`，源码树 SHA 为 `b31d0b86...de2438`。新增测试 `9 passed`，
+v1/v2 专项 `26 passed`，D3 全量 `649 passed, 1 skipped`。
+
+当前状态是 `evaluator_v2_ready_evaluation_not_run`。下一步由 main 使用新的唯一输出身份
+授权一次 v2 评价，随后由 D6 独立复核。正式 seed `1000-1019` 仍未读取。
+
 ## 2026-07-30 A1 来源独立只读评价复核
 
 D3 已完成 assignment-aware 开发候选的来源独立评价器和预注册合同。合同锁定
@@ -1898,3 +1916,69 @@ main 下一步应冻结上述摘要，提供全新来源和布局进行只读评
 
 AirSim 集成计划已检查；本项不改变 DTO、settings、episode 或控制接口，无需修改。
 M-to-N 专项也已检查；联盟需求、成员角色、波次和到达调度均未改变。
+
+## 69. 权威计划载荷复核（2026-07-30）
+
+100-cell 复现与 main 独立统计一致，共有 48 个同身份组。执行 assignment、成员角色、
+联盟、owner、lease、未分配集合和 N/M 规模变化均为 0。完整载荷全部变化，主要差异为
+本轮时间、迟滞与成本诊断、输入指纹和成本边证据；33 组还出现相同 assignment 集合的
+序列顺序变化。
+
+因此原 stale-demand exception 不是本轮根因，D3 也没有漏升执行版本。v3 运行故障来自
+main 把同身份 evaluation refresh 当作新权威消息重发。D3 接口本身存在容易误用的边界，
+本轮以 `authority_signature()` 和 `requires_authoritative_publication()` 明确：
+
+1. 新身份表示新权威载荷；
+2. 同身份、同权威签名只形成独立评估记录；
+3. 同身份、不同权威签名失败关闭；
+4. 完整权威摘要不缩减，传输重试必须复用首次载荷。
+
+200v200 seed1017 的 198 条绑定集合不变，0.95/1.00 秒两份载荷有 990 个叶级差异，
+造成 37 次摘要错配和 37 次交叉绑定拒绝。专项审计保存在
+`research_modules/d3_assignment_planner/reports/D3_PLAN_IDENTITY_PAYLOAD_AUDIT_20260730_CN.md`。
+
+main 已按 D3 判定完成开发态集成。D3 只读审查确认：
+
+1. 每个 `(plan_id, version)` 的首次计划进入权威缓存，同身份评估刷新不再产生权威 topic；
+2. 传输摘要首次引用不可覆盖，同身份权威字段变化在发布前失败关闭；
+3. v4 100-cell 中 151 个权威身份对应 151 次发布和 151 次计划 ACK；
+4. 48 次同身份刷新被抑制，权威摘要冲突和重复传输引用计数均为 0；
+5. finite、D3-D4 对齐和当前联盟闭合均为 100/100，在线真值使用为 0；
+6. 100v100 seed1010、200v200 seed1013 和 seed1017 均恢复。
+
+因此该项状态改为“开发态验证关闭、正式 R0 待执行”。v4 是 `/dev/shm` 下的 2 秒三维
+质点预检，未绑定 clean commit 和冻结正式结果清单，也不是 AirSim 或物理拦截证据。
+正式 R0 仍须保持摘要、版本、owner、epoch、lease 和 ACK 门限不变后重跑。
+
+main 接线使两条旧 D3 集成测试假设失效。测试现按首次权威对象校验源载荷，并断言同身份
+评估刷新不生成第二个 ACK；未修改规划算法。专项 2 项通过，D3 全量为
+`654 passed, 1 skipped`，跳过项为可选 OR-Tools。
+
+## 70. Opt-in 权威代际绑定复核（2026-07-31）
+
+D3 新增 plan 级不可变绑定和 planner 级后置绑定入口。plan 级入口严格验证非负整数 epoch、
+有限且晚于 `created_at` 的 lease，保持 `plan_id/version` 并写入 generic/regional
+四键。同值调用幂等；同身份改值失败。四键继续属于权威签名，不能借 evaluation
+diagnostics 改写。
+
+只绑定 `plan()` 返回副本存在真实兼容风险：planner 内部仍保存未绑定 execution
+signature，下一轮若直接使用该副本会被 stale semantics 校验拒绝。现有安全顺序为：
+
+1. main 调用默认 `plan()`；
+2. main 在外部发布前调用
+   `planner.bind_published_authority_generation(plan, epoch, lease)`；
+3. planner 原子更新内部已发布对象和可信签名；
+4. main 发布返回的绑定对象，并在下一轮把它作为 `previous_plan`。
+
+同身份 refresh 只在其余执行签名完全相同时继承旧四键，测试已覆盖评估时刻晚于 lease，
+结果仍保留原 lease。执行变化后的新身份不继承旧绑定。默认 planner、Hungarian、需求槽、
+迟滞和版本规则没有变化。
+
+复核已覆盖 authority fence、普通执行变化、regional successor、multi-owner regional
+authority、secondary takeover 和 secondary continuation。fence/secondary 不携带旧
+四键；regional max/min 来自新身份合同而非旧绑定；secondary 后置绑定必须等于新
+`secondary_*`。helper 的接线顺序固定为 helper、`publish_plan()`、planner 级绑定。
+
+2026-07-31 身份专项 `28 passed`；D3 全量收集 669 项，结果为
+`668 passed, 1 skipped`。唯一 skip 是可选 OR-Tools，既有 Matplotlib 警告不影响结果。
+AirSim 集成、实验报告和 M-to-N 专项已检查；本项没有对应 DTO、样本或调度变化，不修改。

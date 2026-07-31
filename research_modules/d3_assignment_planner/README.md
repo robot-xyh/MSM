@@ -1,5 +1,37 @@
 # D3 Assignment Planner
 
+## 2026-07-30 A1 来源独立评价器 v2
+
+v1 官方命令已按冻结合同运行一次。预检通过后，逐帧读取在
+`source_scenario_scale_mismatch` 处失败关闭，进程退出码为 `1`，结果目录未创建。
+因此 v1 状态为 `FAIL_CLOSED / EVALUATION_NOT_COMPLETED`，没有正类安全换绑、教师精确
+匹配、负类 exact-R0、分布外或拒绝分布等模型指标。v1 合同、源码、bundle、门限和该失败
+结论保持不变。
+
+main 随后只做了输入结构统计。`anonymous_targets` 表示在线 D1/D2 匿名航迹，数量会因
+漏检、虚警和航迹起落变化；它不是场景真值目标清单。`anonymous_resources` 仍等于配置
+资源数，规则成本矩阵的行、列分别与匿名航迹和匿名资源一致。v1 将在线航迹数强制等于
+配置目标数，属于输入语义错误。
+
+v2 使用独立合同
+`configs/a1_source_independent_evaluation_contract_v2.json` 和独立入口
+`simulations/run_a1_source_independent_evaluation_v2.py`。cell 字段改为
+`configured_scenario_target_count`，仅表示场景配置；逐帧
+`observed_anonymous_target_count` 可小于、等于或大于该值。配置资源数仍须逐帧精确匹配。
+成本矩阵、动作掩码、候选边、需求槽和匿名实体的内部形状继续由
+`LearningFrameRecord` 严格校验。结构错误同时记录 scenario、seed、episode、frame、
+匿名目标/资源数量和矩阵形状，不输出真值身份。
+
+v2 与 v1 的 bundle 三摘要、seed/cell/split、五项性能门限和全部关闭权限逐项相同。
+v2 合同 SHA-256 为
+`f47ec9d095af11042c670b0e358e3e7285a166fa48e3df57829b14c1da8497e7`，冻结源码树
+SHA-256 为
+`b31d0b86f53ff4dc32a01dc9ecc7988539a5635cbc31b674cd74b55a69de2438`。
+新增结构测试 `9 passed`，v1/v2 专项 `26 passed`，D3 全量
+`649 passed, 1 skipped`。当前状态是
+`evaluator_v2_ready_evaluation_not_run`；本阶段没有运行 v2 评价，也没有读取正式 seed
+`1000-1019`。
+
 ## 2026-07-30 A1 来源独立只读评价器
 
 D3 已为冻结的 assignment-aware A1 开发候选建立第一阶段来源独立评价工具。固定合同位于
@@ -373,6 +405,34 @@ diagnostic costs and `last_evaluated_at_s`. A resource/role/target/owner or
 activation change advances executable identity. Secondary takeover is an
 explicit new lineage. Plan and assignment metadata keep lineage creation time
 in `identity_created_at_s` and the current evaluation tick separately.
+
+An evaluation refresh is not a second authoritative transport publication.
+`AssignmentPlan.requires_authoritative_publication(previous_plan)` returns
+`False` when the plan identity and all authority-driving fields are unchanged,
+and fails closed if a member, role, coalition, owner, lease, authorization,
+inventory count, or other execution field changes under the same identity.
+Main must retain the first complete bus payload and SHA-256 for that identity;
+updated timestamps, costs, hysteresis decisions, input fingerprints, and edge
+evidence belong in a separate evaluation/history record. Rehashing a reduced
+projection is not a substitute for retaining the immutable source payload.
+
+The initial 2026-07-30 v3 100-cell audit found 48 same-identity refresh groups.
+All 48 kept the authority projection unchanged, while all 48 changed the
+complete payload and 33 also changed only the serialized assignment order. In
+200v200 seed1017, this produced 37 payload-digest/cross-binding rejections.
+
+Main subsequently integrated the D3 publication-disposition contract. D3
+reviewed the implementation and the v4 development batch
+`/dev/shm/msm-high-threat-r0-p0-precheck-v4-20260730`. Across 100 episodes,
+151 authority identities produced 151 authority publications and 151 plan
+ACKs; 48 same-identity evaluation refreshes were suppressed. Digest conflicts
+and duplicate transport-reference counts were both zero. D3-D4 plan
+alignment and current-coalition closure were both 100/100. This closes the P0
+for development validation. A clean, frozen formal R0 rerun is still required;
+the v4 point-mass batch is not formal R0, AirSim, or physical-interception
+evidence. The current D3 full regression collected 655 tests:
+654 passed and one optional OR-Tools test was skipped. See
+`reports/D3_PLAN_IDENTITY_PAYLOAD_AUDIT_20260730_CN.md`.
 
 OR-Tools is not a default dependency. The isolated P2 benchmark feeds one
 unequal-N/M, hybrid primary+reserve, capacity-constrained demand-slot problem
@@ -2187,3 +2247,47 @@ holdout、收益、运行采用和物理闭环仍开放。旧正式 `0/20 eligib
 
 2026-07-30 的 D3 全量测试共收集 624 项，结果为
 `623 passed, 1 skipped`。跳过项仍是可选 OR-Tools。
+
+## 2026-07-31 Opt-in 权威代际绑定
+
+`AssignmentPlan.bind_authority_generation(authority_epoch,
+lease_expires_at_s)` 为发布前显式绑定 API。epoch 必须是非负整数，lease 必须有限且严格
+晚于计划 `created_at`。首次调用返回保持相同 `plan_id/version` 的新冻结对象，并在
+metadata 同时写入 `authority_epoch`、`lease_expires_at_s`、
+`regional_max_epoch` 和 `regional_min_lease_expires_at_s`。原对象不变；同值重复调用
+返回同一对象；已绑定身份改 epoch 或 lease 立即抛出 `ValueError`。四个字段均进入
+`authority_signature()`。
+
+默认 `AssignmentPlanner.plan()` 不生成 epoch 或 lease。main 对默认已在 planner 内部
+发布的返回值做后置绑定时，必须使用
+`AssignmentPlanner.bind_published_authority_generation(...)`：
+
+```python
+plan = planner.plan(tracks, resources, timestamp)
+plan = planner.bind_published_authority_generation(plan, epoch, lease)
+next_plan = planner.plan(
+    next_tracks,
+    next_resources,
+    next_timestamp,
+    previous_plan=plan,
+)
+```
+
+planner 级入口同时更新内部已发布对象和可信 execution signature，避免下一轮
+`previous_plan` 被误判为语义不一致。同身份 evaluation refresh 只继承原绑定，即使评估
+时刻已超过 lease 也不续租；assignment、联盟、owner 或其他执行语义变化时，新身份保持
+未绑定，main 必须显式绑定新的代际。只调用 plan 级 API 后再把副本传回已缓存未绑定签名
+的 planner 是不安全顺序。
+
+authority fence 和普通执行变化的新身份会移除旧四键。secondary takeover/continuation
+也移除旧四键，但保留该身份新生成的 `secondary_leader_epoch` 和
+`secondary_lease_expires_at_s`；绑定值必须与二者完全一致。regional authority 或
+regional-hint successor 不继承旧 `authority_epoch/lease_expires_at_s`，其
+`regional_max_epoch/regional_min_lease_expires_at_s` 则由当前 grant/successor 重新
+生成，供 main 选择同一身份的 epoch/lease，planner 级绑定再补齐并校验四键。secondary
+helper 的安全顺序是 `prepare/continue`、`publish_plan()`、planner 级绑定、外部发布。
+
+2026-07-31 验证场景为 plan identity 单元合同和 D3 全量回归。身份专项
+`28 passed`；全量收集 669 项，结果为 `668 passed, 1 skipped`。唯一跳过项是未安装的
+可选 OR-Tools；既有 Matplotlib `Axes3D` 警告不影响结果。本 API 不选择 authority、不
+签发或续租，也不改变 Hungarian、需求槽或迟滞。

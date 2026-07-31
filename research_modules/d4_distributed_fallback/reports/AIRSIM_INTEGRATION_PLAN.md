@@ -1,5 +1,16 @@
 # D4 AirSim Episode 集成计划
 
+## 2026-07-31 权威代次接口要求
+
+后续 AirSim episode 使用的 `modules.d3.assignment_plan` 必须在首次发布时携带
+`authority_epoch`、`lease_expires_at_s`、`regional_max_epoch` 和
+`regional_min_lease_expires_at_s`。D4 按该首次消息冻结计划代次和租约。同身份
+no-op 重评不得形成第二份权威消息，也不得续租；执行变化必须发布新计划身份。
+
+当前只完成统一三维 main 5v5 集成测试和 D4 全量回归，没有运行新的 AirSim episode。
+AirSim 验收需由 main 保存来源计划、D4 ownership、消息序号和内容摘要，再由 D6 检查
+字段可用率、逐值一致性及旧 epoch/过期 lease 拒绝。接口补全不改变 D4 降级或接管门。
+
 ## 2026-07-29 来源独立评价后的 AirSim 边界
 
 M16N20 来源独立数据已经建立并完成 D4 只读评价，但该数据来自统一三维质点 episode，

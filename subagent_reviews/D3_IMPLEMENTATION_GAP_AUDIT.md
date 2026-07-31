@@ -1,5 +1,31 @@
 # D3 实现差距审计
 
+## 2026-07-30 v1 输入语义缺口与 v2 状态
+
+v1 官方评价已运行一次并失败关闭。错误为 `source_scenario_scale_mismatch`，退出码 `1`，
+结果目录未创建，无模型指标。预检中的合同、源码、bundle、生成完整性、在线真值和有限值
+检查均通过。v1 失败记录继续保留，不能改写为模型性能失败。
+
+缺口位于输入语义：cell 的配置目标数被错误用于约束在线 D1/D2 匿名航迹数。匿名航迹会因
+漏检、虚警和航迹生命周期变化，允许低于或高于配置目标数。配置资源数和帧内资源数仍是
+精确关系。
+
+模块内 P1 工具缺口已由 v2 关闭：
+
+1. 新增独立 v2 合同、源码清单和 output identity，不修改 v1；
+2. 使用 `configured_scenario_target_count` 表示场景配置，在线航迹数作为逐帧动态量；
+3. 保留配置资源数、矩阵、动作掩码、候选边、需求槽、安全投影和权限检查；
+4. 结构错误增加匿名计数和矩阵形状上下文，不输出真值身份；
+5. v2 与 v1 的 bundle、门限、seed/cell/split 和关闭权限逐项相同。
+
+v2 新增测试 `9 passed`，v1/v2 专项 `26 passed`，D3 全量
+`649 passed, 1 skipped`。合同和源码树 SHA 分别为
+`f47ec9d0...a8497e7`、`b31d0b86...de2438`。
+
+开放 P1 是执行和独立审计：v2 尚未运行，D6 尚未复核输出。任何新运行必须使用新的
+contract/output identity，只运行一次；结果出现前不得改 bundle、归一化、教师、门限、
+安全投影或权限。正式 seed `1000-1019` 继续禁止读取。本轮没有新增 P0。
+
 ## 2026-07-30 来源独立评价状态
 
 assignment-aware A1 候选过去只有同一生成体系的 TRAIN/VALIDATION 开发证据，缺少新来源
@@ -1928,3 +1954,92 @@ M-to-N 专项也已检查；本项没有需求槽、联盟成员、角色或到�
 
 本项没有新增 P0。AirSim 集成计划已检查；未改变 AirSim DTO、settings、episode 或控制
 接口，因此不修改。M-to-N 专项已检查；联盟角色、波次和到达调度未改变。
+
+## 69. 同身份权威载荷重复发布（2026-07-30）
+
+### P0 状态：开发态关闭，正式 R0 待执行
+
+main 的 100-cell 高威胁预检中有 48 个 episode 对同一
+`plan_id/plan_version` 产生两次 D3 结果。D3 同配置字段级复现确认：
+
+- 权威执行投影、assignment 集合、成员、角色、联盟、owner、lease、未分配清单和
+  N/M count 均为 48/48 相同；
+- 完整载荷摘要为 0/48 相同；
+- 33/48 的 assignment 列表只有顺序变化；
+- 32 组为联盟成员迟滞保持，16 组为同分配 unchanged；
+- 23 个 episode 实际形成 90 次 `payload_digest_mismatch` 和 90 次
+  `coalition_member_ack_cross_binding_invalid`。
+
+200v200 seed1017 在 0.95 秒和 1.00 秒使用相同版本 1，198 条执行绑定集合相同，
+但完整载荷有 990 个叶级差异；D4 两类拒绝各 37 次。
+
+### D3 已完成
+
+1. 新增 `authority_signature()`，明确同身份必须冻结的成员、角色、联盟、owner、epoch、
+   lease、授权、库存和规模语义。
+2. 新增 `requires_authoritative_publication()`。同身份纯诊断刷新返回 `False`；同身份
+   角色、owner、lease 或 count 篡改失败关闭。
+3. 增加专项测试和中文字段级审计报告。
+
+### main 集成与开发态证据
+
+1. `assignment_due` 已使用 D3 的权威发布判定，同身份刷新不再重发 D3 权威 topic。
+2. main 已缓存首次权威计划；传输摘要首次引用不可覆盖，相同身份不同摘要直接失败关闭。
+3. 动态评估信息只进入无执行权限诊断，不生成第二份运行 ACK。
+4. main 已增加同身份去重、权威字段冲突、传输引用不可变和临时缺轨回归。
+5. v4 开发态批次覆盖 5、20、50、100、200 规模，各 20 seed，共 100 个 2 秒 episode。
+
+v4 逐 episode 审计结果：
+
+- finite、D3-D4 当前计划对齐、当前联盟闭合均为 100/100；
+- 在线真值使用为 0；
+- 151 个权威身份、151 次权威发布、151 次计划 ACK，逐 episode 数量一致；
+- 48 次同身份 evaluation refresh 被抑制；
+- 权威摘要冲突和重复传输引用计数均为 0；
+- 原失败的 100v100 seed1010、200v200 seed1013、200v200 seed1017 均恢复。
+
+未通过删减摘要字段或放宽 D4 校验取得上述结果。开发态 P0 已关闭。v4 输出位于临时
+`/dev/shm`，运行源仍是未冻结工作树；它没有正式 R0 的 clean commit、配置/源码/结果
+清单，也没有 AirSim 或物理拦截证据。正式 R0 继续列为待执行验收，不重新打开 D3-owned
+算法 P0。
+
+两条 D3-owned 集成测试已按首次权威载荷语义对齐：消费者以实际源载荷对应的权威计划
+校验，且同身份 evaluation refresh 不产生第二个运行 ACK。专项 2 项通过；D3 全量收集
+655 项，结果为 `654 passed, 1 skipped`。跳过项为未安装的可选 OR-Tools，既有
+Matplotlib `Axes3D` 告警不影响结果。
+
+README、PLAN、原则、算法、实验报告、AirSim 集成计划和 review 已同步。AirSim settings、
+传感器 DTO 和控制算法未改变。M-to-N 需求槽和到达调度未变化。
+
+## 70. 后置权威绑定与 planner 签名一致性（2026-07-31）
+
+### P1 接口缺口：已关闭
+
+原 `AssignmentPlan` 没有受约束的首次 epoch/lease 绑定入口。main 若自行复制 metadata，
+可能产生非有限 lease、早于创建时刻的 lease、generic/regional 摘要不一致，或同身份
+重绑定。另一个缺口是 planner 已发布未绑定计划后，main 后置绑定的副本会改变 execution
+signature；下一轮直接作为 `previous_plan` 时与 planner 内部可信签名不一致。
+
+D3 已完成：
+
+1. `AssignmentPlan.bind_authority_generation()` 校验输入、复制冻结对象、写入四键，并对
+   同值幂等、改值失败；
+2. `authority_signature()` 覆盖全部四键；
+3. `AssignmentPlanner.bind_published_authority_generation()` 只接受当前已发布且语义
+   一致的计划，并原子重基内部对象、execution signature 和匹配 planning context；
+4. 同身份 evaluation refresh 继承旧绑定但不续租，真实执行变化后的新身份不继承；
+5. fence、secondary takeover/continuation 清除旧四键；regional 新身份只从当前
+   grant/successor 重建 max/min，secondary 绑定强制匹配新 `secondary_*`；
+6. 默认 planner 不绑定，Hungarian、需求槽、迟滞、stale/version 门均未放宽。
+
+main 的验收调用顺序固定为：`plan()` -> planner 级绑定 -> 外部权威发布 -> 下一轮以绑定
+返回值作为 `previous_plan`。secondary helper 输出先 `publish_plan()` 再 planner 级
+绑定。只调用 plan 级绑定并传回未重基 planner 仍应视为错误用法。
+
+2026-07-31 专项覆盖 28 项并全部通过；D3 全量 669 项为
+`668 passed, 1 skipped`，满足零新增失败门限。唯一 skip 为可选 OR-Tools。剩余边界不是
+D3 实现缺口：epoch 分配、lease 时长、续租协议和过期后的 authority 决策仍由 main/D4
+合同提供；D3 只保持绑定不可变并让既有消费门失败关闭。
+
+README、PLAN、模块原则、算法文档和 review 已同步。AirSim 集成计划、实验报告和 M-to-N
+专项已检查；本项没有 AirSim DTO/settings/episode、实验样本或成员调度变化，因此不修改。

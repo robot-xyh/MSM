@@ -1,6 +1,67 @@
 # D4 M 对 N 分布式联盟形成与降级接管调研
 
+## 2026-07-31 多成员计划代次绑定
+
+同一 M 对 N 计划中的全部必要成员现在共享首次权威发布的四项 epoch/lease 绑定。
+no-op 区域建议不会创建新计划、续租或生成 adoption ACK，因此不能延长现有多成员
+联盟的执行窗口。计划执行内容变化仍需新身份，并重新收集当前代次的完整成员 ACK。
+
+D4 集成文件 6/6、全量 903/903 通过，联盟状态机和原子提交门未改。本轮没有新增
+M 对 N 多 seed 或物理结果。v5 批次仍需由 D6 核对每个计划的 D3 发布代次与 D4
+ownership，旧 v4 的 `0/100 available` 不作追溯修改。
+
+## 2026-07-30 高威胁开发批次 v4 补充
+
+main 修复后，当前 D3 多成员 assignment 在 D2 临时缺轨时仍以计划期航迹证据进入
+D4 快照。D4 因而可以保留必要成员集合、ACK 位图和原子提交状态，直到新计划、显式
+撤销或 lease 到期。该证据不替代当前 D2 身份承诺，D7 对缺轨目标继续 hold。
+
+100 个高威胁 M 对 N episode 的当前计划联盟闭合由 v3 的 97/100 提升为 v4 的
+100/100。28 个 episode 触发过计划期航迹 fallback，三个原失败样本均闭合；同一计划
+身份只保留一份权威载荷，摘要冲突为零。
+
+D4 没有减少 required member 数量，也没有放宽 ACK、SHA、版本、epoch、lease 或分区
+门控。此前 main-owned 任务覆盖 P1 和计划发布合同阻断完成开发态验证。D6 独立审计
+确认计划 ID/版本对齐 100/100、644 个当前多成员联盟目标闭合，195838 条通信处置在
+100/100 episode 中 available/verified。D3 区域 epoch 与 lease 对照字段均为 0/100
+available，属于开放 P1。该批次为 dirty development，formal R0 未运行。D4 全量回归
+为 903/903。
+
+## 2026-07-30 高威胁开发批次补充
+
+以下内容是 v3 历史诊断，已由上述 v4 开发批次完成修复验证。
+
+本轮 100 个高威胁 M 对 N episode 中，97 个当前计划联盟闭合。三个未闭合样本均为
+当前 D3 assignment 的目标从 D2 当前输出消失后，被 main 从 D4 快照任务清单静默
+删除。两个样本删除前已经原子提交，说明问题不在 D4 coalition commit 状态迁移。
+
+第三个样本还暴露相同计划身份对应两个摘要。D4 对旧摘要 ACK 保持失败关闭，不能把
+该拒绝当作丢包或门限过严。下一轮应先关闭 main 当前计划 task coverage 和 D3/main
+计划载荷不可变性，再复跑 100 项开发批次；现有 97/100 不构成正式关闭证据。
+
+## 2026-07-30 第三轮最终复核
+
+M 对 N 联盟相关 main-owned P0 已全部关闭。当前多成员 ACK 只能按完整 plan identity
+和冻结 lease 进入快照；旧 ACK 不能在 fresh coordinator 中重绑定或延长 lease。
+执行闭合要求当前 required/acked 成员一致、commit 原子提交且 region 可执行，排空不再
+把失败关闭或无 commit 状态记为完成。
+
+旧 plan delivery 也不能为新 plan ID 提供成员 readiness。二次失效仅保留显式
+`previous_plan_id` 上一版本桥接。11 个定向用例通过，未发现新的 P0/P1。正式 R0
+M 对 N 结果仍需从 clean source 全量重跑后才能更新。
+
 ## 2026-07-30 正式 R0 M 对 N 联盟确认诊断
+
+D4 owner 对 main 最新 P0 补丁的复核尚未通过。统一 permission 代次门、authority
+epoch 和冻结 lease 对齐、排空完成门已经通过现有专项。剩余问题位于 ACK 证据缓存：
+缓存键缺少 plan ID，重新装配会把旧 ACK 标记为当前 task 的 plan ID。现有协调器历史
+digest 可阻断该序列，但 fresh coordinator 会将旧 3 个 ACK 提交为新计划。plan ID
+进入缓存键和装配校验前，正式 R0 M 对 N 重跑保持阻断。
+
+历史 digest 冲突路径还有一个独立排空缺口：region 失败关闭且无 commit 时，当前缺
+ACK 统计返回 0；ownership 与当前计划对齐后，terminal drain 会误报完成。main 需从
+当前 D3 多成员 assignment 的 required 集合计算缺口，并补充 plan-id-only、错 lease
+和真实旧 ACK/digest conflict 排空负向回归。
 
 正式 R0 的 28 个严格失败全部来自高威胁 M 对 N 场景。D4 对 38 个未提交联盟的检查
 没有发现 required 成员集合漂移、lease 提前过期、完整 ACK 被核心状态机拒绝或

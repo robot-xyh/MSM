@@ -1,5 +1,20 @@
 # D3 文档索引
 
+2026-07-30 完成 100-cell 同身份权威载荷专项。48 个重复身份组的执行投影均保持不变，
+但完整载荷摘要全部变化；200v200 seed1017 形成 37 次摘要错配和 37 次交叉绑定拒绝。
+D3 已增加权威发布判定合同，main 随后完成同身份去重和诊断分流。v4 开发态 100-cell
+复核得到 100/100 finite、151 个权威身份对应 151 次发布与计划 ACK、48 次刷新抑制、
+摘要冲突 0、D3-D4 对齐和联盟闭合 100/100。该 P0 在开发态关闭，正式 R0 仍待 clean
+commit 下重跑。算法合同见
+`ALGORITHM_AND_IMPLEMENTATION.md` 第 74 节，结果见 `EXPERIMENT_REPORT.md` 第 74 节，
+完整审计见 `../reports/D3_PLAN_IDENTITY_PAYLOAD_AUDIT_20260730_CN.md`。
+
+2026-07-30，v1 来源独立评价在逐帧输入规模检查处失败关闭，未生成模型指标。D3 已新增
+v2 输入语义：配置场景目标数与在线匿名航迹数分离，资源数和全部帧内形状合同保持严格。
+v2 当前为 `evaluator_v2_ready_evaluation_not_run`，未运行评价，正式留出结果未读取。
+具体语义见 `MODULE_PRINCIPLES_CN.md` 和 `ALGORITHM_AND_IMPLEMENTATION.md`，失败记录与
+软件验证见 `EXPERIMENT_REPORT.md`。
+
 2026-07-30 新增 assignment-aware A1 来源独立只读评价器。算法和预注册门见
 `ALGORITHM_AND_IMPLEMENTATION.md`，软件合同试验见 `EXPERIMENT_REPORT.md`，执行状态见
 `../PLAN.md`。当前为 evaluator ready / evaluation not run；新来源和正式 holdout 均未
@@ -13,6 +28,7 @@ D3 文档遵循 `research_modules/DOCUMENTATION_STANDARD.md`。推荐阅读顺�
 4. `EXPERIMENT_REPORT.md`：离线仿真结果和图表说明。
 5. `AIRSIM_INTEGRATION_PLAN.md`：AirSim 离线回放接入计划。
 6. `../results/EXPERIMENT_REPORT_GENERATED.md`：脚本生成的实验报告快照。
+7. `../reports/D3_PLAN_IDENTITY_PAYLOAD_AUDIT_20260730_CN.md`：权威计划身份与动态诊断分流审计。
 
 本模块只生成候选分配计划和审计数据，不包含真实飞控、硬件、火控、毁伤或自动处置逻辑。
 

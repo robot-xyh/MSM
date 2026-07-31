@@ -4,6 +4,50 @@
 **审计目标**：列出共识算法与计划使用的开源代码哪些已经实现，哪些没有实现，为什么没有实现，以及缺少哪些条件。
 **边界**：本文只用于科研仿真、接口补齐和后续工程排期；不涉及真实硬件、实机处置、火控或绕过授权的自动动作。
 
+## 2026-07-30 高威胁时期租约 P1 开发闭合
+
+### 当前判断
+
+- 新增运行级 P0：无。
+- v4 的 D3-D4 权威时期和租约不可用 P1：已在 dirty development evidence 层关闭。
+- 正式准入：仍关闭。修复尚未形成 clean commit，900-cell R0 尚未运行。
+
+### 已闭合
+
+1. D3 每个新计划身份显式绑定不可变时期和租约，并发布四个审计字段。
+2. 同身份评价刷新保留原绑定，不重复权威发布、不重复 ACK、不续租。
+3. 普通重规划、权限 fence、二级接管、区域后继和分布式接管均清理旧身份通用绑定，
+   再绑定当前代次。
+4. main 在 D4/D5/D7 消费和权威总线发布前统一绑定，缺字段时失败关闭。
+5. D6 对 v5 的 100-cell 开发批次确认：
+   - plan id/version `100/100`；
+   - epoch available/matched `100/100`；
+   - lease available/matched `100/100`；
+   - current coalition closure `100/100`；
+   - authoritative publication / unique identity / runtime ACK
+     `151/151/151`；
+   - same-identity duplicate publication 和 payload digest conflict 均为 0。
+
+### 开放 P1
+
+1. **clean formal evidence**：当前 100 项均为 `repository_dirty=true`。修复需先提交，
+   再从 clean checkout 运行 smoke 和规范 900-cell R0。
+2. **D4 建议生命周期计量**：51 个真实重规划 episode 同时保留一条 superseded
+   计划建议和一条当前计划建议。最终计划与联盟不受影响，但离线建议聚合保持失败关闭。
+3. **D2 身份 availability**：88/100 可用，可用部分 ID switch 合计 52；其余 12 项
+   不得补零。
+4. **大规模实时性**：v5 的 200 对 200 实时倍率均值为 0.142，墙钟均值/P95 为
+   14.209/15.566 秒。50 对 50 以上仍未达到实时。
+
+### 证据
+
+- main 报告：
+  `research_modules/scalable_3d_simulation/docs/SCALABLE_3D_HIGH_THREAT_P0_PRECHECK_V5_20260730_CN.md`
+- D6 独立报告：
+  `research_modules/d6_evaluation_metrics/reports/HIGH_THREAT_PRECHECK_V5_REVALIDATION_20260730_CN.md`
+- 回归：D3 `668 passed, 1 skipped`，D4 `903 passed`，D6 `1263 passed`，
+  scalable 3D `416 passed`。
+
 ## 2026-07-30 D3 来源独立数据故障围栏导出
 
 本轮没有新增运行级 P0。D3 A1 来源独立生成首次完成 60/100 个 episode 后，在
@@ -2833,3 +2877,41 @@ episode 正式复跑。四档各 5 seed 均通过 `formal_only` 准入，`reposi
 
 当前没有新增运行级 P0。规则主线可继续使用；A2 assist、分配权、降级权、联盟提交和
 控制权保持关闭。
+
+## 2026-07-30 高威胁计划身份与联盟连续性
+
+### P0 关闭项
+
+1. 同一 `plan_id + plan_version` 已收敛为一次不可变 D3 权威发布。随后同身份评估
+   刷新只保留诊断，不再生成第二份 `modules.d3.assignment_plan` 或运行确认。
+2. 同身份的 owner、epoch、lease、成员绑定或其他权限签名发生变化时失败关闭。D4
+   通信缓存保留首次内容摘要和序号，冲突载荷不得覆盖权威引用。
+3. D2 临时缺少当前计划目标时，D4 使用最后一份在线 D2 六维状态和协方差保持任务及
+   已提交联盟。保持边界为新计划、明确撤销或租约到期。
+4. D7 没有继承 D4 的缓存定位。当前 D2 航迹、身份承诺、D3 计划、D4 联盟和 D5
+   终端门控仍须同时满足，缺轨目标不生成制导输入。
+5. A2 无后继评估通过非权威回调保留评价分母，不授予分配、联盟或控制权限。
+
+main 全量可扩展测试为 `415 passed`。开发批次覆盖 5/20/50/100/200 五档和 seed
+1000 至 1019。100/100 状态有限、在线真值为零、D3-D4 最终计划一致、当前联盟闭合；
+151 次权威发布与运行确认守恒，48 次评估刷新被抑制，重复计划身份发布和载荷摘要冲突
+均为零。D4 缓存连续性在 28 个 episode、391 个任务快照中触发。
+
+D6 独立只读审计确认 644 个当前多成员联盟目标闭合，100/100 个通信处置文件可用并
+通过检查，共 195838 条记录。D3 当前计划没有发布可与 D4 对照的区域时期编号和区域
+租约，两项均为 `0/100 available`，不能写成一致或不一致。
+
+### 仍开放 P1
+
+1. D3 需要发布当前区域时期编号和区域租约，并把它们纳入同身份权威签名；D4 和 D6
+   才能完成双边一致性检查。
+2. 本批次来自提交 `2790b165ff54f1d038dba7c08142c46e22b366c9` 的脏工作树，
+   只能作为 development 证据。正式 R0 必须从本轮修复后的干净提交复跑。
+3. 200 对 200 平均实时倍率约 0.156；50、100 和 200 规模均未达到实时。
+4. D2 严格离线身份指标只有 88/100 个 seed 可用，200 对 200 为 10/20。其余 seed
+   必须保留 unavailable，不能按零填充。
+5. 2 秒短 episode 没有关闭 5 米物理拦截、长时增长、困难视觉、多故障代际和学习
+   策略收益。
+6. 在正式 900-cell 矩阵前，先完成 D3/D4/D6 所有者完整回归、干净提交和 clean
+   smoke。详细证据见
+   `research_modules/scalable_3d_simulation/docs/SCALABLE_3D_HIGH_THREAT_P0_PRECHECK_V4_20260730_CN.md`。

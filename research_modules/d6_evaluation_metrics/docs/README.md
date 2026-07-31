@@ -1,5 +1,30 @@
 # D6 文档索引
 
+2026-07-31 完成 v5 高威胁 M 对 N 时期租约复验。100 个开发态 episode 的最终
+计划标识、版本、时期、租约和当前联盟闭合均为 `100/100`。151 次权威发布没有同身份
+重复，48 次评价刷新不续租。详细报告见
+`../reports/HIGH_THREAT_PRECHECK_V5_REVALIDATION_20260730_CN.md`。v4 的时期/租约
+availability P1 已在开发证据层关闭；dirty-source 正式重跑、51 项旧计划建议版本证据、
+12 项身份指标不可用和大规模实时性仍为 P1。
+
+2026-07-30 完成高威胁 M 对 N v4 开发态 100 项修复复验。最终计划标识/版本、当前联盟
+闭合、有限状态和在线真值零使用均为 `100/100`。151 次权威 D3 发布没有同计划身份重复，
+两个摘要错绑原因均为 0。区域时期编号和租约因 D3 缺少对照字段保持
+`0/100 available`。结果见 `EXPERIMENT_REPORT.md` 和
+`../reports/HIGH_THREAT_PRECHECK_V4_REVALIDATION_20260730_CN.md`，算法见
+`ALGORITHM_AND_IMPLEMENTATION.md`，GAP 见
+`../../../subagent_reviews/D6_IMPLEMENTATION_GAP_AUDIT.md`。该批次来自 dirty source，
+不是 formal 证据。
+
+2026-07-30 新增正式 R0 当前计划绑定审计。D6 以最后 D3 计划为当前代次，逐区域核对
+最后 D4 的计划标识、版本及可用的权威 epoch/lease，并对当前多成员联盟执行 ACK 闭合、
+原子提交、执行授权和租约检查。旧代 committed、`collecting_acks` 和 `proposed` 均不能
+通过。必需联盟由 D3 同目标多资源分配或同代 D4 `commit_required=true` 确定，单成员
+`coalition_id` 不触发提交要求。原理、实现和代码就绪记录分别见 `MODULE_PRINCIPLES_CN.md`、
+`ALGORITHM_AND_IMPLEMENTATION.md` 和 `EXPERIMENT_REPORT.md`。main runtime 的同代
+租约冻结、ACK 重评、有限重发、尾部排空和逐消息处置落盘已经代码就绪，D6 消费合同已
+核对。本轮未重跑正式 900 项。
+
 2026-07-29 新增 D4 v5 置信校准候选独立审计。D6 固定 manifest file/content、state、
 summary、gate、builder source 和 v4/v3 外部锚，独立重建实际 24 维 latent、TRAIN
 标准化状态和 k=11 逆距离评分。固定开发门复算通过；TRAIN self-match 为 350/350，

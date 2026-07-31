@@ -1,7 +1,106 @@
 # D4 实现差距审计：分布式协同与降级接管
 
+## 2026-07-31 权威代次绑定状态
+
+- **发布合同实现子项已关闭。** main 在 D3 首次权威发布前绑定
+  `authority_epoch`、`lease_expires_at_s`、`regional_max_epoch` 和
+  `regional_min_lease_expires_at_s`。同身份评价重评保留四项原值，不产生第二份
+  权威计划且不续租。
+- **D4 gate 未放宽。** 版本、epoch、冻结 lease、内容摘要、分区、成员集合和 ACK
+  校验没有代码变化。相同身份不同代次仍应失败关闭。
+- **回归通过。** 真实 main 5v5 no-op 专项 1/1、集成文件 6/6、D4 全量
+  903/903。仅有既有 Matplotlib `Axes3D` 环境警告。
+- **跨模块 P1 验证仍开放。** v4 的 epoch/lease 比较为 `0/100 available`，因为
+  旧制品生成时尚未发布这些字段。需运行新的 v5 批次，并由 D6 验证四项字段
+  100/100 available 且与 D4 ownership/冻结 lease 一致。
+- **D4-owned P0/P1 无新增。** 本轮没有 AirSim 或正式 R0 证据。clean-source 900 项
+  正式矩阵仍需在开发批次通过后执行。
+
+## 2026-07-30 高威胁开发批次 v4 当前状态
+
+- **此前 main-owned P1 已在开发态关闭。** main 现在按当前 D3 assignment target
+  保留最后可信、真值隔离的 D2 状态、协方差和时间；D2 临时缺轨不再从 D4 快照静默
+  删除任务或已提交联盟。
+- **计划身份不可变性开发验证通过。** 同一 `(plan_id, version)` 只产生一次权威
+  发布；evaluation refresh 不覆盖 transport reference，执行签名冲突保持失败关闭。
+  v4 的权威计划摘要冲突计数为零。
+- **D4-owned P0/P1 无新增。** D4 算法代码和 ACK 校验未改。计划 ID、版本、epoch、
+  冻结 lease、分区、成员集合和 SHA 内容绑定继续生效。
+- **开发证据闭合。** 5、20、50、100、200 规模各 20 个种子中，有限状态、D3-D4
+  对齐和当前计划联盟闭合均为 100/100，在线真值使用为零。28 个 episode 使用过
+  plan-track fallback；三个 v3 原失败样本均闭合。
+- **回归通过。** D4 no-op 集成专项 6/6、D4 全量 903/903。测试已同步同身份诊断
+  重评不产生第二份权威计划的合同；D4 算法代码未改。
+- **D6 独立审计完成。** 计划 ID/版本对齐 100/100；644 个当前多成员联盟目标全部
+  闭合；195838 条通信处置在 100/100 episode 中均为 available/verified。
+- **跨模块 P1 仍开放。** D3 区域 epoch 与 lease 对照字段均为 0/100 available。
+  当前独立审计不能确认这两个字段与 D4 ownership 一致。
+- **正式验证仍开放。** v4 是 2 秒、100 episode 的 dirty development 预检。正式
+  900 项 R0 以及长期缺轨、显式撤销、新版本和 lease 到期场景尚未完成。该项是验证
+  待办，不重新打开 D4 协议代码 GAP。
+
+## 2026-07-30 高威胁开发批次新增状态
+
+以下内容是 v3 历史诊断，main-owned 缺口已由上述 v4 开发批次关闭。
+
+- **D4-owned P0 无新增。** 97/100 当前计划联盟闭合中，三个失败均保持失败关闭。
+  两个样本在任务消失前已经 3/3 committed；摘要冲突样本由 D4 正确拒绝。
+- **main-owned P1：当前计划任务可从 D4 快照静默消失。** D3 当前 plan 仍包含
+  `GT3D-000011`，D2 当前输出在 `t=1.20 s` 丢失该航迹，main `_d4_snapshot()` 因
+  查不到 track 直接跳过。最终 region/commit 缺失，closure 报告三个必要成员全部
+  缺失。应生成显式 hold/tombstone，或先使计划失效并发布新版本。
+- **D3/main-owned P0：计划身份不唯一对应载荷摘要。** seed 1017 的总线序号 1875
+  和 2266 具有相同 `plan_id/version/epoch`，摘要分别为 `4d5594f3...` 和
+  `b424ce90...`。main 覆盖 transport reference 后，旧摘要 ACK 被正确拒绝为
+  `payload_digest_mismatch`。authority-relevant 内容变化必须发布新版本；同一身份
+  的摘要冲突必须失败关闭，不能覆盖。
+- **正式验证仍开放。** 本批次是 dirty development source 的 100 项预检，联盟闭合
+  97/100。main-owned P0/P1 修复并由 D4 owner 复核前，不得写成正式 R0 已关闭。
+
+## 2026-07-30 第三轮最终 P0 状态
+
+- **P0 已全部关闭。** plan delivery 与 ACK 的缓存、查询和原始 payload 身份均绑定
+  plan ID、version、epoch、partition 和冻结 lease。旧 plan/ACK 不再能为当前计划
+  提供 readiness、原子提交或 permission。
+- **排空 P0 已关闭。** `d4_current_plan_execution_closure` 从当前 D3 多成员
+  assignment 审计同代 region、commit、required/acked 成员和执行授权；terminal
+  drain 同时要求 alignment、execution closure 和 missing ACK 闭合。
+- **二次失效桥接保持可用且有界。** 只接受显式 `previous_plan_id` 的上一版本，并
+  核对目标集合、partition generation 和 lease。正常 plan-id-only 变化不能使用桥接。
+- **无新增 P0/P1。** 第三轮 11 个 scalable 定向用例全部通过；上一轮 D4 全量
+  903/903，本轮未重复运行。main 报告 scalable 全量 411/411。
+- **剩余验收。** 当前 dirty development 补丁通过 owner 定向验收，但尚未在新的
+  clean source 下完整重跑正式 R0。该项属于正式验证待办，不重新开放代码 P0。
+
 ## 2026-07-30 正式 R0 联盟确认 GAP
 
+- **Owner 二次复核状态：P0 仍开放。** main 已实现
+  `d4_current_plan_alignment-v2`，完整比较 plan ID、version、authority epoch 和冻结
+  lease；三条 authority layer 共享 permission 代次门，排空完成同时要求对齐和缺 ACK
+  为零。旧版本、旧 epoch、排空错代专项和 owner 错 lease 注入均正确失败关闭。
+- **main-owned P0：旧 ACK 可被重绑定到新 plan ID。** `_d4_ack_deliveries` 键只含
+  resource、track、version、epoch 和 partition，不含 plan ID；`_d4_acks()` 不核对
+  payload 的 plan ID，并用当前 task 的 plan ID 构造输出 ACK。plan-id-only 注入将旧
+  3 个 ACK 重新标记为新计划 ACK。现有协调器历史 digest 阻断执行，fresh coordinator
+  则直接 committed，不能把安全性建立在偶然的内存历史上。
+- **main-owned P0：失败关闭 region 可被排空判为完成。** 上述旧 ACK 在有状态
+  coordinator 中触发 `authority_plan_digest_conflict`，region 为
+  `fail_closed=true/execution_allowed=false` 且没有 commit。
+  `_d4_missing_required_member_ids()` 只遍历已有 commit，因而返回空集；ownership
+  已使用当前代次又使 alignment 为 true。orchestrator 随后满足
+  `missing_ack_count=0 && aligned=true`，错误记录 terminal drain completed。
+- **P0 验收条件。** plan ID 必须进入 plan/ACK 缓存键和装配校验；缓存证据的 plan
+  ID、version、epoch、lease、coalition 和 partition generation 任一不一致时均不得
+  进入当前快照，也不得由 adapter 改写为当前代次。缺 ACK 统计必须从当前 D3
+  多成员 assignment 出发；缺 region、缺 commit、region 失败关闭、commit 未授权或
+  必要成员不完整时均不得报告完成。
+- **P1 测试缺口。** 已有旧 plan 测试同时改变 ID 和 version，不能隔离 plan ID；
+  没有独立错 lease pytest；排空负例通过 subclass 改写 diagnostics，没有制造真实旧
+  ACK/digest conflict 和无 commit region。需增加 plan-id-only、错 lease 和真实错代
+  ACK 排空回归。
+- **重跑状态不变。** 当前只是 dirty development 专项预检。正式预留 seed
+  1000-1019 没有生成或读取新评价结果；修复通过 owner 复核后仍需从新 clean source
+  完整重跑 900 项。
 - **D4 本地无新增 P0。** 28 个 `collecting_member_acks` 失败均保持
   `execution_allowed=false/atomic_committed=false`。成员集合、epoch、lease 和 ACK
   校验符合合同；冻结源码与当前源码专项均为 4/4，当前 D4 全量为 903/903。

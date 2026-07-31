@@ -636,3 +636,26 @@ D3 固定保留种子多周期评估只运行离线三维规划输入，没有�
 `runtime.assignment_plan_ack`、D7 控制采用或物理拦截证据。AirSim 后续接入仍须保存
 current plan、ACK、D7 command lineage、后续状态和 D6 outcome sidecar；在这些证据形成前，
 PPO、线上 assist、authority 和运行发布保持关闭。
+
+## 同身份计划发布边界（2026-07-30）
+
+该规则适用于三维质点和后续 AirSim runtime。每个
+`plan_id/plan_version` 只能形成一份权威 `AssignmentPlan` 总线载荷。main 在 AirSim
+分配周期得到 D3 结果后，应调用
+`requires_authoritative_publication(last_authoritative_plan)`：
+
+1. 返回 `True` 时发布新计划，并保存 source sequence、完整载荷 SHA-256 和 ACK；
+2. 返回 `False` 时不重发权威计划，只保存独立评估/历史记录；
+3. 同身份权威字段变化时立即失败关闭；
+4. 网络重试复用首次载荷，不重新写入当前时刻或迟滞 metadata。
+
+相机、actor、SimpleFlight 和 settings 不受影响。若 AirSim 需要证明计划持续有效，应
+另发无执行权限的计划心跳或评估记录；D7 freshness 和 ACK 需显式引用该合同，不能靠改写
+原计划载荷续期。后续 AirSim 验收必须检查同身份权威发布数为 1、重试摘要完全一致、
+evaluation record 不生成控制 ACK，以及新版本仍能正常形成 D4/D7 引用。
+
+main 已在三维质点 integrated runtime 中完成该接线。2026-07-30 v4 开发态 100-cell
+批次中，151 个权威身份对应 151 次发布和计划 ACK，48 次同身份刷新被抑制，摘要冲突和
+重复传输引用计数为 0。该结果关闭开发态接口 P0。批次没有启动 Blocks、ComputerVision 或
+SimpleFlight，不能替代 AirSim 时钟、reset、网络重试和飞控链路验收；这些项目继续按
+本节门限进入正式 R0 和后续 AirSim 测试。

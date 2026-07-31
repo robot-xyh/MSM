@@ -6,6 +6,55 @@
 > `docs/MODULE_PRINCIPLES_CN.md` 和根目录系统汇总同步编写。本文区分默认主线、
 > 已实现辅助能力、可选离线对照和未实现能力，不把计划项写成已完成能力。
 
+## A1 来源独立评价 v2
+
+### v1 失败边界
+
+v1 对每个 cell 同时固定目标数和资源数，并在逐帧读取时要求匿名目标数、匿名资源数均与
+配置相等。该条件适用于真值实体清单，不适用于 D1/D2 在线航迹。v1 官方命令在预检通过后
+返回 `source_scenario_scale_mismatch`，没有写出结果目录。正类、负类、分布外和拒绝指标
+均不可用。
+
+### 基数语义
+
+v2 cell 使用 `configured_scenario_target_count`。该值继续用于核对生成 schedule、场景
+版本、seed 和配置规模，不参与在线匿名航迹数量等式。帧 \(k\) 的实际维度定义为：
+
+```text
+n_track(k)    = len(anonymous_targets)
+n_resource(k) = len(anonymous_resources)
+shape(C_rule) = shape(action_mask) = (n_track(k), n_resource(k))
+```
+
+允许 `n_track(k)` 小于、等于或大于 `configured_scenario_target_count`。仍要求
+`n_resource(k)` 精确等于 cell 的 `resource_count`。候选边必须与动作掩码非零位置完全
+一致；候选特征、规则边代价按候选边计数；未分配代价、威胁分数和需求槽按匿名航迹计数。
+这些约束继续由现有 `LearningFrameRecord` 构造校验执行。
+
+### 失败上下文
+
+v2 在帧解析前提取不含身份的信息，并在拒绝时附加：
+
+- scenario、seed、episode、frame 和输入行号；
+- 观测匿名目标数、观测匿名资源数和配置资源数；
+- 规则成本矩阵与动作掩码形状；
+- 配置场景目标数。
+
+上下文不遍历匿名实体内容，也不转储候选特征或目标标识。矩阵、seed/cell、split、排序、
+摘要和配置资源数任一不一致仍立即停止。
+
+### 冻结关系
+
+v2 合同加载后会把 `configured_scenario_target_count` 规范化为 v1 的 cell 配置表示，并
+逐项比较 v1 合同。bundle 三摘要、五项性能门限、权限、seed、cell、split 和输出文件集合
+必须完全相同。v2 只增加新的合同、帧和聚合 schema identity，结果目录仍拒绝覆盖。
+
+当前 v2 合同 SHA-256 为
+`f47ec9d095af11042c670b0e358e3e7285a166fa48e3df57829b14c1da8497e7`，源码树
+SHA-256 为
+`b31d0b86f53ff4dc32a01dc9ecc7988539a5635cbc31b674cd74b55a69de2438`。
+状态为 `evaluator_v2_ready_evaluation_not_run`。
+
 ## A1 来源独立只读评价
 
 ### 冻结对象
@@ -4271,3 +4320,107 @@ de7b627df9782d7d2577687f30d02d4faeeaf577ecc557c2b8d91dd6e7115dd9
 
 这些结果仅属于开发 TRAIN/VALIDATION。正式 `1000-1019`、来源独立泛化、收益、运行采用、
 D7 执行和物理结果未评价。
+
+## 74. 权威发布判定
+
+`AssignmentPlan.authority_signature()` 在现有 `execution_signature()` 基础上增加计划
+schema、计划身份、创建和变更时刻、前序编号、来源/目标节点、链路、有效期、反馈安全
+状态、N/M 规模、求解器和需求满足摘要。成本、迟滞和评估 metadata 不进入该签名。
+
+运行时判定为：
+
+```text
+previous authority 不存在
+    -> 发布
+plan_id/version 改变
+    -> 发布，后续仍由 D3 的版本链校验
+plan_id/version 相同且 authority_signature 相同
+    -> 不发布权威 topic，只记录 evaluation diagnostics
+plan_id/version 相同但 authority_signature 不同
+    -> 失败关闭
+```
+
+该判定没有截短现有 ACK 摘要，也没有让 D4 忽略 metadata。main 仍需保存首次权威载荷的
+完整 SHA-256；同身份后续评估不再生成第二个权威载荷。传输重试只能复用第一次的完整
+载荷。迟滞、成本和输入快照可通过 `d3_plan_history_record_v1` 或新的无权限评估 topic
+记录。
+
+专项测试覆盖同身份诊断刷新、assignment 顺序变化、新版本执行变化，以及同版本角色、
+owner、lease 和 N/M count 篡改。前两者不要求新权威发布；后四类篡改均失败关闭。
+
+main 已在三维质点 integrated runtime 中使用该判定。每个身份的首次计划对象进入权威
+缓存；后续同身份评估只更新无执行权限诊断，不产生第二次权威发布。传输引用首次写入后
+不可覆盖：相同摘要只计为重复传输，不同摘要在进入 D4 ACK 链路前失败关闭。
+
+2026-07-30 v4 开发态批次覆盖 100 个 episode。151 个权威身份对应 151 次发布和
+151 次计划 ACK，48 次诊断刷新被抑制，摘要冲突和重复传输引用计数均为 0。D3-D4 对齐与当前
+联盟闭合均为 100/100。该结果验证运行接线符合本节身份语义，但不改变算法主线，也不
+授予正式 R0、AirSim、控制或物理拦截结论。
+
+## 75. 不可变权威代际绑定
+
+### 75.1 Plan 级 API
+
+`AssignmentPlan.bind_authority_generation(epoch, lease)` 是 opt-in 纯函数式操作。输入
+满足：
+
+```text
+epoch in integers, epoch >= 0
+isfinite(lease)
+lease > plan.created_at
+```
+
+首次绑定复制 metadata，保持其余字段和 `(plan_id, version)` 不变，并建立：
+
+```text
+authority_epoch = regional_max_epoch = epoch
+lease_expires_at_s = regional_min_lease_expires_at_s = lease
+```
+
+四键已由 `execution_signature()` 纳入 `authority_signature()`。四键全部相同的重复调用
+直接返回原绑定对象；任一已存在值与请求不一致时失败关闭。该 API 不推进版本，也不把
+评估时刻解释为 lease。
+
+### 75.2 Planner 后置绑定
+
+默认 `plan()` 会先在 planner 内部登记发布身份，但不会自行绑定。若 main 仅对返回副本
+调用 plan 级 API，planner 仍缓存未绑定 execution signature；将该副本用于下一轮
+`previous_plan` 会触发 `authority_binding` 前的语义不一致。安全入口是：
+
+```text
+P = planner.plan(...)
+P_auth = planner.bind_published_authority_generation(P, epoch, lease)
+external_publish(P_auth)
+P_next = planner.plan(..., previous_plan=P_auth)
+```
+
+planner 级入口要求 P 是当前已发布身份，且绑定前的 execution/authority semantics 与
+内部可信对象一致。绑定成功后，它原子替换内部已发布对象和可信 execution signature，
+并对同一 planning context 使用相同绑定。
+
+下一轮候选仅在“补入原四键后 execution signature 与 previous 完全相同”时继承绑定。
+因此纯 evaluation refresh 保持原 `plan_id/version/created_at/epoch/lease`；当前时刻
+超过 lease 也不会延长截止时间。若 assignment、联盟、owner、授权或其他执行字段变化，
+比较失败，候选使用未绑定 metadata 进入新身份，等待 main 再次显式绑定。
+
+authority fence 在复制 source metadata 后先删除四键。secondary takeover 与 rolling
+continuation 同样删除四键，只保留新身份自己的 `secondary_leader_epoch` 和
+`secondary_lease_expires_at_s`，且 plan 级绑定强制与二者一致。regional authority 和
+regional-hint successor 删除旧 generic epoch/lease；它们从当前 grant 或 successor
+合同重建 `regional_max_epoch/regional_min_lease_expires_at_s`，main 以该新摘要选择
+绑定值。helper 路径的顺序为：
+
+```text
+P_candidate = planner.plan(..., publish=False)
+P_owner = prepare_secondary_takeover_plan(...)  # 或 continue_active_secondary_plan
+P_published = planner.publish_plan(P_owner)
+P_auth = planner.bind_published_authority_generation(P_published, epoch, lease)
+```
+
+### 75.3 算法边界与验证
+
+绑定发生在求解和迟滞决策之后，不进入成本矩阵、Hungarian、需求槽、成员选择或换绑收益
+计算。2026-07-31 单元验证覆盖非法输入、原对象不变、同值幂等、改值拒绝、签名变化、
+默认不绑定、planner 后置绑定重基、过期 lease 不续期和执行变化后新身份不继承。身份
+专项 `28 passed`；D3 全量 669 项为 `668 passed, 1 skipped`。剩余限制是 epoch/lease
+策略和续租协议仍由 main/authority owner 明确提供，本 API 不创建这些决策。

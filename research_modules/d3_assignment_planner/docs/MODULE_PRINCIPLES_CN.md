@@ -2,6 +2,32 @@
 
 > 状态基线：2026-07-30。本文只描述当前仓库已实现行为、已验证证据和明确保留的研究边界，不改变模块能力状态。
 
+## 在线航迹基数
+
+场景配置目标数表示仿真生成时设置的目标规模。D3 学习帧中的 `anonymous_targets` 来自
+在线 D1/D2 航迹输出。漏检会减少在线航迹，虚警会增加在线航迹，航迹确认和删除也会改变
+逐帧数量。因此配置目标数和在线匿名航迹数属于不同语义，不能建立逐帧相等约束。
+
+v1 评价器曾把两者强制相等。唯一一次官方运行在该检查处返回
+`source_scenario_scale_mismatch`，没有形成聚合结果。该结果说明输入合同不适配在线航迹
+语义，不能用于判断模型性能。
+
+v2 在合同 cell 中使用 `configured_scenario_target_count`。它只绑定场景配置和生成计划。
+逐帧求解维度由匿名航迹和匿名资源实际数量决定：
+
+\[
+C_{\mathrm{rule},k}, M_k \in
+\mathbb{R}^{n_{\mathrm{track},k}\times n_{\mathrm{resource}}}
+\]
+
+其中 \(n_{\mathrm{track},k}\) 可低于、等于或高于配置目标数。
+\(n_{\mathrm{resource}}\) 仍须等于 cell 配置资源数。成本矩阵、动作掩码、候选边、
+未分配代价、威胁分数和需求槽均以 \(n_{\mathrm{track},k}\) 为行维度。资源唯一、硬禁边、
+多机需求完整性、版本、失败关闭和权限检查没有变化。
+
+当前 v2 只完成合同、读取器和测试。冻结模型、归一化、教师、安全投影和性能门限与 v1
+相同，评价尚未运行。
+
 ## 来源独立评价边界
 
 assignment-aware A1 候选的作用是对规则代价作有界修正，离散绑定仍由需求槽匈牙利求解器
@@ -2021,3 +2047,55 @@ de7b627df9782d7d2577687f30d02d4faeeaf577ecc557c2b8d91dd6e7115dd9
 严格读取器只接受 `shadow` 和 `source_independent_evaluation`。assist、authority、
 assignment、runtime publication、control、physical、formal holdout 和 production
 admission 始终为 false。新来源泛化、正式留出集、收益、运行采用和物理拦截仍未验证。
+
+## 权威计划与评估记录
+
+D3 的计划身份由 `plan_id/version` 标识。对计划 \(P\) 定义权威签名
+\(\mathcal{A}(P)\)，其内容包括资源-目标绑定、联盟成员和角色、owner/epoch/lease、
+授权、未分配与不完整清单、目标和资源数量、创建时刻及前序计划。迟滞成本、候选成本、
+输入指纹和 `last_evaluated_at_s` 不属于 \(\mathcal{A}(P)\)。
+
+同一计划身份必须满足：
+
+\[
+(id_i,v_i)=(id_j,v_j)\Rightarrow
+\mathcal{A}(P_i)=\mathcal{A}(P_j)
+\]
+
+若右侧不成立，D3 失败关闭。若右侧成立但评估诊断不同，规划器可以返回新的本地评估
+结果对象；运行时仍应引用首次发布的完整权威载荷。评估对象不能作为同身份的新权威消息。
+`requires_authoritative_publication()` 将这两种情况分开。
+
+2026-07-30 的 v3 100-cell 复核发现 48 个同身份评估组，权威签名变化为 0/48，完整
+载荷摘要变化为 48/48。该证据说明执行版本稳定，但当时运行总线尚未把权威计划与动态
+诊断分离。
+
+main 接入上述判定后，v4 开发态 100-cell 批次形成 151 个权威身份、151 次权威发布和
+151 次计划 ACK，抑制 48 次同身份评估刷新。权威摘要冲突和重复传输引用计数均为 0，
+D3-D4 当前计划对齐与当前联盟闭合均为 100/100。该结果关闭开发态 P0。正式 R0 仍需在
+clean commit 和冻结配置下重跑；v4 不构成 AirSim 或物理拦截证据。
+
+## 显式权威代际绑定原则（2026-07-31）
+
+epoch/lease 不是规划器根据评估时钟推导的诊断值。一个计划身份只能在首次外部权威发布前
+显式绑定一次：
+
+\[
+B(P)=(e,t_{\mathrm{lease}}),\quad e\ge 0,\quad
+t_{\mathrm{lease}}>P.created\_at
+\]
+
+绑定同时写入 generic 与 regional 摘要四键，并属于权威签名。相同值重复确认不改变对象；
+同身份改值失败关闭。evaluation refresh 保留 \(B(P)\)，不令
+\(t_{\mathrm{lease}}\) 随 `last_evaluated_at_s` 推进。执行语义变化产生新身份和未绑定
+状态，旧绑定不能继承。
+
+main 对 planner 默认已发布返回值必须调用
+`bind_published_authority_generation()`，使 planner 内部可信 execution signature 与
+外部绑定对象一致，再进行权威传输。单独绑定副本后把它作为 `previous_plan` 传回未重基
+planner 不符合该原则。本规则不改变 Hungarian、迟滞、版本递增或 lease 到期消费门。
+
+任何新 identity 都不得复制旧身份的 generic binding。fence 和普通执行变化清除四键；
+secondary helper 清除四键并以新 `secondary_*` 约束后置绑定；regional 路径仅可从当前
+grant/successor 重建 regional max/min 摘要。helper 输出须先登记 `publish_plan()`，再
+执行 planner 级绑定，最后进入外部发布与 D4/D7 消费。

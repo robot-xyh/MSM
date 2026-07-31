@@ -1,5 +1,59 @@
 # D4 分布式协同与降级接管算法及实施方案
 
+## 2026-07-31 D3 发布代次消费
+
+当前集成顺序为：D3 生成计划，main 绑定不可变权威代次，随后在总线上首次发布。D4
+消费的来源计划 metadata 必须含以下四项：
+
+- `authority_epoch`
+- `lease_expires_at_s`
+- `regional_max_epoch`
+- `regional_min_lease_expires_at_s`
+
+同一 `plan_id/version` 的 no-op 评价重评不重新发布权威计划。main 内部可保留拒绝
+原因和无后继状态，但四项代次值必须与首次权威消息相同，租约不得按重评时刻重新计算。
+若相同身份出现不同代次值，现有摘要和代次校验继续失败关闭。
+
+D4 本轮仅修改集成测试。测试同时核对同一计划身份、四字段逐值一致、权威消息计数为
+一、无 applied adoption ACK、无摘要冲突。集成文件 6/6、D4 全量 903/903 通过。
+协调器、接管状态机、区域资源策略和联盟提交实现均未修改。
+
+## 2026-07-30 高威胁开发批次 v4 实现复核
+
+main 的快照构造现在以当前 D3 assignment target 为任务基准。D2 当前输出可用时，
+快照刷新计划期航迹状态、六维协方差、区域和更新时间；D2 临时缺轨时，快照使用同一
+计划已保存的最后可信证据，并继续增加量测年龄。若从未形成可信航迹证据，只能生成
+高协方差 tombstone，不能补造真值位置。v4 的 100 个 episode 中 tombstone 使用数为
+零，28 个 episode 使用过已有计划证据 fallback。
+
+该处理只维持当前计划任务和联盟生命周期，不恢复 D2 身份承诺，也不直接授权控制。
+D4 仍要求计划 ID、版本、authority epoch、冻结 lease、分区代次、联盟成员和载荷摘要
+全部一致；D7 仍要求当前 D2 身份承诺，缺轨目标不会获得导引输入。当前行为把“计划
+任务是否仍存在”和“当前是否允许执行控制”分开处理，避免临时缺轨隐式删除联盟，同时
+保持控制失败关闭。
+
+同一计划身份的 D3 诊断重评不再作为第二份权威载荷发布。首次权威载荷和 transport
+reference 保持不可变；同身份执行签名冲突直接失败关闭，D4 的严格 SHA 校验没有修改。
+v4 结果为 D3-D4 对齐 100/100、联盟执行闭合 100/100、权威摘要冲突 0。D4 模块内
+没有算法代码改动。
+
+D6 的独立后验审计确认计划 ID/版本对齐 100/100，644 个当前多成员联盟目标全部
+闭合，195838 条通信处置在 100/100 episode 中均为 available/verified。当前日志没有
+提供可独立对照的 D3 区域 epoch 与 lease 字段，两项均为 0/100 available，保留为
+开放 P1。审计来源是 dirty development 批次，formal R0 未运行。
+
+## 2026-07-30 高威胁开发批次实现复核
+
+以下内容保留 v3 根因分析；对应 main-owned 缺口已在 v4 开发批次验证关闭。
+
+本轮按 D3 plan、D2 track、D4 region/commit、regional broadcast、member ACK、
+transport disposition 和 terminal drain 重建三个失败 episode。D4 模块内没有代码
+修改：完整 ACK 可提交，旧摘要 ACK 被内容寻址校验拒绝。
+
+实现断点位于 main runtime。其一，`_d4_snapshot()` 找不到当前 D2 track 时静默跳过
+当前 D3 assignment；其二，同一 `(plan_id, version, epoch)` 的后发布载荷可覆盖
+transport reference。最小修复应位于 main/D3，D4 继续保留现有失败关闭验证。
+
 ## 2026-07-30 正式 R0 联盟确认审计实现
 
 ### 审计方法

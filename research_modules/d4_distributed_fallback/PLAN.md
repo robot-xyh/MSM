@@ -1,6 +1,92 @@
 # D4 分布式协同与降级接管计划
 
+## 2026-07-31 权威代次发布合同计划
+
+当前源码已补齐 D3 首次权威发布的不可变代次绑定。main 在发布前写入
+`authority_epoch`、`lease_expires_at_s`、`regional_max_epoch` 和
+`regional_min_lease_expires_at_s`；同身份 no-op 评价重评保留原值且不续租。D4
+不新增兼容分支，也不放宽版本、摘要、租约、分区和成员确认门。
+
+D4 已完成单场景接口验收：同一计划身份只出现一条权威消息，no-op 不形成 successor
+或 adoption ACK，当前计划四项代次字段与来源权威消息完全相同。集成文件 6/6、模块
+全量 903/903 通过。
+
+后续工作由 main 和 D6 执行，不修改 D4 核心状态机：
+
+1. 生成新的 v5 开发批次，验证四个字段在全部 episode 中均可用；
+2. 对每个最终计划比较 D3 发布值与 D4 ownership/冻结 lease，要求 100% 可比较且
+   数值一致；
+3. 保留同身份 no-op、执行语义变更、租约到期和旧 epoch 注入用例；
+4. 通过开发批次后，才在 clean source 下启动正式 900 项 R0。
+
+v4 的 `0/100 available` 保留为历史事实。本轮只关闭发布合同实现子项，批量独立验证
+仍是跨模块 P1。
+
+## 2026-07-30 高威胁开发批次 v4 收口
+
+main 已关闭 v3 暴露的两项集成缺口：当前 D3 计划的任务在 D2 临时缺轨时保留最后
+可信、真值隔离的航迹证据；同一 `(plan_id, version)` 只允许一次权威发布，执行语义
+变化必须提升版本。D4 的计划摘要、版本、epoch、冻结 lease、成员集合和 ACK 校验没有
+修改，也没有放宽。
+
+开发态批次 `msm-high-threat-r0-p0-precheck-v4-20260730` 覆盖 5、20、50、100、200
+规模各 20 个种子。100/100 episode 数值有限、在线真值使用为零、D3-D4 当前计划对齐
+且当前计划联盟执行闭合；权威计划摘要冲突为零。28 个 episode 使用过计划期航迹
+fallback，v3 的三个原失败样本均闭合。
+
+D6 已完成 v4 独立审计：计划 ID/版本对齐 100/100，644 个当前多成员联盟目标全部
+闭合，195838 条通信处置在 100/100 episode 中均为 available/verified。D3 区域
+epoch 与 lease 对照字段均为 0/100 available，属于跨模块开放 P1。审计对象仍是
+dirty development 批次，formal R0 未运行。
+
+本阶段 D4-owned P0/P1 保持关闭。下一步不修改 D4 核心状态机，按以下顺序完成正式
+验收：
+
+1. 从 clean source 生成完整 900 项正式 R0，不拼接 v3/v4 开发制品；
+2. 补齐 D3 区域 epoch 与 lease 的可比较审计字段，并由 D6 在正式矩阵中复核；
+3. 在正式矩阵中保留临时缺轨、显式撤销、新版本替换和 lease 到期用例；
+4. 验证 D4 可保留计划任务证据时，D7 对缺失当前 D2 身份承诺仍持续 hold；
+5. 正式结果通过后再更新 R0 结论，当前 v4 只关闭 development/dirty 验证项。
+
+## 2026-07-30 高威胁开发批次后续计划
+
+以下内容记录 v3 批次后的修复计划，已由 v4 开发批次完成验证，不代表正式 R0 已完成。
+
+最新 100 个开发态 episode 的当前计划联盟执行闭合为 97/100。D4 本地状态机没有出现
+完整同代 ACK 无法提交，也没有错误授权。剩余事项由 main/D3 处理，D4 保持现有内容
+摘要、计划代次和 lease 门限：
+
+1. main 为 `(plan_id, version, epoch)` 固定唯一规范授权摘要，摘要变化不得覆盖原
+   transport reference；
+2. D3 authority-relevant 内容变化必须发布新版本；
+3. main 的 D4 快照覆盖当前 D3 plan 全部 assignment target；D2 临时缺轨时产生显式
+   hold/tombstone 或先完成计划失效与重规划；
+4. 增加相同计划身份不同摘要、当前任务临时缺轨、已提交联盟显式撤销三类 main-owned
+   回归；
+5. 修复后完整复跑 5/20/50/100/200 各 20 seeds，验收 task coverage 和 coalition
+   execution closure 为 100/100。
+
+D4 不修改 ACK 验证逻辑来吸收旧摘要。seed 1017 的
+`payload_digest_mismatch` 是正确失败关闭。详细证据见
+`reports/HIGH_THREAT_PRECHECK_V3_COALITION_DIAGNOSTIC_20260730.md`。
+
 ## 2026-07-30 正式 R0 联盟确认收口计划
+
+### Owner 复核状态
+
+第三轮 D4 owner 只读复核通过，当前 main-owned P0 已全部关闭。plan delivery 与 ACK
+缓存、查询及重建均绑定 plan ID；正常成员就绪只接受当前计划投递。二次失效桥接只接受
+显式 `previous_plan_id` 对应的上一版本，并继续核对目标集合、分区和 lease。
+
+原始 plan delivery 与 ACK 的 lease 必须覆盖当前冻结 lease，因此旧证据不能为同代次
+新期限扩权。`d4_current_plan_execution_closure` 从当前 D3 多成员 assignment 出发，
+要求同代 region 可执行、commit 完整授权；terminal drain 同时要求计划对齐、执行闭合
+和缺 ACK 数为零。
+
+本轮 11 个 scalable 定向用例全部通过；上一轮 D4 全量为 903/903，main 报告当前
+scalable 全量为 411/411。本轮没有复跑 D4 全量，也没有读取正式预留 seed。后续计划从
+“继续修 P0”转为在新的 clean source 下完整重跑正式 R0，并由 D6 独立审计，不得拼接
+旧制品。
 
 ### 已完成
 
