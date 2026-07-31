@@ -20,6 +20,11 @@ from pathlib import Path
 import subprocess
 from typing import Any, Iterable, Mapping, Sequence
 
+from .strict_offline_identity import (
+    STRICT_OFFLINE_ID_SWITCH_SEMANTICS,
+    STRICT_OFFLINE_ID_SWITCH_SOURCE,
+)
+
 
 EXPERIMENT_MATRIX_ADMISSION_SCHEMA_VERSION = (
     "d6.experiment-matrix-admission-precheck.v1"
@@ -1077,6 +1082,11 @@ def _audit_post_run_artifacts(
                 else "model_inventory_missing_or_not_bound_to_prechecked_bundles"
             ),
         },
+        "d6_evaluator_provenance": (
+            aggregate.get("evaluator_provenance")
+            if isinstance(aggregate, Mapping)
+            else None
+        ),
         "blockers": sorted(set(blockers)),
     }
     return artifact_audit, actual_rows, offline_rows, aggregate, blockers
@@ -1164,10 +1174,34 @@ def _audit_cells(
             )
             if not finite_valid:
                 failures.append("finite_state_not_proven")
+            strict_id_switch_provenance = (
+                evidence.get("d2_id_switch_count_semantics")
+                == STRICT_OFFLINE_ID_SWITCH_SEMANTICS
+                and evidence.get("d2_id_switch_count_source_artifact")
+                == STRICT_OFFLINE_ID_SWITCH_SOURCE
+                and _csv_bool(
+                    evidence.get("d2_strict_identity_artifact_verified")
+                )
+                and _csv_bool(
+                    evidence.get(
+                        "d2_strict_identity_truth_isolation_verified"
+                    )
+                )
+                and not _csv_bool(
+                    evidence.get("d2_strict_identity_id_switch_backfilled")
+                )
+                and evidence.get("d2_strict_identity_verification_mode")
+                == "sha256_verified_artifact"
+            )
             id_switch_available = (
                 evidence.get("d2_id_switch_count_availability") == "available"
                 and _csv_int(evidence.get("d2_id_switch_count")) is not None
+                and strict_id_switch_provenance
             )
+            if not strict_id_switch_provenance:
+                failures.append(
+                    "d2_strict_id_switch_provenance_not_verified"
+                )
             if not id_switch_available:
                 failures.append("d2_id_switch_metric_unavailable")
             physical_available = all(

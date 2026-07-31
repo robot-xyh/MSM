@@ -11,11 +11,13 @@ from __future__ import annotations
 from collections import Counter, defaultdict
 import csv
 from dataclasses import dataclass
+from functools import lru_cache
 import hashlib
 import json
 import math
 from pathlib import Path
 import re
+import subprocess
 from typing import Any, Iterable, Mapping, Sequence
 
 import matplotlib
@@ -51,12 +53,15 @@ from .observation_truth_sidecar import (
     audit_observation_truth_sidecar,
 )
 from .regional_planning_chain_audit import audit_regional_planning_chain
+from .strict_offline_identity import (
+    load_strict_offline_id_switch,
+)
 
 
 SCALABLE_3D_OFFLINE_EVALUATION_SCHEMA_VERSION = (
-    "d6-scalable3d-offline-evaluation-v11"
+    "d6-scalable3d-offline-evaluation-v12"
 )
-SCALABLE_3D_OFFLINE_EVALUATION_DATE = "2026-07-29"
+SCALABLE_3D_OFFLINE_EVALUATION_DATE = "2026-07-31"
 SCALABLE_3D_SCHEMA_REGISTRY_VERSION = "d6-scalable3d-schema-registry-v2"
 SCALABLE_3D_STAGE_TIMING_SCHEMA_VERSION = "scalable3d-stage-timings-v2"
 SCALABLE_3D_CURRENT_SCHEMA_REGISTRY = {
@@ -169,6 +174,8 @@ _METRIC_FIELDS = (
     "d2_velocity_covariance_trace_p90",
     "d2_velocity_covariance_trace_max",
     "d2_id_switch_count",
+    "d2_online_producer_id_switch_count",
+    "d2_strict_identity_artifact_verified",
     "d3_current_track_count",
     "d3_plan_target_count",
     "d3_assignment_count",
@@ -418,6 +425,7 @@ def evaluate_scalable_3d_episode(episode_dir: str | Path) -> dict[str, Any]:
         "_stage_file_reason": stages_reason,
         "_failure_reasons": [],
     }
+    row.update(_current_evaluator_provenance())
     artifact_reasons = {
         "manifest.json": manifest_reason,
         "scenario_config.json": config_reason,
@@ -436,6 +444,8 @@ def evaluate_scalable_3d_episode(episode_dir: str | Path) -> dict[str, Any]:
     }
 
     _extract_provenance(row, manifest, config, summary)
+    row["episode_source_git_commit"] = row.get("git_commit")
+    row["episode_source_repository_dirty"] = row.get("repository_dirty")
     _extract_learning_runtime_metrics(row, manifest, config, summary)
     ordered_online = _ordered_online_records(online or [])
     _extract_online_truth_audit(
@@ -466,7 +476,7 @@ def evaluate_scalable_3d_episode(episode_dir: str | Path) -> dict[str, Any]:
     )
     _extract_track_metrics(row, ordered_online, module="d1")
     _extract_track_metrics(row, ordered_online, module="d2")
-    _extract_d2_id_switch(row, ordered_online)
+    _extract_d2_online_producer_id_switch(row, ordered_online)
     _extract_d3_metrics(row, ordered_online)
     _extract_d3_learning_metrics(row, ordered_online)
     _extract_d4_metrics(row, ordered_online)
@@ -489,6 +499,7 @@ def evaluate_scalable_3d_episode(episode_dir: str | Path) -> dict[str, Any]:
     row["_failure_reasons"].extend(active_vision_evidence.failure_reasons)
     _extract_d7_metrics(row, ordered_online)
     _extract_camera_count(row, config, ordered_online)
+    _extract_d2_strict_offline_id_switch(row, directory)
     truth_disposition = _extract_observation_truth_disposition_metrics(
         row,
         labels=truth_labels,
@@ -693,6 +704,7 @@ def aggregate_scalable_3d_episodes(
     return {
         "schema_version": SCALABLE_3D_OFFLINE_EVALUATION_SCHEMA_VERSION,
         "evaluation_date": SCALABLE_3D_OFFLINE_EVALUATION_DATE,
+        "evaluator_provenance": _aggregate_evaluator_provenance(rows),
         "episode_count": len(rows),
         "grouping_fields": list(_GROUP_FIELDS),
         "seed_grouping_field": "seed",
@@ -828,7 +840,7 @@ def render_scalable_3d_offline_markdown(
         "",
         "## Episode 明细",
         "",
-        "| scenario/version | scale T/R/Rc/Cam | seed | finite | dirty | schema current | online truth | D1/D2 tracks | D2 IDSW | D3 coverage/backlog | D4 fail-closed | D5 fallback | D7 cmd/hold/reject | <=5m / identity |",
+        "| scenario/version | scale T/R/Rc/Cam | seed | finite | dirty | schema current | online truth | D1/D2 tracks | D2 strict IDSW / online diagnostic | D3 coverage/backlog | D4 fail-closed | D5 fallback | D7 cmd/hold/reject | <=5m / identity |",
         "| --- | --- | ---: | :---: | :---: | :---: | ---: | --- | --- | --- | ---: | --- | --- | --- |",
     ]
     for row in rows:
@@ -836,7 +848,10 @@ def render_scalable_3d_offline_markdown(
             _fmt(row.get(field))
             for field in ("target_count", "resource_count", "recon_count", "camera_count")
         )
-        idsw = _fmt_available(row, "d2_id_switch_count")
+        idsw = (
+            f"{_fmt_available(row, 'd2_id_switch_count')} / "
+            f"{_fmt_available(row, 'd2_online_producer_id_switch_count')}"
+        )
         identity = _fmt_available(row, "offline_proximity_identity_correct_rate")
         lines.append(
             "| {scenario}/{version} | {scale} | {seed} | {finite} | {dirty} | {schema} | {truth} | "
@@ -1461,7 +1476,7 @@ def render_scalable_3d_offline_markdown(
             "",
             "- 当前 producer 的 offline truth label 只含 observation-to-truth 映射，未显式提供 global_track_id-to-truth 映射时，五米接近身份正确性保持 unavailable。",
             "- 当前 schema registry 固定核对 world/bus/scenario/online observation/offline truth，并交叉核对 scenario config schema；旧值继续展示，但 formal acceptance 必须为 false。",
-            "- D2 明确声明 IDSW unavailable 时，D6 不从轨迹数量、名称或离线真值补算 0。",
+            "- 在线 D2 无真值时，producer IDSW 诊断保持 unavailable；公共 D2 IDSW 只读取经哈希和合同验证的真值隔离制品。严格指标不可用时保留 null 和原始原因，不补写 0。",
             "- D5 `model_missing` 表示确定性几何规则回退，不是学习模型性能证据。",
             "- bundle 未加载时，学习模型 fingerprint/version 保持 null/unavailable；规则路径的 runtime version 不冒充学习模型版本。",
             "- D4 advice 的旧 schema、缺版本、过期 authority/plan/lease、非守恒 quota、非法 projection 或 digest 篡改均 fail closed，不以合法记录子集缩小分母。",
@@ -1582,9 +1597,93 @@ def _extract_provenance(
         if isinstance(value, bool):
             _put_available(row, "finite_state", value)
         else:
-            _put_unavailable(row, "finite_state", "summary_finite_state_not_boolean")
+            _put_unavailable(
+                row,
+                "finite_state",
+                "summary_finite_state_not_boolean",
+            )
     else:
         _put_unavailable(row, "finite_state", "summary_finite_state_missing")
+
+
+@lru_cache(maxsize=1)
+def _current_evaluator_provenance() -> dict[str, Any]:
+    """Identify the D6 evaluator independently from episode source provenance."""
+
+    repository = Path(__file__).resolve().parents[3]
+    evaluator_scope = repository / "research_modules" / "d6_evaluation_metrics"
+    commit = _git_output(repository, "rev-parse", "HEAD")
+    dirty_output = _git_output(
+        repository,
+        "status",
+        "--porcelain",
+        "--untracked-files=all",
+        "--",
+        "research_modules/d6_evaluation_metrics",
+    )
+    digest = hashlib.sha256()
+    for path in sorted(
+        evaluator_scope.joinpath("d6_evaluation_metrics").glob("*.py")
+    ):
+        digest.update(path.relative_to(repository).as_posix().encode("utf-8"))
+        digest.update(b"\0")
+        digest.update(path.read_bytes())
+        digest.update(b"\0")
+    return {
+        "d6_evaluator_schema_version": (
+            SCALABLE_3D_OFFLINE_EVALUATION_SCHEMA_VERSION
+        ),
+        "d6_evaluator_git_commit": commit,
+        "d6_evaluator_repository_dirty": (
+            None if dirty_output is None else bool(dirty_output)
+        ),
+        "d6_evaluator_source_tree_sha256": f"sha256:{digest.hexdigest()}",
+    }
+
+
+def _git_output(repository: Path, *arguments: str) -> str | None:
+    try:
+        completed = subprocess.run(
+            ("git", "-C", str(repository), *arguments),
+            check=False,
+            capture_output=True,
+            text=True,
+        )
+    except OSError:
+        return None
+    if completed.returncode != 0:
+        return None
+    return completed.stdout.strip()
+
+
+def _aggregate_evaluator_provenance(
+    rows: Sequence[Mapping[str, Any]],
+) -> dict[str, Any]:
+    def values(field: str) -> list[Any]:
+        return sorted(
+            {
+                row.get(field)
+                for row in rows
+                if row.get(field) is not None
+            },
+            key=str,
+        )
+
+    return {
+        "evaluator_schema_versions": values("d6_evaluator_schema_version"),
+        "evaluator_git_commits": values("d6_evaluator_git_commit"),
+        "evaluator_repository_dirty_values": values(
+            "d6_evaluator_repository_dirty"
+        ),
+        "evaluator_source_tree_sha256_values": values(
+            "d6_evaluator_source_tree_sha256"
+        ),
+        "episode_source_git_commits": values("episode_source_git_commit"),
+        "episode_source_repository_dirty_values": values(
+            "episode_source_repository_dirty"
+        ),
+        "source_and_evaluator_provenance_separated": True,
+    }
 
 
 def _extract_learning_runtime_metrics(
@@ -2026,32 +2125,92 @@ def _extract_track_metrics(
             )
 
 
-def _extract_d2_id_switch(
+def _extract_d2_online_producer_id_switch(
     row: dict[str, Any], records: Sequence[Mapping[str, Any]]
 ) -> None:
     record = _latest_topic(records, "modules.d2.associated_tracks")
     if record is None:
-        _put_unavailable(row, "d2_id_switch_count", "d2_publication_missing")
+        _put_unavailable(
+            row,
+            "d2_online_producer_id_switch_count",
+            "d2_publication_missing",
+        )
         return
     payload = _payload(record)
     available = payload.get("id_switch_count_available")
     value = payload.get("id_switch_count")
     if available is True and _is_int_like(value) and int(value) >= 0:
-        _put_available(row, "d2_id_switch_count", int(value))
+        _put_available(row, "d2_online_producer_id_switch_count", int(value))
     elif available is False:
         _put_unavailable(
             row,
-            "d2_id_switch_count",
+            "d2_online_producer_id_switch_count",
             "producer_declared_id_switch_count_unavailable",
         )
     elif "id_switch_count_available" not in payload:
         _put_unavailable(
             row,
-            "d2_id_switch_count",
+            "d2_online_producer_id_switch_count",
             "d2_id_switch_availability_field_missing",
         )
     else:
-        _put_unavailable(row, "d2_id_switch_count", "d2_id_switch_count_invalid")
+        _put_unavailable(
+            row,
+            "d2_online_producer_id_switch_count",
+            "d2_id_switch_count_invalid",
+        )
+
+
+def _extract_d2_strict_offline_id_switch(
+    row: dict[str, Any], episode_dir: Path
+) -> None:
+    evidence = load_strict_offline_id_switch(
+        episode_dir,
+        expected_context={
+            field: row.get(field)
+            for field in (
+                "episode_id",
+                "scenario_name",
+                "scenario_version",
+                "seed",
+                "target_count",
+                "resource_count",
+                "recon_count",
+                "camera_count",
+            )
+        },
+    )
+    row["d2_id_switch_count_semantics"] = evidence.semantics
+    row["d2_id_switch_count_source_artifact"] = evidence.source_artifact
+    row["d2_strict_identity_verification_mode"] = evidence.verification_mode
+    row["d2_strict_identity_truth_isolation_verified"] = (
+        evidence.truth_isolation_verified
+    )
+    row["d2_strict_identity_id_switch_backfilled"] = evidence.strict_backfilled
+    row["d2_truth_isolated_manifest_sha256"] = evidence.truth_manifest_sha256
+    row["d2_truth_isolated_episode_record_sha256"] = (
+        evidence.episode_record_sha256
+    )
+    row["d2_offline_identity_manifest_sha256"] = (
+        evidence.identity_manifest_sha256
+    )
+    row["d2_offline_identity_evaluation_sha256"] = (
+        evidence.identity_evaluation_sha256
+    )
+    _put_available(
+        row,
+        "d2_strict_identity_artifact_verified",
+        evidence.artifact_verified,
+    )
+    if evidence.available:
+        _put_available(row, "d2_id_switch_count", evidence.value)
+    else:
+        _put_unavailable(
+            row,
+            "d2_id_switch_count",
+            evidence.unavailable_reason
+            or "strict_offline_id_switch_metric_unavailable",
+        )
 
 
 def _extract_d3_metrics(

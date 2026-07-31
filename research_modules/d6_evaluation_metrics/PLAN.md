@@ -1,5 +1,28 @@
 # D6 Evaluation Metrics Plan
 
+## 2026-07-31 严格离线身份交换接线
+
+### 已完成
+
+- [x] 将在线 D2 producer 诊断迁移到独立字段，保持在线无真值时的 unavailable 合同。
+- [x] 将公共 `d2_id_switch_count` 固定为严格离线语义，只读取真值隔离 episode record
+  及其绑定的离线身份制品。
+- [x] 校验 episode/schema/context、两层 manifest、episode record、身份评价和四类源
+  文件 SHA-256，并使用现有 D6 身份适配器重验后与持久化结果逐字段对账。
+- [x] 对严格可用 0、严格可用非零、两类严格不可用原因、在线不可用但离线可用、
+  episode record/identity manifest 哈希损坏和禁止零回填增加回归测试。
+- [x] 正式 R0 full posterior 和实验矩阵 admission 只认可带严格来源、真值隔离、
+  哈希验证和非回填声明的指标；来源提交和 evaluator 提交分别记录。
+
+### 待执行
+
+- [ ] main 对现有 135 个 episode 重新生成 D6 per-episode CSV 和 aggregate JSON；该步骤
+  只重算派生制品，不重跑仿真，不覆盖原 episode。
+- [ ] main 随后重新运行 formal R0 full posterior audit 和 post-run matrix admission，
+  报告严格指标的 available/unavailable 分母及原始失败原因。
+- [ ] 正式 900-cell 后续执行继续使用同一 v12 语义；G1/A1/A2/A3/C1/F1 不得读取在线
+  producer IDSW 作为真值指标。
+
 ## 2026-07-31 高威胁 clean smoke 修复后复核
 
 ### 已完成

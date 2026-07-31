@@ -1,5 +1,30 @@
 # D6 实现差距审计
 
+## 2026-07-31 严格离线身份交换接线 GAP
+
+### 已关闭的 P0
+
+正式报告把在线 D2 的 unavailable 声明当成公共严格 ID Switch，导致已有严格离线证据
+未进入汇总。该接线已关闭。公共字段现在只读取经过两层 manifest、源文件 SHA-256、
+episode/context/schema 和 D6 身份适配器复核的真值隔离记录；在线声明另存诊断字段。
+任一制品缺失、损坏、合同不支持或身份不可判定时均保持 null，并保留精确原因。
+
+formal R0 full posterior 和 experiment matrix admission 已要求严格来源、哈希验证、真值
+隔离和 `strict_id_switch_backfilled=false`。旧 CSV 不能凭同名字段通过。producer 来源
+提交和 evaluator 来源提交已分离。
+
+### 现有证据与剩余 P1
+
+clean source `80e55eb` 前 90 项已有 `73 available / 17 fail-closed`：16 项
+`multiple_truth_targets_for_global_track`，1 项
+`source_observation_outside_lineage_window`。这 17 项属于真实证据不可判定，不是接线
+缺陷，禁止补 0。
+
+剩余 P1 是 main 对现有 135 个 episode 重新生成派生 D6 汇总、正式后验审计和准入报告，
+并在后续完整 900-cell 及 G1/A1/A2/A3/C1/F1 中沿用新语义。该工作不需要重跑既有仿真，
+也不修改冻结 execution plan。若上游希望提高 17 项可用率，应由 D1/D2 改善谱系窗口和
+一轨多真值歧义处理，再生成新的 episode；D6 不在离线汇总中推断或补齐身份。
+
 ## 2026-07-31 高威胁 clean smoke 修复后 GAP
 
 ### 已关闭

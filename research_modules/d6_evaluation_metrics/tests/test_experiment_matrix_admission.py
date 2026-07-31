@@ -12,9 +12,14 @@ from d6_evaluation_metrics.experiment_matrix_admission import (
     EXPERIMENT_MATRIX_SCALES,
     EXPERIMENT_MATRIX_VARIANTS,
     MatrixCellKey,
+    _audit_cells,
     audit_experiment_matrix_admission,
     inventory_from_plan,
     write_experiment_matrix_admission_report,
+)
+from d6_evaluation_metrics.strict_offline_identity import (
+    STRICT_OFFLINE_ID_SWITCH_SEMANTICS,
+    STRICT_OFFLINE_ID_SWITCH_SOURCE,
 )
 from research_modules.scalable_3d_simulation.experiment_matrix import (
     ExperimentMatrixPlan,
@@ -254,6 +259,52 @@ def test_complete_post_run_artifacts_can_pass(tmp_path: Path) -> None:
     assert result["artifacts"]["animation"]["available"] is True
 
 
+def test_post_run_rejects_online_only_id_switch_as_strict_evidence() -> None:
+    cell = MatrixCellKey("R0", "nominal", 5, 1000)
+    matrix_row = {
+        "variant": "R0",
+        "scenario": "nominal",
+        "scale": "5",
+        "seed": "1000",
+    }
+    evidence = {
+        "algorithm_variant_normalized": "R0",
+        "experiment_matrix_scenario_family": "nominal",
+        "experiment_matrix_scale": "5",
+        "seed": "1000",
+        "variant_execution_valid": "true",
+        "variant_execution_failure_reasons_json": "[]",
+        "online_truth_use_count": "0",
+        "online_truth_use_count_availability": "available",
+        "finite_state": "true",
+        "finite_state_availability": "available",
+        "d2_id_switch_count": "0",
+        "d2_id_switch_count_availability": "available",
+        "offline_proximity_within_5m_count": "0",
+        "offline_proximity_within_5m_count_availability": "available",
+        "offline_proximity_unique_target_count": "0",
+        "offline_proximity_unique_target_count_availability": "available",
+        "experiment_matrix_formal_acceptance_eligible": "true",
+        "experiment_matrix_formal_acceptance_eligible_availability": "available",
+    }
+
+    row = _audit_cells(
+        (cell,),
+        mode="post_run",
+        inventory_audit={"blockers": []},
+        source_audit={"formal_clean_source": True},
+        bundle_audits={},
+        actual_matrix_rows=(matrix_row,),
+        offline_rows=(evidence,),
+    )[0]
+
+    assert row["d2_id_switch_available"] is False
+    assert "d2_strict_id_switch_provenance_not_verified" in row[
+        "failure_reasons"
+    ]
+    assert "d2_id_switch_metric_unavailable" in row["failure_reasons"]
+
+
 def _formal_plan() -> ExperimentMatrixPlan:
     return ExperimentMatrixPlan(
         variants=EXPERIMENT_MATRIX_VARIANTS,
@@ -422,6 +473,18 @@ def _write_complete_post_run_fixture(
                 "finite_state_availability": "available",
                 "d2_id_switch_count": 0,
                 "d2_id_switch_count_availability": "available",
+                "d2_id_switch_count_semantics": (
+                    STRICT_OFFLINE_ID_SWITCH_SEMANTICS
+                ),
+                "d2_id_switch_count_source_artifact": (
+                    STRICT_OFFLINE_ID_SWITCH_SOURCE
+                ),
+                "d2_strict_identity_artifact_verified": True,
+                "d2_strict_identity_truth_isolation_verified": True,
+                "d2_strict_identity_id_switch_backfilled": False,
+                "d2_strict_identity_verification_mode": (
+                    "sha256_verified_artifact"
+                ),
                 "offline_proximity_within_5m_count": 0,
                 "offline_proximity_within_5m_count_availability": "available",
                 "offline_proximity_unique_target_count": 0,

@@ -22,6 +22,7 @@ from .formal_r0_plan_binding_audit import (
     formal_r0_plan_binding_row_metrics,
 )
 from .scalable_3d_offline import evaluate_scalable_3d_episode
+from .strict_offline_identity import strict_id_switch_provenance_is_verified
 
 
 FORMAL_R0_TARGETED_POSTERIOR_INPUT_SCHEMA_VERSION = (
@@ -63,6 +64,7 @@ _POSTERIOR_AUDIT_LOW_LEVEL_EVIDENCE_FIELDS = (
     "observation_governance_generation_integrity",
     "observation_governance_generation_contract_status",
     "d2_id_switch_count",
+    "d2_online_producer_id_switch_count",
     "d4_advice_resource_quota_conservation_violation_count",
     "d4_advice_formal_decision_mutation_count",
     "d5_active_vision_target_reference_violation_count",
@@ -1185,6 +1187,20 @@ def _audit_target_cell(
         "observation_governance_generation_contract_status": low_level.get(
             "observation_governance_generation_contract_status"
         ),
+        "episode_source_git_commit": low_level.get("episode_source_git_commit"),
+        "episode_source_repository_dirty": low_level.get(
+            "episode_source_repository_dirty"
+        ),
+        "d6_evaluator_schema_version": low_level.get(
+            "d6_evaluator_schema_version"
+        ),
+        "d6_evaluator_git_commit": low_level.get("d6_evaluator_git_commit"),
+        "d6_evaluator_repository_dirty": low_level.get(
+            "d6_evaluator_repository_dirty"
+        ),
+        "d6_evaluator_source_tree_sha256": low_level.get(
+            "d6_evaluator_source_tree_sha256"
+        ),
         "verified": not reasons,
         "failure_reasons": reasons,
     }
@@ -1198,6 +1214,19 @@ def _audit_target_cell(
         row[f"{field}_unavailable_reason"] = low_level.get(
             f"{field}_unavailable_reason"
         )
+    for field in (
+        "d2_id_switch_count_semantics",
+        "d2_id_switch_count_source_artifact",
+        "d2_strict_identity_artifact_verified",
+        "d2_strict_identity_verification_mode",
+        "d2_strict_identity_truth_isolation_verified",
+        "d2_strict_identity_id_switch_backfilled",
+        "d2_truth_isolated_manifest_sha256",
+        "d2_truth_isolated_episode_record_sha256",
+        "d2_offline_identity_manifest_sha256",
+        "d2_offline_identity_evaluation_sha256",
+    ):
+        row[field] = low_level.get(field)
     return row
 
 
@@ -1243,6 +1272,11 @@ def _low_level_gate_reasons(
         "observation_governance_generation_contract_status"
     ) != "verified":
         reasons.append("generation_contract_not_verified")
+    if (
+        low_level.get("d2_id_switch_count_availability") == "available"
+        and not strict_id_switch_provenance_is_verified(low_level)
+    ):
+        reasons.append("d2_strict_id_switch_provenance_not_verified")
     return list(dict.fromkeys(reasons))
 
 

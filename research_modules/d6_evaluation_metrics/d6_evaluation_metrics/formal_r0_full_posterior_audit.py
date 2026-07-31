@@ -25,6 +25,7 @@ from .formal_r0_targeted_posterior_audit import (
     _sha256_file,
     audit_formal_r0_targeted_posterior,
 )
+from .strict_offline_identity import strict_id_switch_provenance_is_verified
 
 
 FORMAL_R0_FULL_POSTERIOR_INPUT_SCHEMA_VERSION = (
@@ -381,6 +382,7 @@ def audit_formal_r0_full_posterior(
             ),
         },
         "source": core_result.get("source", {}),
+        "evaluator": aggregate["evaluator_provenance"],
         "execution_plan": core_result.get("execution_plan", {}),
         "execution_progress": core_result.get("execution_progress", {}),
         "canonical_scope": {
@@ -990,6 +992,14 @@ def required_evidence_gate_reasons(row: Mapping[str, Any]) -> list[str]:
     for field in _REQUIRED_EVIDENCE_FIELDS:
         if row.get(f"{field}_availability") != "available":
             reasons.append(f"required_evidence_unavailable:{field}")
+    if (
+        row.get("d2_id_switch_count_availability") == "available"
+        and not strict_id_switch_provenance_is_verified(row)
+    ):
+        reasons.append(
+            "required_evidence_invalid_strict_provenance:"
+            "d2_id_switch_count"
+        )
     return reasons
 
 
@@ -1053,6 +1063,12 @@ def aggregate_formal_r0_full_posterior_rows(
             "d2_id_switch_count",
             denominator=denominator,
         ),
+        "online_producer_id_switch_diagnostic": metric_availability_summary(
+            rows,
+            "d2_online_producer_id_switch_count",
+            denominator=denominator,
+        ),
+        "evaluator_provenance": _formal_evaluator_provenance(rows),
         "current_d3_d4_plan_binding": boolean_availability_summary(
             rows,
             "d4_current_d3_plan_binding_verified",
@@ -1120,6 +1136,12 @@ def metric_availability_summary(
             reason = row.get(f"{field}_unavailable_reason")
             unavailable_reasons[str(reason or "availability_not_available")] += 1
             continue
+        if (
+            field == "d2_id_switch_count"
+            and not strict_id_switch_provenance_is_verified(row)
+        ):
+            unavailable_reasons["strict_offline_provenance_not_verified"] += 1
+            continue
         value = row.get(field)
         if (
             not isinstance(value, (int, float))
@@ -1151,6 +1173,33 @@ def metric_availability_summary(
         "unavailable_reason_distribution": dict(
             sorted(unavailable_reasons.items())
         ),
+    }
+
+
+def _formal_evaluator_provenance(
+    rows: Sequence[Mapping[str, Any]],
+) -> dict[str, Any]:
+    def distinct(field: str) -> list[Any]:
+        return sorted(
+            {
+                row.get(field)
+                for row in rows
+                if row.get(field) is not None
+            },
+            key=str,
+        )
+
+    return {
+        "evaluator_schema_versions": distinct("d6_evaluator_schema_version"),
+        "evaluator_git_commits": distinct("d6_evaluator_git_commit"),
+        "evaluator_repository_dirty_values": distinct(
+            "d6_evaluator_repository_dirty"
+        ),
+        "evaluator_source_tree_sha256_values": distinct(
+            "d6_evaluator_source_tree_sha256"
+        ),
+        "episode_source_git_commits": distinct("episode_source_git_commit"),
+        "source_and_evaluator_provenance_separated": True,
     }
 
 
@@ -1339,6 +1388,7 @@ def compact_formal_r0_full_posterior_result(
         "canonical_scope": result.get("canonical_scope"),
         "merged_scope": result.get("merged_scope"),
         "comparison_availability": result.get("comparison_availability"),
+        "evaluator": result.get("evaluator"),
         "aggregate": result.get("aggregate"),
         "failure_reasons": result.get("failure_reasons"),
         "failed_cells": failed_cells,
@@ -1353,6 +1403,7 @@ def render_formal_r0_full_posterior_audit_markdown(
     aggregate = result.get("aggregate", {})
     boundary = result.get("scope_boundary", {})
     source = result.get("source", {})
+    evaluator = result.get("evaluator", {})
     plan = result.get("execution_plan", {})
     merged = result.get("merged_scope", {})
     lines = [
@@ -1374,6 +1425,11 @@ def render_formal_r0_full_posterior_audit_markdown(
             f"执行计划逻辑摘要为 `{plan.get('computed_logical_sha256')}`。"
         ),
         (
+            "本次 D6 评估器提交为 "
+            f"`{', '.join(evaluator.get('evaluator_git_commits', ())) or 'unavailable'}`，"
+            "与 episode 来源提交分别记录。"
+        ),
+        (
             "该结论只覆盖单臂 R0 的 900 项。完整父矩阵仍为 "
             f"{boundary.get('parent_matrix_completed_cell_count')}/"
             f"{boundary.get('parent_matrix_expected_cell_count')}，"
@@ -1386,7 +1442,7 @@ def render_formal_r0_full_posterior_audit_markdown(
         "2. 独立核对 20 个 shard plan、checkpoint、progress 和 900 个 cell result。",
         "3. 将 merged scope 的 manifest、episode index 和 CSV 仅作为待复核索引，逐项核对其 SHA-256、路径和身份。",
         "4. 逐 episode 重算 artifact tree，并从在线观测总线和 summary 重新评估真值隔离、有限状态、clean formal 和实验矩阵资格。",
-        "5. 重算 D1 发布代次、D2 消费代次、节拍前合并、末尾跳过、pending 和 generation integrity。缺值不补零，矛盾项失败关闭。",
+        "5. 重算 D1 发布代次、D2 消费代次、节拍前合并、末尾跳过、pending 和 generation integrity；身份交换只读取经清单、哈希和合同复核的真值隔离制品。缺值不补零，矛盾项失败关闭。",
         "6. 以最后 D3 计划为当前代次，逐区域核对最后 D4 的 plan_id、plan_version、可用的权威 epoch/lease 和当前联盟 ACK 闭合状态。旧代 committed 不计入当前计划通过。",
         "",
         "未读取 `merged_scope/d6_evaluation`、旧 `targeted_formal_d6` 或 episode 内 producer 生成的 `observation_governance_audit.json`。",
@@ -1412,7 +1468,11 @@ def render_formal_r0_full_posterior_audit_markdown(
     ]
     for label, field in (
         ("D2 末尾跳过", "skip"),
-        ("D2 身份交换", "id_switch_count"),
+        ("D2 严格离线身份交换", "id_switch_count"),
+        (
+            "D2 在线 producer 身份交换诊断",
+            "online_producer_id_switch_diagnostic",
+        ),
     ):
         item = aggregate.get(field, {})
         lines.append(
@@ -1580,6 +1640,21 @@ def _write_cell_csv(
         "observation_governance_generation_contract_status",
         "d2_id_switch_count",
         "d2_id_switch_count_availability",
+        "d2_id_switch_count_unavailable_reason",
+        "d2_online_producer_id_switch_count",
+        "d2_online_producer_id_switch_count_availability",
+        "d2_online_producer_id_switch_count_unavailable_reason",
+        "d2_id_switch_count_semantics",
+        "d2_id_switch_count_source_artifact",
+        "d2_strict_identity_artifact_verified",
+        "d2_strict_identity_verification_mode",
+        "d2_strict_identity_truth_isolation_verified",
+        "d2_strict_identity_id_switch_backfilled",
+        "episode_source_git_commit",
+        "d6_evaluator_schema_version",
+        "d6_evaluator_git_commit",
+        "d6_evaluator_repository_dirty",
+        "d6_evaluator_source_tree_sha256",
         "d4_advice_resource_quota_conservation_violation_count",
         "d4_advice_formal_decision_mutation_count",
         "d4_current_d3_plan_binding_verified",

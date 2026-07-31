@@ -1,5 +1,26 @@
 # D6 系统级离线评估：算法原理与实施说明
 
+## 严格身份交换汇总
+
+汇总入口先读取在线 `modules.d2.associated_tracks`，把 producer 声明写入在线诊断字段。
+随后独立打开 `d6_truth_isolated/manifest.json` 和 `episode_record.json`。公共
+`d2_id_switch_count` 在这一阶段尚无默认值。
+
+严格加载按以下顺序执行：
+
+1. 核对真值隔离 manifest schema、episode 标识、场景版本、seed 和目标/资源规模；
+2. 复算 episode record、离线身份 manifest 和 identity evaluation 的 SHA-256；
+3. 按离线身份 manifest 复算 online D1、online D2、观测真值标签和身份谱系证据哈希；
+4. 调用 D6 现有身份适配器复核评价 schema、策略、源记录语义、真值隔离和身份承诺；
+5. 将重验后的 D2 记录与 episode record 内的持久化记录逐字段比较；
+6. 仅在来源为离线身份评价、验证模式为 SHA-256 绑定、真值隔离通过且未回填时发布严格值。
+
+任一步失败均返回 null 和具体原因。合同完整但身份本身不可判定时，继续透传
+`multiple_truth_targets_for_global_track` 或
+`source_observation_outside_lineage_window`。正式后验审计按严格可用项统计，实验矩阵
+准入要求每个 cell 的严格值及来源合同同时可用。旧 v11 CSV 不具备来源字段，不能直接
+进入新准入流程。
+
 ## clean smoke 修复后只读复核（2026-07-31）
 
 D6 复用 `scalable_3d_offline` 和 `formal_r0_plan_binding_audit`，读取 clean commit

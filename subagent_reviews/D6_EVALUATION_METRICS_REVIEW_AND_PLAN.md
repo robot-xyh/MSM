@@ -1,5 +1,20 @@
 # D6 系统评估指标综述及子方案
 
+## 2026-07-31 严格离线身份交换接线评审
+
+评审接受 D6 对在线诊断和严格离线指标的分离。在线 D2 在无真值条件下继续发布
+unavailable，D6 不改变该合同。公共 ID Switch 只来自经 episode record 哈希、离线身份
+manifest、五类身份源制品和现有 D6 adapter 复核的离线 `d2_identity`。
+
+前 90 个正式 R0 episode 的既有制品给出 73 项可用、17 项失败关闭。16 项失败原因为
+一轨多真值，1 项为源观测超出谱系窗口。17 项没有写成 0。正式后验审计只统计严格可用
+项；矩阵准入还要求来源、真值隔离、哈希验证和非回填声明。episode source commit 与
+evaluator commit 分开记录。
+
+本次属于派生评估接线修复。既有仿真和执行计划无需重跑。main 应对当前 135 个 episode
+重新生成 per-episode CSV、aggregate JSON、formal posterior 和 post-run admission，再
+发布更新后的可用性分母。D6 不覆盖原 episode，也不把 17 项不可用样本移出分母。
+
 ## 2026-07-31 高威胁 clean smoke 修复后评审
 
 评审接受 clean commit `b063535` 的来源与核心合同证据。6 个 episode 的配置哈希、有限

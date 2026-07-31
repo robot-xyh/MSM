@@ -1,5 +1,25 @@
 # D6 Evaluation Metrics
 
+## 2026-07-31 严格离线身份交换接线
+
+`scalable_3d_offline` 已把两类含义分开。`d2_online_producer_id_switch_count`
+保留在线 D2 的原始诊断声明；在线链路没有真值时，该字段通常为 unavailable。
+公共 `d2_id_switch_count` 只表示严格离线身份交换，唯一来源是
+`d6_truth_isolated/episode_record.json` 中的 `d2_identity`。
+
+D6 在读取严格指标前核对真值隔离清单 schema、episode 身份和规模、episode record
+SHA-256、离线身份清单 SHA-256、身份评价及四类源文件 SHA-256，并复用现有 D2 身份
+适配器重验合同。重验结果必须与 episode record 中持久化的 `d2_identity` 完全一致，
+且 `strict_id_switch_backfilled=false`。旧版 CSV 只有同名数值而没有上述来源声明时，
+正式后验审计和实验矩阵准入不把它计为严格指标。
+
+正式 R0 clean source `80e55eb` 的前 90 个 episode 无需重跑仿真。既有真值隔离制品中
+73 项严格指标可用，17 项失败关闭；其中 16 项为
+`multiple_truth_targets_for_global_track`，1 项为
+`source_observation_outside_lineage_window`。17 项继续保持 null，不补 0。修复属于 D6
+派生汇总接线，现有 135 个 episode 可由 main 重新运行离线汇总、正式审计和矩阵准入。
+episode 来源提交与本次 D6 评估器提交、dirty 状态和评估器源码树摘要分别记录。
+
 ## 2026-07-31 高威胁 clean smoke 修复后复核
 
 D6 只读复核 clean commit `b063535c5473b67e41683f84c33c088ce5c7d41a` 生成的

@@ -18,6 +18,10 @@ from d6_evaluation_metrics.formal_r0_targeted_posterior_audit import (
     _progress_identity_reasons,
     load_formal_r0_targeted_posterior_audit_inputs,
 )
+from d6_evaluation_metrics.strict_offline_identity import (
+    STRICT_OFFLINE_ID_SWITCH_SEMANTICS,
+    STRICT_OFFLINE_ID_SWITCH_SOURCE,
+)
 
 
 SOURCE_COMMIT = "1e5ed8ddcf27f375e922a447decfbd875d21bfdf"
@@ -110,6 +114,22 @@ def _passing_row(index: int) -> dict[str, object]:
         row[field] = value
         row[f"{field}_availability"] = "available"
         row[f"{field}_unavailable_reason"] = None
+    return row
+
+
+def _strict_id_switch_row(index: int, value: int) -> dict[str, object]:
+    row = _passing_row(index)
+    row.update(
+        d2_id_switch_count=value,
+        d2_id_switch_count_availability="available",
+        d2_id_switch_count_unavailable_reason=None,
+        d2_id_switch_count_semantics=STRICT_OFFLINE_ID_SWITCH_SEMANTICS,
+        d2_id_switch_count_source_artifact=STRICT_OFFLINE_ID_SWITCH_SOURCE,
+        d2_strict_identity_artifact_verified=True,
+        d2_strict_identity_truth_isolation_verified=True,
+        d2_strict_identity_id_switch_backfilled=False,
+        d2_strict_identity_verification_mode="sha256_verified_artifact",
+    )
     return row
 
 
@@ -288,6 +308,46 @@ def test_full_aggregate_uses_900_denominator_and_preserves_idsw_null() -> None:
     assert aggregate["safety_zero_counts"]["online_truth_use_count"][
         "expected_zero_verified"
     ] is True
+
+
+def test_full_aggregate_counts_only_verified_strict_zero_and_nonzero() -> None:
+    rows = [_strict_id_switch_row(0, 0), _strict_id_switch_row(1, 5)]
+
+    aggregate = aggregate_formal_r0_full_posterior_rows(
+        rows,
+        expected_scope_cell_count=2,
+    )
+
+    identity = aggregate["id_switch_count"]
+    assert identity["availability"] == "available"
+    assert identity["available_cell_count"] == 2
+    assert identity["total"] == 5
+    assert identity["zero_cell_count"] == 1
+    assert identity["nonzero_cell_count"] == 1
+
+
+def test_full_aggregate_rejects_online_semantics_even_when_value_is_zero() -> None:
+    row = _passing_row(0)
+    row.update(
+        d2_id_switch_count=0,
+        d2_id_switch_count_availability="available",
+        d2_id_switch_count_unavailable_reason=None,
+    )
+
+    aggregate = aggregate_formal_r0_full_posterior_rows(
+        (row,),
+        expected_scope_cell_count=1,
+    )
+
+    identity = aggregate["id_switch_count"]
+    assert identity["available_cell_count"] == 0
+    assert identity["total"] is None
+    assert identity["unavailable_reason_distribution"] == {
+        "strict_offline_provenance_not_verified": 1
+    }
+    assert required_evidence_gate_reasons(row) == [
+        "required_evidence_invalid_strict_provenance:d2_id_switch_count"
+    ]
 
 
 def test_targeted_five_cell_config_remains_compatible() -> None:

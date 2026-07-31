@@ -31,6 +31,10 @@ from d6_evaluation_metrics.d1_centroid_overlay_shadow import (
     D1_CENTROID_OVERLAY_SHADOW_TIMING_STAGE,
     D1_CENTROID_OVERLAY_SHADOW_TOPIC,
 )
+from d6_evaluation_metrics.truth_isolated_offline import (
+    TruthIsolatedEpisodeContext,
+    build_truth_isolated_episode_record,
+)
 
 _STAGE_TIMING_V2_FIELDS = [
     "schema_version",
@@ -669,6 +673,179 @@ def _write_episode(
     return directory
 
 
+def _file_sha256(path: Path) -> str:
+    return f"sha256:{hashlib.sha256(path.read_bytes()).hexdigest()}"
+
+
+def _write_strict_identity_bundle(
+    episode: Path,
+    *,
+    id_switch_count: int | None,
+    unavailable_reason: str | None = None,
+) -> None:
+    """Write a minimal hash-bound v1 bundle accepted by the public D6 adapter."""
+
+    manifest = json.loads((episode / "manifest.json").read_text(encoding="utf-8"))
+    config = json.loads(
+        (episode / "scenario_config.json").read_text(encoding="utf-8")
+    )
+    identity_dir = episode / "offline_identity"
+    truth_dir = episode / "d6_truth_isolated"
+    identity_dir.mkdir()
+    truth_dir.mkdir()
+
+    source_files = {
+        "online_d1_records": "online_d1_records.jsonl",
+        "online_d2_records": "online_d2_records.jsonl",
+        "observation_truth_labels": "observation_truth_labels.jsonl",
+        "identity_evidence": "identity_evidence.json",
+    }
+    for name, filename in source_files.items():
+        path = identity_dir / filename
+        if filename.endswith(".jsonl"):
+            path.write_text(
+                json.dumps({"fixture_source": name}, sort_keys=True) + "\n",
+                encoding="utf-8",
+            )
+        else:
+            _write_json(path, {"fixture_source": name})
+    source_hashes = {
+        name: _file_sha256(identity_dir / filename)
+        for name, filename in source_files.items()
+    }
+
+    available = unavailable_reason is None
+    metric_values: dict[str, int | float | None] = {
+        "id_switch_count": id_switch_count if available else None,
+        "track_continuity": 0.8 if available else None,
+        "identity_continuity": 0.8 if available else None,
+        "coverage_continuity": 0.9 if available else None,
+        "duplicate_truth_to_track_count": 0 if available else None,
+    }
+    identity_metrics: dict[str, object] = {
+        "schema_version": "d2.scalable3d_identity_metrics.v1",
+        "evaluated_frame_count": 2,
+        "truth_metrics_available": available,
+        "truth_metrics_reason": unavailable_reason,
+        "continuity_available": available,
+        "continuity_reason": unavailable_reason,
+        "confusion_matrix": (
+            {"TGT-0001": {"GT-0001": 2}} if available else None
+        ),
+        "truth_frame_count": {"TGT-0001": 2} if available else {},
+        "truth_assigned_frame_count": {"TGT-0001": 2} if available else {},
+        "truth_identity_stable_frame_count": (
+            {"TGT-0001": 2} if available else {}
+        ),
+    }
+    for name, value in metric_values.items():
+        identity_metrics[name] = value
+        identity_metrics[f"{name}_available"] = available
+        identity_metrics[f"{name}_reason"] = unavailable_reason
+    identity_metrics["duplicate_assignment_count"] = metric_values[
+        "duplicate_truth_to_track_count"
+    ]
+    identity_metrics["duplicate_assignment_count_available"] = available
+    identity_metrics["duplicate_assignment_count_reason"] = unavailable_reason
+
+    identity_evaluation = {
+        "schema_version": "d2.scalable3d_identity_evaluation.v1",
+        "policy_version": "d2.scalable3d_identity_policy.v1",
+        "hash_algorithm": "sha256",
+        "episode_id": manifest["episode_id"],
+        "source_hashes": {
+            "online_d1_records": source_hashes["online_d1_records"],
+            "online_d2_records": source_hashes["online_d2_records"],
+            "observation_truth_labels": source_hashes[
+                "observation_truth_labels"
+            ],
+            "identity_evidence_bundle": source_hashes["identity_evidence"],
+        },
+        "configuration": {"metric_contract": "fixture-v1"},
+        "frames": [],
+        "metrics": identity_metrics,
+        "audit": {
+            "source_verification": (
+                "raw_source_hashes_and_record_sequences_verified"
+            ),
+            "online_truth_isolation_verified": True,
+            "identity_heuristics_used": False,
+            "available_mapping_count": 2 if available else 0,
+            "ambiguous_mapping_count": 0,
+            "unavailable_mapping_count": 0 if available else 2,
+        },
+    }
+    identity_evaluation_path = identity_dir / "identity_evaluation.json"
+    _write_json(identity_evaluation_path, identity_evaluation)
+    identity_evaluation_sha = _file_sha256(identity_evaluation_path)
+
+    identity_manifest = {
+        "schema_version": "scalable3d-offline-identity-evaluation-manifest-v1",
+        "available": True,
+        "reason": None,
+        "episode_id": manifest["episode_id"],
+        "source_hashes": {
+            **source_hashes,
+            "identity_evaluation": identity_evaluation_sha,
+        },
+        "online_truth_isolation_verified": True,
+        "identity_metrics_available": available,
+    }
+    identity_manifest_path = identity_dir / "manifest.json"
+    _write_json(identity_manifest_path, identity_manifest)
+    identity_manifest_sha = _file_sha256(identity_manifest_path)
+
+    context = TruthIsolatedEpisodeContext(
+        episode_id=str(manifest["episode_id"]),
+        scenario_id=str(config["scenario_name"]),
+        scenario_version=str(config["scenario_version"]),
+        run_id=str(manifest["episode_id"]),
+        seed=int(config["seed"]),
+        target_count=int(config["target_count"]),
+        resource_count=int(config["resource_count"]),
+        recon_count=int(config["recon_count"]),
+        camera_count=int(config["resource_count"]) + int(config["recon_count"]),
+    )
+    record = build_truth_isolated_episode_record(
+        context,
+        d1_result=None,
+        d2_evaluation=identity_evaluation_path,
+        d2_expected_sha256=identity_evaluation_sha,
+        d2_expected_source_hashes={
+            "online_d1_records": source_hashes["online_d1_records"],
+            "online_d2_records": source_hashes["online_d2_records"],
+            "observation_truth_labels": source_hashes[
+                "observation_truth_labels"
+            ],
+            "identity_evidence_bundle": source_hashes["identity_evidence"],
+        },
+        d2_identity_manifest=identity_manifest_path,
+        d2_expected_identity_manifest_sha256=identity_manifest_sha,
+        d2_online_d2_records=identity_dir / "online_d2_records.jsonl",
+        d2_expected_online_d2_records_sha256=source_hashes[
+            "online_d2_records"
+        ],
+    )
+    episode_record_path = truth_dir / "episode_record.json"
+    _write_json(episode_record_path, record.to_dict())
+    truth_manifest = {
+        "schema_version": "scalable3d-d6-truth-isolated-manifest-v1",
+        "episode_id": manifest["episode_id"],
+        "scenario_version": config["scenario_version"],
+        "seed": config["seed"],
+        "target_count": config["target_count"],
+        "resource_count": config["resource_count"],
+        "source_hashes": {
+            "offline_identity_evaluation": identity_evaluation_sha,
+            "offline_identity_manifest": identity_manifest_sha,
+        },
+        "output_hashes": {
+            "episode_record": _file_sha256(episode_record_path),
+        },
+    }
+    _write_json(truth_dir / "manifest.json", truth_manifest)
+
+
 def _replace_stage_timings(
     episode: Path,
     rows: list[dict[str, object]],
@@ -1171,7 +1348,10 @@ def test_normal_50v50_uses_explicit_scale_and_records_module_metrics(tmp_path: P
     assert row["d1_track_count"] == 50
     assert row["d2_track_count"] == 50
     assert row["d1_speed_p50_mps"] == pytest.approx(25.5)
-    assert row["d2_id_switch_count"] == 2
+    assert row["d2_id_switch_count"] is None
+    assert row["d2_id_switch_count_availability"] == "unavailable"
+    assert row["d2_online_producer_id_switch_count"] == 2
+    assert row["d2_online_producer_id_switch_count_availability"] == "available"
     assert row["d3_plan_coverage_rate"] == pytest.approx(1.0)
     assert row["d4_owner_records_json"][0]["owner_node_id"] == "C2-CENTER"
     assert row["d4_commit_state_distribution_json"] == {"committed": 1}
@@ -1191,14 +1371,14 @@ def test_current_schema_registry_matches_real_producer_contract(tmp_path: Path) 
 
     assert SCALABLE_3D_SCHEMA_REGISTRY_VERSION == "d6-scalable3d-schema-registry-v2"
     assert SCALABLE_3D_OFFLINE_EVALUATION_SCHEMA_VERSION == (
-        "d6-scalable3d-offline-evaluation-v11"
+        "d6-scalable3d-offline-evaluation-v12"
     )
     assert (
         SCALABLE_3D_STAGE_TIMING_SCHEMA_VERSION
         == "scalable3d-stage-timings-v2"
     )
-    assert SCALABLE_3D_OFFLINE_EVALUATION_DATE == "2026-07-29"
-    assert row["evaluation_date"] == "2026-07-29"
+    assert SCALABLE_3D_OFFLINE_EVALUATION_DATE == "2026-07-31"
+    assert row["evaluation_date"] == "2026-07-31"
     assert SCALABLE_3D_CURRENT_SCHEMA_REGISTRY == {
         "world_schema": "scalable3d-world-v1",
         "bus_schema": "scalable3d-episode-bus-v1",
@@ -2261,7 +2441,9 @@ def test_initial_195_then_200_min_dwell_hold_reports_five_track_backlog(
     }
 
 
-def test_missing_d2_id_switch_is_null_with_producer_reason(tmp_path: Path) -> None:
+def test_missing_strict_d2_id_switch_preserves_online_producer_reason(
+    tmp_path: Path,
+) -> None:
     episode = _write_episode(tmp_path / "idsw_unavailable")
 
     row = evaluate_scalable_3d_episode(episode)
@@ -2270,8 +2452,141 @@ def test_missing_d2_id_switch_is_null_with_producer_reason(tmp_path: Path) -> No
     assert row["d2_id_switch_count_availability"] == "unavailable"
     assert (
         row["d2_id_switch_count_unavailable_reason"]
+        == "strict_offline_artifact_missing:d6_truth_isolated/manifest.json"
+    )
+    assert row["d2_online_producer_id_switch_count"] is None
+    assert (
+        row["d2_online_producer_id_switch_count_unavailable_reason"]
         == "producer_declared_id_switch_count_unavailable"
     )
+
+
+@pytest.mark.parametrize("strict_value", [0, 3])
+def test_strict_offline_id_switch_accepts_zero_and_nonzero_without_online_truth(
+    tmp_path: Path,
+    strict_value: int,
+) -> None:
+    episode = _write_episode(tmp_path / f"strict_{strict_value}")
+    _write_strict_identity_bundle(episode, id_switch_count=strict_value)
+
+    row = evaluate_scalable_3d_episode(episode)
+
+    assert row["d2_id_switch_count"] == strict_value
+    assert row["d2_id_switch_count_availability"] == "available"
+    assert row["d2_id_switch_count_semantics"] == (
+        "strict_offline_truth_isolated_d2_identity"
+    )
+    assert row["d2_strict_identity_artifact_verified"] is True
+    assert row["d2_strict_identity_truth_isolation_verified"] is True
+    assert row["d2_strict_identity_id_switch_backfilled"] is False
+    assert row["d2_online_producer_id_switch_count"] is None
+    assert (
+        row["d2_online_producer_id_switch_count_availability"] == "unavailable"
+    )
+
+
+@pytest.mark.parametrize(
+    "unavailable_reason",
+    [
+        "multiple_truth_targets_for_global_track",
+        "source_observation_outside_lineage_window",
+    ],
+)
+def test_strict_offline_unavailable_reason_passes_through_without_zero_backfill(
+    tmp_path: Path,
+    unavailable_reason: str,
+) -> None:
+    episode = _write_episode(tmp_path / unavailable_reason)
+    _write_strict_identity_bundle(
+        episode,
+        id_switch_count=None,
+        unavailable_reason=unavailable_reason,
+    )
+
+    row = evaluate_scalable_3d_episode(episode)
+
+    assert row["d2_id_switch_count"] is None
+    assert row["d2_id_switch_count_availability"] == "unavailable"
+    assert row["d2_id_switch_count_unavailable_reason"] == unavailable_reason
+    assert row["d2_strict_identity_artifact_verified"] is True
+    assert row["d2_strict_identity_id_switch_backfilled"] is False
+
+
+def test_strict_offline_episode_record_hash_corruption_fails_closed(
+    tmp_path: Path,
+) -> None:
+    episode = _write_episode(tmp_path / "record_hash_corrupt")
+    _write_strict_identity_bundle(episode, id_switch_count=0)
+    record_path = episode / "d6_truth_isolated" / "episode_record.json"
+    record_path.write_text(
+        record_path.read_text(encoding="utf-8") + " ",
+        encoding="utf-8",
+    )
+
+    row = evaluate_scalable_3d_episode(episode)
+
+    assert row["d2_id_switch_count"] is None
+    assert row["d2_id_switch_count_unavailable_reason"] == (
+        "strict_offline_artifact_sha256_mismatch:"
+        "d6_truth_isolated/episode_record.json"
+    )
+    assert row["d2_strict_identity_artifact_verified"] is False
+
+
+def test_strict_offline_identity_manifest_hash_corruption_fails_closed(
+    tmp_path: Path,
+) -> None:
+    episode = _write_episode(tmp_path / "manifest_hash_corrupt")
+    _write_strict_identity_bundle(episode, id_switch_count=4)
+    manifest_path = episode / "offline_identity" / "manifest.json"
+    payload = json.loads(manifest_path.read_text(encoding="utf-8"))
+    payload["fixture_tamper"] = True
+    _write_json(manifest_path, payload)
+
+    row = evaluate_scalable_3d_episode(episode)
+
+    assert row["d2_id_switch_count"] is None
+    assert row["d2_id_switch_count_unavailable_reason"] == (
+        "strict_offline_artifact_sha256_mismatch:offline_identity/manifest.json"
+    )
+    assert row["d2_strict_identity_artifact_verified"] is False
+
+
+@pytest.mark.parametrize(
+    ("field", "value", "reason"),
+    [
+        (
+            "schema_version",
+            "unsupported-truth-manifest-v9",
+            "strict_offline_contract_unsupported:"
+            "d6_truth_isolated/manifest.json",
+        ),
+        (
+            "episode_id",
+            "wrong-episode",
+            "strict_offline_context_mismatch:"
+            "d6_truth_isolated/manifest.json:episode_id",
+        ),
+    ],
+)
+def test_strict_offline_manifest_schema_and_episode_identity_fail_closed(
+    tmp_path: Path,
+    field: str,
+    value: str,
+    reason: str,
+) -> None:
+    episode = _write_episode(tmp_path / field)
+    _write_strict_identity_bundle(episode, id_switch_count=0)
+    manifest_path = episode / "d6_truth_isolated" / "manifest.json"
+    payload = json.loads(manifest_path.read_text(encoding="utf-8"))
+    payload[field] = value
+    _write_json(manifest_path, payload)
+
+    row = evaluate_scalable_3d_episode(episode)
+
+    assert row["d2_id_switch_count"] is None
+    assert row["d2_id_switch_count_unavailable_reason"] == reason
+    assert row["d2_strict_identity_artifact_verified"] is False
 
 
 def test_missing_track_covariance_is_unavailable_instead_of_zero(tmp_path: Path) -> None:
