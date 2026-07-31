@@ -77,6 +77,9 @@ EXPERIMENT_MATRIX_SCOPE_MERGE_SCHEMA = (
 EXPERIMENT_MATRIX_SHARD_STORAGE_VALIDATION_SCHEMA = (
     "scalable3d-experiment-matrix-shard-storage-validation-v1"
 )
+EXPERIMENT_MATRIX_SHARD_MERGE_FRAGMENT_SCHEMA = (
+    "scalable3d-experiment-matrix-shard-merge-fragment-v1"
+)
 EXPERIMENT_MATRIX_MODEL_BUNDLE_BINDING_SCHEMA = (
     "scalable3d-experiment-matrix-model-bundle-binding-v1"
 )
@@ -836,6 +839,125 @@ def validate_experiment_matrix_shard_for_storage(
     }
 
 
+def collect_experiment_matrix_shard_merge_fragment(
+    *,
+    execution_plan_path: str | Path,
+    shard_index: int,
+    execution_root: str | Path | None = None,
+) -> dict[str, Any]:
+    """Validate one complete shard and return its deterministic merge data.
+
+    ``execution_root`` may point at a temporary archive restoration.  Paths
+    inside the shard remain bound to the canonical relative layout from the
+    execution plan, so a staged root must contain ``shards/<shard_id>``.
+    """
+
+    plan_path = Path(execution_plan_path).resolve()
+    execution = load_experiment_matrix_execution_plan(plan_path)
+    descriptors = execution["sharding"]["shards"]
+    index = int(shard_index)
+    if index < 0 or index >= len(descriptors):
+        raise ValueError("shard_index is out of range")
+    selected_root = (
+        Path(execution_root).resolve()
+        if execution_root is not None
+        else plan_path.parent
+    )
+    return _collect_experiment_matrix_shard_merge_fragment(
+        selected_root,
+        execution,
+        descriptors[index],
+    )
+
+
+def validate_experiment_matrix_execution_source(
+    *,
+    root: str | Path,
+    execution_plan_path: str | Path,
+) -> dict[str, Any]:
+    """Validate the checkout used to merge one frozen execution plan."""
+
+    execution = load_experiment_matrix_execution_plan(execution_plan_path)
+    _validate_source_state(Path(root).resolve(), execution)
+    return execution
+
+
+def _collect_experiment_matrix_shard_merge_fragment(
+    execution_root: Path,
+    execution: Mapping[str, Any],
+    descriptor: Mapping[str, Any],
+) -> dict[str, Any]:
+    index = int(descriptor["shard_index"])
+    shard_dir = (
+        execution_root / "shards" / str(descriptor["shard_id"])
+    )
+    expected_cells = [
+        cell
+        for cell in execution["scope"]["cells"]
+        if int(cell["shard_index"]) == index
+    ]
+    _validate_static_shard_plan(
+        shard_dir,
+        execution=execution,
+        descriptor=descriptor,
+        expected_cells=expected_cells,
+    )
+    progress = _load_and_validate_progress(
+        execution_root,
+        shard_dir,
+        execution,
+        expected_cells,
+    )
+    checkpoint_path = shard_dir / _SHARD_CHECKPOINT_FILENAME
+    checkpoint = _load_checkpoint(checkpoint_path)
+    _validate_checkpoint_binding(
+        checkpoint,
+        execution=execution,
+        descriptor=descriptor,
+    )
+    if checkpoint.get("status") != "complete":
+        raise ExperimentMatrixShardError(
+            f"shard is not complete: {descriptor['shard_id']}"
+        )
+    if len(progress) != len(expected_cells):
+        raise ExperimentMatrixShardError(
+            f"shard progress is incomplete: {descriptor['shard_id']}"
+        )
+    if int(checkpoint.get("completed_cell_count", -1)) != len(
+        expected_cells
+    ):
+        raise ExperimentMatrixShardError(
+            f"shard completion count mismatch: {descriptor['shard_id']}"
+        )
+    progress_path = shard_dir / _SHARD_PROGRESS_FILENAME
+    if checkpoint.get("progress_sha256") != _sha256_file(progress_path):
+        raise ExperimentMatrixShardError(
+            f"shard progress digest mismatch: {descriptor['shard_id']}"
+        )
+    merged_rows = [_merged_cell_row(execution_root, row) for row in progress]
+    return {
+        "schema_version": EXPERIMENT_MATRIX_SHARD_MERGE_FRAGMENT_SCHEMA,
+        "execution_plan_sha256": execution["execution_plan_sha256"],
+        "shard_index": index,
+        "shard_id": descriptor["shard_id"],
+        "progress": progress,
+        "merged_rows": merged_rows,
+        "episode_relative_paths": [
+            row["episode_relative_path"] for row in merged_rows
+        ],
+        "shard_digest": {
+            "shard_index": index,
+            "shard_id": descriptor["shard_id"],
+            "cell_count": len(progress),
+            "shard_plan_sha256": _sha256_file(
+                shard_dir / _SHARD_PLAN_FILENAME
+            ),
+            "progress_sha256": _sha256_file(progress_path),
+            "checkpoint_sha256": _sha256_file(checkpoint_path),
+        },
+    }
+
+
 def merge_experiment_matrix_shards(
     *,
     root: str | Path,
@@ -857,67 +979,19 @@ def merge_experiment_matrix_shards(
     _validate_source_state(repository_root, execution)
     execution_root = plan_path.parent
     expected_scope = list(execution["scope"]["cells"])
-    all_progress: list[dict[str, Any]] = []
-    shard_digests: list[dict[str, Any]] = []
+    fragments: list[dict[str, Any]] = []
     for descriptor in execution["sharding"]["shards"]:
-        shard_dir = (
-            execution_root / "shards" / str(descriptor["shard_id"])
-        )
-        expected_cells = [
-            cell
-            for cell in expected_scope
-            if int(cell["shard_index"]) == int(descriptor["shard_index"])
-        ]
-        _validate_static_shard_plan(
-            shard_dir,
-            execution=execution,
-            descriptor=descriptor,
-            expected_cells=expected_cells,
-        )
-        progress = _load_and_validate_progress(
-            execution_root,
-            shard_dir,
-            execution,
-            expected_cells,
-        )
-        checkpoint_path = shard_dir / _SHARD_CHECKPOINT_FILENAME
-        checkpoint = _load_checkpoint(checkpoint_path)
-        _validate_checkpoint_binding(
-            checkpoint,
-            execution=execution,
-            descriptor=descriptor,
-        )
-        if checkpoint.get("status") != "complete":
-            raise ExperimentMatrixShardError(
-                f"shard is not complete: {descriptor['shard_id']}"
+        fragments.append(
+            _collect_experiment_matrix_shard_merge_fragment(
+                execution_root,
+                execution,
+                descriptor,
             )
-        if int(checkpoint.get("completed_cell_count", -1)) != len(
-            expected_cells
-        ):
-            raise ExperimentMatrixShardError(
-                f"shard completion count mismatch: {descriptor['shard_id']}"
-            )
-        if checkpoint.get("progress_sha256") != _sha256_file(
-            shard_dir / _SHARD_PROGRESS_FILENAME
-        ):
-            raise ExperimentMatrixShardError(
-                f"shard progress digest mismatch: {descriptor['shard_id']}"
-            )
-        all_progress.extend(progress)
-        shard_digests.append(
-            {
-                "shard_index": descriptor["shard_index"],
-                "shard_id": descriptor["shard_id"],
-                "cell_count": len(progress),
-                "shard_plan_sha256": _sha256_file(
-                    shard_dir / _SHARD_PLAN_FILENAME
-                ),
-                "progress_sha256": _sha256_file(
-                    shard_dir / _SHARD_PROGRESS_FILENAME
-                ),
-                "checkpoint_sha256": _sha256_file(checkpoint_path),
-            }
         )
+    all_progress = [
+        row for fragment in fragments for row in fragment["progress"]
+    ]
+    shard_digests = [fragment["shard_digest"] for fragment in fragments]
 
     ordered = sorted(all_progress, key=lambda row: int(row["scope_index"]))
     if [row["cell_id"] for row in ordered] != [
@@ -980,10 +1054,10 @@ def merge_experiment_matrix_shards(
     cells_path = destination / "experiment_matrix_scope_cells.csv"
     episode_dirs_path = destination / "episode_dirs.json"
     _write_json_atomic(manifest_path, manifest)
-    rows = [
-        _merged_cell_row(execution_root, row)
-        for row in ordered
-    ]
+    rows = sorted(
+        [row for fragment in fragments for row in fragment["merged_rows"]],
+        key=lambda row: int(row["scope_index"]),
+    )
     _write_rows_atomic(cells_path, rows)
     episode_relative_paths = [
         row["episode_relative_path"] for row in rows
@@ -2704,16 +2778,19 @@ __all__ = [
     "EXPERIMENT_MATRIX_SHARD_CHECKPOINT_SCHEMA",
     "EXPERIMENT_MATRIX_SHARD_PLAN_SCHEMA",
     "EXPERIMENT_MATRIX_SHARD_PROGRESS_SCHEMA",
+    "EXPERIMENT_MATRIX_SHARD_MERGE_FRAGMENT_SCHEMA",
     "EXPERIMENT_MATRIX_SHARD_STORAGE_VALIDATION_SCHEMA",
     "FORMAL_PARENT_EXPECTED_CELL_COUNT",
     "FORMAL_R0_DEFAULT_MINIMUM_FREE_BYTES",
     "FORMAL_R0_DEFAULT_SHARD_COUNT",
     "FORMAL_R0_EXPECTED_CELL_COUNT",
     "ExperimentMatrixShardError",
+    "collect_experiment_matrix_shard_merge_fragment",
     "create_experiment_matrix_execution_plan",
     "create_formal_r0_execution_plan",
     "load_experiment_matrix_execution_plan",
     "merge_experiment_matrix_shards",
     "run_experiment_matrix_shard",
+    "validate_experiment_matrix_execution_source",
     "validate_experiment_matrix_shard_for_storage",
 ]

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import argparse
+import csv
 from datetime import datetime, timezone
 import hashlib
 import json
@@ -11,6 +12,7 @@ from pathlib import Path, PurePosixPath
 import shutil
 import subprocess
 import tarfile
+import tempfile
 from typing import Any, Mapping, Sequence
 
 from research_modules.scalable_3d_simulation.artifact_archive import (
@@ -18,10 +20,16 @@ from research_modules.scalable_3d_simulation.artifact_archive import (
     ArtifactArchiveError,
     inventory_artifact_tree,
 )
+from research_modules.scalable_3d_simulation.experiment_matrix import (
+    EXPERIMENT_MATRIX_SCHEMA_VERSION,
+    PAIRED_SENSOR_RANDOM_SCHEDULE_VERSION,
+)
 from research_modules.scalable_3d_simulation.experiment_matrix_sharding import (
     EXPERIMENT_MATRIX_SHARD_STORAGE_VALIDATION_SCHEMA,
     FORMAL_R0_DEFAULT_MINIMUM_FREE_BYTES,
+    collect_experiment_matrix_shard_merge_fragment,
     load_experiment_matrix_execution_plan,
+    validate_experiment_matrix_execution_source,
     validate_experiment_matrix_shard_for_storage,
 )
 
@@ -36,6 +44,13 @@ FORMAL_SHARD_ARCHIVE_FORMAT = "deterministic-pax-tar-zstd-v1"
 FORMAL_SHARD_ARCHIVE_PAYLOAD_FILENAME = "shard_payload.tar.zst"
 FORMAL_SHARD_ARCHIVE_MANIFEST_FILENAME = "shard_archive_manifest.json"
 FORMAL_SHARD_ARCHIVE_CHECKSUM_FILENAME = "SHA256SUMS"
+FORMAL_SHARD_ARCHIVE_SCOPE_MERGE_SCHEMA = (
+    "scalable3d-formal-shard-archive-scope-merge-v1"
+)
+FORMAL_SHARD_ARCHIVE_D6_BINDING_SCHEMA = (
+    "scalable3d-formal-shard-archive-d6-binding-v1"
+)
+FORMAL_SHARD_ARCHIVE_STORAGE_MODE = "verified_formal_shard_archives_v1"
 DEFAULT_ZSTD_COMPRESSION_LEVEL = 10
 _ARCHIVE_CAPACITY_OVERHEAD_BYTES = 16 * 1024**2
 _HEX64 = frozenset("0123456789abcdef")
@@ -478,6 +493,539 @@ def restore_verified_formal_shard_archive(
         "restored_tree_sha256": manifest["inventory"]["tree_sha256"],
         "source_deletion_performed": False,
     }
+
+
+def merge_verified_formal_shard_archives(
+    *,
+    repository_root: str | Path,
+    execution_plan_path: str | Path,
+    archive_root: str | Path,
+    output_dir: str | Path | None = None,
+    staging_root: str | Path | None = None,
+    write_d6_report: bool = False,
+    minimum_free_bytes: int = FORMAL_R0_DEFAULT_MINIMUM_FREE_BYTES,
+) -> dict[str, Any]:
+    """Merge a complete scope while restoring at most one shard at a time.
+
+    Every archive is fully verified, restored into an isolated temporary
+    execution root, validated through the ordinary shard merge contract, and
+    removed before the next shard is staged.  Canonical shards and archives
+    are never deleted or modified by this function.
+    """
+
+    plan_path = _require_file(execution_plan_path, label="execution plan")
+    execution = validate_experiment_matrix_execution_source(
+        root=repository_root,
+        execution_plan_path=plan_path,
+    )
+    archives = _require_directory(
+        archive_root,
+        label="formal shard archive root",
+    )
+    descriptors = list(execution["sharding"]["shards"])
+    expected_archive_names = {
+        str(descriptor["shard_id"]) for descriptor in descriptors
+    }
+    archive_root_entries = tuple(archives.iterdir())
+    symbolic_links = sorted(
+        entry.name for entry in archive_root_entries if entry.is_symlink()
+    )
+    if symbolic_links:
+        raise FormalShardArchiveError(
+            "formal shard archive root contains symbolic links: "
+            f"{symbolic_links[:3]}"
+        )
+    actual_archive_names = {
+        entry.name for entry in archive_root_entries if entry.is_dir()
+    }
+    if actual_archive_names != expected_archive_names:
+        missing = sorted(expected_archive_names - actual_archive_names)
+        unexpected = sorted(actual_archive_names - expected_archive_names)
+        raise FormalShardArchiveError(
+            "formal shard archive directory set does not match the execution "
+            "plan: "
+            f"missing={missing[:3]}, unexpected={unexpected[:3]}"
+        )
+
+    destination = (
+        Path(output_dir).expanduser().resolve()
+        if output_dir is not None
+        else plan_path.parent / "merged_scope_from_archives"
+    )
+    if destination.exists():
+        raise FileExistsError(
+            f"formal archive merge output already exists: {destination}"
+        )
+    if _is_relative_to(destination, archives):
+        raise FormalShardArchiveError(
+            "formal archive merge output must be outside the archive root"
+        )
+    destination.parent.mkdir(parents=True, exist_ok=True)
+    partial = destination.parent / f".{destination.name}.partial"
+    if partial.exists():
+        raise FormalShardArchiveError(
+            f"partial formal archive merge already exists: {partial}"
+        )
+
+    if staging_root is None:
+        staging_parent = destination.parent
+    else:
+        unresolved_staging = Path(staging_root).expanduser()
+        if unresolved_staging.is_symlink():
+            raise FormalShardArchiveError(
+                "formal archive merge staging root must not be a symbolic link"
+            )
+        staging_parent = unresolved_staging.resolve()
+    if _is_relative_to(staging_parent, archives):
+        raise FormalShardArchiveError(
+            "formal archive merge staging root must be outside the archive root"
+        )
+    if _is_relative_to(staging_parent, destination) or _is_relative_to(
+        staging_parent,
+        partial,
+    ):
+        raise FormalShardArchiveError(
+            "formal archive merge staging root must not overlap the output "
+            "or its partial publication directory"
+        )
+    staging_parent.mkdir(parents=True, exist_ok=True)
+    free_floor = _minimum_free_bytes(minimum_free_bytes)
+
+    fragments: list[dict[str, Any]] = []
+    archive_bindings: list[dict[str, Any]] = []
+    d6_rows_by_scope: list[tuple[int, dict[str, Any]]] = []
+    zstd_path, _ = _zstd_runtime()
+    try:
+        partial.mkdir()
+        for descriptor in descriptors:
+            index = int(descriptor["shard_index"])
+            shard_id = str(descriptor["shard_id"])
+            archive = _require_directory(
+                archives / shard_id,
+                label=f"formal shard archive {shard_id}",
+            )
+            verification = verify_formal_shard_archive(
+                archive,
+                execution_plan_path=plan_path,
+                shard_index=index,
+            )
+            archive_manifest = _read_json_object(
+                archive / FORMAL_SHARD_ARCHIVE_MANIFEST_FILENAME
+            )
+            _require_restore_capacity(
+                staging_parent,
+                archive_manifest["inventory"],
+                minimum_free_bytes=free_floor,
+            )
+            with tempfile.TemporaryDirectory(
+                prefix=f".{shard_id}.archive-merge-",
+                dir=staging_parent,
+            ) as temporary_name:
+                staged_execution_root = Path(temporary_name).resolve()
+                staged_shard = (
+                    staged_execution_root / "shards" / shard_id
+                )
+                staged_shard.mkdir(parents=True)
+                _verify_tar_zst_payload(
+                    archive / FORMAL_SHARD_ARCHIVE_PAYLOAD_FILENAME,
+                    archive_manifest["inventory"],
+                    zstd_path=zstd_path,
+                    restore_root=staged_shard,
+                )
+                if inventory_artifact_tree(staged_shard) != archive_manifest[
+                    "inventory"
+                ]:
+                    raise FormalShardArchiveError(
+                        "staged formal shard inventory does not match the archive"
+                    )
+                fragment = collect_experiment_matrix_shard_merge_fragment(
+                    execution_plan_path=plan_path,
+                    shard_index=index,
+                    execution_root=staged_execution_root,
+                )
+                _validate_archive_merge_fragment_binding(
+                    fragment,
+                    archive_manifest,
+                )
+                if write_d6_report:
+                    d6_rows_by_scope.extend(
+                        _evaluate_staged_fragment_for_d6(
+                            fragment,
+                            staged_execution_root=staged_execution_root,
+                            canonical_execution_root=plan_path.parent,
+                        )
+                    )
+                fragments.append(fragment)
+            archive_bindings.append(
+                _archive_merge_binding(
+                    archive,
+                    verification=verification,
+                    archive_manifest=archive_manifest,
+                    shard_digest=fragment["shard_digest"],
+                )
+            )
+
+        output_paths = _write_archive_scope_merge_bundle(
+            partial,
+            execution=execution,
+            fragments=fragments,
+            archive_bindings=archive_bindings,
+            d6_rows_by_scope=(
+                d6_rows_by_scope if write_d6_report else None
+            ),
+        )
+        if shutil.disk_usage(destination.parent).free < free_floor:
+            raise FormalShardArchiveError(
+                "formal archive merge crossed the requested free-space floor"
+            )
+        relative_outputs = {
+            name: path.relative_to(partial)
+            for name, path in output_paths.items()
+        }
+        os.replace(partial, destination)
+    except Exception:
+        shutil.rmtree(partial, ignore_errors=True)
+        raise
+
+    return {
+        "schema_version": FORMAL_SHARD_ARCHIVE_SCOPE_MERGE_SCHEMA,
+        "status": "verified_archive_scope_merged",
+        "execution_plan_sha256": execution["execution_plan_sha256"],
+        "shard_count": len(descriptors),
+        "scope_cell_count": int(execution["scope"]["cell_count"]),
+        "peak_restored_shard_count": 1,
+        "archive_source_preserved": True,
+        "canonical_source_deletion_performed": False,
+        "output": str(destination),
+        "paths": {
+            name: str(destination / relative)
+            for name, relative in relative_outputs.items()
+        },
+    }
+
+
+def _validate_archive_merge_fragment_binding(
+    fragment: Mapping[str, Any],
+    archive_manifest: Mapping[str, Any],
+) -> None:
+    binding = archive_manifest.get("binding")
+    if not isinstance(binding, Mapping):
+        raise FormalShardArchiveError(
+            "formal shard archive binding is missing during merge"
+        )
+    digest = fragment.get("shard_digest")
+    if not isinstance(digest, Mapping):
+        raise FormalShardArchiveError(
+            "formal shard merge fragment digest is missing"
+        )
+    for field in (
+        "shard_index",
+        "shard_id",
+        "shard_plan_sha256",
+        "progress_sha256",
+        "checkpoint_sha256",
+    ):
+        if digest.get(field) != binding.get(field):
+            raise FormalShardArchiveError(
+                f"staged shard merge fragment binding mismatch: {field}"
+            )
+    if digest.get("cell_count") != binding.get("completed_cell_count"):
+        raise FormalShardArchiveError(
+            "staged shard merge fragment binding mismatch: cell_count"
+        )
+
+
+def _evaluate_staged_fragment_for_d6(
+    fragment: Mapping[str, Any],
+    *,
+    staged_execution_root: Path,
+    canonical_execution_root: Path,
+) -> list[tuple[int, dict[str, Any]]]:
+    from research_modules.d6_evaluation_metrics.d6_evaluation_metrics.scalable_3d_offline import (
+        evaluate_scalable_3d_episode,
+    )
+
+    merged_rows = fragment.get("merged_rows")
+    if not isinstance(merged_rows, list):
+        raise FormalShardArchiveError(
+            "formal shard merge fragment rows are missing"
+        )
+    evaluated: list[tuple[int, dict[str, Any]]] = []
+    for merged_row in merged_rows:
+        relative = str(merged_row["episode_relative_path"])
+        staged_episode = (staged_execution_root / relative).resolve()
+        row = evaluate_scalable_3d_episode(staged_episode)
+        row["episode_dir"] = str(
+            (canonical_execution_root / relative).resolve()
+        )
+        evaluated.append((int(merged_row["scope_index"]), row))
+    return evaluated
+
+
+def _archive_merge_binding(
+    archive: Path,
+    *,
+    verification: Mapping[str, Any],
+    archive_manifest: Mapping[str, Any],
+    shard_digest: Mapping[str, Any],
+) -> dict[str, Any]:
+    return {
+        **dict(shard_digest),
+        "archive": {
+            "directory_name": archive.name,
+            "archive_format": archive_manifest["archive_format"],
+            "archive_manifest_sha256": _sha256_file(
+                archive / FORMAL_SHARD_ARCHIVE_MANIFEST_FILENAME
+            ),
+            "archive_checksum_file_sha256": _sha256_file(
+                archive / FORMAL_SHARD_ARCHIVE_CHECKSUM_FILENAME
+            ),
+            "payload_sha256": verification["archive_sha256"],
+            "payload_tree_sha256": verification[
+                "payload_tree_sha256"
+            ],
+            "archive_size_bytes": int(verification["archive_size_bytes"]),
+            "file_count": int(verification["file_count"]),
+            "total_size_bytes": int(verification["total_size_bytes"]),
+        },
+    }
+
+
+def _write_archive_scope_merge_bundle(
+    destination: Path,
+    *,
+    execution: Mapping[str, Any],
+    fragments: Sequence[Mapping[str, Any]],
+    archive_bindings: Sequence[Mapping[str, Any]],
+    d6_rows_by_scope: Sequence[tuple[int, Mapping[str, Any]]] | None,
+) -> dict[str, Path]:
+    expected_scope = list(execution["scope"]["cells"])
+    progress = sorted(
+        [row for fragment in fragments for row in fragment["progress"]],
+        key=lambda row: int(row["scope_index"]),
+    )
+    if [row["cell_id"] for row in progress] != [
+        cell["cell_id"] for cell in expected_scope
+    ]:
+        raise FormalShardArchiveError(
+            "archive merge cells are missing, duplicated, or out of scope"
+        )
+    if len({row["cell_id"] for row in progress}) != len(expected_scope):
+        raise FormalShardArchiveError(
+            "archive merge contains duplicate cells"
+        )
+    rows = sorted(
+        [row for fragment in fragments for row in fragment["merged_rows"]],
+        key=lambda row: int(row["scope_index"]),
+    )
+    if [int(row["scope_index"]) for row in rows] != list(
+        range(len(expected_scope))
+    ):
+        raise FormalShardArchiveError(
+            "archive merge rows are not in canonical scope order"
+        )
+    episode_relative_paths = [
+        str(row["episode_relative_path"]) for row in rows
+    ]
+    parent_count = int(execution["parent"]["full_cell_count"])
+    scope_count = int(execution["scope"]["cell_count"])
+    parent_formal = bool(execution["parent"]["formal"])
+    full_matrix_complete = scope_count == parent_count
+    manifest = {
+        "schema_version": FORMAL_SHARD_ARCHIVE_SCOPE_MERGE_SCHEMA,
+        "storage_mode": FORMAL_SHARD_ARCHIVE_STORAGE_MODE,
+        "source_git_commit": execution["source"]["git_commit"],
+        "source_repository_dirty": execution["source"][
+            "repository_dirty"
+        ],
+        "execution_plan_sha256": execution["execution_plan_sha256"],
+        "parent_plan_sha256": execution["parent"]["plan_sha256"],
+        "parent_formal": parent_formal,
+        "parent_full_cell_count": parent_count,
+        "scope_variants": list(execution["scope"]["variants"]),
+        "scope_expected_cell_count": scope_count,
+        "scope_completed_cell_count": len(rows),
+        "scope_complete": len(rows) == scope_count,
+        "formal_scope_complete": parent_formal and len(rows) == scope_count,
+        "full_matrix_complete": full_matrix_complete,
+        "formal_matrix_complete": parent_formal and full_matrix_complete,
+        "legacy_full_matrix_manifest_written": full_matrix_complete,
+        "shard_strategy": execution["sharding"]["strategy"],
+        "shard_count": execution["sharding"]["shard_count"],
+        "shards": [dict(value) for value in archive_bindings],
+        "paired_random_schedule_version": (
+            PAIRED_SENSOR_RANDOM_SCHEDULE_VERSION
+        ),
+        "canonical_episode_directories_materialized": False,
+        "archive_set_complete": len(archive_bindings)
+        == int(execution["sharding"]["shard_count"]),
+        "peak_restored_shard_count": 1,
+        "status": (
+            "formal_matrix_complete"
+            if parent_formal and full_matrix_complete
+            else (
+                "formal_scope_complete"
+                if parent_formal
+                else "development_scope_complete"
+            )
+        ),
+    }
+    manifest_path = destination / "experiment_matrix_scope_manifest.json"
+    cells_path = destination / "experiment_matrix_scope_cells.csv"
+    episode_dirs_path = destination / "episode_dirs.json"
+    _write_rows_csv_atomic(cells_path, rows)
+    _write_json_atomic(
+        episode_dirs_path,
+        {
+            "schema_version": FORMAL_SHARD_ARCHIVE_SCOPE_MERGE_SCHEMA,
+            "storage_mode": FORMAL_SHARD_ARCHIVE_STORAGE_MODE,
+            "execution_plan_sha256": execution["execution_plan_sha256"],
+            "episode_count": len(episode_relative_paths),
+            "canonical_directories_materialized": False,
+            "paths_relative_to_execution_root": episode_relative_paths,
+        },
+    )
+    paths: dict[str, Path] = {
+        "cells": cells_path,
+        "episode_dirs": episode_dirs_path,
+    }
+    if d6_rows_by_scope is not None:
+        ordered_d6 = sorted(d6_rows_by_scope, key=lambda item: item[0])
+        if [index for index, _ in ordered_d6] != list(range(scope_count)):
+            raise FormalShardArchiveError(
+                "archive merge D6 rows are not in canonical scope order"
+            )
+        from research_modules.d6_evaluation_metrics.d6_evaluation_metrics.scalable_3d_offline import (
+            Scalable3DOfflineReportGenerator,
+        )
+
+        report_paths = (
+            Scalable3DOfflineReportGenerator().write_report_bundle_from_rows(
+                destination / "d6_evaluation",
+                rows=tuple(dict(row) for _, row in ordered_d6),
+            )
+        )
+        d6_binding_path = destination / "archive_d6_evaluation_binding.json"
+        _write_archive_d6_binding(
+            d6_binding_path,
+            execution=execution,
+            ordered_rows=ordered_d6,
+            report_paths=report_paths,
+            destination=destination,
+        )
+        manifest["d6_evaluation_generated"] = True
+        manifest["d6_evaluation_binding_sha256"] = _sha256_file(
+            d6_binding_path
+        )
+        paths["d6_binding"] = d6_binding_path
+        paths.update(
+            {f"d6_{name}": path for name, path in report_paths.items()}
+        )
+    else:
+        manifest["d6_evaluation_generated"] = False
+        manifest["d6_evaluation_binding_sha256"] = None
+
+    _write_json_atomic(manifest_path, manifest)
+    paths["manifest"] = manifest_path
+    if full_matrix_complete:
+        legacy_path = destination / "experiment_matrix_manifest.json"
+        _write_json_atomic(
+            legacy_path,
+            {
+                "schema_version": EXPERIMENT_MATRIX_SCHEMA_VERSION,
+                "git_commit": execution["source"]["git_commit"],
+                "repository_dirty": execution["source"][
+                    "repository_dirty"
+                ],
+                "formal": parent_formal,
+                "variants": execution["parent"]["plan"]["variants"],
+                "scenarios": execution["parent"]["plan"]["scenarios"],
+                "scales": execution["parent"]["plan"]["scales"],
+                "seeds": execution["parent"]["plan"]["seeds"],
+                "training_seed_registry_present": (
+                    execution["parent"]["plan"]["training_seeds"]
+                    is not None
+                ),
+                "cell_count": parent_count,
+                "completed_cell_count": len(rows),
+                "paired_random_schedule_version": manifest[
+                    "paired_random_schedule_version"
+                ],
+                "resumable_execution_plan_sha256": execution[
+                    "execution_plan_sha256"
+                ],
+            },
+        )
+        paths["legacy_full_manifest"] = legacy_path
+
+    checksum_path = destination / "SHA256SUMS"
+    _write_checksum_file(
+        checksum_path,
+        {
+            path.name: _sha256_file(path)
+            for name, path in paths.items()
+            if not name.startswith("d6_") or name == "d6_binding"
+        },
+    )
+    paths["checksums"] = checksum_path
+    return paths
+
+
+def _write_archive_d6_binding(
+    path: Path,
+    *,
+    execution: Mapping[str, Any],
+    ordered_rows: Sequence[tuple[int, Mapping[str, Any]]],
+    report_paths: Mapping[str, Path],
+    destination: Path,
+) -> None:
+    evaluator_schema_versions = sorted(
+        {
+            str(row.get("d6_evaluator_schema_version"))
+            for _, row in ordered_rows
+        }
+    )
+    evaluator_git_commits = sorted(
+        {
+            str(row.get("d6_evaluator_git_commit"))
+            for _, row in ordered_rows
+        }
+    )
+    evaluator_dirty_values = sorted(
+        {
+            bool(row.get("d6_evaluator_repository_dirty"))
+            for _, row in ordered_rows
+        }
+    )
+    evaluator_tree_sha256s = sorted(
+        {
+            str(row.get("d6_evaluator_source_tree_sha256"))
+            for _, row in ordered_rows
+        }
+    )
+    artifacts = {}
+    for name, artifact in sorted(report_paths.items()):
+        relative = artifact.resolve().relative_to(destination.resolve()).as_posix()
+        artifacts[name] = {
+            "relative_path": relative,
+            "size_bytes": int(artifact.stat().st_size),
+            "sha256": _sha256_file(artifact),
+        }
+    _write_json_atomic(
+        path,
+        {
+            "schema_version": FORMAL_SHARD_ARCHIVE_D6_BINDING_SCHEMA,
+            "storage_mode": FORMAL_SHARD_ARCHIVE_STORAGE_MODE,
+            "execution_plan_sha256": execution["execution_plan_sha256"],
+            "episode_count": len(ordered_rows),
+            "scope_indices": [index for index, _ in ordered_rows],
+            "evaluator_schema_versions": evaluator_schema_versions,
+            "evaluator_git_commits": evaluator_git_commits,
+            "evaluator_repository_dirty_values": evaluator_dirty_values,
+            "evaluator_source_tree_sha256s": evaluator_tree_sha256s,
+            "artifacts": artifacts,
+        },
+    )
 
 
 def _create_deterministic_tar_zst(
@@ -995,6 +1543,29 @@ def _write_json_atomic(path: Path, payload: Mapping[str, Any]) -> None:
     os.replace(temporary, path)
 
 
+def _write_rows_csv_atomic(
+    path: Path,
+    rows: Sequence[Mapping[str, Any]],
+) -> None:
+    if not rows:
+        raise FormalShardArchiveError(
+            "cannot write an empty formal archive merge table"
+        )
+    fieldnames = sorted({name for row in rows for name in row})
+    temporary = path.with_name(f".{path.name}.tmp")
+    with temporary.open("w", encoding="utf-8", newline="") as stream:
+        writer = csv.DictWriter(
+            stream,
+            fieldnames=fieldnames,
+            lineterminator="\n",
+        )
+        writer.writeheader()
+        writer.writerows(rows)
+        stream.flush()
+        os.fsync(stream.fileno())
+    os.replace(temporary, path)
+
+
 def _write_checksum_file(
     path: Path,
     checksums: Mapping[str, str],
@@ -1062,8 +1633,8 @@ def _write_cli_result(
 def _parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         description=(
-            "Create, verify, and restore deterministic formal shard archives "
-            "without deleting source evidence"
+            "Create, verify, restore, and stream-merge deterministic formal "
+            "shard archives without deleting source evidence"
         )
     )
     subparsers = parser.add_subparsers(dest="command", required=True)
@@ -1104,6 +1675,23 @@ def _parser() -> argparse.ArgumentParser:
     restore.add_argument("--archive", type=Path, required=True)
     restore.add_argument("--minimum-free-gib", type=float, default=0.0)
     restore.add_argument("--result-json")
+
+    merge = subparsers.add_parser(
+        "merge-archives",
+        help="verify and merge a complete scope with one staged shard at a time",
+    )
+    merge.add_argument("--repository-root", type=Path, required=True)
+    merge.add_argument("--execution-plan", type=Path, required=True)
+    merge.add_argument("--archive-root", type=Path, required=True)
+    merge.add_argument("--output", type=Path, required=True)
+    merge.add_argument("--staging-root", type=Path)
+    merge.add_argument("--write-d6-report", action="store_true")
+    merge.add_argument(
+        "--minimum-free-gib",
+        type=float,
+        default=FORMAL_R0_DEFAULT_MINIMUM_FREE_BYTES / 1024**3,
+    )
+    merge.add_argument("--result-json")
     return parser
 
 
@@ -1137,6 +1725,16 @@ def main(argv: Sequence[str] | None = None) -> int:
             shard_index=args.shard_index,
             minimum_free_bytes=int(args.minimum_free_gib * 1024**3),
         )
+    elif args.command == "merge-archives":
+        result = merge_verified_formal_shard_archives(
+            repository_root=args.repository_root,
+            execution_plan_path=args.execution_plan,
+            archive_root=args.archive_root,
+            output_dir=args.output,
+            staging_root=args.staging_root,
+            write_d6_report=bool(args.write_d6_report),
+            minimum_free_bytes=int(args.minimum_free_gib * 1024**3),
+        )
     else:
         raise AssertionError(f"unhandled command: {args.command}")
     _write_cli_result(result, args.result_json)
@@ -1146,14 +1744,18 @@ def main(argv: Sequence[str] | None = None) -> int:
 __all__ = [
     "DEFAULT_ZSTD_COMPRESSION_LEVEL",
     "FORMAL_SHARD_ARCHIVE_CHECKSUM_FILENAME",
+    "FORMAL_SHARD_ARCHIVE_D6_BINDING_SCHEMA",
     "FORMAL_SHARD_ARCHIVE_FORMAT",
     "FORMAL_SHARD_ARCHIVE_MANIFEST_FILENAME",
     "FORMAL_SHARD_ARCHIVE_MANIFEST_SCHEMA",
     "FORMAL_SHARD_ARCHIVE_PAYLOAD_FILENAME",
+    "FORMAL_SHARD_ARCHIVE_SCOPE_MERGE_SCHEMA",
+    "FORMAL_SHARD_ARCHIVE_STORAGE_MODE",
     "FORMAL_SHARD_ARCHIVE_VERIFICATION_SCHEMA",
     "FormalShardArchiveError",
     "create_verified_formal_shard_archive",
     "main",
+    "merge_verified_formal_shard_archives",
     "restore_verified_formal_shard_archive",
     "verify_formal_shard_archive",
 ]
