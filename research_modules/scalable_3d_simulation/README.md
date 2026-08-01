@@ -51,6 +51,35 @@ D6 的 `learning_scope_formal_audit` 也已接入相同的归档存储链路。G
 `89 passed`，D6 全量为 `1330 passed`。该结果只关闭归档审计接口 P1；正式学习作用域尚未
 运行，不能登记模型准入、效果增益或控制许可。
 
+## D3 A1 来源独立评价（2026-07-31）
+
+main 已核验 clean commit `fc7a1c2` 生成的 D3-only 来源独立数据。数据覆盖 seed
+`20000-20099`、100 个 episode 和 292 个匿名分配帧，包含 5、20、50、100、200 五档
+规模和 10 个场景规模单元。生成进度为 `100/100`，在线真值使用和非有限状态均为 0；
+schedule SHA-256 为
+`468bddc8ccd5932114a1f779e093817a136a67f3c7df07fc458e1e1d5aca1009`。
+该数据未与首次失败的 60-episode 诊断批次拼接。
+
+D3 随后在 frozen bundle、归一化、教师、阈值和安全投影均不变的条件下，运行唯一一次
+v2 来源独立评价。正类安全换绑为 `13/110=11.82%`，正类教师完全匹配为
+`8/110=7.27%`，负类精确保持规则基线为 `182/182=100%`，均通过预注册总体门限。
+94 个拒绝帧的矩阵和绑定全部恢复规则基线；重复资源、硬禁边、M-to-N 原子性、版本和
+规则矩阵突变违规均为 0。结果状态为
+`source_independent_evaluation_v2_gate_passed_not_admitted`。
+
+D6 没有调用 D3 高层评价器。外部审计器重新读取 generation evidence、169 MB 匿名
+数据集、292 条 JSONL、固定 21 列 CSV、合同和冻结 bundle，并独立复算数据 split、
+每帧规则成本矩阵摘要及 3 组共 64,911 条选择边的安全性。CSV 与 JSONL 不一致数为 0；
+R0、candidate、effective 各 21,637 条边的索引越界、资源容量超额、硬禁边和需求原子性
+违规均为 0。D6 结论为
+`offline_integrity_and_preregistered_machine_gate_confirmed_not_admitted`。
+
+该结果关闭 D3 来源独立数据生成、v2 一次性评价和 D6 外部审计三个 P1。它不授予
+runtime、assist、assignment、plan、control、physical、formal 或 production 权限。
+test 子组教师完全匹配为 `0/25`，说明未见子组泛化仍弱；正式 seed `1000-1019` 的读取数
+继续为 0。详细报告见
+[`docs/SCALABLE_3D_D3_A1_SOURCE_INDEPENDENT_EVALUATION_20260731_CN.md`](docs/SCALABLE_3D_D3_A1_SOURCE_INDEPENDENT_EVALUATION_20260731_CN.md)。
+
 ## D4 建议当前代次发布修复（2026-07-31）
 
 clean commit `49e43ea` 的 6-cell high-threat smoke 覆盖 5、100、200 三档和 seed
@@ -112,8 +141,9 @@ main-owned 导出器现将带投影或发布拒绝的 D4 建议记录为目标�
 关联和 D5 主动视觉全部制品；D3 专项可冻结为 `--learning-components d3`，从而不写
 无关模块制品。组件清单写入 generation plan、episode index 和批次摘要，恢复运行时
 不允许改变。该模式已通过三 seed 冒烟。下一步从包含本修复的 clean commit 重新生成
-完整 100-episode D3 来源独立数据；在生成和评价完成前，A1 正式 holdout 与所有运行
-权限继续关闭。
+完整 100-episode D3 来源独立数据。该后续批次已在 2026-07-31 完成，并通过 D3 v2
+预注册总体机器门和 D6 独立审计；正式 holdout 与所有运行权限仍保持关闭，当前状态见
+上方“D3 A1 来源独立评价”。
 
 ## D4 v7 来源独立评价结论（2026-07-30）
 
