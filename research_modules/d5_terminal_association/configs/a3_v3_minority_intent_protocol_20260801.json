@@ -1,0 +1,311 @@
+{
+  "schema_version": "d5.active-vision-a3-minority-intent-protocol.v1",
+  "protocol_id": "a3_v3_hierarchical_intent_legal_candidate_ranking_20260801",
+  "status": "protocol_frozen_data_not_generated",
+  "frozen_on": "2026-08-01",
+  "evidence_boundary": {
+    "method_design_inputs": [
+      "v2_train_structure_facts",
+      "v2_validation_structure_facts",
+      "published_v2_failure_summary"
+    ],
+    "published_v2_failure_summary_consulted": true,
+    "v2_test_episode_or_sample_read": false,
+    "v2_test_used_for_model_selection_calibration_or_thresholds": false,
+    "formal_seed_1000_1019_episode_read": false
+  },
+  "selection_contract": {
+    "configuration_count": 1,
+    "hyperparameter_search": false,
+    "best_epoch_uses": "validation_composite_loss_only",
+    "calibration_uses": "validation_only",
+    "confidence_threshold_uses": "frozen_constant_only",
+    "test_used_for_training_model_selection_calibration_or_thresholds": false,
+    "future_held_out_access": "one_shot_after_validation_pass_and_model_freeze",
+    "future_held_out_maximum_access_count": 1,
+    "repeat_after_future_gate_failure": false
+  },
+  "method": {
+    "architecture": "hierarchical_set_context_intent_plus_legal_candidate_ranker",
+    "candidate_encoder": "shared_mlp_tanh",
+    "set_pooling": "masked_mean_plus_masked_max",
+    "intent_head_class_count": 4,
+    "candidate_rank_head": "shared_scalar",
+    "legal_candidate_mask_required": true,
+    "illegal_candidate_logit": "negative_infinity_before_softmax",
+    "bounded_intent_fusion": {
+      "function": "maximum_abs_times_tanh",
+      "maximum_absolute_logit_adjustment": 1.25
+    },
+    "loss": {
+      "ranking": "legal_candidate_cross_entropy",
+      "intent_auxiliary": "class_balanced_cross_entropy",
+      "intent_class_balance": "bounded_inverse_sqrt",
+      "class_balance_split": "train_only",
+      "class_balance_exponent": 0.5,
+      "maximum_class_weight_ratio": 4.0,
+      "class_weight_absolute_bounds": [
+        0.25,
+        4.0
+      ],
+      "ranking_loss_weight": 1.0,
+      "intent_auxiliary_loss_weight": 0.75
+    },
+    "rule_fallback_required": true
+  },
+  "development": {
+    "optimizer": {
+      "random_seed_not_episode_seed": 20260801,
+      "epochs": 12,
+      "batch_size": 2048,
+      "evaluation_batch_size": 4096,
+      "learning_rate": 0.0003,
+      "weight_decay": 0.0,
+      "hidden_dim": 96,
+      "device": "cpu",
+      "cpu_threads": 16
+    },
+    "best_epoch": {
+      "metric": "validation_composite_loss",
+      "direction": "minimize",
+      "tie_break": "earliest_epoch",
+      "tie_tolerance": 1e-12,
+      "train_weight_source": "train_only",
+      "test_access": false
+    },
+    "calibration": {
+      "method": "scalar_temperature_fixed_grid",
+      "fit_split": "validation",
+      "objective": "candidate_negative_log_likelihood",
+      "temperature_minimum": 0.5,
+      "temperature_maximum": 5.0,
+      "temperature_grid_size": 181,
+      "tie_break": "lowest_temperature",
+      "test_access": false,
+      "ece_bin_count": 15
+    },
+    "proposal_confidence_floor": 0.55
+  },
+  "gates": {
+    "validation": {
+      "data_split": "validation",
+      "minimum_macro_intent_recall": 0.7,
+      "minimum_per_intent_recall": {
+        "observe_target": 0.55,
+        "search_sector": 0.55,
+        "hold": 0.8,
+        "reacquire": 0.8
+      },
+      "minimum_per_camera_role_exact_action_accuracy": {
+        "interceptor": 0.8,
+        "recon": 0.65
+      },
+      "maximum_expected_calibration_error": 0.1,
+      "required_before_model_freeze": true
+    },
+    "future_held_out_one_shot": {
+      "data_split": "future_held_out",
+      "minimum_macro_intent_recall": 0.65,
+      "minimum_per_intent_recall": {
+        "observe_target": 0.5,
+        "search_sector": 0.5,
+        "hold": 0.75,
+        "reacquire": 0.75
+      },
+      "minimum_per_camera_role_exact_action_accuracy": {
+        "interceptor": 0.75,
+        "recon": 0.6
+      },
+      "maximum_expected_calibration_error": 0.12,
+      "access_policy": "one_shot_after_validation_pass_and_model_freeze",
+      "maximum_access_count": 1,
+      "on_failure": "fail_closed_no_retrain_no_recalibration_no_threshold_change_no_second_access"
+    }
+  },
+  "source_request": {
+    "seed_assignment_owner": "main",
+    "development_seed_values": null,
+    "future_evaluation_seed_values": null,
+    "new_episode_generation_required": true,
+    "whole_episode_seed_atomic": true,
+    "synthetic_fixture_allowed": false,
+    "online_truth_free_required": true,
+    "global_track_id_ownership": "center_read_only",
+    "prohibited_seed_ranges": [
+      {
+        "start": 1000,
+        "end": 1019,
+        "reason": "formal_reserved_evaluation"
+      },
+      {
+        "start": 22100,
+        "end": 22199,
+        "reason": "a3_v2_all_splits_and_test"
+      }
+    ],
+    "required_intents": [
+      "observe_target",
+      "search_sector",
+      "hold",
+      "reacquire"
+    ],
+    "required_camera_roles": [
+      "interceptor",
+      "recon"
+    ],
+    "coverage_minimums_by_split": {
+      "train": {
+        "total": {
+          "minimum_unique_samples": 4096,
+          "minimum_unique_episodes": 48,
+          "minimum_unique_seeds": 48
+        },
+        "per_intent": {
+          "minimum_unique_samples": 256,
+          "minimum_unique_episodes": 24,
+          "minimum_unique_seeds": 24
+        },
+        "per_camera_role": {
+          "minimum_unique_samples": 1024,
+          "minimum_unique_episodes": 36,
+          "minimum_unique_seeds": 36
+        },
+        "per_intent_camera_role": {
+          "minimum_unique_samples": 128,
+          "minimum_unique_episodes": 16,
+          "minimum_unique_seeds": 16
+        }
+      },
+      "validation": {
+        "total": {
+          "minimum_unique_samples": 2048,
+          "minimum_unique_episodes": 24,
+          "minimum_unique_seeds": 24
+        },
+        "per_intent": {
+          "minimum_unique_samples": 128,
+          "minimum_unique_episodes": 12,
+          "minimum_unique_seeds": 12
+        },
+        "per_camera_role": {
+          "minimum_unique_samples": 512,
+          "minimum_unique_episodes": 18,
+          "minimum_unique_seeds": 18
+        },
+        "per_intent_camera_role": {
+          "minimum_unique_samples": 64,
+          "minimum_unique_episodes": 8,
+          "minimum_unique_seeds": 8
+        }
+      },
+      "future_held_out": {
+        "total": {
+          "minimum_unique_samples": 3072,
+          "minimum_unique_episodes": 32,
+          "minimum_unique_seeds": 32
+        },
+        "per_intent": {
+          "minimum_unique_samples": 192,
+          "minimum_unique_episodes": 16,
+          "minimum_unique_seeds": 16
+        },
+        "per_camera_role": {
+          "minimum_unique_samples": 768,
+          "minimum_unique_episodes": 24,
+          "minimum_unique_seeds": 24
+        },
+        "per_intent_camera_role": {
+          "minimum_unique_samples": 96,
+          "minimum_unique_episodes": 12,
+          "minimum_unique_seeds": 12
+        }
+      }
+    },
+    "hard_confusion_scenarios": [
+      {
+        "id": "observe_vs_reacquire_projection_boundary",
+        "description": "Fresh assigned projection immediately inside and outside the usable projection boundary.",
+        "minimum_unique_episodes_by_split": {
+          "train": 12,
+          "validation": 6,
+          "future_held_out": 8
+        },
+        "minimum_unique_seeds_by_split": {
+          "train": 12,
+          "validation": 6,
+          "future_held_out": 8
+        }
+      },
+      {
+        "id": "search_vs_reacquire_cue_loss_boundary",
+        "description": "No usable assigned projection versus stale or occluded projection with the assignment retained.",
+        "minimum_unique_episodes_by_split": {
+          "train": 12,
+          "validation": 6,
+          "future_held_out": 8
+        },
+        "minimum_unique_seeds_by_split": {
+          "train": 12,
+          "validation": 6,
+          "future_held_out": 8
+        }
+      },
+      {
+        "id": "hold_vs_observe_gimbal_busy_boundary",
+        "description": "Matched target evidence immediately before and during bounded gimbal busy or slew-unavailable windows.",
+        "minimum_unique_episodes_by_split": {
+          "train": 12,
+          "validation": 6,
+          "future_held_out": 8
+        },
+        "minimum_unique_seeds_by_split": {
+          "train": 12,
+          "validation": 6,
+          "future_held_out": 8
+        }
+      },
+      {
+        "id": "role_matched_interceptor_recon_geometry",
+        "description": "Matched geometry and communication state for interceptor and recon cameras without role leakage.",
+        "minimum_unique_episodes_by_split": {
+          "train": 12,
+          "validation": 6,
+          "future_held_out": 8
+        },
+        "minimum_unique_seeds_by_split": {
+          "train": 12,
+          "validation": 6,
+          "future_held_out": 8
+        }
+      },
+      {
+        "id": "multiple_legal_targets_near_tie",
+        "description": "Multiple legal target-referenced candidates with close projection quality and uncertainty.",
+        "minimum_unique_episodes_by_split": {
+          "train": 12,
+          "validation": 6,
+          "future_held_out": 8
+        },
+        "minimum_unique_seeds_by_split": {
+          "train": 12,
+          "validation": 6,
+          "future_held_out": 8
+        }
+      }
+    ]
+  },
+  "authority": {
+    "shadow": false,
+    "assist": false,
+    "promotion": false,
+    "ppo": false,
+    "assignment": false,
+    "degradation": false,
+    "runtime": false,
+    "production": false,
+    "control": false,
+    "camera_command": false,
+    "global_track_id_create": false,
+    "global_track_id_write": false
+  }
+}

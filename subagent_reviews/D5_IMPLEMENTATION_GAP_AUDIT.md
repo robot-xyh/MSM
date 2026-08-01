@@ -1,5 +1,21 @@
 # D5 实现差距审计
 
+## 2026-08-01 A3 v3 少数意图协议冻结 GAP
+
+| 缺口 | 当前状态 | 证据与剩余边界 |
+| --- | --- | --- |
+| v2 test 隔离与单配置 | **协议 P1 已关闭** | 配置数固定为 1；方法仅使用 v2 train/validation 结构事实和已发布失败摘要。v2 test 不读取 episode/sample，不参与 epoch、校准、阈值或失败重跑。 |
+| 少数意图方法合同 | **静态实现已关闭** | 冻结集合上下文四类意图头、class-balanced train-only 辅助损失和合法候选排序；权重与 intent logit 修正有界，规则回退强制保留。尚无新数据训练或模型质量证据。 |
+| 校准与开发门 | **静态实现已关闭** | 最早最佳 epoch 只按 validation composite loss；温度只在 validation 固定网格拟合；逐动作、逐角色和 ECE 门已冻结。 |
+| future held-out 治理 | **访问合同已关闭，实证开放** | 仅允许 validation 通过且模型冻结后一次揭盲；失败后不得重训、重校准、改阈值或二次访问。本批未访问 future 数据。 |
+| 新来源覆盖 | **请求合同已关闭，数据开放** | seed 由 main 后续分配；train/validation/future 互斥，并与 `22100-22199`、`1000-1019` 零重叠。8 个意图角色单元和五类困难混淆场景均有唯一 episode/seed 下限；本批未生成 episode。 |
+| 训练与权重 | **P1 开放** | 状态为 `protocol_frozen_data_not_generated`。入口仅为协议预备，缺新 source manifest 时默认失败关闭且不写输出；本批未运行训练、未写权重。 |
+| 权限与默认路径 | **保持失败关闭** | shadow、assist、PPO、runtime、camera command、control、assignment、degradation、production、promotion、`global_track_id` create/write 全 false；规则路径不变。 |
+
+本批只关闭 A3 下一版本的方法、数据职责、静态校验和失败关闭协议，不关闭原有“逐动作模型质量”、
+A3/R0、AirSim/真实相机、applied-action outcome、物理收益或任何运行准入 P1。下方 v2 failed
+candidate 原证据保持不变。
+
 ## 2026-08-01 A3 v2 开发态行为克隆候选 GAP
 
 | 缺口 | 当前状态 | 证据与剩余边界 |

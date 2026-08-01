@@ -2,6 +2,29 @@
 
 科研模块，用于把末端相机视场中的本地视觉轨迹保守关联到中心分配的 `global_track_id`。模块可在统一三维 episode 中在线运行；训练标签和真值评分仍保持离线。D5 只输出视觉关联与相机观察意图，不修改、重写或重新分配任何全局轨迹 ID。
 
+## 2026-08-01 A3 v3 少数意图开发协议冻结
+
+下一模型版本冻结为“集合上下文意图分类 + 合法候选排序”。共享候选编码经 masked mean/max
+形成四类意图辅助头；辅助交叉熵只按 train 计数计算有界逆平方根 class balance，候选排序始终
+在确定性安全枚举给出的合法动作集合内。意图对排序的修正使用有界 `tanh`，低置信、非法输入、
+合同不完整或任一门失败时仍回退确定性规则。
+
+v2 train/validation 结构事实与已发布失败摘要只用于冻结方法；v2 test episode/sample 未读取，
+也不得用于选 epoch、校准或阈值。唯一配置按 validation composite loss 选最早最佳 epoch，标量
+温度只在 validation 固定网格拟合。validation 与 future held-out 分别冻结逐动作召回、逐角色
+精确动作和 ECE 门；future held-out 仅在 validation 通过且模型冻结后一次性揭盲，失败后禁止
+重训、重校准、改阈值或二次访问。
+
+main 后续必须分配全新的 train/validation/future held-out seed。三者互斥，并与
+`22100-22199`（v2 全 split/test）及 `1000-1019`（正式保留）零重叠。来源清单必须覆盖四类
+意图、interceptor/recon 两类角色、全部 8 个意图角色单元和五类困难混淆场景的唯一样本、
+episode、seed 下限；协议文件本身不分配 seed。
+
+当前状态固定为 `protocol_frozen_data_not_generated`。本批未生成或读取新 episode，未运行训练，
+未写权重；训练入口只是后续协议预备，默认只校验协议且不创建输出。shadow、assist、PPO、
+runtime、camera command、control、assignment、degradation、production、promotion 以及
+`global_track_id` create/write 全为 false，规则路径保持默认。
+
 ## 2026-08-01 A3 v2 开发态行为克隆候选
 
 D5 已在 v2 owner 验收语料上完成一次冻结配置训练。外部生成证据由 generation summary

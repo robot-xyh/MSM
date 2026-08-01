@@ -113,6 +113,29 @@ from .active_vision_evaluation import (
     PairedShadowEpisodeResult,
     evaluate_paired_shadow_admission,
 )
+from .active_vision_a3_v3_protocol import (
+    ACTIVE_VISION_A3_V3_DEFAULT_STATUS,
+    ACTIVE_VISION_A3_V3_FUTURE_LEDGER_SCHEMA_VERSION,
+    ACTIVE_VISION_A3_V3_PROTOCOL_SCHEMA_VERSION,
+    ACTIVE_VISION_A3_V3_SOURCE_MANIFEST_SCHEMA_VERSION,
+    FrozenA3V3Protocol,
+    load_and_validate_a3_v3_source_manifest,
+    load_frozen_a3_v3_protocol,
+    validate_a3_v3_source_manifest,
+    validate_frozen_a3_v3_protocol,
+    validate_future_heldout_access,
+)
+from .active_vision_a3_v3_training import (
+    ACTIVE_VISION_A3_V3_DEVELOPMENT_CACHE_SCHEMA_VERSION,
+    ACTIVE_VISION_A3_V3_DEVELOPMENT_REPORT_SCHEMA_VERSION,
+    HierarchicalIntentLegalCandidateRanker,
+    assess_metric_gate,
+    bounded_class_balanced_intent_weights,
+    fit_validation_temperature,
+    hierarchical_intent_ranking_loss,
+    protocol_status_report,
+    run_a3_v3_training_entry,
+)
 from .active_vision_learning import (
     ACTIVE_VISION_FEATURE_NAMES,
     ActiveVisionActorCritic,

@@ -1,5 +1,22 @@
 # D5 终端视觉配准与身份认证计划
 
+## 2026-08-01 A3 v3 少数意图开发协议
+
+- [x] 仅依据 v2 train/validation 结构事实和已发布失败摘要，冻结层次化意图分类与合法候选
+  排序；v2 test 不参与选模、校准或阈值。
+- [x] 冻结 train-only 梯度/特征边界/class balance，validation-only best epoch/温度/开发门，
+  以及 future held-out 一次性揭盲合同；失败后禁止反馈选模。
+- [x] 冻结逐动作召回、interceptor/recon 角色精确动作、ECE 和规则回退门。意图辅助权重、
+  排序修正、温度与置信阈值均有界，候选集合继续由确定性安全枚举约束。
+- [x] 冻结 main-owned 新来源请求：train/validation/future seed 互斥，与 `22100-22199`、
+  `1000-1019` 零重叠，并覆盖 8 个意图角色单元及五类困难混淆场景的 episode/seed 下限。
+- [x] 实现 frozen config、JSON Schema、静态 validator 和后续训练入口预备。默认状态为
+  `protocol_frozen_data_not_generated`；缺新 source manifest 时不读取 cache、不训练、不写权重。
+- [x] shadow、assist、PPO、runtime、camera command、control 和 `global_track_id` create/write
+  等全部权限保持 false；确定性规则继续默认。
+- [ ] main 后续分配并生成全新开发与 future evaluation seed/episode，提交 source/coverage
+  manifest。该步骤及训练、validation、future held-out 均不属于本批。
+
 ## 2026-08-01 A3 v2 开发态行为克隆候选
 
 - [x] 分开冻结并验证 dataset manifest 内生的 manifest/split/training-set 哈希，与外部

@@ -1,0 +1,155 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "d5.active-vision-a3-minority-source-manifest.v1",
+  "title": "D5 A3 v3 main-assigned source and coverage manifest",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "protocol_id",
+    "protocol_sha256",
+    "status",
+    "dataset_manifest_sha256_by_partition",
+    "seed_catalogs",
+    "coverage_by_split",
+    "provenance",
+    "identity",
+    "authority"
+  ],
+  "properties": {
+    "schema_version": {
+      "const": "d5.active-vision-a3-minority-source-manifest.v1"
+    },
+    "protocol_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "protocol_sha256": {
+      "$ref": "#/$defs/sha256"
+    },
+    "status": {
+      "const": "source_generated_not_trained"
+    },
+    "dataset_manifest_sha256_by_partition": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["development", "future_held_out"],
+      "properties": {
+        "development": {"$ref": "#/$defs/sha256"},
+        "future_held_out": {"$ref": "#/$defs/sha256"}
+      }
+    },
+    "seed_catalogs": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["train", "validation", "future_held_out"],
+      "properties": {
+        "train": {"$ref": "#/$defs/seedCatalog"},
+        "validation": {"$ref": "#/$defs/seedCatalog"},
+        "future_held_out": {"$ref": "#/$defs/seedCatalog"}
+      }
+    },
+    "coverage_by_split": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["train", "validation", "future_held_out"],
+      "properties": {
+        "train": {"$ref": "#/$defs/splitCoverage"},
+        "validation": {"$ref": "#/$defs/splitCoverage"},
+        "future_held_out": {"$ref": "#/$defs/splitCoverage"}
+      }
+    },
+    "provenance": {
+      "const": {
+        "source_domain": "scalable_3d_point_mass_runtime",
+        "synthetic_fixture_episode_count": 0,
+        "v2_episode_or_sample_reuse": false,
+        "v2_test_episode_or_sample_read_count": 0,
+        "formal_seed_1000_1019_episode_read_count": 0,
+        "online_truth_id_use_count": 0
+      }
+    },
+    "identity": {
+      "const": {
+        "global_track_id_ownership": "center_read_only",
+        "global_track_id_created_count": 0,
+        "global_track_id_rewritten_count": 0
+      }
+    },
+    "authority": {
+      "$ref": "#/$defs/authority"
+    }
+  },
+  "$defs": {
+    "sha256": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$"
+    },
+    "seedCatalog": {
+      "type": "array",
+      "items": {"type": "integer", "minimum": 0},
+      "minItems": 1,
+      "uniqueItems": true
+    },
+    "countTriplet": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["unique_samples", "unique_episodes", "unique_seeds"],
+      "properties": {
+        "unique_samples": {"type": "integer", "minimum": 0},
+        "unique_episodes": {"type": "integer", "minimum": 0},
+        "unique_seeds": {"type": "integer", "minimum": 0}
+      }
+    },
+    "splitCoverage": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "total",
+        "by_intent",
+        "by_camera_role",
+        "by_intent_camera_role",
+        "hard_confusion_scenarios"
+      ],
+      "properties": {
+        "total": {"$ref": "#/$defs/countTriplet"},
+        "by_intent": {"type": "object"},
+        "by_camera_role": {"type": "object"},
+        "by_intent_camera_role": {"type": "object"},
+        "hard_confusion_scenarios": {"type": "object"}
+      }
+    },
+    "authority": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "shadow",
+        "assist",
+        "promotion",
+        "ppo",
+        "assignment",
+        "degradation",
+        "runtime",
+        "production",
+        "control",
+        "camera_command",
+        "global_track_id_create",
+        "global_track_id_write"
+      ],
+      "properties": {
+        "shadow": {"const": false},
+        "assist": {"const": false},
+        "promotion": {"const": false},
+        "ppo": {"const": false},
+        "assignment": {"const": false},
+        "degradation": {"const": false},
+        "runtime": {"const": false},
+        "production": {"const": false},
+        "control": {"const": false},
+        "camera_command": {"const": false},
+        "global_track_id_create": {"const": false},
+        "global_track_id_write": {"const": false}
+      }
+    }
+  }
+}

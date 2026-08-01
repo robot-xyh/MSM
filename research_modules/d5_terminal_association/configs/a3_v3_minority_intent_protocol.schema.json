@@ -1,0 +1,602 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "d5.active-vision-a3-minority-intent-protocol.v1",
+  "title": "D5 A3 v3 frozen minority-intent development protocol",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "protocol_id",
+    "status",
+    "frozen_on",
+    "evidence_boundary",
+    "selection_contract",
+    "method",
+    "development",
+    "gates",
+    "source_request",
+    "authority"
+  ],
+  "properties": {
+    "schema_version": {
+      "const": "d5.active-vision-a3-minority-intent-protocol.v1"
+    },
+    "protocol_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "status": {
+      "const": "protocol_frozen_data_not_generated"
+    },
+    "frozen_on": {
+      "type": "string",
+      "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}$"
+    },
+    "evidence_boundary": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "method_design_inputs",
+        "published_v2_failure_summary_consulted",
+        "v2_test_episode_or_sample_read",
+        "v2_test_used_for_model_selection_calibration_or_thresholds",
+        "formal_seed_1000_1019_episode_read"
+      ],
+      "properties": {
+        "method_design_inputs": {
+          "const": [
+            "v2_train_structure_facts",
+            "v2_validation_structure_facts",
+            "published_v2_failure_summary"
+          ]
+        },
+        "published_v2_failure_summary_consulted": {
+          "const": true
+        },
+        "v2_test_episode_or_sample_read": {
+          "const": false
+        },
+        "v2_test_used_for_model_selection_calibration_or_thresholds": {
+          "const": false
+        },
+        "formal_seed_1000_1019_episode_read": {
+          "const": false
+        }
+      }
+    },
+    "selection_contract": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "configuration_count",
+        "hyperparameter_search",
+        "best_epoch_uses",
+        "calibration_uses",
+        "confidence_threshold_uses",
+        "test_used_for_training_model_selection_calibration_or_thresholds",
+        "future_held_out_access",
+        "future_held_out_maximum_access_count",
+        "repeat_after_future_gate_failure"
+      ],
+      "properties": {
+        "configuration_count": {
+          "const": 1
+        },
+        "hyperparameter_search": {
+          "const": false
+        },
+        "best_epoch_uses": {
+          "const": "validation_composite_loss_only"
+        },
+        "calibration_uses": {
+          "const": "validation_only"
+        },
+        "confidence_threshold_uses": {
+          "const": "frozen_constant_only"
+        },
+        "test_used_for_training_model_selection_calibration_or_thresholds": {
+          "const": false
+        },
+        "future_held_out_access": {
+          "const": "one_shot_after_validation_pass_and_model_freeze"
+        },
+        "future_held_out_maximum_access_count": {
+          "const": 1
+        },
+        "repeat_after_future_gate_failure": {
+          "const": false
+        }
+      }
+    },
+    "method": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "architecture",
+        "candidate_encoder",
+        "set_pooling",
+        "intent_head_class_count",
+        "candidate_rank_head",
+        "legal_candidate_mask_required",
+        "illegal_candidate_logit",
+        "bounded_intent_fusion",
+        "loss",
+        "rule_fallback_required"
+      ],
+      "properties": {
+        "architecture": {
+          "const": "hierarchical_set_context_intent_plus_legal_candidate_ranker"
+        },
+        "candidate_encoder": {
+          "const": "shared_mlp_tanh"
+        },
+        "set_pooling": {
+          "const": "masked_mean_plus_masked_max"
+        },
+        "intent_head_class_count": {
+          "const": 4
+        },
+        "candidate_rank_head": {
+          "const": "shared_scalar"
+        },
+        "legal_candidate_mask_required": {
+          "const": true
+        },
+        "illegal_candidate_logit": {
+          "const": "negative_infinity_before_softmax"
+        },
+        "bounded_intent_fusion": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "function",
+            "maximum_absolute_logit_adjustment"
+          ],
+          "properties": {
+            "function": {
+              "const": "maximum_abs_times_tanh"
+            },
+            "maximum_absolute_logit_adjustment": {
+              "type": "number",
+              "exclusiveMinimum": 0,
+              "maximum": 4
+            }
+          }
+        },
+        "loss": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "ranking",
+            "intent_auxiliary",
+            "intent_class_balance",
+            "class_balance_split",
+            "class_balance_exponent",
+            "maximum_class_weight_ratio",
+            "class_weight_absolute_bounds",
+            "ranking_loss_weight",
+            "intent_auxiliary_loss_weight"
+          ],
+          "properties": {
+            "ranking": {
+              "const": "legal_candidate_cross_entropy"
+            },
+            "intent_auxiliary": {
+              "const": "class_balanced_cross_entropy"
+            },
+            "intent_class_balance": {
+              "const": "bounded_inverse_sqrt"
+            },
+            "class_balance_split": {
+              "const": "train_only"
+            },
+            "class_balance_exponent": {
+              "const": 0.5
+            },
+            "maximum_class_weight_ratio": {
+              "type": "number",
+              "minimum": 1,
+              "maximum": 8
+            },
+            "class_weight_absolute_bounds": {
+              "type": "array",
+              "prefixItems": [
+                {
+                  "type": "number",
+                  "exclusiveMinimum": 0
+                },
+                {
+                  "type": "number",
+                  "minimum": 1
+                }
+              ],
+              "items": false,
+              "minItems": 2,
+              "maxItems": 2
+            },
+            "ranking_loss_weight": {
+              "const": 1
+            },
+            "intent_auxiliary_loss_weight": {
+              "type": "number",
+              "exclusiveMinimum": 0,
+              "maximum": 1
+            }
+          }
+        },
+        "rule_fallback_required": {
+          "const": true
+        }
+      }
+    },
+    "development": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "optimizer",
+        "best_epoch",
+        "calibration",
+        "proposal_confidence_floor"
+      ],
+      "properties": {
+        "optimizer": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "random_seed_not_episode_seed",
+            "epochs",
+            "batch_size",
+            "evaluation_batch_size",
+            "learning_rate",
+            "weight_decay",
+            "hidden_dim",
+            "device",
+            "cpu_threads"
+          ],
+          "properties": {
+            "random_seed_not_episode_seed": {
+              "type": "integer",
+              "minimum": 1
+            },
+            "epochs": {
+              "type": "integer",
+              "minimum": 1
+            },
+            "batch_size": {
+              "type": "integer",
+              "minimum": 1
+            },
+            "evaluation_batch_size": {
+              "type": "integer",
+              "minimum": 1
+            },
+            "learning_rate": {
+              "type": "number",
+              "exclusiveMinimum": 0,
+              "maximum": 1
+            },
+            "weight_decay": {
+              "type": "number",
+              "minimum": 0,
+              "maximum": 1
+            },
+            "hidden_dim": {
+              "type": "integer",
+              "minimum": 1
+            },
+            "device": {
+              "const": "cpu"
+            },
+            "cpu_threads": {
+              "type": "integer",
+              "minimum": 1
+            }
+          }
+        },
+        "best_epoch": {
+          "const": {
+            "metric": "validation_composite_loss",
+            "direction": "minimize",
+            "tie_break": "earliest_epoch",
+            "tie_tolerance": 1e-12,
+            "train_weight_source": "train_only",
+            "test_access": false
+          }
+        },
+        "calibration": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "method",
+            "fit_split",
+            "objective",
+            "temperature_minimum",
+            "temperature_maximum",
+            "temperature_grid_size",
+            "tie_break",
+            "test_access",
+            "ece_bin_count"
+          ],
+          "properties": {
+            "method": {
+              "const": "scalar_temperature_fixed_grid"
+            },
+            "fit_split": {
+              "const": "validation"
+            },
+            "objective": {
+              "const": "candidate_negative_log_likelihood"
+            },
+            "temperature_minimum": {
+              "type": "number",
+              "exclusiveMinimum": 0,
+              "maximum": 10
+            },
+            "temperature_maximum": {
+              "type": "number",
+              "exclusiveMinimum": 0,
+              "maximum": 10
+            },
+            "temperature_grid_size": {
+              "type": "integer",
+              "minimum": 2
+            },
+            "tie_break": {
+              "const": "lowest_temperature"
+            },
+            "test_access": {
+              "const": false
+            },
+            "ece_bin_count": {
+              "type": "integer",
+              "minimum": 1
+            }
+          }
+        },
+        "proposal_confidence_floor": {
+          "type": "number",
+          "exclusiveMinimum": 0,
+          "exclusiveMaximum": 1
+        }
+      }
+    },
+    "gates": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "validation",
+        "future_held_out_one_shot"
+      ],
+      "properties": {
+        "validation": {
+          "$ref": "#/$defs/validationGate"
+        },
+        "future_held_out_one_shot": {
+          "$ref": "#/$defs/futureGate"
+        }
+      }
+    },
+    "source_request": {
+      "$ref": "#/$defs/sourceRequest"
+    },
+    "authority": {
+      "$ref": "#/$defs/authority"
+    }
+  },
+  "$defs": {
+    "authority": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "shadow",
+        "assist",
+        "promotion",
+        "ppo",
+        "assignment",
+        "degradation",
+        "runtime",
+        "production",
+        "control",
+        "camera_command",
+        "global_track_id_create",
+        "global_track_id_write"
+      ],
+      "properties": {
+        "shadow": {"const": false},
+        "assist": {"const": false},
+        "promotion": {"const": false},
+        "ppo": {"const": false},
+        "assignment": {"const": false},
+        "degradation": {"const": false},
+        "runtime": {"const": false},
+        "production": {"const": false},
+        "control": {"const": false},
+        "camera_command": {"const": false},
+        "global_track_id_create": {"const": false},
+        "global_track_id_write": {"const": false}
+      }
+    },
+    "intentThresholds": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "observe_target",
+        "search_sector",
+        "hold",
+        "reacquire"
+      ],
+      "properties": {
+        "observe_target": {"type": "number", "minimum": 0, "maximum": 1},
+        "search_sector": {"type": "number", "minimum": 0, "maximum": 1},
+        "hold": {"type": "number", "minimum": 0, "maximum": 1},
+        "reacquire": {"type": "number", "minimum": 0, "maximum": 1}
+      }
+    },
+    "roleThresholds": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["interceptor", "recon"],
+      "properties": {
+        "interceptor": {"type": "number", "minimum": 0, "maximum": 1},
+        "recon": {"type": "number", "minimum": 0, "maximum": 1}
+      }
+    },
+    "validationGate": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "data_split",
+        "minimum_macro_intent_recall",
+        "minimum_per_intent_recall",
+        "minimum_per_camera_role_exact_action_accuracy",
+        "maximum_expected_calibration_error",
+        "required_before_model_freeze"
+      ],
+      "properties": {
+        "data_split": {"const": "validation"},
+        "minimum_macro_intent_recall": {"type": "number", "minimum": 0, "maximum": 1},
+        "minimum_per_intent_recall": {"$ref": "#/$defs/intentThresholds"},
+        "minimum_per_camera_role_exact_action_accuracy": {"$ref": "#/$defs/roleThresholds"},
+        "maximum_expected_calibration_error": {"type": "number", "minimum": 0, "maximum": 1},
+        "required_before_model_freeze": {"const": true}
+      }
+    },
+    "futureGate": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "data_split",
+        "minimum_macro_intent_recall",
+        "minimum_per_intent_recall",
+        "minimum_per_camera_role_exact_action_accuracy",
+        "maximum_expected_calibration_error",
+        "access_policy",
+        "maximum_access_count",
+        "on_failure"
+      ],
+      "properties": {
+        "data_split": {"const": "future_held_out"},
+        "minimum_macro_intent_recall": {"type": "number", "minimum": 0, "maximum": 1},
+        "minimum_per_intent_recall": {"$ref": "#/$defs/intentThresholds"},
+        "minimum_per_camera_role_exact_action_accuracy": {"$ref": "#/$defs/roleThresholds"},
+        "maximum_expected_calibration_error": {"type": "number", "minimum": 0, "maximum": 1},
+        "access_policy": {"const": "one_shot_after_validation_pass_and_model_freeze"},
+        "maximum_access_count": {"const": 1},
+        "on_failure": {"const": "fail_closed_no_retrain_no_recalibration_no_threshold_change_no_second_access"}
+      }
+    },
+    "minimumTriplet": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "minimum_unique_samples",
+        "minimum_unique_episodes",
+        "minimum_unique_seeds"
+      ],
+      "properties": {
+        "minimum_unique_samples": {"type": "integer", "minimum": 1},
+        "minimum_unique_episodes": {"type": "integer", "minimum": 1},
+        "minimum_unique_seeds": {"type": "integer", "minimum": 1}
+      }
+    },
+    "coveragePolicy": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "total",
+        "per_intent",
+        "per_camera_role",
+        "per_intent_camera_role"
+      ],
+      "properties": {
+        "total": {"$ref": "#/$defs/minimumTriplet"},
+        "per_intent": {"$ref": "#/$defs/minimumTriplet"},
+        "per_camera_role": {"$ref": "#/$defs/minimumTriplet"},
+        "per_intent_camera_role": {"$ref": "#/$defs/minimumTriplet"}
+      }
+    },
+    "hardScenario": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "description",
+        "minimum_unique_episodes_by_split",
+        "minimum_unique_seeds_by_split"
+      ],
+      "properties": {
+        "id": {"type": "string", "minLength": 1},
+        "description": {"type": "string", "minLength": 1},
+        "minimum_unique_episodes_by_split": {"$ref": "#/$defs/splitPositiveCounts"},
+        "minimum_unique_seeds_by_split": {"$ref": "#/$defs/splitPositiveCounts"}
+      }
+    },
+    "splitPositiveCounts": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["train", "validation", "future_held_out"],
+      "properties": {
+        "train": {"type": "integer", "minimum": 1},
+        "validation": {"type": "integer", "minimum": 1},
+        "future_held_out": {"type": "integer", "minimum": 1}
+      }
+    },
+    "sourceRequest": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "seed_assignment_owner",
+        "development_seed_values",
+        "future_evaluation_seed_values",
+        "new_episode_generation_required",
+        "whole_episode_seed_atomic",
+        "synthetic_fixture_allowed",
+        "online_truth_free_required",
+        "global_track_id_ownership",
+        "prohibited_seed_ranges",
+        "required_intents",
+        "required_camera_roles",
+        "coverage_minimums_by_split",
+        "hard_confusion_scenarios"
+      ],
+      "properties": {
+        "seed_assignment_owner": {"const": "main"},
+        "development_seed_values": {"type": "null"},
+        "future_evaluation_seed_values": {"type": "null"},
+        "new_episode_generation_required": {"const": true},
+        "whole_episode_seed_atomic": {"const": true},
+        "synthetic_fixture_allowed": {"const": false},
+        "online_truth_free_required": {"const": true},
+        "global_track_id_ownership": {"const": "center_read_only"},
+        "prohibited_seed_ranges": {
+          "const": [
+            {"start": 1000, "end": 1019, "reason": "formal_reserved_evaluation"},
+            {"start": 22100, "end": 22199, "reason": "a3_v2_all_splits_and_test"}
+          ]
+        },
+        "required_intents": {
+          "const": ["observe_target", "search_sector", "hold", "reacquire"]
+        },
+        "required_camera_roles": {
+          "const": ["interceptor", "recon"]
+        },
+        "coverage_minimums_by_split": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["train", "validation", "future_held_out"],
+          "properties": {
+            "train": {"$ref": "#/$defs/coveragePolicy"},
+            "validation": {"$ref": "#/$defs/coveragePolicy"},
+            "future_held_out": {"$ref": "#/$defs/coveragePolicy"}
+          }
+        },
+        "hard_confusion_scenarios": {
+          "type": "array",
+          "items": {"$ref": "#/$defs/hardScenario"},
+          "minItems": 5,
+          "maxItems": 5
+        }
+      }
+    }
+  }
+}

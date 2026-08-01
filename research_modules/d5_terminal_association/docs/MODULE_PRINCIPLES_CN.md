@@ -2,6 +2,44 @@
 
 **状态日期：2026-08-01**
 
+## A3 v3 少数意图判别与校准协议原则
+
+v2 的高总体精确动作准确率不能解释为四类意图均已学会。旧模型用共享 actor 为每个合法候选
+独立输出一个标量，逆平方根权重只按示范意图放大同一候选排序交叉熵；模型没有单独回答“当前
+状态属于哪种意图”的监督目标。v2 train 中 `observe_target=839`，其中 recon 组合仅 17，
+validation 对应组合也只有 7；多数 `hold/reacquire` 样本因此可以主导最低 validation loss。
+已发布失败摘要显示模型最终只预测 hold/reacquire，`observe_target/search_sector` 召回为 0。
+这些事实只用于说明下一方法需要独立意图目标，v2 test episode/sample 不得重新读取，也不得
+回流到 epoch、温度或阈值选择。
+
+v3 冻结为“集合上下文意图分类 + 合法候选排序”。共享候选编码经 masked mean 与 masked max
+形成集合上下文，四类意图头使用 train-only 的 class-balanced 辅助交叉熵。类别权重采用有界
+逆平方根，训练样本平均权重归一化为 1，绝对范围固定为 `[0.25, 4.0]`；缺任一意图时不补零、
+不复制并在训练前失败关闭。候选排序仍只接受确定性安全枚举产生的合法集合，非法或 padding
+候选在 softmax 前置为负无穷。意图分数只通过 `1.25*tanh(logit)` 提供有界排序修正，不能创建
+动作、身份、分配或连续控制。低置信、输入不完整、合同不匹配或任一门失败时继续使用确定性规则。
+
+数据职责严格分离。train 只用于梯度、特征边界和类别权重；validation composite loss 选择最早
+最佳 epoch，标量温度只在 validation 的 `[0.5, 5.0]`、181 点固定网格上最小化候选 NLL；置信
+门为预先冻结常量，不从 test 调整。validation 门逐项检查四类召回、interceptor/recon 精确动作、
+宏召回与 ECE。future held-out 只能在 validation 通过且模型与校准均冻结后访问一次；无论通过
+或失败，结果都不得反馈重训、重校准、改阈值或第二次揭盲。
+
+新来源 seed 由 main 后续分配，协议文件本身保持空值。train、validation、future held-out 三组
+必须互斥，并与 v2 全 split/test 的 `22100-22199`、正式保留的 `1000-1019` 零重叠。最低总
+唯一 seed 分别为 `48/24/32`；八个“意图×相机角色”单元的最低
+sample/episode/seed 分别为 train `128/16/16`、validation `64/8/8`、future
+`96/12/12`，并覆盖五类冻结困难混淆场景。来源 manifest 只提供 seed、覆盖、来源与身份审计，
+在线 truth 使用、`global_track_id` 创建/改写和全部 authority 必须为 0/false。
+
+当前状态是 `protocol_frozen_data_not_generated`。实现只提供冻结配置、JSON Schema、静态来源/
+future ledger 校验和后续训练入口预备；默认入口缺新 source manifest 时不读取 cache、不创建
+输出、不写权重。2026-08-01 静态专项为 `32 passed in 1.00s`，D5 全量为
+`811 passed, 2 warnings in 111.61s`；测试未执行优化器训练。两条 warning 仍来自既有
+Matplotlib Axes3D 与 NVML 环境。本批没有新 episode、数据、训练、模型、AirSim 或物理结果，
+shadow、assist、PPO、runtime、camera command、control、分配、降级、生产、晋级及
+`global_track_id` create/write 全部为 false。
+
 ## A3 v2 行为克隆判定原则
 
 本轮只回答“已验收语料能否形成开发态行为克隆候选”。数据完整性、训练结构和模型质量按三道

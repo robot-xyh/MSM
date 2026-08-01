@@ -2,6 +2,55 @@
 
 **状态日期：2026-08-01**
 
+## A3 v3 分层意图与合法候选排序协议实现
+
+冻结文件 `configs/a3_v3_minority_intent_protocol_20260801.json` 使用
+`d5.active-vision-a3-minority-intent-protocol.v1`，并配套协议与来源 manifest 两份 JSON
+Schema。`active_vision_a3_v3_protocol.py` 对字段集合、单配置、证据边界、split 职责、方法
+上界、指标门、seed 禁止范围、覆盖下限、future 一次性 ledger、中心 ID 所有权和全 false
+authority 做严格校验。配置中的 development/future seed 均为 null，校验器不分配 seed，也不
+打开 episode；main 后续提供的 source manifest 仅在三组 seed 互斥且避开 `1000-1019`、
+`22100-22199` 后才能进入开发数据就绪状态。
+
+`HierarchicalIntentLegalCandidateRanker` 复用 35 维主动视觉候选特征。每个候选先经过共享两层
+tanh MLP，padding mask 后的 mean/max 拼接为集合上下文并输出四类意图 logit；另一共享线性头
+输出候选基础 logit。对样本 (i) 的合法候选 (j)，融合分数为
+
+\[
+s_{ij}=r_{ij}+1.25\tanh(z_{i,c(j)}),
+\]
+
+其中 (r_{ij}) 是候选排序头，(z_{i,c(j)}) 是候选所属意图的集合上下文分数。修正项绝对值
+不超过 1.25；非法候选不参与归一化。训练目标冻结为
+
+\[
+L=L_{\mathrm{legal\ rank}}+0.75L_{\mathrm{balanced\ intent}}.
+\]
+
+意图权重只由 train 示范计数计算：以最大类计数和各类计数的比值开平方，上限为 4，再按 train
+样本平均权重为 1 归一化；最终绝对值必须位于 `[0.25, 4.0]`。任一类计数为 0、候选意图越界、
+示范候选不合法、样本角色缺失或出现 test/future split 时，均在模型训练前抛错。候选排序不
+预测 `global_track_id`，只沿用候选中已有的中心只读引用。
+
+训练入口 `active_vision_a3_v3_training.py` 只接受恰好包含 train 与 validation 的开发 cache。
+train 用于参数梯度、训练特征边界和上述类别权重；每个 epoch 完整使用 train 一次。
+validation composite loss 以 `1e-12` 容差选最早最低轮次。恢复该 checkpoint 后，入口只在
+validation 上对 `[0.5, 5.0]` 的 181 个温度点计算候选 NLL，平局取最低温度；固定置信门不参与
+搜索。逐意图召回、宏召回、interceptor/recon 精确动作与 ECE 全部通过后，才具备“冻结模型后
+申请 future 一次性评估”的前置条件，不等于 shadow、assist 或 runtime 准入。
+
+future held-out 不属于训练入口允许的 split。独立 ledger 初始必须为 `unopened/access_count=0`，
+且绑定相同 protocol、weights 与 calibration SHA-256；一旦访问，后续请求全部拒绝，结果不可
+作为配置反馈。默认 CLI 只校验协议并返回 `protocol_frozen_data_not_generated`。没有新的严格
+source manifest 和 development cache 时，`--execute-training` 在创建输出目录前失败关闭。
+本批没有调用该执行模式，没有生成数据、cache 或权重。
+
+静态测试覆盖 test 调参、多配置、少数类/角色缺失、开发与 future seed 交叉、v2/正式 seed
+交叉、test 校准、任一 authority=true、重复 future 访问、非法候选 mask、有界修正和缺类权重。
+专项结果为 `32 passed in 1.00s`；D5 全量为 `811 passed, 2 warnings in 111.61s`，`py_compile`
+与 owned-path `git diff --check` 通过。该结果只证明协议与软件失败关闭路径，不提供新模型性能、
+AirSim、真实相机、A3/R0 或物理收益证据。
+
 ## A3 v2 开发态行为克隆实现
 
 训练入口新增 standalone point-mass 来源绑定。严格 loader 先验证 dataset manifest、split、
