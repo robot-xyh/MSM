@@ -2009,3 +2009,29 @@ GAP、算法文档和系统总报告。
    结果外推到工程性能。
 5. [ ] 正式矩阵保持 `450/900`，shards 10 至 19 不启动。当前留出执行使用脏开发工作树，
    不构成 formal 准入证据。
+
+## 15. D3/D4/D5 全局 seed 分配（2026-08-01）
+
+### 已完成
+
+1. [x] 建立 main-owned、自哈希的全局登记表，保护既有 658 个训练、评价、开发和废弃
+   来源 seed；正式 `1000-1019` 继续禁止数据生成与 payload 读取。
+2. [x] 分配 D3 A1 v3 `23000-23299`、D4 A2 v8 TRAIN `28100-28423`，并按用途分开
+   D5 A3 v3 train `24000-24047`、validation `24048-24071`、future-held-out
+   `24072-24103`。
+3. [x] 将每项分配绑定到 D3/D4/D5 冻结合同、请求、协议或 schema 的路径与 SHA-256；
+   增加路径越界、符号链接、缺失文件和哈希漂移的失败关闭检查。
+4. [x] 数据生成入口先验证全局登记和来源合同，再要求实际 generation seeds 与一个
+   allocation 精确一致；未来留出 allocation 不含 training 权限。
+5. [x] 专项回归 `6 passed`，登记表可确定性重建；当前没有读取正式 payload，也没有
+   生成 episode、训练模型或改变任何运行权限。
+
+### 下一步
+
+1. [ ] D3 生成绑定全局 allocation、冻结 request/contract 和 15-cell/300-episode 的模块
+   registry 与 schedule，并使 readiness 返回 `ready`。
+2. [ ] D4 将全局 allocation 哈希接入现有 108-cell x 3 replicate 请求，保持 TRAIN-only；
+   validation/test 继续未分配。
+3. [ ] D5 生成三个互斥 split 的 source schedule/manifest 计划，future-held-out 继续一次性
+   读取且不得用于训练、选模、校准或门限修改。
+4. [ ] 三个模块 readiness 全部通过后，main 才能创建执行计划；当前不得启动数据生成。

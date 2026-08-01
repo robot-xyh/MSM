@@ -2644,3 +2644,17 @@ episode。40/40 状态有限、在线真值使用为 0，D2 只读因果诊断�
 两组控制/影子复核在剔除四个风险旁路字段后，D1、D2、严格身份语义和 truth NPZ 均保持
 相同。正式基线仍为 `450/900`、shards 0 至 9；本轮没有启动 shards 10 至 19。完整审查见
 [D1 光电关联风险留出审查](docs/SCALABLE_3D_D1_ASSOCIATION_RISK_HELDOUT_REVIEW_20260731_CN.md)。
+
+## 全局学习种子登记（2026-08-01）
+
+main 已生成 `scalable_learning_global_seed_registry_v1.json`，统一保留既有训练、评价、
+开发探针和废弃批次的 658 个 seed，并冻结五项新分配：D3 A1 v3 使用
+`23000-23299`；D4 A2 v8 TRAIN 使用 `28100-28423`；D5 A3 v3 的 train、validation、
+future-held-out 分别使用 `24000-24047`、`24048-24071` 和 `24072-24103`。五项分配
+两两互斥，且与正式 seed `1000-1019` 零重叠。
+
+每项分配都绑定模块请求、协议或 schema 的仓库相对路径与 SHA-256。生成入口在检查精确
+seed 分配前，先验证来源文件未漂移、路径未越界且不是符号链接。登记表当前状态为
+`allocations_reserved_generation_not_started`；episode、样本和训练计数均为 0。D3、D4、
+D5 各自的 schedule/readiness 尚未全部绑定，因此本项不构成数据生成许可，更不开放
+学习模型的 shadow、assist、运行或控制权限。

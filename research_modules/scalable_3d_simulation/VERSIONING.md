@@ -439,3 +439,13 @@ assignment comparison 可用，不把缺失的运行确认或物理结果补零�
 | `scalable3d-v1.0.0` | 20 个未见 seed 的最终验收 |
 
 标签只在对应测试、实验产物、GAP/PLAN 和中文报告齐全后创建。当前阶段未达到要求时不得提前打标签。
+
+## 全局学习 seed 登记
+
+`scalable3d-learning-source-allocation-20260801-v1` 是 D3 A1 v3、D4 A2 v8 和 D5 A3 v3
+新来源的 main-owned 分配版本。登记表本身使用 `scalable3d-global-seed-registry-v1`，内容
+SHA-256 为 `89d99bf064a8c0e226eead5b675f05daf70ac2d4c6f6139322502da54ab0aea7`。
+
+该版本只表示 seed 已保留，不表示模块数据合同已就绪。模块 schedule、dataset manifest、
+模型 bundle 和运行准入仍使用各自独立版本与摘要。后续若任一来源合同文件变化，必须新建
+登记版本并重新分配或重新绑定，不得直接改写已用于生成的登记表。

@@ -340,6 +340,121 @@ def validate_seed_request(
     }
 
 
+def validate_registry_source_contracts(
+    registry: GlobalSeedRegistry,
+    *,
+    repository_root: str | Path,
+) -> dict[str, Any]:
+    """Verify every allocation against immutable repository source files.
+
+    The global registry deliberately accepts module-specific metadata in
+    ``source_contract``.  This verifier standardizes only the file bindings:
+    each allocation must declare a non-empty ``bindings`` list whose entries
+    carry ``role``, repository-relative ``path`` and the file's SHA-256.
+    """
+
+    root = Path(repository_root).resolve()
+    if not root.is_dir():
+        raise GlobalSeedRegistryError(
+            "repository_root_invalid", f"repository root is not a directory: {root}"
+        )
+
+    verified: list[dict[str, Any]] = []
+    for allocation_id in sorted(registry.allocations):
+        allocation = registry.allocations[allocation_id]
+        bindings = _object_list(
+            allocation.source_contract.get("bindings"),
+            f"allocation {allocation_id} source bindings",
+        )
+        if not bindings:
+            raise GlobalSeedRegistryError(
+                "source_bindings_empty",
+                f"allocation {allocation_id} must bind at least one source file",
+            )
+        seen_roles: set[str] = set()
+        seen_paths: set[str] = set()
+        verified_bindings: list[dict[str, str]] = []
+        for raw in bindings:
+            role = _nonempty_string(raw.get("role"), "source binding role")
+            logical_path = _nonempty_string(raw.get("path"), "source binding path")
+            expected_sha256 = _sha256_string(
+                raw.get("sha256"), "source binding sha256"
+            )
+            if role in seen_roles:
+                raise GlobalSeedRegistryError(
+                    "source_binding_role_duplicate",
+                    f"allocation {allocation_id} repeats source role: {role}",
+                )
+            if logical_path in seen_paths:
+                raise GlobalSeedRegistryError(
+                    "source_binding_path_duplicate",
+                    f"allocation {allocation_id} repeats source path: {logical_path}",
+                )
+            seen_roles.add(role)
+            seen_paths.add(logical_path)
+
+            relative = Path(logical_path)
+            if relative.is_absolute() or ".." in relative.parts:
+                raise GlobalSeedRegistryError(
+                    "source_binding_path_unsafe",
+                    f"allocation {allocation_id} has unsafe source path: {logical_path}",
+                )
+            source = root / relative
+            if source.is_symlink():
+                raise GlobalSeedRegistryError(
+                    "source_binding_symlink_forbidden",
+                    f"allocation {allocation_id} source is a symlink: {logical_path}",
+                )
+            try:
+                resolved = source.resolve(strict=True)
+                resolved.relative_to(root)
+            except (OSError, ValueError) as exc:
+                raise GlobalSeedRegistryError(
+                    "source_binding_unavailable",
+                    f"allocation {allocation_id} source is unavailable: {logical_path}",
+                ) from exc
+            if not resolved.is_file():
+                raise GlobalSeedRegistryError(
+                    "source_binding_not_file",
+                    f"allocation {allocation_id} source is not a file: {logical_path}",
+                )
+            try:
+                actual_sha256 = hashlib.sha256(resolved.read_bytes()).hexdigest()
+            except OSError as exc:
+                raise GlobalSeedRegistryError(
+                    "source_binding_read_failed",
+                    f"allocation {allocation_id} source cannot be read: {logical_path}",
+                ) from exc
+            if actual_sha256 != expected_sha256:
+                raise GlobalSeedRegistryError(
+                    "source_binding_hash_mismatch",
+                    f"allocation {allocation_id} source hash changed: {logical_path}",
+                )
+            verified_bindings.append(
+                {
+                    "role": role,
+                    "path": logical_path,
+                    "sha256": actual_sha256,
+                }
+            )
+        verified.append(
+            {
+                "allocation_id": allocation_id,
+                "binding_count": len(verified_bindings),
+                "bindings": verified_bindings,
+            }
+        )
+
+    return {
+        "schema_version": GLOBAL_SEED_REGISTRY_SCHEMA_VERSION,
+        "registry_id": registry.registry_id,
+        "registry_content_sha256": registry.content_sha256,
+        "allocation_count": len(verified),
+        "all_source_contracts_verified": True,
+        "allocations": verified,
+    }
+
+
 def registry_content_sha256(payload: Mapping[str, Any]) -> str:
     """Hash canonical registry content while excluding its self-hash field."""
 

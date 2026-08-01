@@ -26,6 +26,7 @@ from research_modules.scalable_3d_simulation.learning_export import (
 )
 from research_modules.scalable_3d_simulation.global_seed_registry import (
     load_global_seed_registry,
+    validate_registry_source_contracts,
     validate_seed_request,
 )
 from research_modules.scalable_3d_simulation.active_vision_collection import (
@@ -203,6 +204,10 @@ def main(argv: list[str] | None = None) -> int:
     global_seed_allocation = None
     if args.global_seed_registry is not None:
         global_registry = load_global_seed_registry(args.global_seed_registry)
+        source_contract_audit = validate_registry_source_contracts(
+            global_registry,
+            repository_root=ROOT,
+        )
         global_seed_allocation = validate_seed_request(
             global_registry,
             allocation_id=args.seed_allocation_id,
@@ -213,6 +218,7 @@ def main(argv: list[str] | None = None) -> int:
         global_seed_allocation["registry_path"] = str(
             args.global_seed_registry.resolve()
         )
+        global_seed_allocation["source_contract_audit"] = source_contract_audit
     plan = {
         "schema_version": GENERATION_PLAN_SCHEMA_VERSION,
         "formal": bool(args.formal),

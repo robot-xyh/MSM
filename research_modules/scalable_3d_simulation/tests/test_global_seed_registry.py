@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import copy
+from hashlib import sha256
 import json
 from pathlib import Path
 
@@ -13,6 +14,7 @@ from research_modules.scalable_3d_simulation.global_seed_registry import (
     build_global_seed_registry,
     load_global_seed_registry,
     registry_content_sha256,
+    validate_registry_source_contracts,
     validate_seed_request,
 )
 
@@ -164,3 +166,72 @@ def test_seed_request_fails_closed_for_partial_wrong_operation_or_retired() -> N
             operation="dataset_generation",
         )
     assert error.value.code == "allocation_retired"
+
+
+def test_source_contract_verification_rejects_hash_drift_and_unsafe_path(
+    tmp_path: Path,
+) -> None:
+    source = tmp_path / "contract.json"
+    source.write_text('{"version":1}\n', encoding="ascii")
+    payload = _payload()
+    payload["allocations"] = [payload["allocations"][0]]
+    payload["allocations"][0]["source_contract"] = {
+        "bindings": [
+            {
+                "role": "contract",
+                "path": "contract.json",
+                "sha256": sha256(source.read_bytes()).hexdigest(),
+            }
+        ]
+    }
+    payload["content_sha256"] = registry_content_sha256(payload)
+    registry = build_global_seed_registry(payload)
+    audit = validate_registry_source_contracts(
+        registry,
+        repository_root=tmp_path,
+    )
+    assert audit["all_source_contracts_verified"] is True
+
+    source.write_text('{"version":2}\n', encoding="ascii")
+    with pytest.raises(GlobalSeedRegistryError) as error:
+        validate_registry_source_contracts(registry, repository_root=tmp_path)
+    assert error.value.code == "source_binding_hash_mismatch"
+
+    payload["allocations"][0]["source_contract"]["bindings"][0]["path"] = (
+        "../contract.json"
+    )
+    payload["content_sha256"] = registry_content_sha256(payload)
+    unsafe = build_global_seed_registry(payload)
+    with pytest.raises(GlobalSeedRegistryError) as error:
+        validate_registry_source_contracts(unsafe, repository_root=tmp_path)
+    assert error.value.code == "source_binding_path_unsafe"
+
+
+def test_project_registry_is_reproducible_disjoint_and_source_bound() -> None:
+    root = Path(__file__).resolve().parents[3]
+    path = (
+        root
+        / "research_modules/scalable_3d_simulation/configs/"
+        "scalable_learning_global_seed_registry_v1.json"
+    )
+    registry = load_global_seed_registry(path)
+    audit = validate_registry_source_contracts(registry, repository_root=root)
+
+    assert audit["allocation_count"] == 5
+    assert not registry.unallocated_requests
+    assert registry.allocation("d3-a1-v3-all-splits").seeds == tuple(
+        range(23000, 23300)
+    )
+    assert registry.allocation("d4-a2-v8-train").seeds == tuple(
+        range(28100, 28424)
+    )
+    assert registry.allocation("d5-a3-v3-train").seeds == tuple(
+        range(24000, 24048)
+    )
+    assert registry.allocation("d5-a3-v3-validation").seeds == tuple(
+        range(24048, 24072)
+    )
+    future = registry.allocation("d5-a3-v3-future-held-out")
+    assert future.seeds == tuple(range(24072, 24104))
+    assert future.permitted_operations == ("dataset_generation", "test")
+    assert "training" not in future.permitted_operations

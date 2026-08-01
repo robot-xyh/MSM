@@ -3354,3 +3354,27 @@ D6 独立只读审计确认 644 个当前多成员联盟目标闭合，100/100 �
 当前没有新增运行级 P0。D1 后验、D2 关联、D3 分配、D4 降级、D5 视觉绑定和 D7 控制路径
 均未由本项改变。详细证据见
 `research_modules/scalable_3d_simulation/docs/SCALABLE_3D_D1_ASSOCIATION_RISK_HELDOUT_REVIEW_20260731_CN.md`。
+
+## 2026-08-01 D3/D4/D5 新来源 seed 治理
+
+### 已关闭
+
+1. main 已建立自哈希全局登记表，五项新分配共 728 个 seed 两两互斥，并与 658 个既有
+   保护 seed 零重叠。正式 `1000-1019` 仍禁止生成和 payload 读取。
+2. D3 A1 v3、D4 A2 v8 TRAIN 以及 D5 A3 v3 的 train/validation/future-held-out 已分别
+   取得显式 allocation；D5 未来留出不具 training 权限。
+3. 所有 allocation 均绑定冻结来源文件路径和 SHA-256。生成入口增加来源文件哈希、路径
+   越界、符号链接和精确 allocation 检查。
+4. 登记表可由生成器逐字节复现，专项测试 `6 passed`。本轮没有生成数据、训练模型、读取
+   正式 payload 或更改 D1-D7 运行权限。
+
+### 仍开放 P1
+
+1. D3 的 15-cell/300-episode 模块 registry 与 schedule 尚未由 main 生成，readiness 仍不能
+   作为执行许可。
+2. D4 需要把全局 allocation/hash 接入 v8 TRAIN-only readiness；validation/test 仍应等待
+   新来源请求，不能从 TRAIN 划出。
+3. D5 需要按三个 allocation 建立 source schedule/manifest，并在训练前证明 split 覆盖、
+   整集互斥和 future-held-out 一次性访问门控。
+4. 三个模块就绪校验全部通过前，不启动 episode/sample 生成。R0 `450/900`、shards 0-9
+   和禁止运行 shards 10-19 的边界保持不变。
