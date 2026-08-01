@@ -20,7 +20,7 @@ plan。`run_learning_dataset.py` 要求 balanced 配置同时显式启用只读�
 `hold/interceptor=445`、`hold/recon=89`、`search_sector/recon=51`，三个单元均覆盖
 10 个完整 episode 和 10 个 seed；在线真值使用为 0。该探针不作为训练、来源或晋级证据。
 main 定向回归为 `159 passed, 1 warning`。完整 clean 100-seed 语料、D5 严格训练门和
-D6 独立来源审计仍待执行，A3 的 BC、PPO、assist、promotion 和全部 authority 保持 false。
+D6 独立来源审计当时仍待执行，A3 的 BC、PPO、assist、promotion 和全部 authority 保持 false。
 
 首次 clean `d39dbd7` 运行在完成 14 个 episode 后由 main 主动停止。复核发现线索暂失窗口
 同时移除了侦察观察指派，而目标合同要求保留指派和中心航迹，仅抑制本相机投影。该批未最终
@@ -28,6 +28,18 @@ D6 独立来源审计仍待执行，A3 的 BC、PPO、assist、promotion 和全�
 `ActiveVisionAssignmentReference` 留在快照中，并只在窗口内省略对应
 `ActiveVisionProjectionEvidence`。修订后全量回归为 `451 passed, 1 warning`；警告来自
 既有 Matplotlib `Axes3D` 环境。
+
+main 随后从 detached clean `d7bf890` 一次性完成 v2 的 100 个 episode。seed
+`22100-22199` 覆盖 9 类场景、5 档规模、45 个场景-规模单元和 10 个额外优先单元，
+最终封装 2011 个主动视觉帧和 159502 个样本。checkpoint/进度恢复均为 0，正式保留
+seed 重叠为 0，输出只包含 `d5_active_vision`，没有拟合模型。数据集 manifest
+SHA-256 为 `9b80e47aed8f4c7a416694220d63d9156010911951cbbf271905ce5c0d6f31d4`。
+D5 随后完成 100 episode/159502 sample 的严格复载。仿真研究来源门和开发训练结构门均
+通过；训练集中 `hold/interceptor=42669`、`hold/recon=1772`、
+`search_sector/recon=1023`，三项均覆盖 60 episode/60 seed。D6 独立复算 16 项来源检查和
+13 项候选锚点检查，29/29 通过，阻断项为 0。行为克隆、PPO、assist、promotion 和全部
+authority 仍为 false。完整结果见
+[`docs/SCALABLE_3D_D5_A3_BALANCED_ACTION_ROLE_CORPUS_20260801_CN.md`](docs/SCALABLE_3D_D5_A3_BALANCED_ACTION_ROLE_CORPUS_20260801_CN.md)。
 
 ## A3 主动视觉来源域合同（2026-07-31）
 

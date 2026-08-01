@@ -4,6 +4,62 @@
 **审计目标**：列出共识算法与计划使用的开源代码哪些已经实现，哪些没有实现，为什么没有实现，以及缺少哪些条件。
 **边界**：本文只用于科研仿真、接口补齐和后续工程排期；不涉及真实硬件、实机处置、火控或绕过授权的自动动作。
 
+## 2026-08-01 A3 v2 动作角色语料闭合
+
+### 当前判断
+
+- 新增运行级 P0：无。
+- clean A3 v2 语料：100/100 episode 已生成并最终封装。
+- D5 严格数据集、质点研究来源和开发训练结构门：全部通过。
+- D6 独立低层审计：29/29 通过，阻断项为 0。
+- 旧 v1 的 `hold/interceptor`、`hold/recon` 和 `search_sector/recon` 结构缺口：关闭。
+- 行为克隆、近端策略优化、模型准入、辅助、分配、降级、运行、生产、控制和
+  `global_track_id` 写权限：全部关闭。
+
+### 已闭合
+
+1. main 从 detached clean `d7bf890` 一次性运行 seed `22100-22199`。100 个 episode
+   覆盖 9 类场景、5 档规模、45 个场景-规模单元和 10 个额外优先单元，最终得到 2011 帧、
+   159502 个样本。checkpoint/进度恢复、旧语料拼接、废弃批次复用和正式 seed 重叠均为 0。
+2. 运行处理配置为 `balanced_action_role_v1`。相机稳定期和侦察线索暂失均由真实运行状态
+   触发 D5 既有规则动作，没有复制、过采样、强制标签、重加权或 fixture 注入。线索暂失
+   快照保留侦察 assignment 和中心航迹，只抑制对应 projection。
+3. D5 严格复载状态为 `valid_detached_immutable_dataset`；来源门为
+   `point_mass_simulation_research_eligible`；训练结构门为
+   `pass_development_corpus_only`，失败原因、警告和排除样本均为空。
+4. 训练集 95040 个样本中，`hold/interceptor=42669/60/60`、
+   `hold/recon=1772/60/60`、`search_sector/recon=1023/60/60`，数字依次为唯一样本、
+   episode 和 seed。验证和测试样本没有用于补足训练门。
+5. 159502 个运行 ACK 全部接受，匿名 observation key 全部存在且唯一。在线
+   truth/actor/object ID 消费、`global_track_id` 创建或改写以及保留 seed overlap 均为 0。
+6. D6 不调用 D5 validator 或 corpus gate，独立复算 302 个清单工件和 `SHA256SUMS`、
+   100 个 descriptor、100 个 gzip 在线流、100 个离线文件及 321215 条在线记录。来源检查
+   16/16、候选锚点 13/13 通过，状态为 `simulation_research_integrity_confirmed`。
+7. D5 全量为 `776 passed, 2 warnings`；D6 全量为 `1366 passed, 1 warning`。警告来自
+   既有 Matplotlib/NVML 环境，不改变语料或权限结论。
+
+### 开放 P1
+
+1. **模型质量。** 结构门通过后尚未构建本批行为克隆缓存、训练权重或执行逐动作/逐角色
+   评价。训练集中侦察相机只有 3870 个样本，侦察 `observe_target` 只有 17 个样本；总体
+   准确率不能作为少数类准入依据。
+2. **来源独立效果。** 仍需未见 seed、分布外、同键 A3/R0 成对非退化和失败回退证据。
+   当前只确认语料结构和来源，不能登记模型增益。
+3. **物理证据。** 离线 outcome、reward、counterfactual 和 causal label 均不可用。AirSim、
+   真实相机和实际物理动作结果尚未形成，运行 ACK 不能替代物理收益。
+4. **权限。** 本轮没有启动行为克隆或 PPO，没有写权重。模型准入、辅助、相机命令、分配、
+   降级、运行、生产、控制和 `global_track_id` 写权限继续为 false，默认确定性规则不变。
+
+### 版本证据
+
+- 生产提交：`d7bf89060e88a5b1324f2d8d1de36b005ebe5e4d`
+- generation plan：`ed9765395da89e682b250ba23bf7322b290b2a559d0eb4403a2469f9a2cc48a9`
+- dataset manifest：`9b80e47aed8f4c7a416694220d63d9156010911951cbbf271905ce5c0d6f31d4`
+- D5 corpus audit：`bce869573f6c1084c2db10b263818d98be2de562f7701fc19ec95aaf56bfc872`
+- D6 machine evidence：`ade7d9fd135b103f04f0ffb9819e602b47246af60ba7beafb7bd9369a17d505e`
+- main 中文验收：
+  `research_modules/scalable_3d_simulation/docs/SCALABLE_3D_D5_A3_BALANCED_ACTION_ROLE_CORPUS_20260801_CN.md`
+
 ## 2026-07-31 A3 主动视觉独立来源语料验收
 
 ### 当前判断

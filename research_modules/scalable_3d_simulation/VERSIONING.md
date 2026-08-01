@@ -173,6 +173,23 @@ runtime profile；动作仍由 D5 规则策略产生。首次 clean `d39dbd7` �
 `1000-1019` 均零重叠。开发或拒绝批次不属于 clean final corpus evidence，不得与最终语料
 拼接或用于模型准入。
 
+v2 候选已从 detached clean
+`d7bf89060e88a5b1324f2d8d1de36b005ebe5e4d` 一次性生成并最终封装。schedule、generation
+plan、training seed registry、dataset manifest、split 和 training-set SHA-256 依次为
+`fcc288262b64a971cfc94ad152081a01e31388032a4c1eacbd58a1e70e7279a7`、
+`ed9765395da89e682b250ba23bf7322b290b2a559d0eb4403a2469f9a2cc48a9`、
+`6e4cb133fcd91c12e3aa38039fc2d2fe7fb9ace6b2c3bdb27cc5ce498a7618f5`、
+`9b80e47aed8f4c7a416694220d63d9156010911951cbbf271905ce5c0d6f31d4`、
+`fb4f6c0ce6566e05113c052af52f45b1ecfbdb3d77727b6c038010777477da7b` 和
+`3cc6ea166adc74e8cf89e9a5a6b44952b9e4f51d08c83678db39b7b9d1761776`。
+该绑定只确认生成身份。D5 owner 后续登记的语料审计 SHA-256 为
+`bce869573f6c1084c2db10b263818d98be2de562f7701fc19ec95aaf56bfc872`，严格数据集、质点
+研究来源和开发训练结构门均通过。D6 独立来源检查 16/16、候选锚点检查 13/13 通过；机器
+证据和报告目录 `SHA256SUMS` 的 SHA-256 为
+`ade7d9fd135b103f04f0ffb9819e602b47246af60ba7beafb7bd9369a17d505e` 和
+`4752f3ad0bc50402686fc9be0b1e9dd25504380e9701003063f45a629a19c6c3`。这些门只允许后续
+开发态训练准备，不能推导模型准入或运行权限。
+
 `scalable3d-episode-bus-v1` 的 D1 航迹发布现允许两种兼容记录：`full_posterior` 携带完整
 `tracks`，`state_update` 只携带扫描摘要、观测谱系和 `current_track_count`。两类记录都保持
 `track_count == len(tracks)`；需要完整快照的 consumer 必须检查 `tracks_materialized`，不能

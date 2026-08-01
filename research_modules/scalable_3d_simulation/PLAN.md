@@ -19,12 +19,19 @@
 6. [x] 修订 v2 schedule 候选，使用全新 seed `22100-22199`；与旧语料、开发探针、拒绝
    批次和正式保留 seed 均无重叠。运行快照保留侦察 assignment，只抑制对应 projection；
    修订后 scalable 3D 全量 `451 passed, 1 warning`。
-7. [ ] 从 clean source commit 运行 v2 的 100 个完整 episode 并最终封装，不与旧 v1 语料
-   拼接，不复制、过采样、重加权或注入 fixture。
-8. [ ] 由 D5 重新执行严格文件、来源和训练结构门；只有 train/validation/test 所有要求单元
-   均达到门限后，才允许进入行为克隆准备，模型和在线权限仍需单独评审。
-9. [ ] 由 D6 独立复算 checksum、manifest、descriptor、在线流、clean source、whole-seed
-   split、匿名身份和 authority，随后同步 main GAP 与中文验收报告。
+7. [x] 从 detached clean `d7bf890` 一次运行 v2 的 100 个完整 episode 并最终封装。
+   seed `22100-22199`、9 类场景、5 档规模、45 个场景-规模单元和 10 个额外优先单元
+   得到 2011 帧、159502 个样本；checkpoint/进度恢复、旧语料拼接、样本复制、过采样、
+   重加权、fixture 注入和正式 seed 重叠均为 0。manifest SHA-256 为
+   `9b80e47aed8f4c7a416694220d63d9156010911951cbbf271905ce5c0d6f31d4`。
+8. [x] D5 全量复载 100 episode/159502 sample。严格数据集、质点研究来源和开发训练
+   结构门均通过；三个原缺失单元的 train 覆盖为 42669/60/60、1772/60/60 和
+   1023/60/60。验证/测试未用于补训练覆盖，行为克隆和 PPO 未启动，全部权限为 false。
+9. [x] D6 不调用 D5 高层校验器，独立复算 303 个输入文件、100 个 descriptor/在线流/
+   离线文件及 321215 条在线记录。来源检查 16/16、候选锚点 13/13，合计 29/29 通过；
+   truth/actor/object 标识、保留 seed 重叠和阻断项均为 0。
+10. [ ] 在独立开发流程中构建行为克隆缓存并执行逐动作、逐角色、未见 seed 和分布外评价。
+    在同键 A3/R0 非退化、AirSim、真实相机和物理动作结果闭合前，模型不进入辅助或控制路径。
 
 ## A3 主动视觉来源域与独立审计（2026-07-31）
 
