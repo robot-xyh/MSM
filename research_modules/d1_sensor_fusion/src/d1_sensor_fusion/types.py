@@ -28,6 +28,42 @@ STRUCTURAL_AMBIGUITY_UPDATE_MODE = "prediction_only"
 STRUCTURAL_AMBIGUITY_BIRTH_DISPOSITION = "deferred_component_birth"
 DEFAULT_STRUCTURAL_AMBIGUITY_PUBLISHER_NODE_ID = "D1_FUSION"
 DEFAULT_STRUCTURAL_AMBIGUITY_PUBLISHER_EPOCH = "d1-default-epoch-v1"
+ASSOCIATION_RISK_EVIDENCE_SCHEMA_VERSION = "d1.association-risk-evidence.v1"
+ASSOCIATION_RISK_POLICY_VERSION = "shadow_precommit_eo_projection_risk_v1"
+ASSOCIATION_RISK_THRESHOLD_PROFILE_VERSION = "d1.association-risk-thresholds.eo.v1"
+ASSOCIATION_RISK_DECISION = "evidence_only"
+ASSOCIATION_RISK_MODE = "shadow"
+ASSOCIATION_RISK_MEMBER_TOKEN_RULE = STRUCTURAL_AMBIGUITY_MEMBER_TOKEN_RULE
+ASSOCIATION_RISK_SOURCE_KEY_RULE = STRUCTURAL_AMBIGUITY_SOURCE_KEY_RULE
+ASSOCIATION_RISK_CLASSIFICATION_SCHEMA_VERSION = (
+    "d1.association-risk-shadow-classification.v1"
+)
+ASSOCIATION_RISK_CLASSIFICATION_AUDIT_SCHEMA_VERSION = (
+    "d1.association-risk-shadow-classification-audit.v1"
+)
+ASSOCIATION_RISK_CLASSIFICATION_PROFILE_VERSION = (
+    "d1-eo-pathological-projection-composite-development-v2"
+)
+ASSOCIATION_RISK_CLASSIFICATION_POLICY_VERSION = (
+    "shadow_precommit_eo_pathological_projection_composite_v1"
+)
+ASSOCIATION_RISK_CLASSIFICATION_VALUES = frozenset({"negative", "positive"})
+ASSOCIATION_RISK_CLASSIFICATION_CRITERIA = (
+    "valid_candidate_count_gte_2",
+    "selected_projection_out_of_frame",
+    "retained_alternative_projection_in_frame",
+    "bbox_area_px2_lte_4_0",
+    "confidence_lte_0_10",
+)
+ASSOCIATION_RISK_REASON_VALUES = frozenset(
+    {
+        "projection_out_of_frame",
+        "near_projection_singularity",
+        "ill_conditioned_innovation",
+        "weak_assignment_margin",
+        "multiple_gate_candidates",
+    }
+)
 
 
 CANONICAL_OBSERVATION_FRAMES = {
@@ -938,6 +974,625 @@ class StructuralAmbiguityEvidence:
         }
 
 
+@dataclass(frozen=True)
+class AssociationRiskCandidateEdge:
+    """Bounded truth-free projection diagnostics for one EO candidate edge."""
+
+    opaque_member_track_token: str
+    source_key: str
+    rank: int
+    selected: bool
+    nis: float
+    predicted_pixel: np.ndarray
+    raw_pixel_residual_norm: float
+    forward_depth_m: float
+    projection_in_frame: bool
+    image_width_px: int
+    image_height_px: int
+    innovation_covariance_min_eigenvalue: float
+    innovation_covariance_max_eigenvalue: float
+    innovation_covariance_condition_number: float
+    projection_ellipse_major_axis_px: float
+
+    def __post_init__(self) -> None:
+        token = _opaque_digest_token(
+            self.opaque_member_track_token,
+            "d1-track-sha256:",
+            "opaque_member_track_token",
+        )
+        source_key = _identifier(self.source_key, "source_key")
+        rank = _nonnegative_integer(self.rank, "rank")
+        if rank < 1:
+            raise ValueError("rank must be at least one")
+        if not isinstance(self.selected, bool):
+            raise TypeError("selected must be a bool")
+        if not isinstance(self.projection_in_frame, bool):
+            raise TypeError("projection_in_frame must be a bool")
+        width = _nonnegative_integer(self.image_width_px, "image_width_px")
+        height = _nonnegative_integer(self.image_height_px, "image_height_px")
+        if width < 1 or height < 1:
+            raise ValueError("image dimensions must be positive")
+        minimum = _finite_nonnegative(
+            self.innovation_covariance_min_eigenvalue,
+            "innovation_covariance_min_eigenvalue",
+        )
+        maximum = _finite_nonnegative(
+            self.innovation_covariance_max_eigenvalue,
+            "innovation_covariance_max_eigenvalue",
+        )
+        if maximum + 1.0e-12 < minimum:
+            raise ValueError("innovation covariance eigenvalues are inconsistent")
+        condition = _finite_positive(
+            self.innovation_covariance_condition_number,
+            "innovation_covariance_condition_number",
+        )
+        object.__setattr__(self, "opaque_member_track_token", token)
+        object.__setattr__(self, "source_key", source_key)
+        object.__setattr__(self, "rank", rank)
+        object.__setattr__(self, "nis", _finite_nonnegative(self.nis, "nis"))
+        object.__setattr__(
+            self,
+            "predicted_pixel",
+            _finite_array(self.predicted_pixel, (2,), "predicted_pixel"),
+        )
+        object.__setattr__(
+            self,
+            "raw_pixel_residual_norm",
+            _finite_nonnegative(
+                self.raw_pixel_residual_norm,
+                "raw_pixel_residual_norm",
+            ),
+        )
+        object.__setattr__(
+            self,
+            "forward_depth_m",
+            _finite_positive(self.forward_depth_m, "forward_depth_m"),
+        )
+        object.__setattr__(self, "image_width_px", width)
+        object.__setattr__(self, "image_height_px", height)
+        object.__setattr__(
+            self,
+            "innovation_covariance_min_eigenvalue",
+            minimum,
+        )
+        object.__setattr__(
+            self,
+            "innovation_covariance_max_eigenvalue",
+            maximum,
+        )
+        object.__setattr__(
+            self,
+            "innovation_covariance_condition_number",
+            condition,
+        )
+        object.__setattr__(
+            self,
+            "projection_ellipse_major_axis_px",
+            _finite_nonnegative(
+                self.projection_ellipse_major_axis_px,
+                "projection_ellipse_major_axis_px",
+            ),
+        )
+
+    @classmethod
+    def from_dict(cls, payload: Mapping[str, Any]) -> "AssociationRiskCandidateEdge":
+        keys = {
+            "opaque_member_track_token",
+            "source_key",
+            "rank",
+            "selected",
+            "nis",
+            "predicted_pixel",
+            "raw_pixel_residual_norm",
+            "forward_depth_m",
+            "projection_in_frame",
+            "image_width_px",
+            "image_height_px",
+            "innovation_covariance_min_eigenvalue",
+            "innovation_covariance_max_eigenvalue",
+            "innovation_covariance_condition_number",
+            "projection_ellipse_major_axis_px",
+        }
+        _require_exact_keys(payload, keys, "association risk candidate edge")
+        return cls(**{key: payload[key] for key in keys})
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "opaque_member_track_token": self.opaque_member_track_token,
+            "source_key": self.source_key,
+            "rank": self.rank,
+            "selected": self.selected,
+            "nis": self.nis,
+            "predicted_pixel": self.predicted_pixel.tolist(),
+            "raw_pixel_residual_norm": self.raw_pixel_residual_norm,
+            "forward_depth_m": self.forward_depth_m,
+            "projection_in_frame": self.projection_in_frame,
+            "image_width_px": self.image_width_px,
+            "image_height_px": self.image_height_px,
+            "innovation_covariance_min_eigenvalue": (
+                self.innovation_covariance_min_eigenvalue
+            ),
+            "innovation_covariance_max_eigenvalue": (
+                self.innovation_covariance_max_eigenvalue
+            ),
+            "innovation_covariance_condition_number": (
+                self.innovation_covariance_condition_number
+            ),
+            "projection_ellipse_major_axis_px": self.projection_ellipse_major_axis_px,
+        }
+
+
+@dataclass(frozen=True)
+class AssociationRiskEvidence:
+    """Pre-commit EO association risk sidecar; it never changes fusion state."""
+
+    evidence_id: str
+    publisher_generation: int
+    publisher_node_id: str
+    publisher_epoch: str
+    measurement_timestamp: float
+    arrival_timestamp: float
+    published_at: float
+    sensor_id: str
+    modality: str
+    scan_id: str
+    observation_evidence_key: str
+    selected_opaque_member_track_token: str
+    selected_source_key: str
+    candidate_edges: tuple[AssociationRiskCandidateEdge, ...]
+    first_candidate_cost: float
+    second_candidate_cost: float | None
+    assignment_margin: float | None
+    valid_candidate_count: int
+    top_k_limit: int
+    measurement_covariance_px2: np.ndarray
+    bbox_area_px2: float | None
+    confidence: float
+    risk_reasons: tuple[str, ...]
+    threshold_profile_version: str = ASSOCIATION_RISK_THRESHOLD_PROFILE_VERSION
+    policy_version: str = ASSOCIATION_RISK_POLICY_VERSION
+    frame_id: str = "NED"
+    measurement_frame_id: str = "pixel"
+    decision: str = ASSOCIATION_RISK_DECISION
+    mode: str = ASSOCIATION_RISK_MODE
+    online_truth_used: bool = False
+    posterior_update_applied: bool = False
+    schema_version: str = ASSOCIATION_RISK_EVIDENCE_SCHEMA_VERSION
+
+    def __post_init__(self) -> None:
+        if self.schema_version != ASSOCIATION_RISK_EVIDENCE_SCHEMA_VERSION:
+            raise ValueError("unsupported association risk evidence schema")
+        if self.policy_version != ASSOCIATION_RISK_POLICY_VERSION:
+            raise ValueError("unsupported association risk policy")
+        if self.threshold_profile_version != ASSOCIATION_RISK_THRESHOLD_PROFILE_VERSION:
+            raise ValueError("unsupported association risk threshold profile")
+        if self.decision != ASSOCIATION_RISK_DECISION or self.mode != ASSOCIATION_RISK_MODE:
+            raise ValueError("association risk evidence must remain shadow evidence_only")
+        if self.online_truth_used is not False:
+            raise ValueError("association risk evidence cannot use online truth")
+        if self.posterior_update_applied is not False:
+            raise ValueError("association risk evidence cannot apply posterior updates")
+        if str(self.frame_id).upper() != "NED" or str(self.measurement_frame_id).lower() != "pixel":
+            raise ValueError("association risk evidence requires NED/pixel frame contract")
+        measurement_timestamp = _finite_timestamp(
+            self.measurement_timestamp,
+            "measurement_timestamp",
+        )
+        arrival_timestamp = _finite_timestamp(self.arrival_timestamp, "arrival_timestamp")
+        published_at = _finite_timestamp(self.published_at, "published_at")
+        if arrival_timestamp + 1.0e-12 < measurement_timestamp:
+            raise ValueError("arrival_timestamp cannot precede measurement_timestamp")
+        if published_at + 1.0e-12 < arrival_timestamp:
+            raise ValueError("published_at cannot precede arrival_timestamp")
+        edges = tuple(
+            item
+            if isinstance(item, AssociationRiskCandidateEdge)
+            else AssociationRiskCandidateEdge.from_dict(
+                _as_mapping(item, "association risk candidate edge")
+            )
+            for item in self.candidate_edges
+        )
+        top_k = _nonnegative_integer(self.top_k_limit, "top_k_limit")
+        if top_k < 1 or len(edges) > top_k or not edges:
+            raise ValueError("candidate_edges must be non-empty and bounded by top_k_limit")
+        selected = tuple(item for item in edges if item.selected)
+        if len(selected) != 1:
+            raise ValueError("candidate_edges must contain exactly one selected edge")
+        publisher_node_id = _publisher_identifier(
+            self.publisher_node_id,
+            "publisher_node_id",
+        )
+        publisher_epoch = _publisher_identifier(
+            self.publisher_epoch,
+            "publisher_epoch",
+        )
+        for edge in edges:
+            expected_edge_source_key = structural_ambiguity_source_key(
+                publisher_node_id,
+                publisher_epoch,
+                edge.opaque_member_track_token,
+            )
+            if edge.source_key != expected_edge_source_key:
+                raise ValueError(
+                    "candidate edge source_key must equal publisher_node_id::"
+                    "publisher_epoch::opaque_member_track_token"
+                )
+        token = _opaque_digest_token(
+            self.selected_opaque_member_track_token,
+            "d1-track-sha256:",
+            "selected_opaque_member_track_token",
+        )
+        source_key = _identifier(self.selected_source_key, "selected_source_key")
+        expected_selected_source_key = structural_ambiguity_source_key(
+            publisher_node_id,
+            publisher_epoch,
+            token,
+        )
+        if source_key != expected_selected_source_key:
+            raise ValueError(
+                "selected_source_key must equal publisher_node_id::"
+                "publisher_epoch::selected_opaque_member_track_token"
+            )
+        if selected[0].opaque_member_track_token != token or selected[0].source_key != source_key:
+            raise ValueError("selected candidate identity does not match candidate_edges")
+        reasons = tuple(sorted({_identifier(item, "risk reason") for item in self.risk_reasons}))
+        if not reasons or any(item not in ASSOCIATION_RISK_REASON_VALUES for item in reasons):
+            raise ValueError("association risk evidence requires supported risk reasons")
+        valid_count = _nonnegative_integer(self.valid_candidate_count, "valid_candidate_count")
+        if valid_count < len(edges):
+            raise ValueError("valid_candidate_count cannot be below retained edge count")
+        first = _finite_nonnegative(self.first_candidate_cost, "first_candidate_cost")
+        second = None if self.second_candidate_cost is None else _finite_nonnegative(
+            self.second_candidate_cost,
+            "second_candidate_cost",
+        )
+        margin = None if self.assignment_margin is None else _finite_nonnegative(
+            self.assignment_margin,
+            "assignment_margin",
+        )
+        if (second is None) != (margin is None):
+            raise ValueError("second_candidate_cost and assignment_margin availability must match")
+        if second is not None and abs((second - first) - float(margin)) > 1.0e-8:
+            raise ValueError("assignment_margin must equal second minus first cost")
+        confidence = float(self.confidence)
+        if not np.isfinite(confidence) or not 0.0 <= confidence <= 1.0:
+            raise ValueError("confidence must be within [0, 1]")
+        bbox_area = (
+            None
+            if self.bbox_area_px2 is None
+            else _finite_nonnegative(self.bbox_area_px2, "bbox_area_px2")
+        )
+        object.__setattr__(
+            self,
+            "evidence_id",
+            _opaque_digest_token(self.evidence_id, "d1-risk-sha256:", "evidence_id"),
+        )
+        generation = _nonnegative_integer(
+            self.publisher_generation,
+            "publisher_generation",
+        )
+        if generation < 1:
+            raise ValueError("publisher_generation must be at least one")
+        object.__setattr__(self, "publisher_generation", generation)
+        object.__setattr__(self, "publisher_node_id", publisher_node_id)
+        object.__setattr__(self, "publisher_epoch", publisher_epoch)
+        object.__setattr__(self, "measurement_timestamp", measurement_timestamp)
+        object.__setattr__(self, "arrival_timestamp", arrival_timestamp)
+        object.__setattr__(self, "published_at", published_at)
+        object.__setattr__(self, "sensor_id", _identifier(self.sensor_id, "sensor_id"))
+        modality = _identifier(self.modality, "modality").lower()
+        if modality != "eo":
+            raise ValueError("association risk evidence v1 only supports EO")
+        object.__setattr__(self, "modality", modality)
+        object.__setattr__(self, "scan_id", _opaque_digest_token(self.scan_id, "d1-risk-scan-sha256:", "scan_id"))
+        object.__setattr__(self, "observation_evidence_key", _opaque_digest_token(self.observation_evidence_key, "d1-risk-observation-sha256:", "observation_evidence_key"))
+        object.__setattr__(self, "selected_opaque_member_track_token", token)
+        object.__setattr__(self, "selected_source_key", source_key)
+        object.__setattr__(self, "candidate_edges", edges)
+        object.__setattr__(self, "first_candidate_cost", first)
+        object.__setattr__(self, "second_candidate_cost", second)
+        object.__setattr__(self, "assignment_margin", margin)
+        object.__setattr__(self, "valid_candidate_count", valid_count)
+        object.__setattr__(self, "top_k_limit", top_k)
+        object.__setattr__(self, "measurement_covariance_px2", _strict_covariance(self.measurement_covariance_px2, (2, 2), "measurement_covariance_px2"))
+        object.__setattr__(self, "bbox_area_px2", bbox_area)
+        object.__setattr__(self, "confidence", confidence)
+        object.__setattr__(self, "risk_reasons", reasons)
+        object.__setattr__(self, "frame_id", "NED")
+        object.__setattr__(self, "measurement_frame_id", "pixel")
+
+    @classmethod
+    def from_dict(cls, payload: Mapping[str, Any]) -> "AssociationRiskEvidence":
+        keys = {
+            "schema_version", "evidence_id", "publisher_generation",
+            "publisher_node_id", "publisher_epoch", "measurement_timestamp",
+            "arrival_timestamp", "published_at", "sensor_id", "modality",
+            "scan_id", "observation_evidence_key",
+            "selected_opaque_member_track_token", "selected_source_key",
+            "candidate_edges", "first_candidate_cost", "second_candidate_cost",
+            "assignment_margin", "valid_candidate_count", "top_k_limit",
+            "measurement_covariance_px2", "bbox_area_px2", "confidence",
+            "risk_reasons",
+            "threshold_profile_version", "policy_version", "frame_id",
+            "measurement_frame_id", "decision", "mode", "online_truth_used",
+            "posterior_update_applied",
+        }
+        _require_exact_keys(payload, keys, "association risk evidence")
+        return cls(**{key: payload[key] for key in keys})
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "schema_version": self.schema_version,
+            "evidence_id": self.evidence_id,
+            "publisher_generation": self.publisher_generation,
+            "publisher_node_id": self.publisher_node_id,
+            "publisher_epoch": self.publisher_epoch,
+            "measurement_timestamp": self.measurement_timestamp,
+            "arrival_timestamp": self.arrival_timestamp,
+            "published_at": self.published_at,
+            "sensor_id": self.sensor_id,
+            "modality": self.modality,
+            "scan_id": self.scan_id,
+            "observation_evidence_key": self.observation_evidence_key,
+            "selected_opaque_member_track_token": self.selected_opaque_member_track_token,
+            "selected_source_key": self.selected_source_key,
+            "candidate_edges": [item.to_dict() for item in self.candidate_edges],
+            "first_candidate_cost": self.first_candidate_cost,
+            "second_candidate_cost": self.second_candidate_cost,
+            "assignment_margin": self.assignment_margin,
+            "valid_candidate_count": self.valid_candidate_count,
+            "top_k_limit": self.top_k_limit,
+            "measurement_covariance_px2": self.measurement_covariance_px2.tolist(),
+            "bbox_area_px2": self.bbox_area_px2,
+            "confidence": self.confidence,
+            "risk_reasons": list(self.risk_reasons),
+            "threshold_profile_version": self.threshold_profile_version,
+            "policy_version": self.policy_version,
+            "frame_id": self.frame_id,
+            "measurement_frame_id": self.measurement_frame_id,
+            "decision": self.decision,
+            "mode": self.mode,
+            "online_truth_used": self.online_truth_used,
+            "posterior_update_applied": self.posterior_update_applied,
+        }
+
+
+def association_risk_classification_id(
+    evidence_id: str,
+    profile_version: str,
+    classification: str,
+    matched_criteria: tuple[str, ...],
+) -> str:
+    """Build a deterministic identifier for one shadow classification."""
+
+    source_id = _opaque_digest_token(evidence_id, "d1-risk-sha256:", "evidence_id")
+    profile = _identifier(profile_version, "profile_version")
+    result = _identifier(classification, "classification")
+    matched = tuple(_identifier(item, "matched criterion") for item in matched_criteria)
+    payload = json.dumps(
+        [source_id, profile, result, list(matched)],
+        ensure_ascii=True,
+        separators=(",", ":"),
+    ).encode("ascii")
+    return f"d1-risk-classification-sha256:{hashlib.sha256(payload).hexdigest()}"
+
+
+@dataclass(frozen=True)
+class AssociationRiskClassificationEvidence:
+    """Truth-free classification of one raw risk evidence record."""
+
+    classification_id: str
+    evidence_id: str
+    publisher_node_id: str
+    publisher_epoch: str
+    measurement_timestamp: float
+    arrival_timestamp: float
+    published_at: float
+    observation_evidence_key: str
+    selected_opaque_member_track_token: str
+    selected_source_key: str
+    classification: str
+    matched_criteria: tuple[str, ...]
+    unmatched_criteria: tuple[str, ...]
+    profile_version: str = ASSOCIATION_RISK_CLASSIFICATION_PROFILE_VERSION
+    policy_version: str = ASSOCIATION_RISK_CLASSIFICATION_POLICY_VERSION
+    decision: str = ASSOCIATION_RISK_DECISION
+    mode: str = ASSOCIATION_RISK_MODE
+    online_truth_used: bool = False
+    posterior_update_applied: bool = False
+    schema_version: str = ASSOCIATION_RISK_CLASSIFICATION_SCHEMA_VERSION
+
+    def __post_init__(self) -> None:
+        if self.schema_version != ASSOCIATION_RISK_CLASSIFICATION_SCHEMA_VERSION:
+            raise ValueError("unsupported association risk classification schema")
+        if self.profile_version != ASSOCIATION_RISK_CLASSIFICATION_PROFILE_VERSION:
+            raise ValueError("unsupported association risk classification profile")
+        if self.policy_version != ASSOCIATION_RISK_CLASSIFICATION_POLICY_VERSION:
+            raise ValueError("unsupported association risk classification policy")
+        if self.decision != ASSOCIATION_RISK_DECISION or self.mode != ASSOCIATION_RISK_MODE:
+            raise ValueError(
+                "association risk classification must remain shadow evidence_only"
+            )
+        if self.online_truth_used is not False:
+            raise ValueError("association risk classification cannot use online truth")
+        if self.posterior_update_applied is not False:
+            raise ValueError(
+                "association risk classification cannot apply posterior updates"
+            )
+
+        measurement_timestamp = _finite_timestamp(
+            self.measurement_timestamp,
+            "measurement_timestamp",
+        )
+        arrival_timestamp = _finite_timestamp(
+            self.arrival_timestamp,
+            "arrival_timestamp",
+        )
+        published_at = _finite_timestamp(self.published_at, "published_at")
+        if arrival_timestamp + 1.0e-12 < measurement_timestamp:
+            raise ValueError("arrival_timestamp cannot precede measurement_timestamp")
+        if published_at + 1.0e-12 < arrival_timestamp:
+            raise ValueError("published_at cannot precede arrival_timestamp")
+
+        publisher_node_id = _publisher_identifier(
+            self.publisher_node_id,
+            "publisher_node_id",
+        )
+        publisher_epoch = _publisher_identifier(
+            self.publisher_epoch,
+            "publisher_epoch",
+        )
+        token = _opaque_digest_token(
+            self.selected_opaque_member_track_token,
+            "d1-track-sha256:",
+            "selected_opaque_member_track_token",
+        )
+        source_key = _identifier(self.selected_source_key, "selected_source_key")
+        expected_source_key = structural_ambiguity_source_key(
+            publisher_node_id,
+            publisher_epoch,
+            token,
+        )
+        if source_key != expected_source_key:
+            raise ValueError(
+                "selected_source_key must equal publisher_node_id::"
+                "publisher_epoch::selected_opaque_member_track_token"
+            )
+
+        classification = _identifier(self.classification, "classification")
+        if classification not in ASSOCIATION_RISK_CLASSIFICATION_VALUES:
+            raise ValueError("unsupported association risk classification result")
+        matched_input = tuple(
+            _identifier(item, "matched criterion") for item in self.matched_criteria
+        )
+        unmatched_input = tuple(
+            _identifier(item, "unmatched criterion") for item in self.unmatched_criteria
+        )
+        if len(set(matched_input)) != len(matched_input):
+            raise ValueError("matched_criteria cannot contain duplicates")
+        if len(set(unmatched_input)) != len(unmatched_input):
+            raise ValueError("unmatched_criteria cannot contain duplicates")
+        matched_set = set(matched_input)
+        unmatched_set = set(unmatched_input)
+        expected_set = set(ASSOCIATION_RISK_CLASSIFICATION_CRITERIA)
+        if matched_set & unmatched_set or matched_set | unmatched_set != expected_set:
+            raise ValueError(
+                "matched_criteria and unmatched_criteria must partition the profile criteria"
+            )
+        matched = tuple(
+            item
+            for item in ASSOCIATION_RISK_CLASSIFICATION_CRITERIA
+            if item in matched_set
+        )
+        unmatched = tuple(
+            item
+            for item in ASSOCIATION_RISK_CLASSIFICATION_CRITERIA
+            if item in unmatched_set
+        )
+        expected_classification = "positive" if not unmatched else "negative"
+        if classification != expected_classification:
+            raise ValueError(
+                "classification must be positive only when every profile criterion matches"
+            )
+
+        evidence_id = _opaque_digest_token(
+            self.evidence_id,
+            "d1-risk-sha256:",
+            "evidence_id",
+        )
+        classification_id = _opaque_digest_token(
+            self.classification_id,
+            "d1-risk-classification-sha256:",
+            "classification_id",
+        )
+        expected_classification_id = association_risk_classification_id(
+            evidence_id,
+            self.profile_version,
+            classification,
+            matched,
+        )
+        if classification_id != expected_classification_id:
+            raise ValueError("classification_id does not match the classified evidence")
+
+        object.__setattr__(self, "classification_id", classification_id)
+        object.__setattr__(self, "evidence_id", evidence_id)
+        object.__setattr__(self, "publisher_node_id", publisher_node_id)
+        object.__setattr__(self, "publisher_epoch", publisher_epoch)
+        object.__setattr__(self, "measurement_timestamp", measurement_timestamp)
+        object.__setattr__(self, "arrival_timestamp", arrival_timestamp)
+        object.__setattr__(self, "published_at", published_at)
+        object.__setattr__(
+            self,
+            "observation_evidence_key",
+            _opaque_digest_token(
+                self.observation_evidence_key,
+                "d1-risk-observation-sha256:",
+                "observation_evidence_key",
+            ),
+        )
+        object.__setattr__(self, "selected_opaque_member_track_token", token)
+        object.__setattr__(self, "selected_source_key", source_key)
+        object.__setattr__(self, "classification", classification)
+        object.__setattr__(self, "matched_criteria", matched)
+        object.__setattr__(self, "unmatched_criteria", unmatched)
+
+    @classmethod
+    def from_dict(
+        cls,
+        payload: Mapping[str, Any],
+    ) -> "AssociationRiskClassificationEvidence":
+        keys = {
+            "schema_version",
+            "classification_id",
+            "evidence_id",
+            "publisher_node_id",
+            "publisher_epoch",
+            "measurement_timestamp",
+            "arrival_timestamp",
+            "published_at",
+            "observation_evidence_key",
+            "selected_opaque_member_track_token",
+            "selected_source_key",
+            "classification",
+            "matched_criteria",
+            "unmatched_criteria",
+            "profile_version",
+            "policy_version",
+            "decision",
+            "mode",
+            "online_truth_used",
+            "posterior_update_applied",
+        }
+        _require_exact_keys(payload, keys, "association risk classification evidence")
+        return cls(**{key: payload[key] for key in keys})
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "schema_version": self.schema_version,
+            "classification_id": self.classification_id,
+            "evidence_id": self.evidence_id,
+            "publisher_node_id": self.publisher_node_id,
+            "publisher_epoch": self.publisher_epoch,
+            "measurement_timestamp": self.measurement_timestamp,
+            "arrival_timestamp": self.arrival_timestamp,
+            "published_at": self.published_at,
+            "observation_evidence_key": self.observation_evidence_key,
+            "selected_opaque_member_track_token": (
+                self.selected_opaque_member_track_token
+            ),
+            "selected_source_key": self.selected_source_key,
+            "classification": self.classification,
+            "matched_criteria": list(self.matched_criteria),
+            "unmatched_criteria": list(self.unmatched_criteria),
+            "profile_version": self.profile_version,
+            "policy_version": self.policy_version,
+            "decision": self.decision,
+            "mode": self.mode,
+            "online_truth_used": self.online_truth_used,
+            "posterior_update_applied": self.posterior_update_applied,
+        }
+
+
 def structural_ambiguity_member_track_token(
     publisher_node_id: str,
     publisher_epoch: str,
@@ -1707,6 +2362,10 @@ class FusionBatchResult:
     tracks: tuple[GlobalTrack, ...]
     summary: FusionBatchSummary
     structural_ambiguity_evidence: tuple[StructuralAmbiguityEvidence, ...] = ()
+    association_risk_evidence: tuple[AssociationRiskEvidence, ...] = ()
+    association_risk_classifications: tuple[
+        AssociationRiskClassificationEvidence, ...
+    ] = ()
 
     def __post_init__(self) -> None:
         evidence = tuple(
@@ -1718,6 +2377,28 @@ class FusionBatchResult:
             for item in self.structural_ambiguity_evidence
         )
         object.__setattr__(self, "structural_ambiguity_evidence", evidence)
+        risk_evidence = tuple(
+            item
+            if isinstance(item, AssociationRiskEvidence)
+            else AssociationRiskEvidence.from_dict(
+                _as_mapping(item, "association risk evidence")
+            )
+            for item in self.association_risk_evidence
+        )
+        object.__setattr__(self, "association_risk_evidence", risk_evidence)
+        risk_classifications = tuple(
+            item
+            if isinstance(item, AssociationRiskClassificationEvidence)
+            else AssociationRiskClassificationEvidence.from_dict(
+                _as_mapping(item, "association risk classification evidence")
+            )
+            for item in self.association_risk_classifications
+        )
+        object.__setattr__(
+            self,
+            "association_risk_classifications",
+            risk_classifications,
+        )
 
     @property
     def tracks_materialized(self) -> bool:
@@ -1742,6 +2423,14 @@ class FusionBatchResult:
             payload["structural_ambiguity_evidence"] = [
                 item.to_dict() for item in self.structural_ambiguity_evidence
             ]
+        if self.association_risk_evidence:
+            payload["association_risk_evidence"] = [
+                item.to_dict() for item in self.association_risk_evidence
+            ]
+        if self.association_risk_classifications:
+            payload["association_risk_classifications"] = [
+                item.to_dict() for item in self.association_risk_classifications
+            ]
         return payload
 
 
@@ -1761,6 +2450,10 @@ class FusionStateUpdateResult:
     summary: FusionBatchSummary
     current_track_count: int
     structural_ambiguity_evidence: tuple[StructuralAmbiguityEvidence, ...] = ()
+    association_risk_evidence: tuple[AssociationRiskEvidence, ...] = ()
+    association_risk_classifications: tuple[
+        AssociationRiskClassificationEvidence, ...
+    ] = ()
     tracks_materialized: bool = field(default=False, init=False)
 
     def __post_init__(self) -> None:
@@ -1776,6 +2469,28 @@ class FusionStateUpdateResult:
             for item in self.structural_ambiguity_evidence
         )
         object.__setattr__(self, "structural_ambiguity_evidence", evidence)
+        risk_evidence = tuple(
+            item
+            if isinstance(item, AssociationRiskEvidence)
+            else AssociationRiskEvidence.from_dict(
+                _as_mapping(item, "association risk evidence")
+            )
+            for item in self.association_risk_evidence
+        )
+        object.__setattr__(self, "association_risk_evidence", risk_evidence)
+        risk_classifications = tuple(
+            item
+            if isinstance(item, AssociationRiskClassificationEvidence)
+            else AssociationRiskClassificationEvidence.from_dict(
+                _as_mapping(item, "association risk classification evidence")
+            )
+            for item in self.association_risk_classifications
+        )
+        object.__setattr__(
+            self,
+            "association_risk_classifications",
+            risk_classifications,
+        )
 
     @property
     def state_updated_at(self) -> float:
@@ -1807,6 +2522,14 @@ class FusionStateUpdateResult:
             payload["structural_ambiguity_evidence"] = [
                 item.to_dict() for item in self.structural_ambiguity_evidence
             ]
+        if self.association_risk_evidence:
+            payload["association_risk_evidence"] = [
+                item.to_dict() for item in self.association_risk_evidence
+            ]
+        if self.association_risk_classifications:
+            payload["association_risk_classifications"] = [
+                item.to_dict() for item in self.association_risk_classifications
+            ]
         return payload
 
 
@@ -1818,7 +2541,35 @@ class FusionTrackSnapshot:
     published_at: float
     global_track_materialization_count: int
     sensor_health_snapshot_build_count: int
+    association_risk_evidence: tuple[AssociationRiskEvidence, ...] = ()
+    association_risk_classifications: tuple[
+        AssociationRiskClassificationEvidence, ...
+    ] = ()
     tracks_materialized: bool = field(default=True, init=False)
+
+    def __post_init__(self) -> None:
+        evidence = tuple(
+            item
+            if isinstance(item, AssociationRiskEvidence)
+            else AssociationRiskEvidence.from_dict(
+                _as_mapping(item, "association risk evidence")
+            )
+            for item in self.association_risk_evidence
+        )
+        object.__setattr__(self, "association_risk_evidence", evidence)
+        classifications = tuple(
+            item
+            if isinstance(item, AssociationRiskClassificationEvidence)
+            else AssociationRiskClassificationEvidence.from_dict(
+                _as_mapping(item, "association risk classification evidence")
+            )
+            for item in self.association_risk_classifications
+        )
+        object.__setattr__(
+            self,
+            "association_risk_classifications",
+            classifications,
+        )
 
     @property
     def track_count(self) -> int:
@@ -1829,7 +2580,7 @@ class FusionTrackSnapshot:
         return self.track_count
 
     def to_dict(self) -> dict[str, Any]:
-        return {
+        payload = {
             "tracks_materialized": True,
             "tracks": [track.to_dict() for track in self.tracks],
             "track_count": self.track_count,
@@ -1842,6 +2593,15 @@ class FusionTrackSnapshot:
                 self.sensor_health_snapshot_build_count
             ),
         }
+        if self.association_risk_evidence:
+            payload["association_risk_evidence"] = [
+                item.to_dict() for item in self.association_risk_evidence
+            ]
+        if self.association_risk_classifications:
+            payload["association_risk_classifications"] = [
+                item.to_dict() for item in self.association_risk_classifications
+            ]
+        return payload
 
 
 @dataclass(frozen=True)

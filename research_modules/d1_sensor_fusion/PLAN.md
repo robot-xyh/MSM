@@ -2793,3 +2793,67 @@ selector 晋级为 `immutable_shared_v2`，同时保留 `per_track_copy_v1` 显�
 
 `docs/AIRSIM_INTEGRATION_PLAN.md` 已检查。本项是 D1-owned 质点离线基准，不改变 AirSim
 topic、相机/雷达 adapter、settings、reset 顺序或日志接口，因此该文档无需修改。
+
+## 33. EO 关联风险 Shadow Evidence（2026-07-31）
+
+### 33.1 已实现
+
+1. 新增严格、exact-key、truth-free 的 `d1.association-risk-evidence.v1` 与有界候选边 DTO；
+   含双时间戳、发布时刻、publisher node/epoch、扫描/观测键、selected edge、top-K 和候选代价
+   margin。DTO/字段独立，但复用已冻结 opaque source identity contract 的 member token/source key。
+2. 对 EO 关联在 one-to-one 矩阵完成后、更新前检测图像外投影、近投影奇异、病态创新协方差、
+   弱 margin 和多个门内候选。sidecar 保留 NIS、像素残差、预测像素、深度、图像尺寸、创新协方差
+   谱、bbox 面积和置信度。
+3. `association_risk_evidence_shadow=False` 保持默认；开启只通过
+   `FusionBatchResult`/`FusionStateUpdateResult` 侧车发布，且 top-K 默认 3、每扫描默认最多 32
+   条（硬上限 16/256）。
+
+### 33.2 版本化影子分类
+
+1. 新增独立 `AssociationRiskClassificationEvidence`，schema 固定为
+   `d1.association-risk-shadow-classification.v1`，profile 固定为
+   `d1-eo-pathological-projection-composite-development-v2`；不修改
+   `d1.association-risk-evidence.v1` 的字段和 exact-key 合同。
+2. profile 同时要求 `valid_candidate_count>=2`、已选投影在图像外、至少一个保留替代投影在
+   图像内、`bbox_area_px2<=4.0` 和 `confidence<=0.10`。分类输出保存每项命中/未命中状态，
+   `positive/negative` 均发布，数量一一对应已发布 raw evidence，因此复用每扫描 32 条默认上界。
+3. `association_risk_evidence_shadow=False` 仍是唯一开关。开启时分类固定
+   `mode=shadow`、`decision=evidence_only`、`online_truth_used=false`、
+   `posterior_update_applied=false`。分类不读取 actor/target/truth 标识，不参与关联、滤波、
+   `GlobalTrack` 或 D2 门控。
+4. `FusionBatchResult`、`FusionStateUpdateResult` 和显式 `FusionTrackSnapshot` 通过
+   `association_risk_classifications` 携带结果；
+   `association_risk_classification_audit()` 单独报告已评估 raw evidence、正负分类和 profile。
+
+### 33.3 开发证据
+
+2026-07-31 同源开发校准使用 37 个 episode、1,536 条 raw evidence。纯影子配置与冻结 R0
+严格身份结果 `37/37` 一致，在线真值使用为 0；复合条件覆盖 17 个已知相机致错事件中的
+`17/17`，20 个严格身份可用对照中 `1/20` 触发。该 1 个对照也是潜在错绑，但没有进入最终
+严格身份帧。数据没有独立留出，profile 名称保留 `development-v2`，不得据此实现 D2
+enforcement。
+
+定向测试 `18 passed`，D1 全量 `514 passed, 1 warning in 33.43s`。
+
+### 33.4 留出执行与判定
+
+1. main 使用 seeds 2000--2019 运行 nominal 100v100 与 200v200，共 40 个 2.0 s episode；正式
+   shards 10--19 未使用。D2 只读因果重放完成 `40/40`。
+2. 排除 4 个非相机阻断样本后，36 个分类评估 case 包含 11 个相机因果正例、13 个标注故障事件
+   和 25 个严格身份可用对照。1,015 条在线分类与离线 v2 复算 `1015/1015` 一致，共 12 次正分类。
+3. 故障事件命中 `11/13`，召回率 `0.8461538462`；通过对照告警 `0/25`。样本量门通过，性能门
+   因召回低于冻结门限 `0.90` 而失败。seed 2003 漏检未满足已选投影在画面外，seed 2012 漏检
+   未满足存在可信画面内替代候选。
+4. 100v100 seed 2006 与 200v200 seed 2001 的业务等价复核在剔除四个风险旁路字段后，D1 总线、
+   D2 总线、严格身份评估语义与 truth NPZ 的 SHA 均完全相同。
+
+### 33.5 后续约束
+
+1. v2 保持 default-off、shadow、`evidence_only`，不增加 D2 adapter 或任何 enforcement；
+2. 本留出集只保留为冻结评估证据，不得用于修改 v2 判据或阈值；
+3. 若提出下一候选，必须先用新的 development 数据形成新 profile，再使用新的独立留出集验收；
+4. 正式 shards 10--19 未参与本轮，当前没有由该候选形成的正式准入证据；跨扫描稳定性、AirSim
+   和目标平台性能仍需独立验证。
+
+`docs/AIRSIM_INTEGRATION_PLAN.md` 已检查。本项不改变 AirSim 观测适配器、settings、相机外参、
+episode/reset、topic 或运行时接口，因此无需修改该文档。

@@ -2183,3 +2183,78 @@ P95 为 166.41--310.96 ms，该范围只描述本机短时运行。
 
 正式 200 目标、20 个未见 seed 的长时质量矩阵尚未运行。生命周期候选必须在该矩阵给出虚假
 航迹数量、寿命和航迹增长证据后单独立项。
+
+## EO 关联风险 Shadow 定向验证（2026-07-31）
+
+现有定向单元测试包含 00061 型 EO 低 NIS 但图像外、近投影奇异和病态创新协方差的
+已选边；该样本会发布 `d1.association-risk-evidence.v1`，且不阻断原更新。测试还验证正常图像内
+边无证据、严格 exact-key 序列化与 truth-key/source-key 拒绝、publication identity 字节级绑定、
+200 航迹下 top-K/每扫描上界，以及 shadow on/off 航迹输出等价。该结果是合成单元证据，不是
+正式 100v100 clean producer 证据。
+
+### 37-case 开发校准
+
+main 使用纯影子配置复跑同一冻结开发来源中的 37 个 episode。配置没有发布 opaque source key，
+因此不引入 D2 lineage-window 混杂。严格身份结果与冻结 R0 基线 `37/37` 一致，
+`online_truth_use_count=0`。样本由 17 个已知相机导致的
+`multiple_truth_targets_for_global_track` 事件和 20 个 strict-identity-available 对照组成，
+共发布 1,536 条 raw risk evidence。
+
+开发 profile 同时要求候选数至少 2、已选投影在图像外、至少一个保留替代投影在图像内、框
+面积不大于 4 像素平方、置信度不大于 0.10。事件级结果如下。
+
+| 开发分组 | 样本数 | 至少一次复合命中 | 比例 |
+| --- | ---: | ---: | ---: |
+| 已知相机致错事件 | 17 | 17 | 100% |
+| 严格身份可用对照 | 20 | 1 | 5% |
+
+对照中的 1 次触发也呈现潜在错绑，但没有进入最终严格身份帧。因此 5% 只能写为通过对照的影子
+告警率，不能直接解释为确定误报率。37 个 episode 与 profile 形成使用同一冻结开发来源，缺少
+独立 held-out 数据。`17/17` 与 `1/20` 只用于保留 development profile，不能用于 D2 门控。
+
+### 实现回归
+
+新增测试覆盖复合正例、面积/置信度闭区间边界、五项判据失败、分类 exact-key 序列化、
+truth 字段拒绝、确定性 classification ID、default-off、后验/assignment 等价、200 航迹有界
+输出和相机后方候选。定向结果为 `18 passed in 0.49s`；D1 全量结果为
+`514 passed, 1 warning in 33.43s`。警告来自环境中的 Matplotlib `Axes3D` 导入，不影响本项。
+
+默认开关仍为 `association_risk_evidence_shadow=False`。分类固定 shadow/evidence-only，D2
+enforcement 未实现且当前禁止。
+
+### 留出执行
+
+main 使用 seeds 2000--2019 运行 nominal 100v100 与 200v200，共 40 个 episode，每个 episode
+持续 2.0 s。该批次没有使用正式 shards 10--19。D2 以只读方式完成因果重放 `40/40`。4 个由
+非相机原因阻断严格身份评估的样本从分类性能统计中排除，最终评估 36 个 case：11 个相机因果
+正例 case 和 25 个严格身份可用对照。11 个正例 case 内共有 13 个已标注故障事件。
+
+| 指标 | 结果 | 判定 |
+| --- | ---: | --- |
+| 留出 episode | 40 | 100v100 与 200v200，2.0 s |
+| 分类评估 case | 36 | 排除 4 个非相机阻断样本 |
+| raw evidence / 在线分类 | 1,015 / 1,015 | 完整 |
+| 在线分类与离线 v2 复算 | 1,015 / 1,015 | 一致 |
+| 正分类 | 12 | 影子证据 |
+| 故障事件命中 | 11 / 13 | 召回率 0.8461538462 |
+| 严格身份可用对照告警 | 0 / 25 | 告警率 0 |
+| 样本量门 | 通过 | 正例 case 与对照数量达标 |
+| 性能门 | 未通过 | 召回率低于 0.90 |
+
+两个漏检均出现在 200v200。seed 2003 的 `CAM-RECON-003` 在 1.8 s 未满足
+`selected_projection_out_of_frame`；seed 2012 的 `CAM-RECON-002` 在 1.8 s 未满足
+`plausible_in_frame_alternative`。漏检诊断用于记录既有规则的失效边界，不用于回调本留出集上的
+阈值。
+
+### 业务等价
+
+main 对 100v100 seed 2006 和 200v200 seed 2001 分别执行影子开启/对照复核。剔除四个风险
+旁路字段后，两组样本的 D1 总线 SHA、D2 总线 SHA、严格身份评估语义 SHA 和 truth NPZ SHA
+均完全相同。影子证据没有改变 D1 后验、D2 输入语义或离线真值。
+
+### 证据判定
+
+本轮完成了留出执行，但没有通过冻结性能门。在线/离线 `1015/1015` 一致证明实现复算一致，
+不能弥补事件召回不足。正式 shards 10--19 未使用，因此本轮不形成正式准入证据。v2 保持
+default-off、shadow、`evidence_only`，禁止 D2 enforcement。该留出集不得用于调参；下一候选
+需要新的开发数据和新的独立留出集。跨扫描稳定性、AirSim 和目标平台表现仍待独立验证。

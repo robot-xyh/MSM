@@ -1,6 +1,6 @@
 # 第一研究模块：多传感器融合与目标配准算法与实施说明
 
-> 文档日期：2026-07-25
+> 文档日期：2026-07-31
 >
 > 适用范围：离线科研仿真、受治理回放和系统接口验证
 >
@@ -3556,3 +3556,86 @@ write_d1_quality_benchmark_outputs(batch, output_dir)
 
 2026-07-25 专项测试 `8 passed`，D1 全量 `496 passed in 33.19s`。200 目标短时冒烟可运行，
 但未执行 200 目标正式 20-seed 长时矩阵，也没有据此调整生命周期。
+
+## EO 关联风险 Shadow Evidence（2026-07-31）
+
+对已解出的 EO one-to-one assignment，D1 在执行 EKF 更新前计算独立的
+`d1.association-risk-evidence.v1`。它报告已选边及 top-K 门内候选的 NIS、原始像素残差范数、
+预测 `(u,v)`、前向深度、in-frame、图像尺寸、创新协方差特征值/条件数、前二候选代价与 margin、
+候选数、bbox 面积和置信度。原因集合限于图像外、近奇异、病态创新、弱 margin 和多门内候选。
+
+默认 `association_risk_evidence_shadow=False`。开启时固定
+`decision=evidence_only`、`online_truth_used=false`，仅经 batch/state-update result 作为 sidecar
+发布；它不改变 Hungarian assignment、量测更新、航迹状态/协方差/hits/birth/metadata 或
+`global_track_id`。风险侧车使用独立 DTO/字段并复用已冻结 opaque source identity contract 的
+token/source-key 值，不复用 `StructuralAmbiguityEvidence` DTO。因此它是 **shadow evidence
+only**，未启用阻断，尚不能形成 clean producer。
+
+### 版本化复合分类
+
+分类层不重新计算关联矩阵，只读取本扫描已经发布的 raw evidence。固定 profile
+`d1-eo-pathological-projection-composite-development-v2` 对每条证据计算：
+
+\[
+q = [n_c\ge2]\land[\neg I_s]\land[\exists a\ne s:I_a]
+    \land[A_{bbox}\le4.0]\land[c\le0.10]
+\]
+
+其中，\(n_c\) 为门内候选数，\(I_s\) 表示已选投影位于图像内，\(I_a\) 表示保留替代候选
+位于图像内，\(A_{bbox}\) 为检测框面积，\(c\) 为检测置信度。五项均成立时分类为
+`positive`，否则为 `negative`。`matched_criteria` 和 `unmatched_criteria` 构成固定判据集合
+的完整分区，便于留出验证直接统计命中与失败原因。阈值采用闭区间，因此面积 4.0 和置信度
+0.10 属于命中边界。
+
+分类 DTO 为 `AssociationRiskClassificationEvidence`，schema 为
+`d1.association-risk-shadow-classification.v1`，policy 为
+`shadow_precommit_eo_pathological_projection_composite_v1`。它携带独立
+`classification_id`、原始 `evidence_id`、双时间戳、发布时刻、观测证据键和已选不透明来源键。
+分类 ID 由原始 evidence ID、profile、分类结果和命中判据确定性散列得到。DTO 的 exact-key
+反序列化拒绝额外 truth/actor 字段，并校验来源键、判据分区、结果和分类 ID 一致。
+
+`FusionBatchResult`、`FusionStateUpdateResult` 与 `FusionTrackSnapshot` 使用
+`association_risk_classifications` 发布分类。每条已发布 raw evidence 对应一条正或负分类；
+raw evidence 默认每扫描最多 32 条，因此分类没有新的无界列表。审计入口
+`FusionAdapter.association_risk_classification_audit()` 报告已评估 raw evidence、正负结果、
+发布数、上界和 profile，审计 schema 为
+`d1.association-risk-shadow-classification-audit.v1`。原
+`association_risk_evidence_audit()` 与 raw evidence v1 保持独立。
+
+分类在 assignment 确定后、后验更新前生成，但没有返回到 assignment 或更新函数。default-off
+由原 `association_risk_evidence_shadow=False` 控制。相机后方或其他无法满足诊断 DTO 数值
+合同的候选直接视为诊断不可用；该处理只跳过 sidecar，不修改投影函数、门控、assignment 或
+规范滤波路径。
+
+37 个 episode 的开发校准给出 17/17 已知相机致错事件覆盖和 1/20 通过对照触发。1,536 条
+raw evidence 来自同一冻结开发来源，没有独立留出。该 profile 不能进入 D2 enforcement，
+也不能用于抑制 D1 后验。定向测试 `18 passed`，D1 全量回归
+`514 passed, 1 warning in 33.43s`。
+
+### 留出复算与验收
+
+main 在 seeds 2000--2019 上运行 nominal 100v100 与 200v200，共 40 个 2.0 s episode，并完成
+D2 只读因果重放 `40/40`。正式 shards 10--19 未使用。4 个非相机阻断样本不参与分类性能统计；
+剩余 36 个 case 包含 11 个相机因果正例 case、13 个标注故障事件和 25 个严格身份可用对照。
+
+在线链路对 1,015 条 raw evidence 产生 1,015 条分类，离线评价器用冻结 v2 profile 重新计算。
+两者 `1015/1015` 一致，说明在线判据、边界比较和序列化值被离线复算准确复现。12 条分类为
+`positive`。该一致性检查不使用在线 truth，也不把离线标签反馈到 D1。
+
+事件召回和对照告警分别为
+
+\[
+R_{event}=\frac{11}{13}=0.8461538462,\qquad
+W_{control}=\frac{0}{25}=0.
+\]
+
+正例 case 和对照数量达到冻结样本量要求，但事件召回低于 `0.90`，所以性能门失败。200v200
+seed 2003 的漏检缺少 `selected_projection_out_of_frame`，seed 2012 的漏检缺少
+`plausible_in_frame_alternative`。这些诊断只能用于说明 v2 失败原因，不得用本留出集修改阈值或
+判据。
+
+100v100 seed 2006 与 200v200 seed 2001 用于业务等价复核。剔除四个风险旁路字段后，D1 总线、
+D2 总线、严格身份评估语义和 truth NPZ 的 SHA 均与对照完全相同，证明旁路分类没有改变规范
+业务结果。该留出执行没有通过准入验收，也没有使用正式分片，因此不构成正式 evidence。v2
+继续 default-off、shadow、`evidence_only`；下一候选必须在新 development 数据上形成，并使用
+新的独立留出集。

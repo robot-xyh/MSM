@@ -1289,3 +1289,26 @@ fixed-lag、扫描/发布频率、门限、观测内容、双时间戳、covaria
 `D1_M_TO_N_COOPERATIVE_LOCALIZATION_REVIEW.md` 和
 `D1_STRUCTURAL_AMBIGUITY_HOLD_CAUSAL_AUDIT_CN.md` 已检查。本次只增加独立质量测量，不改变
 协同定位或结构歧义候选，两个文件无需修改。AirSim 集成计划同样无需修改。
+
+## EO 投影病态关联风险 GAP（2026-07-31）
+
+| GAP | 当前状态 | D1-owned 证据 | 剩余关闭条件 |
+| --- | --- | --- | --- |
+| EO 低 NIS 可能掩盖图像外、近投影奇异和病态创新协方差 | **P1 raw shadow 与 development 分类已实现；留出性能门失败；阻断未实现** | raw `d1.association-risk-evidence.v1` 保持原 exact-key；独立 `d1.association-risk-shadow-classification.v1` 使用固定 `d1-eo-pathological-projection-composite-development-v2`。同源开发 37 episode/1,536 raw evidence 中为 `17/17` 故障事件命中、`1/20` 对照触发。留出执行 40 episode、36 个评估 case、1,015 条分类，在线/离线 `1015/1015` 一致；事件命中 `11/13`、召回 0.8461538462，对照告警 `0/25` | v2 冻结为 default-off shadow，不使用本留出集调参。下一候选必须用新的 development 数据形成，并使用新的独立留出集；跨扫描稳定性仍需验证 |
+| 证据可能污染既有雷达 Structural Ambiguity 语义 | **D1-owned 已隔离** | 使用独立 DTO/结果字段并复用已冻结 opaque source identity contract 的 token/source-key 值；不修改或复用 `StructuralAmbiguityEvidence` DTO，不写 GlobalTrack metadata | 保持 exact-key、truth-free、publication identity 字节级绑定和 shadow on/off 等价回归 |
+| 版本化分类与容量 | **D1-owned shadow 合同已实现；main 留出旁路采集已验证** | `AssociationRiskClassificationEvidence` 逐条引用原 evidence/observation/source key，记录五项判据的命中与未命中；结果字段为 `association_risk_classifications`，审计入口为 `association_risk_classification_audit()`。分类一一对应已发布 raw evidence，沿用每扫描默认 32 条上界；main 已在留出重放中完成 1,015 条分类采集与离线复算 | 保持 profile/version、exact-key、default-off、容量和在线/离线一致性回归；AirSim/目标平台旁路采集未验证 |
+| 相机后方候选可能由影子 DTO 异常打断规范路径 | **D1-owned 已关闭** | 非正前向深度只使该候选诊断不可用；测试确认 shadow on/off assignment、状态和协方差一致且不抛异常 | 保持 sidecar fail-silent；不得修改主投影、门控或滤波公式来满足诊断 DTO |
+| 下游消费/clean producer | **P1 开放；留出未获准晋级** | D2 只读因果重放 `40/40`，无 enforcement adapter；样本量门通过，但召回 `0.8461538462 < 0.90`，性能门失败。默认 `association_risk_evidence_shadow=False`，定向 `18 passed`，D1 全量 `514 passed, 1 warning in 33.43s` | D2 enforcement 继续禁止；不得拒绝关联、修改后验或写入 GlobalTrack。未来只有新 development 候选通过新的独立留出和单独 D1/D2 合同评审后，才可另行讨论 shadow consumer |
+
+留出批次使用 seeds 2000--2019 的 nominal 100v100 与 200v200，共 40 个 2.0 s episode；4 个
+非相机阻断样本排除后进入 36 个分类评估 case。正式 shards 10--19 未使用，本轮不构成正式
+准入证据。两个漏检分别为 200v200 seed 2003 未满足 `selected_projection_out_of_frame`，以及
+seed 2012 未满足 `plausible_in_frame_alternative`。
+
+100v100 seed 2006、200v200 seed 2001 的业务等价复核在剔除四个风险旁路字段后，D1 总线、
+D2 总线、严格身份评估语义和 truth NPZ 的 SHA 均完全相同。该结果关闭本轮 shadow 业务非干预
+证据子项，不关闭分类性能、正式准入、AirSim 或目标平台 P1。
+
+`docs/MODULE_PRINCIPLES_CN.md` 已同步影子分类原则。`docs/AIRSIM_INTEGRATION_PLAN.md` 已检查；
+该变更不改变 AirSim adapter、settings、episode/reset、输入 topic、相机模型或运行证据，因此
+无需修改。

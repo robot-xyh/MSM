@@ -26,6 +26,7 @@ from .covariance_contract import validate_online_sensor_observation
 from .ekf import EKFState, ekf_update, predict_to, predict_to_with_cv_model
 from .motion import cv_process_noise, cv_transition, wrap_residual
 from .observations import (
+    CameraModel,
     MeasurementModel,
     RadarCovarianceConfig,
     measurement_model_for,
@@ -39,6 +40,14 @@ from .publication_audit import (
     freeze_publication_audit_tree,
 )
 from .types import (
+    ASSOCIATION_RISK_CLASSIFICATION_AUDIT_SCHEMA_VERSION,
+    ASSOCIATION_RISK_CLASSIFICATION_CRITERIA,
+    ASSOCIATION_RISK_CLASSIFICATION_PROFILE_VERSION,
+    ASSOCIATION_RISK_POLICY_VERSION,
+    ASSOCIATION_RISK_THRESHOLD_PROFILE_VERSION,
+    AssociationRiskCandidateEdge,
+    AssociationRiskClassificationEvidence,
+    AssociationRiskEvidence,
     COMMUNICATION_METADATA_KEYS,
     DEFAULT_STRUCTURAL_AMBIGUITY_PUBLISHER_EPOCH,
     DEFAULT_STRUCTURAL_AMBIGUITY_PUBLISHER_NODE_ID,
@@ -60,6 +69,7 @@ from .types import (
     STRUCTURAL_AMBIGUITY_HOLD_POLICY_VERSION,
     TrackLevel,
     TrackUncertaintySummary,
+    association_risk_classification_id,
     structural_ambiguity_member_track_token,
     structural_ambiguity_source_key,
     structural_ambiguity_source_track_id,
@@ -304,6 +314,16 @@ RADAR_ASSIGNMENT_AMBIGUITY_HOLD_EVIDENCE_STATUS = (
 RADAR_ASSIGNMENT_AMBIGUITY_NEUTRAL_CENTROID_STATUS = (
     "experimental_identity_neutral_centroid_candidate_not_promoted"
 )
+DEFAULT_ASSOCIATION_RISK_TOP_K = 3
+DEFAULT_ASSOCIATION_RISK_MAX_EVIDENCE_PER_SCAN = 32
+MAX_ASSOCIATION_RISK_TOP_K = 16
+MAX_ASSOCIATION_RISK_EVIDENCE_PER_SCAN = 256
+DEFAULT_ASSOCIATION_RISK_NEAR_PROJECTION_DEPTH_M = 1.0
+DEFAULT_ASSOCIATION_RISK_INNOVATION_CONDITION_THRESHOLD = 1.0e8
+DEFAULT_ASSOCIATION_RISK_WEAK_MARGIN_THRESHOLD = 0.5
+ASSOCIATION_RISK_CLASSIFICATION_MIN_VALID_CANDIDATES = 2
+ASSOCIATION_RISK_CLASSIFICATION_MAX_BBOX_AREA_PX2 = 4.0
+ASSOCIATION_RISK_CLASSIFICATION_MAX_CONFIDENCE = 0.10
 NEUTRAL_CENTROID_MAX_CONFIGURABLE_COMPONENT_SIZE = 256
 NEUTRAL_CENTROID_MAX_GENERATION_REGISTRY_ENTRIES = 1_000_000
 _NEUTRAL_CENTROID_IDENTITY_METADATA_EXACT_KEYS = frozenset(
@@ -850,6 +870,10 @@ class _ScanAssociationResult:
     radar_ambiguities: dict[int, _RadarAssignmentAmbiguity] = field(
         default_factory=dict
     )
+    association_risk_evidence: tuple[AssociationRiskEvidence, ...] = ()
+    association_risk_classifications: tuple[
+        AssociationRiskClassificationEvidence, ...
+    ] = ()
 
 
 @dataclass(frozen=True)
@@ -943,6 +967,24 @@ class FusionAdapter:
         cached_opaque_source_identity: bool = False,
         opaque_source_identity_cache_capacity: int = (
             DEFAULT_OPAQUE_SOURCE_IDENTITY_CACHE_CAPACITY
+        ),
+        association_risk_evidence_shadow: bool = False,
+        association_risk_policy_version: str = ASSOCIATION_RISK_POLICY_VERSION,
+        association_risk_threshold_profile_version: str = (
+            ASSOCIATION_RISK_THRESHOLD_PROFILE_VERSION
+        ),
+        association_risk_top_k: int = DEFAULT_ASSOCIATION_RISK_TOP_K,
+        association_risk_max_evidence_per_scan: int = (
+            DEFAULT_ASSOCIATION_RISK_MAX_EVIDENCE_PER_SCAN
+        ),
+        association_risk_near_projection_depth_m: float = (
+            DEFAULT_ASSOCIATION_RISK_NEAR_PROJECTION_DEPTH_M
+        ),
+        association_risk_innovation_condition_threshold: float = (
+            DEFAULT_ASSOCIATION_RISK_INNOVATION_CONDITION_THRESHOLD
+        ),
+        association_risk_weak_margin_threshold: float = (
+            DEFAULT_ASSOCIATION_RISK_WEAK_MARGIN_THRESHOLD
         ),
     ) -> None:
         self.process_noise = float(process_noise)
@@ -1119,6 +1161,53 @@ class FusionAdapter:
         )
         self.publisher_node_id = str(publisher_node_id).strip()
         self.publisher_epoch = str(publisher_epoch).strip()
+        if not isinstance(association_risk_evidence_shadow, bool):
+            raise TypeError("association_risk_evidence_shadow must be a bool")
+        if association_risk_policy_version != ASSOCIATION_RISK_POLICY_VERSION:
+            raise ValueError("unsupported association_risk_policy_version")
+        if (
+            association_risk_threshold_profile_version
+            != ASSOCIATION_RISK_THRESHOLD_PROFILE_VERSION
+        ):
+            raise ValueError(
+                "unsupported association_risk_threshold_profile_version"
+            )
+        self.association_risk_evidence_shadow = association_risk_evidence_shadow
+        self.association_risk_policy_version = association_risk_policy_version
+        self.association_risk_threshold_profile_version = (
+            association_risk_threshold_profile_version
+        )
+        for name, value, maximum in (
+            ("association_risk_top_k", association_risk_top_k, MAX_ASSOCIATION_RISK_TOP_K),
+            (
+                "association_risk_max_evidence_per_scan",
+                association_risk_max_evidence_per_scan,
+                MAX_ASSOCIATION_RISK_EVIDENCE_PER_SCAN,
+            ),
+        ):
+            if isinstance(value, bool) or not isinstance(value, Integral):
+                raise TypeError(f"{name} must be an integer")
+            if int(value) < 1 or int(value) > maximum:
+                raise ValueError(f"{name} must be within [1, {maximum}]")
+            setattr(self, name, int(value))
+        self.association_risk_near_projection_depth_m = _strict_real_parameter(
+            association_risk_near_projection_depth_m,
+            "association_risk_near_projection_depth_m",
+            minimum=0.0,
+            minimum_inclusive=False,
+        )
+        self.association_risk_innovation_condition_threshold = (
+            _strict_real_parameter(
+                association_risk_innovation_condition_threshold,
+                "association_risk_innovation_condition_threshold",
+                minimum=1.0,
+            )
+        )
+        self.association_risk_weak_margin_threshold = _strict_real_parameter(
+            association_risk_weak_margin_threshold,
+            "association_risk_weak_margin_threshold",
+            minimum=0.0,
+        )
         if not isinstance(cached_opaque_source_identity, bool):
             raise TypeError("cached_opaque_source_identity must be a bool")
         self.cached_opaque_source_identity = cached_opaque_source_identity
@@ -1339,6 +1428,21 @@ class FusionAdapter:
         self._latest_radar_assignment_ambiguity_track_ids: tuple[str, ...] = ()
         self._structural_ambiguity_component_generations: Counter[str] = Counter()
         self._latest_structural_ambiguity_component_ids: tuple[str, ...] = ()
+        self.association_risk_shadow_scan_count = 0
+        self.association_risk_evidence_count = 0
+        self.association_risk_candidate_edge_count = 0
+        self.association_risk_evidence_suppressed_by_limit_count = 0
+        self._association_risk_reason_counts: Counter[str] = Counter()
+        self._association_risk_publisher_generation = 0
+        self._latest_association_risk_evidence: tuple[
+            AssociationRiskEvidence, ...
+        ] = ()
+        self.association_risk_classification_evaluated_count = 0
+        self.association_risk_classification_positive_count = 0
+        self.association_risk_classification_negative_count = 0
+        self._latest_association_risk_classifications: tuple[
+            AssociationRiskClassificationEvidence, ...
+        ] = ()
         self.neutral_centroid_candidate_component_count = 0
         self.neutral_centroid_applied_component_count = 0
         self.neutral_centroid_applied_member_count = 0
@@ -1714,6 +1818,8 @@ class FusionAdapter:
         if self._batch_context is not None:
             raise RuntimeError("nested FusionAdapter.process_batch calls are not supported")
 
+        self._latest_association_risk_evidence = ()
+        self._latest_association_risk_classifications = ()
         prepared = tuple(self._prepare_observation(item) for item in observations)
         duplicate_before = self.duplicate_observation_count
         context = _BatchProcessingContext()
@@ -1841,6 +1947,12 @@ class FusionAdapter:
         structural_ambiguity_evidence: tuple[
             StructuralAmbiguityEvidence, ...
         ] = ()
+        association_risk_evidence: tuple[AssociationRiskEvidence, ...] = ()
+        association_risk_classifications: tuple[
+            AssociationRiskClassificationEvidence, ...
+        ] = ()
+        self._latest_association_risk_evidence = ()
+        self._latest_association_risk_classifications = ()
         scan_has_oosm = False
         scan_has_stale_observation = False
         self._batch_context = context
@@ -1887,6 +1999,14 @@ class FusionAdapter:
             association_result = self._scan_one_to_one_assignments(
                 effective,
                 pre_scan_track_ids,
+            )
+            association_risk_evidence = association_result.association_risk_evidence
+            association_risk_classifications = (
+                association_result.association_risk_classifications
+            )
+            self._latest_association_risk_evidence = association_risk_evidence
+            self._latest_association_risk_classifications = (
+                association_risk_classifications
             )
             if self.radar_assignment_ambiguity_hold_evidence:
                 structural_ambiguity_evidence = (
@@ -2034,11 +2154,15 @@ class FusionAdapter:
                 summary=summary,
                 current_track_count=len(self.tracks),
                 structural_ambiguity_evidence=structural_ambiguity_evidence,
+                association_risk_evidence=association_risk_evidence,
+                association_risk_classifications=association_risk_classifications,
             )
         return FusionBatchResult(
             tracks=tracks,
             summary=summary,
             structural_ambiguity_evidence=structural_ambiguity_evidence,
+            association_risk_evidence=association_risk_evidence,
+            association_risk_classifications=association_risk_classifications,
         )
 
     def materialize_global_tracks(self) -> FusionTrackSnapshot:
@@ -2070,6 +2194,10 @@ class FusionAdapter:
             ),
             sensor_health_snapshot_build_count=(
                 context.sensor_health_snapshot_build_count
+            ),
+            association_risk_evidence=self._latest_association_risk_evidence,
+            association_risk_classifications=(
+                self._latest_association_risk_classifications
             ),
         )
 
@@ -3660,10 +3788,514 @@ class FusionAdapter:
             cost_matrix,
             assignments,
         )
+        association_risk_evidence: tuple[AssociationRiskEvidence, ...] = ()
+        association_risk_classifications: tuple[
+            AssociationRiskClassificationEvidence, ...
+        ] = ()
+        if self.association_risk_evidence_shadow and any(
+            observation.modality == "eo" for observation in observations
+        ):
+            association_risk_evidence = self._build_association_risk_evidence(
+                observations,
+                track_items,
+                cost_matrix,
+                valid,
+                assignments,
+                published_at=float(self.current_time),
+            )
+            association_risk_classifications = (
+                self._classify_association_risk_evidence(
+                    association_risk_evidence
+                )
+            )
         return _ScanAssociationResult(
             assignments=assignments,
             radar_ambiguities=radar_ambiguities,
+            association_risk_evidence=association_risk_evidence,
+            association_risk_classifications=association_risk_classifications,
         )
+
+    def _build_association_risk_evidence(
+        self,
+        observations: list[SensorObservation],
+        track_items: list[tuple[str, TrackRecord]],
+        cost_matrix: np.ndarray,
+        valid: np.ndarray,
+        assignments: dict[int, str],
+        *,
+        published_at: float,
+    ) -> tuple[AssociationRiskEvidence, ...]:
+        """Build bounded EO risk evidence without mutating association state."""
+
+        self.association_risk_shadow_scan_count += 1
+        if not assignments:
+            return ()
+        row_by_track_id = {
+            track_id: row for row, (track_id, _) in enumerate(track_items)
+        }
+        tokens = {
+            track_id: structural_ambiguity_member_track_token(
+                self.publisher_node_id,
+                self.publisher_epoch,
+                track_id,
+            )
+            for track_id, _ in track_items
+        }
+        source_keys = {
+            track_id: structural_ambiguity_source_key(
+                self.publisher_node_id,
+                self.publisher_epoch,
+                tokens[track_id],
+            )
+            for track_id, _ in track_items
+        }
+        observation_keys = self._association_risk_observation_keys(observations)
+        first = observations[0]
+        scan_id = _opaque_structural_digest(
+            "d1-risk-scan-sha256:",
+            (
+                first.sensor_id,
+                first.modality,
+                float(first.measurement_timestamp),
+                float(first.arrival_timestamp),
+            ),
+        )
+        evidence_items: list[AssociationRiskEvidence] = []
+        suppressed = 0
+        ordered_columns = sorted(
+            (
+                column
+                for column in assignments
+                if observations[column].modality == "eo"
+            ),
+            key=observation_keys.__getitem__,
+        )
+        for column in ordered_columns:
+            observation = observations[column]
+            selected_track_id = assignments[column]
+            selected_row = row_by_track_id[selected_track_id]
+            candidate_rows = [
+                int(row) for row in np.flatnonzero(valid[:, column])
+            ]
+            ranked_rows = sorted(
+                candidate_rows,
+                key=lambda row: (
+                    float(cost_matrix[row, column]),
+                    tokens[track_items[row][0]],
+                ),
+            )
+            if selected_row not in ranked_rows:
+                continue
+            first_cost = float(cost_matrix[ranked_rows[0], column])
+            second_cost = (
+                float(cost_matrix[ranked_rows[1], column])
+                if len(ranked_rows) > 1
+                else None
+            )
+            margin = None if second_cost is None else max(0.0, second_cost - first_cost)
+            selected_edge = self._association_risk_candidate_edge(
+                observation,
+                track_items[selected_row][1],
+                nis=float(cost_matrix[selected_row, column]),
+                rank=ranked_rows.index(selected_row) + 1,
+                selected=True,
+                token=tokens[selected_track_id],
+                source_key=source_keys[selected_track_id],
+            )
+            if selected_edge is None:
+                continue
+            reasons: set[str] = set()
+            if not selected_edge.projection_in_frame:
+                reasons.add("projection_out_of_frame")
+            if (
+                selected_edge.forward_depth_m
+                <= self.association_risk_near_projection_depth_m
+            ):
+                reasons.add("near_projection_singularity")
+            if (
+                selected_edge.innovation_covariance_condition_number
+                >= self.association_risk_innovation_condition_threshold
+            ):
+                reasons.add("ill_conditioned_innovation")
+            if len(ranked_rows) > 1:
+                reasons.add("multiple_gate_candidates")
+                if margin is not None and (
+                    margin <= self.association_risk_weak_margin_threshold
+                ):
+                    reasons.add("weak_assignment_margin")
+            if not reasons:
+                continue
+            if len(evidence_items) >= self.association_risk_max_evidence_per_scan:
+                suppressed += 1
+                continue
+
+            retained_rows = ranked_rows[: self.association_risk_top_k]
+            if selected_row not in retained_rows:
+                retained_rows[-1] = selected_row
+                retained_rows.sort(key=ranked_rows.index)
+            candidate_edges: list[AssociationRiskCandidateEdge] = []
+            for row in retained_rows:
+                track_id, record = track_items[row]
+                edge = (
+                    selected_edge
+                    if row == selected_row
+                    else self._association_risk_candidate_edge(
+                        observation,
+                        record,
+                        nis=float(cost_matrix[row, column]),
+                        rank=ranked_rows.index(row) + 1,
+                        selected=False,
+                        token=tokens[track_id],
+                        source_key=source_keys[track_id],
+                    )
+                )
+                if edge is not None:
+                    candidate_edges.append(edge)
+            if not any(edge.selected for edge in candidate_edges):
+                continue
+            self._association_risk_publisher_generation += 1
+            generation = self._association_risk_publisher_generation
+            evidence_id = _opaque_structural_digest(
+                "d1-risk-sha256:",
+                (
+                    self.publisher_node_id,
+                    self.publisher_epoch,
+                    generation,
+                    scan_id,
+                    observation_keys[column],
+                    source_keys[selected_track_id],
+                    tuple(sorted(reasons)),
+                ),
+            )
+            evidence_items.append(
+                AssociationRiskEvidence(
+                    evidence_id=evidence_id,
+                    publisher_generation=generation,
+                    publisher_node_id=self.publisher_node_id,
+                    publisher_epoch=self.publisher_epoch,
+                    measurement_timestamp=observation.measurement_timestamp,
+                    arrival_timestamp=observation.arrival_timestamp,
+                    published_at=published_at,
+                    sensor_id=observation.sensor_id,
+                    modality=observation.modality,
+                    scan_id=scan_id,
+                    observation_evidence_key=observation_keys[column],
+                    selected_opaque_member_track_token=tokens[selected_track_id],
+                    selected_source_key=source_keys[selected_track_id],
+                    candidate_edges=tuple(candidate_edges),
+                    first_candidate_cost=first_cost,
+                    second_candidate_cost=second_cost,
+                    assignment_margin=margin,
+                    valid_candidate_count=len(ranked_rows),
+                    top_k_limit=self.association_risk_top_k,
+                    measurement_covariance_px2=np.asarray(
+                        observation.covariance,
+                        dtype=float,
+                    )[:2, :2],
+                    bbox_area_px2=self._association_risk_bbox_area(observation),
+                    confidence=observation.confidence,
+                    risk_reasons=tuple(sorted(reasons)),
+                    threshold_profile_version=(
+                        self.association_risk_threshold_profile_version
+                    ),
+                    policy_version=self.association_risk_policy_version,
+                )
+            )
+
+        self.association_risk_evidence_count += len(evidence_items)
+        self.association_risk_candidate_edge_count += sum(
+            len(item.candidate_edges) for item in evidence_items
+        )
+        self.association_risk_evidence_suppressed_by_limit_count += suppressed
+        for item in evidence_items:
+            self._association_risk_reason_counts.update(item.risk_reasons)
+        return tuple(evidence_items)
+
+    def _classify_association_risk_evidence(
+        self,
+        evidence_items: tuple[AssociationRiskEvidence, ...],
+    ) -> tuple[AssociationRiskClassificationEvidence, ...]:
+        """Classify bounded raw evidence without changing association state."""
+
+        classifications: list[AssociationRiskClassificationEvidence] = []
+        for evidence in evidence_items:
+            selected_edge = next(
+                edge for edge in evidence.candidate_edges if edge.selected
+            )
+            criterion_results = {
+                "valid_candidate_count_gte_2": (
+                    evidence.valid_candidate_count
+                    >= ASSOCIATION_RISK_CLASSIFICATION_MIN_VALID_CANDIDATES
+                ),
+                "selected_projection_out_of_frame": (
+                    not selected_edge.projection_in_frame
+                ),
+                "retained_alternative_projection_in_frame": any(
+                    not edge.selected and edge.projection_in_frame
+                    for edge in evidence.candidate_edges
+                ),
+                "bbox_area_px2_lte_4_0": (
+                    evidence.bbox_area_px2 is not None
+                    and evidence.bbox_area_px2
+                    <= ASSOCIATION_RISK_CLASSIFICATION_MAX_BBOX_AREA_PX2
+                ),
+                "confidence_lte_0_10": (
+                    evidence.confidence
+                    <= ASSOCIATION_RISK_CLASSIFICATION_MAX_CONFIDENCE
+                ),
+            }
+            matched = tuple(
+                criterion
+                for criterion in ASSOCIATION_RISK_CLASSIFICATION_CRITERIA
+                if criterion_results[criterion]
+            )
+            unmatched = tuple(
+                criterion
+                for criterion in ASSOCIATION_RISK_CLASSIFICATION_CRITERIA
+                if not criterion_results[criterion]
+            )
+            classification = "positive" if not unmatched else "negative"
+            classification_id = association_risk_classification_id(
+                evidence.evidence_id,
+                ASSOCIATION_RISK_CLASSIFICATION_PROFILE_VERSION,
+                classification,
+                matched,
+            )
+            classifications.append(
+                AssociationRiskClassificationEvidence(
+                    classification_id=classification_id,
+                    evidence_id=evidence.evidence_id,
+                    publisher_node_id=evidence.publisher_node_id,
+                    publisher_epoch=evidence.publisher_epoch,
+                    measurement_timestamp=evidence.measurement_timestamp,
+                    arrival_timestamp=evidence.arrival_timestamp,
+                    published_at=evidence.published_at,
+                    observation_evidence_key=evidence.observation_evidence_key,
+                    selected_opaque_member_track_token=(
+                        evidence.selected_opaque_member_track_token
+                    ),
+                    selected_source_key=evidence.selected_source_key,
+                    classification=classification,
+                    matched_criteria=matched,
+                    unmatched_criteria=unmatched,
+                )
+            )
+
+        self.association_risk_classification_evaluated_count += len(
+            classifications
+        )
+        positive_count = sum(
+            item.classification == "positive" for item in classifications
+        )
+        self.association_risk_classification_positive_count += positive_count
+        self.association_risk_classification_negative_count += (
+            len(classifications) - positive_count
+        )
+        return tuple(classifications)
+
+    def _association_risk_candidate_edge(
+        self,
+        observation: SensorObservation,
+        record: TrackRecord,
+        *,
+        nis: float,
+        rank: int,
+        selected: bool,
+        token: str,
+        source_key: str,
+    ) -> AssociationRiskCandidateEdge | None:
+        state = self._association_risk_cached_state(
+            record,
+            float(observation.measurement_timestamp),
+        )
+        if state is None:
+            return None
+        try:
+            model = measurement_model_for(
+                observation,
+                self.radar_covariance_config,
+                structured_jacobian=self.structured_numerical_jacobian,
+            )
+            predicted = model.h_fn(state.state)
+            jacobian = model.h_jacobian_fn(state.state)
+            innovation_covariance = (
+                jacobian @ state.covariance @ jacobian.T + model.r
+            )
+            innovation_covariance = 0.5 * (
+                innovation_covariance + innovation_covariance.T
+            ) + 1.0e-9 * np.eye(2, dtype=float)
+            eigenvalues = np.linalg.eigvalsh(innovation_covariance)
+            minimum = max(0.0, float(eigenvalues[0]))
+            maximum = max(minimum, float(eigenvalues[-1]))
+            condition = min(
+                maximum / max(minimum, 1.0e-300),
+                1.0e300,
+            )
+            residual = wrap_residual(model.z - predicted, model.angle_indices)
+            camera = CameraModel.from_metadata(observation.metadata)
+            point_camera = camera.rotation_world_to_camera @ (
+                state.state[:3] - camera.position_ned
+            )
+            forward_depth = float(point_camera[2])
+            in_frame = bool(
+                0.0 <= float(predicted[0]) < float(camera.width)
+                and 0.0 <= float(predicted[1]) < float(camera.height)
+            )
+            ellipse = float(np.sqrt(CHI2_2_95 * maximum))
+        except (ValueError, FloatingPointError, np.linalg.LinAlgError):
+            return None
+        if forward_depth <= 0.0:
+            return None
+        if not all(
+            np.isfinite(value)
+            for value in (
+                nis,
+                minimum,
+                maximum,
+                condition,
+                forward_depth,
+                ellipse,
+                float(np.linalg.norm(residual)),
+            )
+        ):
+            return None
+        return AssociationRiskCandidateEdge(
+            opaque_member_track_token=token,
+            source_key=source_key,
+            rank=rank,
+            selected=selected,
+            nis=nis,
+            predicted_pixel=predicted,
+            raw_pixel_residual_norm=float(np.linalg.norm(residual)),
+            forward_depth_m=forward_depth,
+            projection_in_frame=in_frame,
+            image_width_px=camera.width,
+            image_height_px=camera.height,
+            innovation_covariance_min_eigenvalue=minimum,
+            innovation_covariance_max_eigenvalue=maximum,
+            innovation_covariance_condition_number=condition,
+            projection_ellipse_major_axis_px=ellipse,
+        )
+
+    def _association_risk_cached_state(
+        self,
+        record: TrackRecord,
+        timestamp: float,
+    ) -> EKFState | None:
+        context = self._batch_context
+        if context is None:
+            return None
+        revision = int(context.history_revision[record.track_id])
+        state = context.state_cache.get((record.track_id, revision, timestamp))
+        return None if state is None else state.copy()
+
+    def _association_risk_observation_keys(
+        self,
+        observations: list[SensorObservation],
+    ) -> dict[int, str]:
+        signatures: list[tuple[str, int]] = []
+        for index, observation in enumerate(observations):
+            camera = CameraModel.from_metadata(observation.metadata)
+            signature = (
+                observation.sensor_id,
+                observation.modality,
+                observation.frame_id,
+                float(observation.measurement_timestamp),
+                float(observation.arrival_timestamp),
+                np.asarray(observation.measurement, dtype=float)[:2],
+                np.asarray(observation.covariance, dtype=float)[:2, :2],
+                float(observation.confidence),
+                camera.position_ned,
+                camera.rotation_world_to_camera,
+                camera.fx,
+                camera.fy,
+                camera.cx,
+                camera.cy,
+                camera.width,
+                camera.height,
+                self._association_risk_bbox_area(observation),
+            )
+            signatures.append(
+                (
+                    _opaque_structural_digest(
+                        "d1-risk-observation-content-sha256:",
+                        signature,
+                    ),
+                    index,
+                )
+            )
+        occurrence_by_signature: defaultdict[str, int] = defaultdict(int)
+        keys: dict[int, str] = {}
+        for content_digest, index in sorted(signatures):
+            occurrence = occurrence_by_signature[content_digest]
+            occurrence_by_signature[content_digest] += 1
+            keys[index] = _opaque_structural_digest(
+                "d1-risk-observation-sha256:",
+                (content_digest, occurrence),
+            )
+        return keys
+
+    @staticmethod
+    def _association_risk_bbox_area(
+        observation: SensorObservation,
+    ) -> float | None:
+        raw = observation.metadata.get("bbox_xyxy", observation.metadata.get("bbox"))
+        if raw is None:
+            return None
+        bbox = np.asarray(raw, dtype=float).reshape(-1)
+        if bbox.size < 4 or not np.isfinite(bbox[:4]).all():
+            return None
+        return max(0.0, float(bbox[2] - bbox[0])) * max(
+            0.0,
+            float(bbox[3] - bbox[1]),
+        )
+
+    def association_risk_evidence_audit(self) -> dict[str, Any]:
+        """Return sidecar-only counters without changing GlobalTrack metadata."""
+
+        return {
+            "schema_version": "d1.association-risk-evidence-audit.v1",
+            "enabled": self.association_risk_evidence_shadow,
+            "mode": "shadow" if self.association_risk_evidence_shadow else "disabled",
+            "policy_version": self.association_risk_policy_version,
+            "threshold_profile_version": (
+                self.association_risk_threshold_profile_version
+            ),
+            "shadow_scan_count": self.association_risk_shadow_scan_count,
+            "evidence_count": self.association_risk_evidence_count,
+            "candidate_edge_count": self.association_risk_candidate_edge_count,
+            "suppressed_by_limit_count": (
+                self.association_risk_evidence_suppressed_by_limit_count
+            ),
+            "risk_reason_counts": dict(sorted(self._association_risk_reason_counts.items())),
+            "top_k": self.association_risk_top_k,
+            "max_evidence_per_scan": self.association_risk_max_evidence_per_scan,
+            "online_truth_used": False,
+            "decision": "evidence_only",
+        }
+
+    def association_risk_classification_audit(self) -> dict[str, Any]:
+        """Return counters for the independent development-only classifier."""
+
+        evaluated = self.association_risk_classification_evaluated_count
+        positive = self.association_risk_classification_positive_count
+        negative = self.association_risk_classification_negative_count
+        return {
+            "schema_version": ASSOCIATION_RISK_CLASSIFICATION_AUDIT_SCHEMA_VERSION,
+            "enabled": self.association_risk_evidence_shadow,
+            "mode": "shadow" if self.association_risk_evidence_shadow else "disabled",
+            "decision": "evidence_only",
+            "profile_version": ASSOCIATION_RISK_CLASSIFICATION_PROFILE_VERSION,
+            "evaluated_raw_evidence_count": evaluated,
+            "positive_classification_count": positive,
+            "negative_classification_count": negative,
+            "published_classification_count": evaluated,
+            "max_classifications_per_scan": (
+                self.association_risk_max_evidence_per_scan
+            ),
+            "online_truth_used": False,
+            "posterior_update_applied": False,
+        }
 
     def _radar_assignment_ambiguities(
         self,

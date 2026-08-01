@@ -2454,3 +2454,57 @@ OOSM 观测，共评分 532 条唯一接受观测，谱系覆盖率 1.0，暖机
 20-seed 均值不作为正式性能门；200 目标冒烟也没有覆盖长时虚假航迹累积。200 目标、20 个
 未见 seed 的正式质量矩阵，以及据此决定是否增加 tentative/confirmed/expiry 生命周期，仍为
 P1。
+
+## EO 关联风险 Shadow Evidence（2026-07-31）
+
+`FusionAdapter(association_risk_evidence_shadow=False)` 默认关闭。开启后，D1 在 EO 扫描的
+one-to-one 代价矩阵求解后、量测更新前，发布严格的
+`d1.association-risk-evidence.v1` sidecar 到 `FusionBatchResult` 或
+`FusionStateUpdateResult`。它只记录已选边和有界 top-K 门内候选的投影/NIS 诊断，不写入
+`GlobalTrack` metadata，也不改变 assignment、state、covariance、hits、birth 或
+`global_track_id`；关闭时序列化结果不增加该字段。
+
+固定 `decision=evidence_only`、`mode=shadow`、`online_truth_used=false`。v1 仅报告
+`projection_out_of_frame`、`near_projection_singularity`、
+`ill_conditioned_innovation`、`weak_assignment_margin` 和
+`multiple_gate_candidates`。风险证据使用独立 DTO/字段，但复用已冻结的 opaque source
+identity contract 及其 token/source-key 值，不复用 `StructuralAmbiguityEvidence` DTO。默认
+top-K 为 3，每扫描最多 32 条证据（硬上限 16/256）。
+
+在原始 sidecar 旁新增独立 DTO `AssociationRiskClassificationEvidence`，schema 为
+`d1.association-risk-shadow-classification.v1`，固定 profile 为
+`d1-eo-pathological-projection-composite-development-v2`。分类逐条引用原始 `evidence_id`、
+`observation_evidence_key` 和 `selected_source_key`，结果经
+`association_risk_classifications` 发布。五项判据为：门内候选数至少 2、已选投影在图像外、
+至少一个保留替代投影在图像内、框面积不大于 4 像素平方、置信度不大于 0.10。正负结果都
+发布，输出数量不超过原始 sidecar 的每扫描上界。独立审计入口为
+`association_risk_classification_audit()`。
+
+2026-07-31 的同源开发校准包含 37 个 episode、1,536 条原始风险证据。纯影子配置的严格身份
+结果与冻结 R0 基线 `37/37` 一致，在线真值使用次数为 0。复合条件覆盖 17 个已知由相机引起的
+`multiple_truth_targets_for_global_track` 事件中的 `17/17`；20 个严格身份可用对照中 1 个
+episode 触发，即 `1/20`。该对照触发也是潜在错绑，但未进入最终严格身份帧。上述数据来自同一
+冻结开发来源，没有独立留出验证，不能用于 D2 enforcement。当前仍为 default-off、shadow、
+`evidence_only`；不得抑制 assignment、修改后验、写入 `GlobalTrack` 或改变
+`global_track_id`。定向测试为 `18 passed`，D1 全量回归为
+`514 passed, 1 warning in 33.43s`；相机后方候选只跳过不可用诊断，不中断规范融合路径。
+
+### 留出执行结果
+
+main 随后在与开发校准隔离的 seeds 2000--2019 上运行 nominal 100v100 与 200v200，共 40 个
+2.0 s episode；正式 shards 10--19 未使用。D2 只读因果重放完成 `40/40`。排除 4 个非相机阻断
+样本后，分类评估包含 11 个相机因果正例 case、13 个已标注故障事件和 25 个严格身份可用对照，
+共 36 个 case、1,015 条 raw evidence。在线分类与离线 v2 复算 `1015/1015` 一致，共产生 12 次
+正分类。
+
+事件级命中为 `11/13`，召回率 `0.8461538462`；通过对照告警为 `0/25`。样本量门通过，但召回
+低于冻结门限 `0.90`，性能门未通过。两个漏检分别为 200v200 seed 2003 未满足
+`selected_projection_out_of_frame`，以及 seed 2012 未满足
+`plausible_in_frame_alternative`。在线/离线逐条一致只证明分类实现与离线复算一致，不证明规则
+已经达到晋级性能。
+
+100v100 seed 2006 与 200v200 seed 2001 的业务等价复核中，剔除四个风险旁路字段后，D1 总线、
+D2 总线、严格身份评估语义和 truth NPZ 的 SHA 均与对照完全相同。该结果证明 shadow sidecar
+未改变业务载荷。本轮属于留出执行证据，但验收失败，不构成正式准入证据；v2 继续
+default-off、shadow、`evidence_only`，D2 enforcement 仍禁止。不得使用该留出集调参；下一候选
+必须使用新的开发数据形成，并另建新的独立留出集。
