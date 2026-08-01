@@ -1,5 +1,56 @@
 # D4 分布式协同与降级接管算法及实施方案
 
+## A2 v8 TRAIN-only 合同实现（2026-08-01）
+
+### DTO 与文件合同
+
+`region_resource_v8_development_contract.py` 提供以下只读/序列化边界：
+
+- `V8OnlineRegionResourceFrame` 聚合双时间戳、规范 topology、完整 region/edge 清单、
+  `V8R0ActionTuple`、`V8AnonymousRawActorAction`、projected transfer、拒绝/不变量字段和
+  `V8NoAuthorityPermissions`；所有 DTO 使用严格键集，未知键、缺字段、重复 JSON key、
+  非有限数值和在线 label/identity 泄漏均拒绝；
+- `V8OfflineTransferLabel` 位于独立 JSONL，通过 `online_frame_sha256` 与在线帧规范 JSON
+  内容绑定。正类要求 projected transfer 总资源数严格为 1/2/3，困难负类要求 projected
+  transfer 为空、匿名候选总资源数为 1/2/3 且携带 allowlist 拒绝原因；
+- `V8MainGenerationSchedule` 将 main 后续 producer 的 episode、来源 commit/config SHA、
+  在线/离线相对路径逐项绑定到冻结 registry；`V8TrainDatasetManifest` 再绑定 schedule、
+  每对文件 SHA、frame 数和完整 324-episode inventory。两者当前仅有 schema/loader，
+  没有制品。
+
+规范拓扑由 `expected_v8_directed_edges()` 唯一生成。8/12 环、3x3 网格和 16-node complete
+directed mesh 的边数为 16/24/24/240；frame validator 比较连续 edge index 和完整端点
+序列。`classify_v8_edge_direction()` 按拓扑预定义 forward/reverse，不从任意 producer
+标签推断方向。
+
+### 安全与时序 validator
+
+每个 projected/R0 transfer 按 `edge_index + source + target + resource_count` 重验。projected
+动作还必须精确来自同帧匿名 candidate。校验顺序为：有向边和端点、edge capacity、通信与
+机动可用、partition state、两端 owner/layer active、fault fence、coalition ACK、到达时
+lease，以及同源所有转移的聚合安全余量。任一不满足均失败关闭，不通过放宽 projector
+生成训练正类。
+
+`load_v8_episode_pair()` 只读加载一对在线/离线 JSONL，先核对文件 SHA，再解析 DTO、逐帧
+内容 SHA、episode/seed/frame identity 和 label/projected transfer。跨帧拒绝时间回退、
+plan version/epoch 回滚、同代 lease 变化和 owner 变化未同步提升 version/epoch。
+`load_v8_development_train_dataset()` 还要求 main schedule、manifest、324 个 registry entry
+及磁盘文件 inventory 完全一致，并按 schedule 重验三类供需、三类通信和 transfer class。
+
+### 冻结 request 与 readiness
+
+`validate_v8_seed_registry_payload()` 重建四拓扑 x 三供需 x 三通信 x 三 transfer class 的
+108 个 cell，并要求每 cell 的 replicate 为 0/1/2、seed 精确为 `28100-28423`、split 仅为
+TRAIN。它拒绝禁止范围 overlap、validation/test 非空、生成/拟合计数非零和任一权限 true。
+`load_v8_frozen_request()` 进一步核对 request、registry 与 schedule 内容 SHA 的双向绑定。
+
+只读 CLI `scripts/validate_region_resource_v8_development_contract.py` 当前验证结果为
+`frozen_request_not_generated`，blocker 为完整 main generation schedule 和 generated
+episode manifest 缺失；generated/loaded episode 为 0，data/model unavailable，
+validation/test 为空，全部权限 false。新增专项 14/14、D4 全量 935/935 通过；全量仅有
+既有 Matplotlib `Axes3D` 环境警告。该结果验证合同实现，不是 324-episode 数据审计、模型
+训练、AirSim episode 或物理收益证据。
+
 ## v7 只读失败诊断与 v8 请求冻结（2026-08-01）
 
 ### 输入复载

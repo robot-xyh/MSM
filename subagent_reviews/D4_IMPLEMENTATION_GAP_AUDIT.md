@@ -1,5 +1,37 @@
 # D4 实现差距审计：分布式协同与降级接管
 
+## 2026-08-01 A2 v8 TRAIN-only 合同缺口状态
+
+### 本轮关闭的 D4-owned 合同缺口
+
+1. 已实现版本化 v8 在线 frame/region/directed-edge/R0/匿名候选/projected-transfer DTO，
+   双时间戳、逐区域供需、逐边通信、owner/layer/plan/version/epoch/lease、拒绝和不变量
+   字段均为严格必填；未知键、非有限值、方向错误和字段缺失失败关闭。
+2. 在线 feature 与离线 transfer label 已分文件并通过在线帧规范 SHA-256 绑定。在线禁止
+   truth、actor、object、target、track identity 和 label；`raw_actor` 仅含匿名边候选动作。
+3. 冻结 registry 的 108 cells x 3 replicates、seed `28100-28423`、8/9/12/16 区域、
+   三类供需/通信/transfer class、正转移 1/2/3 和 hard-negative 1/2/3 已严格验证；seed
+   overlap、validation/test 非空和权限提升均拒绝。
+4. 已定义 main generation schedule、dataset manifest、单 episode 和完整 TRAIN dataset
+   只读 loader。拓扑、容量、供需、通信分区、owner active、fault fence、coalition ACK、
+   到达时 lease、version/epoch 单调和同代 lease 冻结均在加载时重验。
+5. pre-generation readiness 当前严格输出 `frozen_request_not_generated`。专项 14/14、D4
+   全量 935/935 通过；只有既有 Matplotlib `Axes3D` 环境警告。
+
+### 保持开放的 P1
+
+1. **TRAIN 数据仍不存在。** main 完整 324-entry schedule、324 episode、在线 feature、
+   离线 label 和 dataset manifest 均未生成，故尚无成功完整 dataset load 或独立数据审计
+   证据；contract ready 不等于 data ready。
+2. **模型仍不存在。** 本批没有训练 actor、checkpoint、选模、校准、注册或运行时接线，
+   也没有读取正式 holdout episode 或复用 v7 evaluation；model ready 不得声明。
+3. **validation/test 仍后置。** 当前分配必须为空；未来只能在 v8 actor 和 TRAIN 请求冻结
+   后从另一全新来源选择，不能从本批 TRAIN 或旧评价重切分。
+4. **权限不变。** v8 只能研究 transfer candidate，不能修改 R0 node action；assignment、
+   degradation、takeover、coalition、control、D3、D7、production 和 runtime ACK 权限均为
+   false。确定性 R0、projector、owner/version/epoch/lease 和完整 coalition ACK 继续拥有
+   最终安全裁决。
+
 ## 2026-08-01 v7 失败归因与 v8 开发来源冻结
 
 ### 已关闭的 D4-owned 诊断缺口

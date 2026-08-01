@@ -1,5 +1,35 @@
 # D4 分布式协同与降级接管
 
+## 2026-08-01 A2 v8 TRAIN-only 数据合同就绪
+
+D4 新增 `region_resource_v8_development_contract.py` 和只读命令
+`scripts/validate_region_resource_v8_development_contract.py`。在线合同
+`d4-region-resource-v8-online-frame-v1` 以严格 typed DTO 固化双时间戳、8/9/12/16
+区域数、完整有向边、逐区域供需、逐边时延/丢包/分区、owner/layer/plan/version/epoch/
+lease、R0 动作、匿名 raw actor 转移候选、投影结果、拒绝原因和不变量原因。raw actor
+没有 actor/object/target/track identity 或权限字段；离线 transfer class 标签存于独立
+JSONL，并以在线帧规范内容 SHA-256 绑定。额外字段、缺字段、重复 JSON key、非有限值、
+标签或 truth/actor/object identity 泄漏均失败关闭。
+
+规范拓扑固定为双向展开的 8/12 环、双向 3x3 正交网格和 16 节点完整有向 mesh，边数
+分别为 16/24/24/240；方向、索引或边清单不完整均拒绝。投影转移只接受匿名候选中的
+当前有向边，并严格重验容量、源区安全余量、通信/机动、分区、owner active、fault
+fence、完整 coalition ACK 及 `arrival_timestamp < lease_expires_at_s`。episode loader
+还拒绝 plan version/epoch 回滚、同代 lease 刷新及 owner 变化未同步提升 version/epoch。
+v8 输出只含 transfer candidate，不能修改 R0 node action，也不能获得 assignment、
+degradation、takeover、coalition 或 control 权限。
+
+冻结 request/registry 的只读 validator 严格确认 108 cells x 3 replicates、TRAIN seed
+`28100-28423`、8/9/12/16 拓扑、三类供需、三类通信、三类 transfer class，以及正转移
+1/2/3 和 hard-negative 候选 1/2/3；旧来源/保留范围重合、validation/test 分配或任一
+权限为 true 均拒绝。main generation schedule、dataset manifest 和在线/离线 episode
+loader 已定义，但当前均无制品，因此 readiness 只能输出
+`frozen_request_not_generated`：contract ready，data/model absent，生成/训练/checkpoint/
+注册/运行时计数均为 0。本批未生成 324 episode、未选择 validation/test、未读取正式
+holdout episode、未复用 v7 evaluation、未训练 actor。
+
+专项测试 14/14、D4 全量 935/935 通过；全量只有既有 Matplotlib `Axes3D` 环境警告。
+
 ## 2026-08-01 v7 失败归因与 v8 开发来源请求
 
 D4 新增只读诊断器

@@ -1,5 +1,33 @@
 # D4 分布式协同与降级接管计划
 
+## 2026-08-01 A2 v8 TRAIN-only 合同推进
+
+### 本轮完成
+
+- [x] 定义 v8 在线 RegionResource frame、region、完整 directed edge、R0 node action、
+  匿名 raw actor transfer candidate、projected transfer 和零权限 typed DTO；在线严格禁止
+  label、truth、actor、object、target 和 track identity。
+- [x] 将离线 transfer class 标签拆为独立 JSONL，并以在线帧规范 SHA-256 逐帧绑定；
+  实现单 episode 在线/离线只读 loader、哈希和原子 identity 对账。
+- [x] 固定并验证 8/9/12/16 区域规范有向拓扑；严格重验 transfer 容量、供需余量、
+  通信时延/丢包/分区、owner/layer/plan/version/epoch/lease、coalition ACK 和 fault fence。
+- [x] 严格加载冻结 request/registry，确认 108 cells x 3 replicates、seed
+  `28100-28423`、三类供需/通信/transfer class，以及正类和 hard-negative 1/2/3 资源。
+- [x] 定义只读 main schedule/dataset manifest loader 与 pre-generation readiness。当前缺少
+  完整 main schedule 和 episode，状态固定为 `frozen_request_not_generated`，不得升级。
+- [x] 新增篡改、缺失、拓扑方向、seed overlap、在线标签/身份泄漏、旧 lease 和权限 true
+  失败关闭回归。专项 14/14、D4 全量 935/935 通过。
+
+### 保持阻断
+
+- [ ] main 尚未发布完整 324-entry generation schedule，且 324 个 TRAIN episode、在线
+  feature 文件、离线 label 文件和 dataset manifest 均不存在；D4 不代 main 生成。
+- [ ] v8 actor、checkpoint、模型选择、注册、运行时接线和独立审计均未开始。
+- [ ] validation/test 仍为空；只能在未来 v8 actor 与 TRAIN 请求冻结后从另一全新来源选择，
+  本批不得切分或读取正式 holdout，也不得复用 v7 evaluation。
+- [ ] assignment、degradation、takeover、coalition、control、D3、D7 和 production 权限
+  全部保持 false；确定性 R0、projector 和 owner/version/epoch/lease/ACK 门不变。
+
 ## 2026-08-01 v7 失败归因与 v8 开发来源冻结计划
 
 ### 本轮完成

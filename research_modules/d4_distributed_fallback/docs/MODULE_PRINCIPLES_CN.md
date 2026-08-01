@@ -1,5 +1,49 @@
 # 分布式协同与降级接管模块原理（模块编号 D4）
 
+## A2 v8 TRAIN-only 合同原则（2026-08-01）
+
+### 在线特征与离线标签隔离
+
+v8 将“生成可观测状态”和“形成监督标签”拆为两个独立文件面。在线
+`d4-region-resource-v8-online-frame-v1` 只包含 episode/frame 键、双时间戳、区域聚合
+供需、完整有向边及通信状态、authority 代次、确定性 R0、匿名候选转移和安全投影过程。
+`raw_actor` 只表示按 `candidate_index` 排序的匿名边动作，不携带 actor、object、target、
+track 或 truth identity，也不携带模型权限。离线
+`d4-region-resource-v8-offline-transfer-label-v1` 单独保存 transfer class、期望投影转移
+和困难负类原因，并通过在线帧规范内容 SHA-256 对齐；标签字段进入在线载荷即失败关闭。
+
+当前离线标签 DTO 本身也不承载对象或真值 identity。若未来生成器需要真值形成标签，真值
+只能停留在生成器的隔离离线过程，不能进入 D4 在线文件或当前 label schema。正负标签必须
+来自同一快照的 R0 与固定安全规则，不能把 actor 输出反写为教师。
+
+### 规范有向拓扑与安全投影
+
+四类拓扑的完整边清单是合同的一部分，而不是由 producer 自由解释：8/12 区域环将相邻
+边双向展开，3x3 网格将水平和垂直相邻边双向展开，16 区域 mesh 包含全部非自环有向边，
+边数分别为 16、24、24、240。环的 `i -> (i+1) mod N`、网格的向右/向下边和 mesh
+预定义的低索引到高索引边为 forward，其反向为 reverse。loader 要求 edge index 连续且
+端点序列与规范清单逐项相同，因此漏边、重复边、把无向边当单条记录或调换方向都拒绝。
+
+投影后转移必须来自同帧匿名候选，并重新检查有向边、容量、源区
+`available-committed-reserved-demand` 余量、通信可用性、丢包/时延状态、分区、机动可用性、
+owner active、fault fence、完整 coalition ACK，以及严格的
+`arrival_timestamp < lease_expires_at_s`。跨帧还要求 plan version/epoch 不回滚，同一
+owner/layer/plan/version/epoch 不得刷新 lease，owner 变化必须同时提升 version 和 epoch。
+raw actor 没有 node-action DTO，因而不能改写 R0 的 quota、reserve、reconnaissance、hold
+或 replan 字段。
+
+### 生命周期边界
+
+冻结 request/registry 只允许 TRAIN seed `28100-28423`，严格覆盖 108 cells x 3
+replicates、8/9/12/16 区域、三类供需、三类通信、三类 transfer class，以及正转移和
+hard-negative 候选资源数 1/2/3。validation/test 必须为空，旧来源或禁止 seed 重合立即
+拒绝。只有完整 main generation schedule、324 个 episode、分离文件和 dataset manifest
+全部通过只读加载后，readiness 才可能离开 `frozen_request_not_generated`。
+
+当前只有合同与 validator ready；main schedule、数据、actor、checkpoint、模型选择、注册
+和运行时接线均 absent。assignment、degradation、takeover、coalition、control、D3、D7、
+production 和 runtime ACK 权限继续为 false；合同通过不构成模型能力、AirSim 或物理证据。
+
 ## v7 失败归因和 v8 数据边界（2026-08-01）
 
 ### 归因层级
