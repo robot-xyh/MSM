@@ -13,13 +13,17 @@
 4. [x] 使用开发 seed `21900-21909` 运行 10 个 5v5、3 秒 episode。1182 个规则样本中
    三个缺失单元分别为 445、89 和 51，均覆盖 10 episode/10 seed，在线真值使用 0。该批
    来自 dirty 工作树，只是可达性探针，不进入训练或准入。
-5. [x] 冻结 v2 schedule 候选，使用全新 seed `22000-22099`；与旧语料、开发探针和正式
-   保留 seed 均无重叠。main 定向回归 `159 passed, 1 warning`。
-6. [ ] 从 clean source commit 运行 v2 的 100 个完整 episode 并最终封装，不与旧 v1 语料
+5. [x] clean `d39dbd7` 首批在 14 episode 后停止。处理窗口错误地同时移除了侦察观察
+   指派，不满足“保留计划与航迹、只让投影暂失”的合同。该批未 finalized，seed
+   `22000-22027` 永久排除，不进入训练或审计。
+6. [x] 修订 v2 schedule 候选，使用全新 seed `22100-22199`；与旧语料、开发探针、拒绝
+   批次和正式保留 seed 均无重叠。运行快照保留侦察 assignment，只抑制对应 projection；
+   修订后 scalable 3D 全量 `451 passed, 1 warning`。
+7. [ ] 从 clean source commit 运行 v2 的 100 个完整 episode 并最终封装，不与旧 v1 语料
    拼接，不复制、过采样、重加权或注入 fixture。
-7. [ ] 由 D5 重新执行严格文件、来源和训练结构门；只有 train/validation/test 所有要求单元
+8. [ ] 由 D5 重新执行严格文件、来源和训练结构门；只有 train/validation/test 所有要求单元
    均达到门限后，才允许进入行为克隆准备，模型和在线权限仍需单独评审。
-8. [ ] 由 D6 独立复算 checksum、manifest、descriptor、在线流、clean source、whole-seed
+9. [ ] 由 D6 独立复算 checksum、manifest、descriptor、在线流、clean source、whole-seed
    split、匿名身份和 authority，随后同步 main GAP 与中文验收报告。
 
 ## A3 主动视觉来源域与独立审计（2026-07-31）

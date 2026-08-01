@@ -309,9 +309,10 @@ def test_d5_a3_balanced_action_role_schedule_uses_new_disjoint_seeds() -> None:
 
     assert len(cells) == 100
     generation_seeds = {seed for _, _, seed, _ in cells}
-    assert generation_seeds == set(range(22000, 22100))
+    assert generation_seeds == set(range(22100, 22200))
     assert generation_seeds.isdisjoint(range(21000, 21100))
     assert generation_seeds.isdisjoint(range(21900, 21910))
+    assert generation_seeds.isdisjoint(range(22000, 22028))
     assert generation_seeds.isdisjoint(range(1000, 1020))
     assert reserved == tuple(range(1000, 1020))
     assert _load_schedule_collection_profile(path) == "balanced_action_role_v1"

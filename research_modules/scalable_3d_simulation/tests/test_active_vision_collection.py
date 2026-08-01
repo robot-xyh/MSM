@@ -72,6 +72,7 @@ def test_balanced_runtime_reaches_missing_action_role_cells_without_truth() -> N
 
     result = run_episode(config, module_stack=stack)
     counts: Counter[tuple[str, str]] = Counter()
+    recon_search_preserved_assignment_count = 0
     for frame in stack.learning_artifacts().d5_active_vision_frames:
         camera_by_id = {
             camera.camera_id: camera for camera in frame.snapshot.cameras
@@ -85,12 +86,23 @@ def test_balanced_runtime_reaches_missing_action_role_cells_without_truth() -> N
                 else "interceptor"
             )
             counts[(action.intent.value, role)] += 1
+            if action.intent.value == "search_sector" and role == "recon":
+                assigned_target_ids = frame.snapshot.assigned_target_ids(
+                    action.camera_id
+                )
+                assert assigned_target_ids
+                assert all(
+                    frame.snapshot.projection(action.camera_id, target_id) is None
+                    for target_id in assigned_target_ids
+                )
+                recon_search_preserved_assignment_count += 1
 
     assert result.summary["online_truth_use_count"] == 0
     assert result.summary["finite_state"] is True
     assert counts[("hold", "interceptor")] > 0
     assert counts[("hold", "recon")] > 0
     assert counts[("search_sector", "recon")] > 0
+    assert recon_search_preserved_assignment_count > 0
     runtime_profile = result.manifest.runtime_profile
     assert runtime_profile["configuration"][
         "d5_active_vision_collection_profile"

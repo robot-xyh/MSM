@@ -1033,7 +1033,7 @@ class IntegratedScalableModuleStack:
         self.latest_active_vision_snapshot: ActiveVisionSnapshotV1 | None = None
         self.latest_active_vision_decisions: tuple[Any, ...] = ()
         self.latest_active_vision_recon_cue_count = 0
-        self.latest_active_vision_recon_cue_suppressed_count = 0
+        self.latest_active_vision_recon_projection_suppressed_count = 0
         self._latest_terminal_by_pair: dict[tuple[str, str], tuple[dict[str, Any], Any]] = {}
         self._track_region_by_id: dict[str, str] = {}
         self._resource_index_by_id: dict[str, int] = {}
@@ -1546,7 +1546,7 @@ class IntegratedScalableModuleStack:
         self.latest_active_vision_snapshot = None
         self.latest_active_vision_decisions = ()
         self.latest_active_vision_recon_cue_count = 0
-        self.latest_active_vision_recon_cue_suppressed_count = 0
+        self.latest_active_vision_recon_projection_suppressed_count = 0
         self._latest_terminal_by_pair.clear()
         self._track_region_by_id.clear()
         self._resource_index_by_id.clear()
@@ -5539,6 +5539,12 @@ class IntegratedScalableModuleStack:
             camera_by_resource=camera_by_resource,
         )
         assignments = interceptor_assignments + recon_assignments
+        suppress_recon_projections = (
+            self.active_vision_collection_treatment().recon_cue_suppressed(now)
+        )
+        self.latest_active_vision_recon_projection_suppressed_count = (
+            len(recon_assignments) if suppress_recon_projections else 0
+        )
         tracks = tuple(
             ActiveVisionTrackReference(
                 global_track_id=track.global_track_id,
@@ -5566,6 +5572,10 @@ class IntegratedScalableModuleStack:
             for assignment in assignments
             if assignment.resource_id in camera_by_resource
             and assignment.global_track_id in track_by_id
+            and not (
+                suppress_recon_projections
+                and camera_by_resource[assignment.resource_id].platform_kind == "recon"
+            )
         )
         snapshot = ActiveVisionSnapshotV1(
             snapshot_timestamp=now,
@@ -5671,16 +5681,7 @@ class IntegratedScalableModuleStack:
         """
 
         if not self.stack_config.d5_recon_track_cues_enabled:
-            self.latest_active_vision_recon_cue_suppressed_count = 0
             return ()
-        treatment = self.active_vision_collection_treatment()
-        if treatment.recon_cue_suppressed(float(step_input.timestamp)):
-            self.latest_active_vision_recon_cue_suppressed_count = sum(
-                camera.platform_kind == "recon"
-                for camera in step_input.cameras
-            )
-            return ()
-        self.latest_active_vision_recon_cue_suppressed_count = 0
         target_ids = tuple(
             sorted(
                 {
@@ -10507,8 +10508,8 @@ class IntegratedScalableModuleStack:
                 "recon_track_cue_count": (
                     self.latest_active_vision_recon_cue_count
                 ),
-                "recon_track_cue_suppressed_count": (
-                    self.latest_active_vision_recon_cue_suppressed_count
+                "recon_track_projection_suppressed_count": (
+                    self.latest_active_vision_recon_projection_suppressed_count
                 ),
                 "collection_profile": (
                     self.stack_config.d5_active_vision_collection_profile
@@ -10915,8 +10916,8 @@ class IntegratedScalableModuleStack:
             "d5_active_vision_recon_cue_count": (
                 self.latest_active_vision_recon_cue_count
             ),
-            "d5_active_vision_recon_cue_suppressed_count": (
-                self.latest_active_vision_recon_cue_suppressed_count
+            "d5_active_vision_recon_projection_suppressed_count": (
+                self.latest_active_vision_recon_projection_suppressed_count
             ),
             "d5_active_vision_collection_profile": (
                 self.stack_config.d5_active_vision_collection_profile

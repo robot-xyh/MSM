@@ -167,9 +167,11 @@ seed `21000-21099` 与正式保留 seed `1000-1019` 零重叠。来源审计通�
 2026-08-01 的 A3 补采使用独立 schedule
 `d5_a3_source_independent_point_mass_v2.json` 和运行处理配置
 `balanced_action_role_v1`。处理配置将相机命令后的有界稳定期和侦察航迹线索暂失窗口写入
-runtime profile；动作仍由 D5 规则策略产生。候选生成 seed 为 `22000-22099`，与旧语料
-`21000-21099`、开发探针 `21900-21909` 和正式保留 `1000-1019` 均零重叠。开发探针不属于
-clean source evidence，不得与最终语料拼接或用于模型准入。
+runtime profile；动作仍由 D5 规则策略产生。首次 clean `d39dbd7` 批次因同时移除侦察观察
+指派而在 14 episode 后停止，未 finalized；其 seed `22000-22027` 排除。修订候选 seed 为
+`22100-22199`，与旧语料 `21000-21099`、开发探针 `21900-21909`、拒绝批次和正式保留
+`1000-1019` 均零重叠。开发或拒绝批次不属于 clean final corpus evidence，不得与最终语料
+拼接或用于模型准入。
 
 `scalable3d-episode-bus-v1` 的 D1 航迹发布现允许两种兼容记录：`full_posterior` 携带完整
 `tracks`，`state_update` 只携带扫描摘要、观测谱系和 `current_track_count`。两类记录都保持

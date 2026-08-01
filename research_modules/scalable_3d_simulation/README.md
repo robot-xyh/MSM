@@ -12,14 +12,22 @@ main 新增显式 `balanced_action_role_v1` 主动视觉采集配置。默认
 处理配置、稳定期参数和线索暂失参数均进入 runtime profile、episode manifest 和 generation
 plan。`run_learning_dataset.py` 要求 balanced 配置同时显式启用只读侦察航迹线索；schedule
 声明与命令行不一致时在 episode 运行前失败关闭。新 schedule
-`d5_a3_source_independent_point_mass_v2.json` 使用 seed `22000-22099`，与旧语料
-`21000-21099`、开发探针 `21900-21909` 和正式保留 `1000-1019` 均无重叠。
+`d5_a3_source_independent_point_mass_v2.json` 使用 seed `22100-22199`，与旧语料
+`21000-21099`、开发探针 `21900-21909`、已拒绝批次 `22000-22027` 和正式保留
+`1000-1019` 均无重叠。
 
 2026-08-01 的 10-seed 脏工作树开发探针仅验证动作可达性，共 1182 个规则样本：
 `hold/interceptor=445`、`hold/recon=89`、`search_sector/recon=51`，三个单元均覆盖
 10 个完整 episode 和 10 个 seed；在线真值使用为 0。该探针不作为训练、来源或晋级证据。
 main 定向回归为 `159 passed, 1 warning`。完整 clean 100-seed 语料、D5 严格训练门和
 D6 独立来源审计仍待执行，A3 的 BC、PPO、assist、promotion 和全部 authority 保持 false。
+
+首次 clean `d39dbd7` 运行在完成 14 个 episode 后由 main 主动停止。复核发现线索暂失窗口
+同时移除了侦察观察指派，而目标合同要求保留指派和中心航迹，仅抑制本相机投影。该批未最终
+封装、未进入训练或审计，seed `22000-22027` 从后续候选中排除。修订实现将侦察
+`ActiveVisionAssignmentReference` 留在快照中，并只在窗口内省略对应
+`ActiveVisionProjectionEvidence`。修订后全量回归为 `451 passed, 1 warning`；警告来自
+既有 Matplotlib `Axes3D` 环境。
 
 ## A3 主动视觉来源域合同（2026-07-31）
 
