@@ -1,5 +1,20 @@
 # D5 末端视觉配准与协同身份认证综述及子方案
 
+## 2026-08-01 A3 v2 来源独立语料 owner 复核
+
+D5 已对 main 冻结的 v2 质点语料执行严格 owner 验收。100 episode、100 seed 和 159,502 个
+样本全部通过文件、来源、split、truth-free 和不可变性检查。来源研究门、训练结构门和组合门
+均通过，corpus audit SHA-256 为 `bce869573f6c1084c2db10b263818d98be2de562f7701fc19ec95aaf56bfc872`。
+
+三个原空单元在 train 中分别达到 `42,669/60/60`、`1,772/60/60` 和 `1,023/60/60`。
+validation/test 也均有对应动作角色样本，但没有被用于补训练门。ACK 和匿名键覆盖全部样本，
+在线 truth/actor/object ID 与全局编号改写为 0。
+
+该结果关闭“缺非合成质点动作角色结构覆盖”的 D5 P1，不改变模型和系统权限。BC/PPO 未启动，
+未写权重，assist/promotion/assignment/degradation/runtime/production/control/global-ID-write
+均为 false。下一步仍需独立模型评估、未见 seed 非退化、AirSim/真实相机和物理结果证据。
+D5 全量回归为 `776 passed, 2 warnings in 102.23s`。
+
 ## 2026-08-01 A3 补采运行时合同复核
 
 D5 对 main 拟增加的真实云台忙碌状态和按 cell 侦察 cue-loss treatment 完成合同审查。现有

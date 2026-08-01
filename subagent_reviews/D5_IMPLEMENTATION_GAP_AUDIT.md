@@ -1,5 +1,21 @@
 # D5 实现差距审计
 
+## 2026-08-01 A3 v2 来源独立语料 owner 验收 GAP
+
+| 缺口 | 当前状态 | 证据与剩余边界 |
+| --- | --- | --- |
+| scalable runtime treatment | **main-owned 补采实现已形成证据** | v2 语料自然产生两类相机 `hold` 和侦察 `search_sector`；中心分配、航迹与版本在 cue-loss 中保留。D5 没有强制标签入口。 |
+| 来源独立补采语料 | **本批次关闭** | 100 episode/100 seed/45 cells/159,502 sample，生产提交 `d7bf890...5e4d`，dirty=0，全部来源为 point-mass。manifest SHA=`9b80e47a...31d4`。 |
+| 三个动作角色空单元 | **训练结构 P1 已关闭** | train 的 `hold+interceptor=42669/60/60`、`hold+recon=1772/60/60`、`search_sector+recon=1023/60/60`；均高于 `2/2/2`，无复制、过采样、强制标签或跨 split 借样。 |
+| 严格 dataset/source/corpus gate | **本批次通过** | 状态依次为 `valid_detached_immutable_dataset`、`point_mass_simulation_research_eligible`、`pass_development_corpus_only`；组合门通过，failure/warning/exclusion 为空。corpus SHA=`bce86957...c872`。 |
+| truth、中心身份与 seed 隔离 | **本批次通过** | 在线 truth/actor/object ID=0，`global_track_id` 创建/改写=0；1000-1019 只作为禁止值检查，dataset/training overlap=0，未读取或运行正式 R0。 |
+| ACK 与匿名键 | **记录完整，结果谱系仍开放** | 159,502/159,502 ACK accepted，匿名 observation key 全部唯一；outcome/reward/counterfactual/causal 均 unavailable，不能据此证明视野、关联或物理收益。 |
+| BC/PPO 与运行权限 | **保持关闭，不因结构门通过自动关闭 GAP** | 未训练、未写权重；assist、promotion、assignment、degradation、runtime、production、control 和 `global_track_id` write 全 false。后续模型质量、未见 seed、A3/R0、AirSim/真实相机与物理结果仍开放。 |
+
+本轮关闭的是 A3 非合成质点训练语料的结构覆盖 P1。它没有关闭模型准入、现实泛化和运行权限
+P1。旧 v1 批次继续保留为历史失败证据，不与 v2 合并。D5 全量回归为
+`776 passed, 2 warnings in 102.23s`，零失败。
+
 ## 2026-08-01 A3 补采运行时合同 GAP
 
 | 缺口 | 当前状态 | 证据与剩余边界 |
@@ -7,9 +23,9 @@
 | 两类相机真实 `hold` 触发 | **D5-owned 合同与测试已关闭** | 现有 `ActiveVisionCameraState` 可表达 `slew_available=false` 和未来的 `action_in_progress_until`。拦截/侦察两类资源均由真实状态自然输出 `hold`，无需强制标签 API。 |
 | 侦察相机 `search_sector` 触发 | **D5-owned 合同与测试已关闭** | 保留中心计划、航迹和版本，仅在有界 cue-loss 窗口缺少本相机可用分配投影时，规则输出扫描扇区；不删除或换绑 `global_track_id`。 |
 | 三个动作角色单元的训练门 | **D5-owned 失败关闭测试已关闭** | `hold+interceptor`、`hold+recon`、`search_sector+recon` 分别按唯一样本、完整 episode 和独立 seed 计数；任一小于 2 均拒绝训练并生成精确补采请求。 |
-| scalable runtime treatment | **main-owned P1 开放** | main 尚需传入版本化真实云台忙碌窗口和按 cell 的侦察 cue-loss。必须保留当前计划/航迹，只改变相机可用性或本相机投影可用性，不得直接指定动作。 |
-| 来源独立补采语料 | **P1 开放，失败关闭** | 现有 100-episode 语料未改变。需使用新 training seed 生成每单元至少 2 seed/2 episode/2 sample 的完整语料；禁止复制、过采样、重加权、fixture 注入和标签制造。 |
-| 模型和运行权限 | **保持关闭** | 尚未补采、重验或训练。正式 seed 1000-1019 与 R0 保留，BC/PPO/assist/promotion 及相机、分配、降级、运行、生产、控制和全局编号写权限均为 false。 |
+| scalable runtime treatment | **后续 v2 证据已关闭该项** | 历史计划已由 main 实现并形成 v2 语料；具体证据以上一节为准。 |
+| 来源独立补采语料 | **后续 v2 证据已关闭该项** | 历史空单元已由新 seed 的完整 episode 自然补齐；没有复制、过采样、重加权、fixture 注入或标签制造。 |
+| 模型和运行权限 | **保持关闭** | 补采与重验已完成，但尚未训练或晋级。正式 seed 1000-1019 与 R0 保留，BC/PPO/assist/promotion 及相机、分配、降级、运行、生产、控制和全局编号写权限均为 false。 |
 
 验证日期为 2026-08-01。定向测试 `26 passed in 4.14s`，D5 全量
 `776 passed, 2 warnings in 102.06s`，零失败。本轮没有修改生产合同或阈值，也没有产生新的
@@ -41,7 +57,7 @@
 | 摘要与权限防篡改 | **关闭并保持回归** | 来源 envelope 字段、tier、domain 和 dataset source summary 均重新验证；即使同步重写文件校验和，摘要不一致仍拒绝。全部 authority 位保持 false。 |
 | 质点仿真研究门 | **D5-owned 软件 P1 已关闭** | 仅严格复载、显式全质点来源、clean source identity、哈希/split、truth-free 和语料完整数据可进入 `simulation_research` 开发评估；formal、runtime、production、control 等权限不随门通过。 |
 | AirSim/真实相机来源 | **P1 开放，声明不等于证明** | 来源域只提供 declaration-only 证据等级。当前没有外部 AirSim episode 证明、真实相机 provenance 审计或现实泛化结果。 |
-| 独立质点语料与 A3 模型 | **语料已生成；训练与模型 P1 开放** | 独立 point-mass 语料已完成来源/完整性验收，但因 `hold` 和 `search_sector+recon` 覆盖缺失而禁止训练。A3 未重训，仍无新的未见 seed 或 A3/R0 收益证据。 |
+| 独立质点语料与 A3 模型 | **v1 历史语料结构失败；v2 已关闭结构 P1，模型 P1 开放** | 该节的 v1 批次因 `hold` 和 `search_sector+recon` 缺失而禁止训练；2026-08-01 v2 已通过结构门。A3 仍未重训，仍无新的未见 seed 或 A3/R0 收益证据。 |
 
 验证日期为 2026-07-31。来源域、episode dataset 和 corpus audit 定向测试为
 `43 passed in 7.83s`；D5 全量为 `769 passed, 2 warnings in 104.87s`。警告来自既有
@@ -60,8 +76,8 @@ runtime、assist、相机命令、分配、接管或 control 权限，也没有�
 | 确定性补采清单 | **D5-owned 软件缺口已关闭** | planner 按场景、动作、角色排序，输出 `AV-CORPUS-NNN` 及新增唯一样本、episode、新训练 seed 数量。相同数据不同遍历顺序得到相同内容和 SHA-256。 |
 | 行为克隆训练前门 | **D5-owned 软件缺口已关闭** | cache 升级为 v2 并绑定审计；训练在模型初始化前验证审计。旧 v1 cache 可读但缺审计，训练失败关闭。正式入口先写 `training_corpus_audit.json`。 |
 | 权限升级隔离 | **关闭并保持回归** | 审计固定正式候选、非合成未见 seed、运行 ACK/结果为 unavailable，assist、主动视觉、相机命令、分配、接管、控制和全局编号写权限均为 false；重新计算摘要后篡改权限仍拒绝。 |
-| 非合成正式训练语料 | **P1 开放，unavailable** | 正向软件 fixture 只有 2 个训练 seed 且为 synthetic。已有 100 episode/1200 sample 补充课程也为合成数据。没有通过新审计的非合成正式训练 corpus。 |
-| 少数动作真实 producer | **P1 开放，unavailable** | 历史正式语料仍为 `hold=0`，历史模型 `observe_target` 召回 0。需按补采清单从独立场景、episode 和新训练 seed 采集真实规则示范，不能复制或重采样。 |
+| 非合成正式训练语料 | **后续 v2 结构 P1 已关闭** | 本节记录的 fixture 缺口已由 2026-08-01 v2 clean point-mass 语料关闭。该结论只覆盖开发训练结构，不代表模型或生产准入。 |
+| 少数动作真实 producer | **后续 v2 数据 P1 已关闭** | v2 规则执行已自然产生四类动作和两类相机角色，无复制或重采样。历史模型 `observe_target` 召回 0 仍待新模型评估关闭。 |
 | 侦察相机正式泛化 | **P1 开放** | 历史侦察相机精确动作准确率约 `0.621823`。本轮仅实现角色覆盖门，没有生成非合成侦察语料或新正式模型指标。 |
 | 未见 seed 与运行结果 | **P1 开放，unavailable** | 至少 20 个独立未见非合成 seed、A3/R0 同配置非退化、真实运行 ACK、动作结果和正式权限均未形成。本轮未运行 900-cell、大写盘或 AirSim。 |
 
@@ -79,7 +95,7 @@ runtime、assist、相机命令、分配、接管或 control 权限，也没有�
 | 分层诊断 | **D5-owned 软件缺口已关闭** | report v2 输出宏平均 precision/recall/F1、每动作召回、拦截/侦察相机分层、精确动作置信度校准、训练边界分布外比例和动作不一致/低置信/分布外诊断回退计数。 |
 | 多数类准入投机 | **D5-owned 软件门已关闭** | 新 development precheck 同时要求 train split 每动作有真实正样本，并要求 test split 每动作召回、宏平均召回、两类相机角色、校准和分布外同时可用并达标；99:1 fixture 即使总体准确率 0.99，仍因 `observe_target` 召回 0 与 `hold/search_sector` 无正样本失败关闭。 |
 | 指标分母与边界 | **D5-owned 软件缺口已关闭** | precision、recall、F1 分别按预测数、真实正样本数和 `2TP+FP+FN` 计算；分母为零时 unavailable。缓存标签越界、非法权重、非有限评估特征均失败关闭。 |
-| `hold` 正样本 | **P1 开放，unavailable** | 当前正式 producer 仍为 `hold=0`。代码没有把零检测、补零或重采样解释为 hold 正样本。需独立场景和 seed 产生真实规则示范。 |
+| `hold` 正样本 | **后续 v2 数据 P1 已关闭** | v2 train 包含 44,441 个自然 `hold`，覆盖 60 episode/60 seed；其中拦截/侦察分别为 42,669 和 1,772。没有把零检测、补零或重采样解释为 hold。 |
 | 侦察相机泛化 | **P1 开放** | 旧 test recon 精确动作准确率约 `0.621823`。本轮增加角色分层和门限，没有生成新的正式模型指标。 |
 | 正式 bundle 准入 | **P1 开放，权限保持关闭** | 本轮未启动 900-cell/大写盘重训。旧 2026-07-20 模型仍是当前证据：总体 `0.955978`、`observe_target` 召回 0、`hold=0`。至少需要 clean/frozen 数据/模型谱系、20 个明确未见且非 synthetic seed、同配置 A3/R0 成对非退化和逐 episode 安全/可见率/重捕获无退化；production evidence assembler 可用前不得晋级。 |
 | 零检测安全语义 | **关闭并保持回归** | observation-frame v2 有分配目标时仍固定为 `reacquire + coverage=false`，不会计为 locked、ambiguous、hold 或模型正收益。 |

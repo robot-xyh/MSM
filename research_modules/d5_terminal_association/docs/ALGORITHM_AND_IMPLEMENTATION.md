@@ -1,6 +1,26 @@
 # D5 终端视觉配准与身份认证算法原理与实施文档
 
-**状态日期：2026-08-01（验收语料冻结于 2026-07-31）**
+**状态日期：2026-08-01**
+
+## A3 v2 owner 验收实现
+
+验收首先调用 `load_active_vision_episode_dataset_lazy()` 和
+`audit_active_vision_episode_dataset()`，逐文件检查只读属性与 SHA-256，并流式复载 100 个
+episode 的在线记录、离线 sidecar、descriptor 和 split。随后
+`audit_active_vision_training_corpus()` 以 1000-1019 为禁止 seed 集合，对每个策略样本重建
+有限候选动作和特征指纹。该检查只把 train 计入训练覆盖；validation/test 仅做完整性和可评估
+覆盖统计。
+
+`require_active_vision_training_corpus_ready()` 与
+`require_active_vision_simulation_research_corpus_ready()` 均通过。训练门内容 SHA-256 为
+`bce869573f6c1084c2db10b263818d98be2de562f7701fc19ec95aaf56bfc872`，无失败原因、警告或
+排除样本。train 的三个补采单元达到 42,669/60/60、1,772/60/60 和 1,023/60/60，远高于
+每单元 `2 sample / 2 episode / 2 seed` 下限。
+
+全量汇总只读取严格复载后的在线 record，核对 159,502 个 ACK 与匿名 observation key。
+truth/actor/object ID 消费和 `global_track_id` 改写均为 0。本轮没有调用 BC/PPO trainer、
+cache writer、model bundle 或相机 executor，因此不产生权重或任何运行权限。
+2026-08-01 D5 全量回归为 `776 passed, 2 warnings in 102.23s`，零失败。
 
 ## 补采动作合同与回归
 
@@ -27,10 +47,11 @@ cue-loss 补采保留 `ActiveVisionPlanReference` 中的相机目标分配、
 计数均为 0，补采请求分别要求 `2/2/2`，训练前门抛出失败关闭错误。
 
 2026-08-01 定向结果为 `26 passed in 4.14s`，全量结果为
-`776 passed, 2 warnings in 102.06s`。没有修改 D5 生产代码。完整运行语料仍待 main 生成；
-正式 seed 1000-1019、R0、assist/promotion/authority 状态均不变。
+`776 passed, 2 warnings in 102.06s`。没有修改 D5 生产代码。该合同测试时完整运行语料仍待
+main 生成；后续 v2 生成与验收状态见本文件首节。正式 seed 1000-1019、R0、
+assist/promotion/authority 状态均不变。
 
-## 独立 A3 语料验收实现
+## 2026-07-31 v1 独立 A3 语料验收实现
 
 严格验收先调用 `load_active_vision_episode_dataset_lazy()`。loader 逐文件验证 SHA-256、gzip
 流、header/footer、样本引用、离线 sidecar、descriptor、manifest、只读权限和来源摘要，内存中

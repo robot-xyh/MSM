@@ -2,6 +2,26 @@
 
 科研模块，用于把末端相机视场中的本地视觉轨迹保守关联到中心分配的 `global_track_id`。模块可在统一三维 episode 中在线运行；训练标签和真值评分仍保持离线。D5 只输出视觉关联与相机观察意图，不修改、重写或重新分配任何全局轨迹 ID。
 
+## 2026-08-01 A3 v2 来源独立语料 owner 验收
+
+D5 已用严格 lazy loader 全量复载 main 冻结的 A3 v2 质点语料。语料绑定 clean commit
+`d7bf89060e88a5b1324f2d8d1de36b005ebe5e4d`，包含 100 episode、100 seed、45 个场景规模
+单元和 159,502 个样本；train/validation/test 为 60/20/20 episode 和
+95,040/24,329/40,133 样本。manifest SHA-256 为
+`9b80e47aed8f4c7a416694220d63d9156010911951cbbf271905ce5c0d6f31d4`。
+
+严格数据集门、质点来源研究门和开发训练结构门均通过。train 中三个原空单元已自然补齐：
+`hold+interceptor=42,669/60/60`、`hold+recon=1,772/60/60`、
+`search_sector+recon=1,023/60/60`，数字依次为唯一样本、episode 和 seed。corpus audit
+SHA-256 为 `bce869573f6c1084c2db10b263818d98be2de562f7701fc19ec95aaf56bfc872`。
+
+全语料 ACK 为 159,502/159,502 accepted，匿名 observation key 全部唯一。在线 truth、actor、
+object ID 消费和 `global_track_id` 创建/改写均为 0。行为克隆、近端策略优化、权重写入、
+assist、promotion 及分配、降级、runtime、production、control 和全局编号写权限均未启动或
+开放。详细证据见
+[`reports/D5_A3_SOURCE_INDEPENDENT_CORPUS_OWNER_ACCEPTANCE_V2_20260801_CN.md`](reports/D5_A3_SOURCE_INDEPENDENT_CORPUS_OWNER_ACCEPTANCE_V2_20260801_CN.md)。
+本次 D5 全量回归为 `776 passed, 2 warnings in 102.23s`，零失败。
+
 ## 2026-08-01 A3 补采运行时合同复核
 
 D5 已确认现有 `ActiveVisionCameraState` 和 `DeterministicLookAtScanPolicy` 足以接收 main
@@ -19,9 +39,9 @@ seed 1000-1019，并由真实规则执行自然产生标签。不得复制、过
 
 2026-08-01 定向回归覆盖两类相机的 busy/unavailable `hold`、侦察相机 cue-loss
 `search_sector`，以及三个缺失动作角色单元的 `2 sample / 2 episode / 2 seed` 失败关闭门，
-结果为 `26 passed in 4.14s`。D5 全量为 `776 passed, 2 warnings in 102.06s`。本轮没有修改
-生产合同，也没有生成新语料、训练模型或开放 assist/promotion/authority。现有 100-episode
-语料仍按原审计失败关闭，等待 main 生成完整新语料后重验。
+结果为 `26 passed in 4.14s`。D5 全量为 `776 passed, 2 warnings in 102.06s`。该合同复核
+阶段没有修改生产合同，也没有生成新语料、训练模型或开放 assist/promotion/authority。当时的
+100-episode v1 语料仍失败关闭；后续补采与重验状态以上方 v2 owner 验收为准。
 
 ## 2026-07-31 A3 独立来源语料验收
 

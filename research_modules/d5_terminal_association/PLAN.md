@@ -1,5 +1,28 @@
 # D5 终端视觉配准与身份认证计划
 
+## 2026-08-01 A3 v2 来源独立语料 owner 验收
+
+- [x] 使用 D5 严格 lazy loader 全量校验 100 episode、159,502 sample 的 finalized immutable
+  dataset。manifest、generation plan、split、training set、dataset config、逐文件 SHA-256、
+  gzip 流、只读属性和来源摘要均完成绑定。
+- [x] 运行来源研究门和训练结构门。状态分别为
+  `point_mass_simulation_research_eligible` 与 `pass_development_corpus_only`，组合入口通过，
+  failure reason 和 warning 均为空。
+- [x] 按 train/validation/test 统计四类动作、两类相机角色及全部动作角色单元的唯一样本、
+  episode 和 seed。train 的 `hold+interceptor=42669/60/60`、
+  `hold+recon=1772/60/60`、`search_sector+recon=1023/60/60`，超过 `2/2/2` 下限。
+- [x] 核对 159,502 个运行 ACK 全部 accepted，159,502 个匿名 observation key 全部唯一；
+  在线 truth/actor/object ID 和中心编号改写为 0，来源全为 clean point-mass。
+- [x] 保存 v2/20260801 机器 JSON 与中文 owner 验收报告，保留旧 v1 失败证据，不覆盖、不合并。
+- [x] 未启动行为克隆或近端策略优化，未写权重；assist、promotion、assignment、degradation、
+  runtime、production、control 和 `global_track_id` write 全部保持 false。
+- [x] 2026-08-01 D5 全量回归 `776 passed, 2 warnings in 102.23s`，机器 JSON 解析和
+  owned-path `git diff --check` 通过。
+- [ ] 在独立开发任务中决定是否构建行为克隆 cache。进入该任务前继续冻结默认规则路径和全部
+  运行权限；模型仍需逐动作/角色、未见 seed、分布外和 A3/R0 非退化评估。
+- [ ] 由 main/D6 后续提供 AirSim、真实相机和物理 applied-action/outcome 证据。本次质点语料
+  结构门通过不能关闭这些跨模块边界。
+
 ## 2026-08-01 A3 补采运行时合同
 
 - [x] 复核 `ActiveVisionCameraState` 与 `DeterministicLookAtScanPolicy`。现有
@@ -13,14 +36,14 @@
   的唯一样本、完整 episode、独立训练 seed 任一少于 2 时，训练入口保持失败关闭。
 - [x] 2026-08-01 定向测试 `26 passed in 4.14s`；D5 全量
   `776 passed, 2 warnings in 102.06s`。本轮只增加合同回归，没有改生产策略。
-- [ ] main 在 scalable runtime 中传入真实云台忙碌窗口和按 cell cue-loss treatment。角色由
+- [x] main 在 scalable runtime 中传入真实云台忙碌窗口和按 cell cue-loss treatment。角色由
   `resource_id` 中唯一的 `interceptor` 或 `recon` 标记确定；忙碌使用
   `slew_available=false` 或未来的 `action_in_progress_until`；cue-loss 期间保留计划、航迹和
   版本，只暂时不提供该相机目标投影。
-- [ ] main 使用新 training seed 生成完整、来源独立的补采 episode。保留 1000-1019 和 R0，
+- [x] main 使用新 training seed 生成完整、来源独立的补采 episode。保留 1000-1019 和 R0，
   不复制、过采样、重加权、注入 fixture 或直接构造动作标签。
-- [ ] 新语料生成后重新运行严格 dataset、source 和 corpus gate。三个单元均达到
-  `2 sample / 2 episode / 2 seed` 前，不训练、不晋级，assist/promotion/authority 全 false。
+- [x] 新语料生成后重新运行严格 dataset、source 和 corpus gate。三个单元均已超过
+  `2 sample / 2 episode / 2 seed`；本轮仍未训练或晋级，assist/promotion/authority 全 false。
 
 ## 2026-07-31 A3 独立来源语料验收
 
@@ -38,10 +61,10 @@
 - [x] 保存机器可读摘要和中文验收报告，区分匿名 observation key 覆盖与物理匿名观测帧证据。
 - [x] episode dataset 专项 `19 passed in 3.55s`；D5 全量
   `770 passed, 2 warnings in 102.24s`；`git diff --check` 通过。
-- [ ] 按 `AV-CORPUS-001..003` 采集 `hold+interceptor`、`hold+recon`、
-  `search_sector+recon` 完整新 episode。每项至少 2 个新训练 seed、2 episode、2 sample。
-- [ ] 补采后重新运行严格 dataset/corpus/source gate。训练结构门通过前不得生成训练 cache、
-  权重或 paired-shadow 候选。
+- [x] 按 `AV-CORPUS-001..003` 采集 `hold+interceptor`、`hold+recon`、
+  `search_sector+recon` 完整新 episode。v2 实际覆盖和证据见本文件首节。
+- [x] 补采后重新运行严格 dataset/corpus/source gate。v2 结构门已通过；本次任务没有生成
+  训练 cache、权重或 paired-shadow 候选。
 
 ## 2026-07-31 A3 来源域与仿真研究门
 
@@ -58,8 +81,9 @@
 - [x] 2026-07-31 定向测试 `43 passed in 7.83s`；D5 全量测试
   `769 passed, 2 warnings in 104.87s`。警告为既有 Matplotlib `Axes3D` 与 NVML 环境问题。
 - [x] 由独立 producer 生成并冻结三维质点来源语料。2026-07-31 批次为 100 episode、
-  100 seed、45 个场景规模单元；来源/完整性通过，训练结构覆盖未通过。
-- [ ] 在训练覆盖补齐后执行独立未见 seed 模型评估。当前语料不能进入训练。
+  100 seed、45 个场景规模单元；该 v1 批次来源/完整性通过，训练结构覆盖未通过。
+- [ ] v2 训练结构已补齐；下一步仍需执行独立未见 seed 模型评估。本次 owner 验收没有启动
+  development training。
 - [ ] 在独立语料上重训和评估 A3。AirSim/真实相机外部证明形成前，production、runtime、
   assist、相机命令、分配、接管和 control 权限继续关闭。
 
@@ -90,8 +114,8 @@
   episode、角色缺失、seed split 污染、保留 seed、非有限特征、truth 字段、确定性输出、
   legacy cache、权限升级和训练前门。专项 `11 passed`；D5 全量
   `755 passed, 2 warnings in 123.86s`。
-- [ ] 独立 producer 按补采清单生成非合成训练 episode。当前历史正式语料仍为
-  `hold=0`、`observe_target` 召回 0，侦察相机精确动作准确率约 `0.621823`。
+- [x] 独立 producer 按补采清单生成非合成训练 episode。v2 质点语料已补齐四类动作和两类
+  相机角色；历史模型 `observe_target` 召回 0 和侦察相机约 `0.621823` 仍是旧模型证据。
 - [ ] 使用绑定的正式 training seed registry 冻结 train/validation/test 与 reserved
   集合，并在 clean 来源上运行新审计和行为克隆 v2。100 episode、1200 sample 的补充课程
   是合成软件验证，不能关闭该项。

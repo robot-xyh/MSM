@@ -1,5 +1,25 @@
 # D5 末端视觉配准与身份认证实验报告
 
+## 2026-08-01 A3 v2 来源独立语料验收
+
+D5 对 clean commit `d7bf89060e88a5b1324f2d8d1de36b005ebe5e4d` 生成的候选语料完成
+全量 owner 验收。数据包含 100 episode、100 seed、45 个场景规模单元和 159,502 个样本；
+train/validation/test 为 60/20/20 episode 和 95,040/24,329/40,133 样本。严格 loader 返回
+`valid_detached_immutable_dataset`，manifest SHA-256 为
+`9b80e47aed8f4c7a416694220d63d9156010911951cbbf271905ce5c0d6f31d4`。
+
+来源门为 `point_mass_simulation_research_eligible`，训练结构门为
+`pass_development_corpus_only`，组合入口通过。train 的四类动作样本为
+`hold=44,441`、`observe_target=839`、`reacquire=47,570`、`search_sector=2,190`。
+三个原空单元达到 `42,669/60/60`、`1,772/60/60`、`1,023/60/60`，均超过 `2/2/2`
+阈值。审计没有失败原因、警告、排除样本、复制、过采样、强制标签或跨 split 借样。
+
+159,502 个样本均有 accepted ACK，匿名 observation key 全部唯一。在线 truth/actor/object ID
+和中心编号改写计数为 0。离线 outcome、reward、counterfactual 和 causal label 不可用，因此
+本次不能评价模型收益或物理效果。BC、PPO、权重写入、assist、promotion 及全部运行权限保持
+false。完整分层统计见 v2 中文验收报告和机器 JSON。D5 全量回归为
+`776 passed, 2 warnings in 102.23s`，验收阈值为零失败。
+
 ## 2026-08-01 A3 补采合同测试
 
 本轮验证 main 计划采用的云台忙碌和侦察 cue-loss 输入能否通过现有 D5 规则自然形成缺失
@@ -19,8 +39,8 @@
 定向测试共 `26 passed in 4.14s`。D5 全量回归为
 `776 passed, 2 warnings in 102.06s`，验收阈值为零失败。两条警告来自既有 Matplotlib
 `Axes3D` 环境和 NVML 初始化，与本轮合同无关。本结果只证明 D5 合同和失败关闭测试就绪。
-main 尚未生成补采 episode，现有 100-episode 语料及其审计结果不变；BC、PPO、assist、
-promotion 和全部 authority 仍为 false。
+该合同测试阶段 main 尚未生成补采 episode，当时的 100-episode v1 语料及审计结果不变；
+后续 v2 结果见本文件首节。BC、PPO、assist、promotion 和全部 authority 仍为 false。
 
 ## 2026-07-31 A3 独立来源语料验收
 

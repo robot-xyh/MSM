@@ -1,0 +1,497 @@
+{
+  "schema_version": "d5.a3-source-independent-corpus-owner-acceptance.v2",
+  "acceptance_date": "2026-08-01",
+  "dataset": {
+    "reference": "scalable_3d_simulation/outputs/d5_a3_source_independent_point_mass_v2_20260801_d7bf890/learning_dataset/d5_active_vision",
+    "producer_git_commit": "d7bf89060e88a5b1324f2d8d1de36b005ebe5e4d",
+    "producer_git_commit_verified_from_manifest": true,
+    "generation_plan_sha256": "ed9765395da89e682b250ba23bf7322b290b2a559d0eb4403a2469f9a2cc48a9",
+    "generation_plan_binding_source": "main_supplied_frozen_reference",
+    "manifest_sha256": "9b80e47aed8f4c7a416694220d63d9156010911951cbbf271905ce5c0d6f31d4",
+    "manifest_sha256_recomputed_by_d5": true,
+    "dataset_config_sha256": "3c05993d9b919e639993f1eb074a10bae6fe88d05267342933281e91c35624e7",
+    "split_sha256": "fb4f6c0ce6566e05113c052af52f45b1ecfbdb3d77727b6c038010777477da7b",
+    "training_set_sha256": "3cc6ea166adc74e8cf89e9a5a6b44952b9e4f51d08c83678db39b7b9d1761776",
+    "episode_count": 100,
+    "seed_count": 100,
+    "seed_minimum": 22100,
+    "seed_maximum": 22199,
+    "scenario_scale_cell_count": 45,
+    "sample_count": 159502,
+    "split_episode_counts": {
+      "train": 60,
+      "validation": 20,
+      "test": 20
+    },
+    "split_sample_counts": {
+      "train": 95040,
+      "validation": 24329,
+      "test": 40133
+    },
+    "producer_dirty_episode_count": 0
+  },
+  "strict_dataset_validation": {
+    "schema_version": "d5.active-vision-episode-dataset.v3",
+    "manifest_sha256": "9b80e47aed8f4c7a416694220d63d9156010911951cbbf271905ce5c0d6f31d4",
+    "episode_count": 100,
+    "sample_count": 159502,
+    "split_episode_counts": {
+      "train": 60,
+      "validation": 20,
+      "test": 20
+    },
+    "availability": {
+      "causal_label": {
+        "available_sample_count": 0,
+        "sample_count": 159502,
+        "status": "unavailable"
+      },
+      "counterfactual": {
+        "available_sample_count": 0,
+        "sample_count": 159502,
+        "status": "unavailable"
+      },
+      "outcome": {
+        "available_sample_count": 0,
+        "sample_count": 159502,
+        "status": "unavailable"
+      },
+      "reward": {
+        "available_sample_count": 0,
+        "sample_count": 159502,
+        "status": "unavailable"
+      }
+    },
+    "source_domain_summary": {
+      "episode_count": 100,
+      "episode_count_by_source_domain": {
+        "legacy_unspecified": 0,
+        "synthetic_fixture": 0,
+        "scalable_3d_point_mass_runtime": 100,
+        "airsim_runtime": 0,
+        "real_camera_runtime": 0
+      },
+      "episode_count_by_evidence_tier": {
+        "airsim_declaration_only": 0,
+        "legacy_unclassified": 0,
+        "real_camera_declaration_only": 0,
+        "simulation_research": 100,
+        "software_fixture_only": 0
+      },
+      "explicit_source_domain_episode_count": 100,
+      "legacy_inferred_episode_count": 0,
+      "external_runtime_attestation_validated": false
+    },
+    "source_provenance_contract_present": true,
+    "episode_loading": "streaming_one_episode_at_a_time",
+    "status": "valid_detached_immutable_dataset"
+  },
+  "source_research_gate": {
+    "status": "point_mass_simulation_research_eligible",
+    "passed": true,
+    "failure_reasons": [],
+    "contract_checks": {
+      "strict_dataset_loader_used": true,
+      "source_domain_explicit_complete": true,
+      "source_domain_exclusively_point_mass_runtime": true,
+      "source_identity_complete": true,
+      "source_worktree_clean": true,
+      "version_hash_binding_complete": true,
+      "seed_split_complete": true,
+      "truth_free_online_payload": true,
+      "corpus_integrity_complete": true
+    },
+    "claim_limits": {
+      "airsim_runtime_evidence_validated": false,
+      "real_camera_runtime_evidence_validated": false,
+      "real_camera_generalization_validated": false,
+      "production_evidence_validated": false,
+      "runtime_or_control_permission_granted": false
+    }
+  },
+  "corpus_training_gate": {
+    "status": "pass_development_corpus_only",
+    "passed": true,
+    "failure_reasons": [],
+    "warnings": [],
+    "policy": {
+      "minimum_unique_samples_per_intent": 4,
+      "minimum_unique_episodes_per_intent": 2,
+      "minimum_unique_seeds_per_intent": 2,
+      "minimum_unique_samples_per_camera_role": 8,
+      "minimum_unique_episodes_per_camera_role": 2,
+      "minimum_unique_seeds_per_camera_role": 2,
+      "minimum_unique_samples_per_intent_camera_role": 2,
+      "minimum_unique_episodes_per_intent_camera_role": 2,
+      "minimum_unique_seeds_per_intent_camera_role": 2,
+      "required_scenarios": [],
+      "require_reserved_seed_evidence": true,
+      "policy_version": "d5.active-vision-corpus-policy.v1"
+    },
+    "content_sha256": "bce869573f6c1084c2db10b263818d98be2de562f7701fc19ec95aaf56bfc872",
+    "excluded_sample_reason_counts": {}
+  },
+  "composite_gate_results": {
+    "training_corpus_gate": {
+      "passed": true,
+      "error": null
+    },
+    "simulation_research_composite_gate": {
+      "passed": true,
+      "error": null
+    }
+  },
+  "split_coverage": {
+    "train": {
+      "episode_count": 60,
+      "seed_count": 60,
+      "sample_count": 95040,
+      "by_action_intent": {
+        "hold": {
+          "unique_sample_count": 44441,
+          "unique_episode_count": 60,
+          "unique_seed_count": 60
+        },
+        "observe_target": {
+          "unique_sample_count": 839,
+          "unique_episode_count": 36,
+          "unique_seed_count": 36
+        },
+        "reacquire": {
+          "unique_sample_count": 47570,
+          "unique_episode_count": 60,
+          "unique_seed_count": 60
+        },
+        "search_sector": {
+          "unique_sample_count": 2190,
+          "unique_episode_count": 60,
+          "unique_seed_count": 60
+        }
+      },
+      "by_camera_role": {
+        "interceptor": {
+          "unique_sample_count": 91170,
+          "unique_episode_count": 60,
+          "unique_seed_count": 60
+        },
+        "recon": {
+          "unique_sample_count": 3870,
+          "unique_episode_count": 60,
+          "unique_seed_count": 60
+        }
+      },
+      "by_action_intent_and_camera_role": {
+        "hold": {
+          "interceptor": {
+            "unique_sample_count": 42669,
+            "unique_episode_count": 60,
+            "unique_seed_count": 60
+          },
+          "recon": {
+            "unique_sample_count": 1772,
+            "unique_episode_count": 60,
+            "unique_seed_count": 60
+          }
+        },
+        "observe_target": {
+          "interceptor": {
+            "unique_sample_count": 822,
+            "unique_episode_count": 36,
+            "unique_seed_count": 36
+          },
+          "recon": {
+            "unique_sample_count": 17,
+            "unique_episode_count": 10,
+            "unique_seed_count": 10
+          }
+        },
+        "reacquire": {
+          "interceptor": {
+            "unique_sample_count": 46512,
+            "unique_episode_count": 60,
+            "unique_seed_count": 60
+          },
+          "recon": {
+            "unique_sample_count": 1058,
+            "unique_episode_count": 60,
+            "unique_seed_count": 60
+          }
+        },
+        "search_sector": {
+          "interceptor": {
+            "unique_sample_count": 1167,
+            "unique_episode_count": 37,
+            "unique_seed_count": 37
+          },
+          "recon": {
+            "unique_sample_count": 1023,
+            "unique_episode_count": 60,
+            "unique_seed_count": 60
+          }
+        }
+      }
+    },
+    "validation": {
+      "episode_count": 20,
+      "seed_count": 20,
+      "sample_count": 24329,
+      "by_action_intent": {
+        "hold": {
+          "unique_sample_count": 11505,
+          "unique_episode_count": 20,
+          "unique_seed_count": 20
+        },
+        "observe_target": {
+          "unique_sample_count": 307,
+          "unique_episode_count": 9,
+          "unique_seed_count": 9
+        },
+        "reacquire": {
+          "unique_sample_count": 11925,
+          "unique_episode_count": 20,
+          "unique_seed_count": 20
+        },
+        "search_sector": {
+          "unique_sample_count": 592,
+          "unique_episode_count": 20,
+          "unique_seed_count": 20
+        }
+      },
+      "by_camera_role": {
+        "interceptor": {
+          "unique_sample_count": 23275,
+          "unique_episode_count": 20,
+          "unique_seed_count": 20
+        },
+        "recon": {
+          "unique_sample_count": 1054,
+          "unique_episode_count": 20,
+          "unique_seed_count": 20
+        }
+      },
+      "by_action_intent_and_camera_role": {
+        "hold": {
+          "interceptor": {
+            "unique_sample_count": 11017,
+            "unique_episode_count": 20,
+            "unique_seed_count": 20
+          },
+          "recon": {
+            "unique_sample_count": 488,
+            "unique_episode_count": 20,
+            "unique_seed_count": 20
+          }
+        },
+        "observe_target": {
+          "interceptor": {
+            "unique_sample_count": 300,
+            "unique_episode_count": 9,
+            "unique_seed_count": 9
+          },
+          "recon": {
+            "unique_sample_count": 7,
+            "unique_episode_count": 2,
+            "unique_seed_count": 2
+          }
+        },
+        "reacquire": {
+          "interceptor": {
+            "unique_sample_count": 11646,
+            "unique_episode_count": 20,
+            "unique_seed_count": 20
+          },
+          "recon": {
+            "unique_sample_count": 279,
+            "unique_episode_count": 20,
+            "unique_seed_count": 20
+          }
+        },
+        "search_sector": {
+          "interceptor": {
+            "unique_sample_count": 312,
+            "unique_episode_count": 11,
+            "unique_seed_count": 11
+          },
+          "recon": {
+            "unique_sample_count": 280,
+            "unique_episode_count": 20,
+            "unique_seed_count": 20
+          }
+        }
+      }
+    },
+    "test": {
+      "episode_count": 20,
+      "seed_count": 20,
+      "sample_count": 40133,
+      "by_action_intent": {
+        "hold": {
+          "unique_sample_count": 18825,
+          "unique_episode_count": 20,
+          "unique_seed_count": 20
+        },
+        "observe_target": {
+          "unique_sample_count": 401,
+          "unique_episode_count": 13,
+          "unique_seed_count": 13
+        },
+        "reacquire": {
+          "unique_sample_count": 20043,
+          "unique_episode_count": 20,
+          "unique_seed_count": 20
+        },
+        "search_sector": {
+          "unique_sample_count": 864,
+          "unique_episode_count": 20,
+          "unique_seed_count": 20
+        }
+      },
+      "by_camera_role": {
+        "interceptor": {
+          "unique_sample_count": 38555,
+          "unique_episode_count": 20,
+          "unique_seed_count": 20
+        },
+        "recon": {
+          "unique_sample_count": 1578,
+          "unique_episode_count": 20,
+          "unique_seed_count": 20
+        }
+      },
+      "by_action_intent_and_camera_role": {
+        "hold": {
+          "interceptor": {
+            "unique_sample_count": 18093,
+            "unique_episode_count": 20,
+            "unique_seed_count": 20
+          },
+          "recon": {
+            "unique_sample_count": 732,
+            "unique_episode_count": 20,
+            "unique_seed_count": 20
+          }
+        },
+        "observe_target": {
+          "interceptor": {
+            "unique_sample_count": 386,
+            "unique_episode_count": 13,
+            "unique_seed_count": 13
+          },
+          "recon": {
+            "unique_sample_count": 15,
+            "unique_episode_count": 6,
+            "unique_seed_count": 6
+          }
+        },
+        "reacquire": {
+          "interceptor": {
+            "unique_sample_count": 19646,
+            "unique_episode_count": 20,
+            "unique_seed_count": 20
+          },
+          "recon": {
+            "unique_sample_count": 397,
+            "unique_episode_count": 20,
+            "unique_seed_count": 20
+          }
+        },
+        "search_sector": {
+          "interceptor": {
+            "unique_sample_count": 430,
+            "unique_episode_count": 14,
+            "unique_seed_count": 14
+          },
+          "recon": {
+            "unique_sample_count": 434,
+            "unique_episode_count": 20,
+            "unique_seed_count": 20
+          }
+        }
+      }
+    }
+  },
+  "sampling_integrity": {
+    "sample_copy_used_for_coverage": false,
+    "sample_reweighting_used_for_coverage": false,
+    "synthetic_sample_fabrication_used_for_coverage": false,
+    "validation_and_test_samples_used_for_training_coverage": false,
+    "unique_composite_sample_reference_count": 159502,
+    "raw_sample_key_unique_count": 159502,
+    "raw_sample_key_collision_count": 0
+  },
+  "runtime_ack": {
+    "present_count": 159502,
+    "accepted_count": 159502,
+    "rejected_count": 0,
+    "missing_count": 0,
+    "coverage_fraction": 1.0,
+    "outcome_lineage_available": false
+  },
+  "anonymous_observation_key": {
+    "present_count": 159502,
+    "unique_count": 159502,
+    "duplicate_count": 0,
+    "coverage_fraction": 1.0
+  },
+  "identity_and_source": {
+    "online_truth_identifier_consumed_count": 0,
+    "online_actor_identifier_consumed_count": 0,
+    "online_object_identifier_consumed_count": 0,
+    "global_track_id_created_or_rewritten_count": 0,
+    "global_track_id_reference_mode": "center_owned_read_only",
+    "source_domain_counts": {
+      "scalable_3d_point_mass_runtime": 100
+    },
+    "source_worktree_clean": true
+  },
+  "reserved_seed_check": {
+    "protected_seed_minimum": 1000,
+    "protected_seed_maximum": 1019,
+    "protected_seed_count": 20,
+    "dataset_overlap": [],
+    "training_overlap": [],
+    "evidence_source": "explicit_development_argument",
+    "formal_registry_binding": false
+  },
+  "authority": {
+    "formal_candidate_available": false,
+    "assist_admitted": false,
+    "active_vision_authority_granted": false,
+    "camera_command_authority_granted": false,
+    "assignment_authority_granted": false,
+    "control_authority_granted": false,
+    "global_track_id_write_authority_granted": false,
+    "degradation_authority_granted": false,
+    "runtime_authority_granted": false,
+    "production_authority_granted": false
+  },
+  "execution_decision": {
+    "behavior_cloning_started": false,
+    "ppo_started": false,
+    "weights_written": false,
+    "assist_enabled": false,
+    "promotion_enabled": false,
+    "assignment_authority_enabled": false,
+    "degradation_authority_enabled": false,
+    "runtime_authority_enabled": false,
+    "production_authority_enabled": false,
+    "control_authority_enabled": false,
+    "global_track_id_write_enabled": false
+  },
+  "software_validation": {
+    "validation_date": "2026-08-01",
+    "d5_full_suite": "776 passed, 2 warnings in 102.23s",
+    "acceptance_threshold": "zero test failures",
+    "git_diff_check_passed": true,
+    "warnings": [
+      "existing Matplotlib Axes3D import warning",
+      "existing NVML initialization warning"
+    ]
+  },
+  "remaining_boundaries": [
+    "structural corpus readiness does not establish model quality or statistical sufficiency",
+    "offline outcome, reward, counterfactual and causal labels are unavailable",
+    "AirSim, real-camera and physical applied-action evidence are unavailable",
+    "behavior cloning, PPO, assist, promotion and all runtime/control authorities remain disabled"
+  ]
+}

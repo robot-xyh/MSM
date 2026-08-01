@@ -15,6 +15,13 @@ D5 文档遵循 `research_modules/DOCUMENTATION_STANDARD.md`。推荐阅读顺�
 11. `../reports/D5_ACTIVE_VISION_BC_FORMAL_20260720.md`：正式主动视觉行为克隆数据审计、分层指标、校准和 shadow-only 准入结论。
 12. `../reports/D5_TRACKLET_GRAPH_CANONICAL_SEED_VIEW_20260721.md`：跨视角图数据共享 seed 只读视图、正式计数和失败关闭门。
 13. `../reports/D5_ACTIVE_VISION_CANONICAL_SEED_VIEW_20260721.md`：主动视觉共享 seed 只读视图、正式样本计数和 shadow-only 边界。
+14. `../reports/D5_A3_SOURCE_INDEPENDENT_CORPUS_OWNER_ACCEPTANCE_V2_20260801_CN.md`：A3 v2
+    来源独立质点语料的严格复载、动作角色覆盖、来源门、训练结构门和权限边界。
+
+2026-08-01，A3 v2 语料完成 D5 owner 验收。100 episode、100 seed、159,502 sample 通过
+严格文件和来源校验；训练结构门与质点仿真研究组合门均通过。三个原空动作角色单元在 train
+中达到 42,669/60/60、1,772/60/60 和 1,023/60/60。该结果不包含模型训练、AirSim、真实相机
+或物理收益证据，全部运行权限保持 false。
 
 2026-07-27，主动视觉行为克隆开发链增加有界逆平方根意图加权、动作签名统计、宏平均与
 每动作召回、相机角色分层、置信度校准、分布外比例和诊断回退原因。99:1 多数类 fixture

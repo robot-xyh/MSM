@@ -1,6 +1,22 @@
 # 第五研究模块末端视觉关联（Terminal Association, D5）原理
 
-**状态日期：2026-08-01（验收语料冻结于 2026-07-31）**
+**状态日期：2026-08-01**
+
+## A3 v2 语料验收原则
+
+2026-08-01 的 v2 候选语料来自 clean commit `d7bf89060e88a5b1324f2d8d1de36b005ebe5e4d`，
+包含 100 个完整 episode、100 个互异 seed、45 个场景规模单元和 159,502 个样本。D5 严格
+loader 逐文件复算哈希并复载在线/离线流，确认来源全为三维质点运行、dirty 与 synthetic 为
+0、三个 split 互斥、在线 truth-free，状态为 `valid_detached_immutable_dataset`。
+
+训练结构门只使用 train 的 95,040 个唯一样本。四类动作、两类角色和全部动作角色组合均达到
+开发阈值。三个补采重点单元分别为 `hold/interceptor=42,669/60/60`、
+`hold/recon=1,772/60/60`、`search_sector/recon=1,023/60/60`。覆盖由规则执行自然产生，
+没有复制、过采样、强制标签、重加权或 validation/test 借样。
+
+结构门通过只允许后续开展开发态模型研究。ACK 和匿名键完整不能替代 outcome、奖励、反事实、
+现实相机或物理结果。行为克隆、近端策略优化、assist、promotion 和全部运行权限继续为 false，
+中心 `global_track_id` 始终只读。D5 全量回归为 `776 passed, 2 warnings in 102.23s`。
 
 ## 补采动作的运行时来源
 
@@ -21,11 +37,11 @@ AssignmentPlan、coalition 和 communication 版本必须与调用期望一致�
 
 2026-08-01 的软件回归覆盖两类相机的 busy/unavailable `hold`、侦察相机 cue-loss 搜索和
 三个缺失动作角色单元的独立覆盖门。定向测试为 `26 passed in 4.14s`，D5 全量为
-`776 passed, 2 warnings in 102.06s`。该结果只证明合同和测试可用。现有语料未改变，三个
-单元仍待 main 用新训练 seed 生成完整 episode；模型训练、assist、promotion 和全部 authority
-继续关闭。
+`776 passed, 2 warnings in 102.06s`。该结果只证明合同和测试可用。该合同复核阶段的 v1
+语料未改变，三个单元当时仍待 main 生成；后续 v2 已按本文件首节补齐。模型训练、assist、
+promotion 和全部 authority 继续关闭。
 
-## 独立语料验收原则
+## 2026-07-31 v1 独立语料验收原则
 
 独立 producer 已冻结 100 episode、100 seed、45 个场景规模单元的三维质点主动视觉语料。
 D5 的验收按三层分开处理。第一层是文件、来源和完整性，要求严格 loader、哈希、只读属性、
@@ -63,7 +79,8 @@ identity、完整版本和哈希绑定、互斥 seed split、在线 truth-free �
 2026-07-31 定向测试为 `43 passed in 7.83s`，D5 全量为
 `769 passed, 2 warnings in 104.87s`。该轮只关闭来源域语义与仿真研究门软件 P1，测试数据是
 临时合同 fixture。后续独立质点语料的来源/完整性已按上一节通过，但训练覆盖仍失败；A3 没有
-重训，AirSim 和真实相机声明没有外部证明，任何 production/runtime/control 权限均未获得。
+重训。该句描述 2026-07-31 v1 批次；v2 训练结构状态以本文件首节为准。AirSim 和真实相机
+声明没有外部证明，任何 production/runtime/control 权限均未获得。
 
 ## 主动视觉训练语料覆盖原则
 
