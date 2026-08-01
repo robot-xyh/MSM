@@ -4517,3 +4517,62 @@ teacher edges/mask 与 frame class 只进入独立
 training loader 仍先执行完整 audit 校验。负例篡改逐帧 `online_payload_sha256` 后同步重算
 offline 文件 SHA 和 manifest，仍以 `offline_online_payload_sha256_mismatch` 失败关闭。
 2026-08-01 专项 `15 passed`；未分配 seed、生成数据、训练或形成 AirSim/实验结果。
+
+## 77. A1 v3 全局 allocation 与生成计划
+
+### 77.1 冻结输入
+
+生成前门控读取五类输入：冻结 request、冻结数据合同、D3 旧 seed 排除表、main 全局 seed
+登记表，以及 D3 generator config。generator config 固定 main source commit、四类文件
+绑定、15-cell 规模、最低帧配额和全 false 权限。D3 allocation registry 再绑定 generator
+文件 SHA-256、全局 registry id、内容 SHA-256、文件 SHA-256 与 allocation id。
+
+当前三个新增文件的 SHA-256 为：
+
+```text
+generator config  463463699cb3233cccc431458fa66336e3523ed219cae19ccc08a5da02e562b9
+D3 registry       9014cba4510a033b307a28b8f8a11ca09650367b040d35c73aeb2f3a420391b7
+schedule          0eac8bcfeb09e1e706c31c2532fab82296028e95c5e384ac11c4e81cb7cb05ba
+```
+
+全局登记表不由 D3 修改。loader 先复算移除 `content_sha256` 字段后的规范 JSON 哈希，再
+核对实际文件哈希。随后遍历 protected sets 和 allocations，检查各集合内部有序唯一、
+集合间零重叠、正式 `1000-1019` 不可读，以及 D3 allocation 精确等于
+`23000-23299`。D3 registry 的 forbidden 列表必须与派生并集逐项相等。
+
+### 77.2 调度推导
+
+对第 \(i\) 个 cell，调度器从三个 split 的冻结 seed 序列分别取连续片段：
+
+\[
+S_{i,train}=S_{train}[12i:12(i+1)],\quad
+S_{i,val}=S_{val}[4i:4(i+1)],\quad
+S_{i,test}=S_{test}[4i:4(i+1)]
+\]
+
+每个 episode 的最小可观测、正类和负类帧数固定为 9、3、3。每个 cell 前 10 个 episode
+要求至少 2 个困难负类帧，后 10 个要求至少 1 个，因此总最低困难负类帧为
+\(15\times(10\times2+10\times1)=450\)。loader 从 request 和 registry 重新构造全部
+300 个 `A1V3ScheduledEpisode` 后做冻结对象逐项比较。只交换 cell 描述、seed 或 split
+仍会失败，不能通过保持总数不变绕过。
+
+### 77.3 Readiness 语义
+
+门控顺序为：
+
+```text
+request/exclusion/data contract
+  -> generator config source and hashes
+  -> global registry self-hash, file hash and exact allocation
+  -> D3 forbidden union and whole-seed split
+  -> fixed 15-cell x 20-episode schedule
+  -> all permissions false
+  -> ready(plan_only)
+```
+
+`ready(plan_only)` 不调用数据生成器，也不创建 manifest。API 调用方显式不提供 main
+registry 时仍得到 `request_only`；默认 CLI 使用冻结计划文件并返回退出码 0。任一输入不
+完整或漂移均返回 `fail_closed` 和稳定原因码。
+
+2026-08-01 专项 64 项全部通过，D3 全量 742 项为 `741 passed, 1 skipped`。验证没有读取
+正式 episode payload 或既有 v2 test payload，没有生成数据或训练权重。

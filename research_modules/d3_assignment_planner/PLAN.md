@@ -2639,21 +2639,39 @@ main 的安全顺序是 `plan()`、`bind_published_authority_generation()`、外
 3. [x] whole-seed 60/20/20 固定为 180/60/60；seed 与所有冻结/规范 union 排除集合重叠、
    split 重叠、episode/frame 重复均失败关闭。
 4. [x] readiness CLI 仅在 main registry 与 15-cell/300-episode schedule 完整绑定时返回
-   `ready`；当前缺少 registry 时返回 `request_only`，不伪造生成就绪。
+   `ready`；API 显式不提供 registry 时仍返回 `request_only`。
 5. [x] 只读 audit loader 复核 manifest、Git/dirty/config/SHA-256 和在线/离线一一绑定；
    training loader 只暴露严格 allowlist 的 `A1V3TrainingFeatures`，teacher/class 通过独立
    `A1V3TrainingTarget` 提供，不再暴露完整 online/audit frame。
-6. [x] 新增 15 项专项正负测试，覆盖特征键标签隔离和重算文件 SHA 后的逐帧 binding
-   篡改拒绝；不读取正式 seed `1000-1019` 或 v2 test 样本，不训练、
+6. [x] 首批 15 项专项覆盖特征键标签隔离和重算文件 SHA 后的逐帧 binding 篡改拒绝；
+   不读取正式 seed `1000-1019` 或 v2 test 样本，不训练、
    不写 bundle、不改阈值。
 7. [x] 检查模块原则、算法、AirSim 集成和实验报告；原则/算法按接口变化最小更新，AirSim
    与实验没有新接线或证据，保持不变。
 
-### main 待完成
+### 全局 allocation 接入（2026-08-01）
 
-1. [ ] 提供所有 D3 已登记 seed 的规范 union snapshot，并分配 300 个全新且唯一的 seed。
-2. [ ] 生成绑定 request/contract/registry/config SHA-256 的 15-cell schedule；D3 readiness
-   返回 `ready` 前不得启动生成。
-3. [ ] 后续按 schedule 生成 300 个 episode 和满足最低配额的数据集，再交 D3 loader 与
+1. [x] 绑定 main 全局登记表
+   `scalable3d-learning-source-allocation-20260801-v1` 的 content SHA-256 和文件
+   SHA-256；精确采用 allocation `d3-a1-v3-all-splits` 的 `23000-23299`。
+2. [x] 冻结版本化 generator config、D3 allocation registry 和 generation schedule；
+   source commit 固定为 `4166fe8e8ab4a9a14cffb275ba0a9ffa50a43dbb`。
+3. [x] 每个 15-cell 固定 12/4/4 个 TRAIN/VALIDATION/TEST seed，总计 180/60/60；任一
+   seed、split、cell、哈希、来源或权限漂移失败关闭。
+4. [x] forbidden union 精确纳入全局 658 个 protected seed 和 D4/D5 的 428 个其他
+   allocation seed，共 1086 个。正式 `1000-1019` 的读取策略保持 false。
+5. [x] 默认 readiness 返回 `ready`，同时输出 `plan_only=true`、`data_generated=false`、
+   `model_trained=false` 和全 false 权限。专项 64 项通过；D3 全量 742 项为
+   `741 passed, 1 skipped`。
+
+### 后续
+
+1. [ ] 后续按 schedule 生成 300 个 episode 和满足最低配额的数据集，再交 D3 loader 与
    D6 低层审计；当前 `data_generated=false`。
-4. [ ] 训练、选模、归一化重拟合、阈值调整、正式评价和任何运行/生产准入均不在本批范围。
+2. [ ] 生成前由 main 再次复核全局登记表文件哈希、D3 readiness 输出和工作树来源；本轮
+   只完成计划检查，不生成 payload。
+3. [ ] 训练、选模、归一化重拟合、阈值调整、正式评价和任何运行/生产准入均不在本批范围。
+
+`docs/AIRSIM_INTEGRATION_PLAN.md` 与 `docs/EXPERIMENT_REPORT.md` 已检查。本次没有 AirSim
+DTO、settings、episode、控制接口或新实验数据，因此不修改。M-to-N 专项也已检查；本次
+只冻结两个高威胁 cell 的 seed 计划，没有改变需求槽、成员角色、波次或到达调度。

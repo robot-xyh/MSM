@@ -1,0 +1,75 @@
+{
+  "schema_version": "d3_a1_source_independent_v3_generator_config_v1",
+  "config_id": "d3-a1-v3-generator-config-20260801-v1",
+  "status": "frozen_plan_only_not_generated",
+  "source": {
+    "owner": "main",
+    "git_commit": "4166fe8e8ab4a9a14cffb275ba0a9ffa50a43dbb",
+    "repository_dirty": false
+  },
+  "bindings": {
+    "frozen_request": {
+      "path": "research_modules/d3_assignment_planner/configs/a1_source_independent_v3_development_data_request_v1.json",
+      "schema_version": "d3_a1_source_independent_v3_development_data_request_v1",
+      "identity": "d3-a1-source-independent-v3-development-data-request-20260801-v1",
+      "file_sha256": "6800fd622fbc7dd27a7411f3419fb92729b195bd8fc6880dcda4c5f8637043e2"
+    },
+    "data_contract": {
+      "path": "research_modules/d3_assignment_planner/configs/a1_source_independent_v3_data_contract_v1.json",
+      "schema_version": "d3_a1_source_independent_v3_data_contract_v1",
+      "identity": "d3-a1-source-independent-v3-data-contract-20260801-v1",
+      "file_sha256": "5808782256908579fa443fafbc6aade8f78b340aa8bb722d16735ba2847fa60e"
+    },
+    "seed_exclusion_registry": {
+      "path": "research_modules/d3_assignment_planner/configs/a1_source_independent_v3_seed_exclusion_registry_v1.json",
+      "schema_version": "d3_a1_source_independent_v3_seed_exclusion_registry_v1",
+      "identity": "d3-a1-v3-development-source-seed-request-20260801-v1",
+      "file_sha256": "e3fda5d9d8cf6d58692349b5884e91a928ad723e83e7d95d10cf6048ea7f7155"
+    },
+    "global_seed_registry": {
+      "path": "research_modules/scalable_3d_simulation/configs/scalable_learning_global_seed_registry_v1.json",
+      "schema_version": "scalable3d-global-seed-registry-v1",
+      "policy_version": "scalable3d-seed-allocation-policy-v1",
+      "registry_id": "scalable3d-learning-source-allocation-20260801-v1",
+      "content_sha256": "89d99bf064a8c0e226eead5b675f05daf70ac2d4c6f6139322502da54ab0aea7",
+      "file_sha256": "1c9778e1cbfcd5679956ac2c1fc71a1e780207c4579abdc9b129d162a252c4b6",
+      "allocation_id": "d3-a1-v3-all-splits"
+    }
+  },
+  "generation_plan": {
+    "source_kind": "scalable_3d_d3_a1_v3_development_source",
+    "cell_count": 15,
+    "episode_count": 300,
+    "unique_seed_count": 300,
+    "per_cell_split_seed_counts": {
+      "train": 12,
+      "validation": 4,
+      "test": 4
+    },
+    "minimum_observable_frame_count": 2700,
+    "minimum_positive_frame_count": 900,
+    "minimum_negative_frame_count": 900,
+    "minimum_hard_negative_frame_count": 450,
+    "episode_payload_write_enabled": false,
+    "dataset_artifact_write_enabled": false,
+    "formal_payload_read_allowed": false,
+    "prior_v2_payload_read_allowed": false
+  },
+  "permissions": {
+    "generation": false,
+    "training": false,
+    "optimizer": false,
+    "checkpoint_selection": false,
+    "normalization_refit": false,
+    "threshold_adjustment": false,
+    "runtime": false,
+    "assist": false,
+    "authority": false,
+    "assignment": false,
+    "plan": false,
+    "control": false,
+    "physical": false,
+    "formal_admission": false,
+    "production_admission": false
+  }
+}

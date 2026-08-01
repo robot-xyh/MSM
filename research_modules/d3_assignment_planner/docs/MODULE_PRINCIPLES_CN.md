@@ -2140,3 +2140,25 @@ edge，仍不能作为模型输入。A1 v3 强制分为三层：audit loader 保
 匿名 demand slots；`A1V3TrainingTarget` 单独提供 teacher 与分类目标。training sample
 不持有完整 online frame，也不把 source/seed、身份字段或完整 payload hash 放入特征。
 文件 SHA 与逐帧 `online_payload_sha256` 必须同时通过，重算外层文件 SHA 不能绕过绑定。
+
+## A1 v3 全局种子治理原则（2026-08-01）
+
+全局 seed 登记表由 main 持有，D3 只读取并验证。D3 的 allocation 必须同时满足 owner、
+candidate version、lifecycle、usage class、split policy、permitted operation 和数值 seed
+集合完全一致。全局登记表的 content SHA-256 与文件 SHA-256 分别约束逻辑内容和实际来源；
+任一变化都要求重新冻结版本，不能在旧 D3 registry 上静默接受。
+
+D3 forbidden union 定义为全局 protected seed 与所有其他 allocation seed 的并集：
+
+\[
+S_{forbid}=S_{protected}\cup
+\bigcup_{a\ne a_{D3}}S_a
+\]
+
+本版本中两部分分别为 658 和 428 个 seed，共 1086 个。D3 allocation 为
+`23000-23299`，与该并集交集必须为空。局部旧排除表仍作为最低约束，但不能替代全局并集。
+
+split 以数值 seed 为不可分单元。15 个 cell 中每个 cell 固定 12 个 TRAIN、4 个
+VALIDATION、4 个 TEST seed；同一 seed 只对应一个 cell、一个 episode 和一个 split。
+readiness 的 `ready` 只表示上述计划和来源可复算。它不表示 episode 已生成，也不授予
+训练、分配、计划发布或控制权限。

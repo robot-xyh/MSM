@@ -661,3 +661,15 @@ all-or-none 规则不变。
 
 本项没有形成新的高威胁多成员运行 ACK、联盟提交或物理结果。侦察优先级和区域备用比例
 也没有被解释为 M-to-N 成员动作；缺少具体任务、资源 roster 和角色合同前继续失败关闭。
+
+## 34. A1 v3 数据计划检查（2026-08-01）
+
+A1 v3 的 15-cell schedule 包含 `high-threat-m-to-n-100t100r` 和
+`high-threat-m-to-n-200t200r` 两个高威胁 cell。每个 cell 均固定 12 个 TRAIN、4 个
+VALIDATION、4 个 TEST seed，并沿用匿名目标需求槽和联盟完整性诊断。该安排只保证未来
+数据在三个 split 中覆盖 M-to-N 条件，不改变 Hungarian 需求槽、primary/reserve 角色、
+波次、到达时序或 all-or-none 门控。
+
+本轮没有生成这 40 个 episode，没有形成成员 ACK、D4 coalition commit、D7 控制采用或
+物理协同结果。M-to-N 运行闭环缺口保持原状态；不能用 pre-generation `ready` 替代多成员
+执行证据。

@@ -2024,3 +2024,24 @@ online/offline 诊断只由 audit loader 返回。特征键递归检查不含 te
 classification/truth/global-ID，target 不携带 effective 或离线身份标签。重算外层文件 SHA
 不能绕过逐帧 online/offline binding。专项 `15 passed`。本项未生成数据、训练或分配
 seed；AirSim 和实验报告无新证据，保持不变。
+
+## 72. A1 v3 生成前计划复核（2026-08-01）
+
+D3 已把 main 冻结的全局 seed allocation 接入 A1 v3 严格合同。新增三份计划输入分别固定
+generator 参数、全局 allocation 派生的 D3 registry 和 15-cell schedule。D3 不复制或
+修改 main 全局登记表；loader 每次读取时同时复算全局内容自哈希和文件 SHA-256，并核对
+allocation owner、候选版本、生命周期、用途、允许操作及精确 seed 集合。
+
+schedule 采用整 seed 原子切分。每个 cell 的 20 个 episode 按 12/4/4 分入 TRAIN、
+VALIDATION 和 TEST，全局为 180/60/60。loader 根据冻结 request、cell 顺序和 split seed
+重新推导全部 300 条预期记录，因此交换 seed、split、cell、规模或最小帧配额均不能只靠
+重写外层哈希通过。
+
+实测默认 readiness 返回 `ready`，但报告同时固定 `plan_only=true`、
+`data_generated=false`、`model_trained=false` 和全 false 权限。全局 registry 的
+`dataset_generation` 仅表示 seed reservation 可用于该操作，不等于 D3 当前授予生成、
+训练、分配或控制权限。
+
+专项 64 项与 D3 全量 742 项已执行，结果分别为全通过和
+`741 passed, 1 skipped`。当前仍待 main 后续明确启动数据生成，并由 D6 独立审计生成物；
+本轮没有 episode、标签、manifest、bundle、权重、AirSim 结果或正式 payload 读取。

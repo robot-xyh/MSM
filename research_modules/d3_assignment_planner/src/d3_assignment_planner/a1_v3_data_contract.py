@@ -54,6 +54,28 @@ A1_V3_REQUEST_SCHEMA_V1 = (
 A1_V3_EXCLUSION_REGISTRY_SCHEMA_V1 = (
     "d3_a1_source_independent_v3_seed_exclusion_registry_v1"
 )
+A1_V3_GENERATOR_CONFIG_SCHEMA_V1 = (
+    "d3_a1_source_independent_v3_generator_config_v1"
+)
+A1_V3_GLOBAL_SEED_REGISTRY_SCHEMA_V1 = "scalable3d-global-seed-registry-v1"
+A1_V3_GLOBAL_SEED_POLICY_V1 = "scalable3d-seed-allocation-policy-v1"
+A1_V3_GLOBAL_REGISTRY_ID = (
+    "scalable3d-learning-source-allocation-20260801-v1"
+)
+A1_V3_GLOBAL_REGISTRY_CONTENT_SHA256 = (
+    "89d99bf064a8c0e226eead5b675f05daf70ac2d4c6f6139322502da54ab0aea7"
+)
+A1_V3_GLOBAL_REGISTRY_FILE_SHA256 = (
+    "1c9778e1cbfcd5679956ac2c1fc71a1e780207c4579abdc9b129d162a252c4b6"
+)
+A1_V3_GLOBAL_ALLOCATION_ID = "d3-a1-v3-all-splits"
+A1_V3_GLOBAL_ALLOCATION_CANDIDATE = "d3-a1-v3"
+A1_V3_GLOBAL_ALLOCATION_SPLIT_POLICY = "whole_seed_60_20_20_v1"
+A1_V3_GENERATOR_CONFIG_ID = "d3-a1-v3-generator-config-20260801-v1"
+A1_V3_MAIN_REGISTRY_ID = "d3-a1-v3-main-allocation-registry-20260801-v1"
+A1_V3_GENERATION_SCHEDULE_ID = "d3-a1-v3-generation-schedule-20260801-v1"
+A1_V3_MAIN_REGISTRY_STATUS = "allocation_bound_plan_only"
+A1_V3_GENERATOR_CONFIG_STATUS = "frozen_plan_only_not_generated"
 
 A1_V3_MANIFEST_FILENAME = "dataset_manifest.json"
 A1_V3_ONLINE_FRAMES_FILENAME = "online_frames.jsonl"
@@ -61,6 +83,7 @@ A1_V3_OFFLINE_LABELS_FILENAME = "offline_labels.jsonl"
 A1_V3_SPLITS = ("train", "validation", "test")
 A1_V3_SPLIT_PERCENT = {"train": 60, "validation": 20, "test": 20}
 A1_V3_SPLIT_SEED_COUNTS = {"train": 180, "validation": 60, "test": 60}
+A1_V3_CELL_SPLIT_SEED_COUNTS = {"train": 12, "validation": 4, "test": 4}
 A1_V3_PERMISSION_FIELDS = (
     "generation",
     "training",
@@ -97,6 +120,7 @@ A1_V3_OBSERVABILITY_REQUIREMENTS = (
 )
 
 MODULE_ROOT = Path(__file__).resolve().parents[2]
+REPOSITORY_ROOT = MODULE_ROOT.parents[1]
 DEFAULT_A1_V3_REQUEST_PATH = (
     MODULE_ROOT
     / "configs/a1_source_independent_v3_development_data_request_v1.json"
@@ -107,6 +131,21 @@ DEFAULT_A1_V3_EXCLUSION_REGISTRY_PATH = (
 )
 DEFAULT_A1_V3_DATA_CONTRACT_PATH = (
     MODULE_ROOT / "configs/a1_source_independent_v3_data_contract_v1.json"
+)
+DEFAULT_A1_V3_GENERATOR_CONFIG_PATH = (
+    MODULE_ROOT / "configs/a1_source_independent_v3_generator_config_v1.json"
+)
+DEFAULT_A1_V3_MAIN_SEED_REGISTRY_PATH = (
+    MODULE_ROOT
+    / "configs/a1_source_independent_v3_main_allocation_registry_v1.json"
+)
+DEFAULT_A1_V3_GENERATION_SCHEDULE_PATH = (
+    MODULE_ROOT / "configs/a1_source_independent_v3_generation_schedule_v1.json"
+)
+DEFAULT_A1_V3_GLOBAL_SEED_REGISTRY_PATH = (
+    REPOSITORY_ROOT
+    / "research_modules/scalable_3d_simulation/configs/"
+    "scalable_learning_global_seed_registry_v1.json"
 )
 
 _REASON_CODE = re.compile(r"^[a-z][a-z0-9_]{0,127}$")
@@ -983,9 +1022,42 @@ class A1V3ContractDescriptor:
 
 
 @dataclass(frozen=True)
+class A1V3GeneratorConfig:
+    config_id: str
+    file_sha256: str
+    source_git_commit: str
+    repository_dirty: bool
+    global_registry_path: str
+    global_registry_id: str
+    global_registry_content_sha256: str
+    global_registry_file_sha256: str
+    allocation_id: str
+
+
+@dataclass(frozen=True)
+class A1V3GlobalAllocation:
+    registry_id: str
+    content_sha256: str
+    file_sha256: str
+    allocation_id: str
+    assigned_seeds: tuple[int, ...]
+    protected_seeds: tuple[int, ...]
+    other_allocation_seeds: tuple[int, ...]
+
+    @property
+    def required_forbidden_seeds(self) -> tuple[int, ...]:
+        return tuple(sorted(set(self.protected_seeds) | set(self.other_allocation_seeds)))
+
+
+@dataclass(frozen=True)
 class A1V3SeedRegistry:
     registry_id: str
     file_sha256: str
+    global_registry_id: str
+    global_registry_content_sha256: str
+    global_registry_file_sha256: str
+    allocation_id: str
+    generator_config_id: str
     source_git_commit: str
     repository_dirty: bool
     generator_config_path: str
@@ -1068,6 +1140,9 @@ class A1V3ReadinessReport:
     reason_codes: tuple[str, ...]
     request_id: str | None
     registry_id: str | None
+    global_registry_id: str | None
+    allocation_id: str | None
+    generator_config_id: str | None
     schedule_id: str | None
     cell_count: int
     episode_count: int
@@ -1085,6 +1160,9 @@ class A1V3ReadinessReport:
             "reason_codes": list(self.reason_codes),
             "request_id": self.request_id,
             "registry_id": self.registry_id,
+            "global_registry_id": self.global_registry_id,
+            "allocation_id": self.allocation_id,
+            "generator_config_id": self.generator_config_id,
             "schedule_id": self.schedule_id,
             "cell_count": self.cell_count,
             "episode_count": self.episode_count,
@@ -1097,6 +1175,7 @@ class A1V3ReadinessReport:
             ),
             "data_generated": False,
             "model_trained": False,
+            "plan_only": True,
             "v2_bundle_or_threshold_changed": False,
             "permissions": _false_permissions(),
         }
@@ -1553,12 +1632,393 @@ def load_a1_v3_exclusion_registry(
     return forbidden, file_sha
 
 
+def load_a1_v3_generator_config(
+    path: str | Path,
+    *,
+    request: A1V3FrozenRequest,
+    descriptor: A1V3ContractDescriptor,
+    exclusion_registry_file_sha256: str,
+) -> A1V3GeneratorConfig:
+    payload, file_sha = _read_json_file(path, "v3_generator_config")
+    _require_exact_keys(
+        payload,
+        {
+            "schema_version",
+            "config_id",
+            "status",
+            "source",
+            "bindings",
+            "generation_plan",
+            "permissions",
+        },
+        "generator_config_fields_mismatch",
+    )
+    if payload["schema_version"] != A1_V3_GENERATOR_CONFIG_SCHEMA_V1:
+        _fail("generator_config_schema_mismatch")
+    if payload["config_id"] != A1_V3_GENERATOR_CONFIG_ID:
+        _fail("generator_config_id_mismatch")
+    if payload["status"] != A1_V3_GENERATOR_CONFIG_STATUS:
+        _fail("generator_config_status_mismatch")
+
+    source = _mapping(payload["source"], "generator_config.source")
+    _require_exact_keys(
+        source,
+        {"owner", "git_commit", "repository_dirty"},
+        "generator_config_source_fields_mismatch",
+    )
+    if source["owner"] != "main":
+        _fail("generator_config_owner_mismatch")
+    source_git_commit = _git_commit(
+        source["git_commit"], "generator_config.source.git_commit"
+    )
+    repository_dirty = _boolean(
+        source["repository_dirty"], "generator_config.source.repository_dirty"
+    )
+
+    bindings = _mapping(payload["bindings"], "generator_config.bindings")
+    _require_exact_keys(
+        bindings,
+        {
+            "frozen_request",
+            "data_contract",
+            "seed_exclusion_registry",
+            "global_seed_registry",
+        },
+        "generator_config_binding_fields_mismatch",
+    )
+    expected_local_bindings = {
+        "frozen_request": {
+            "path": (
+                "research_modules/d3_assignment_planner/configs/"
+                "a1_source_independent_v3_development_data_request_v1.json"
+            ),
+            "schema_version": A1_V3_REQUEST_SCHEMA_V1,
+            "identity": request.request_id,
+            "file_sha256": request.file_sha256,
+        },
+        "data_contract": {
+            "path": (
+                "research_modules/d3_assignment_planner/configs/"
+                "a1_source_independent_v3_data_contract_v1.json"
+            ),
+            "schema_version": A1_V3_DATA_CONTRACT_SCHEMA_V1,
+            "identity": descriptor.contract_id,
+            "file_sha256": descriptor.file_sha256,
+        },
+        "seed_exclusion_registry": {
+            "path": (
+                "research_modules/d3_assignment_planner/configs/"
+                "a1_source_independent_v3_seed_exclusion_registry_v1.json"
+            ),
+            "schema_version": A1_V3_EXCLUSION_REGISTRY_SCHEMA_V1,
+            "identity": "d3-a1-v3-development-source-seed-request-20260801-v1",
+            "file_sha256": exclusion_registry_file_sha256,
+        },
+    }
+    for name, expected in expected_local_bindings.items():
+        binding = _mapping(bindings[name], f"generator_config.bindings.{name}")
+        _require_exact_keys(
+            binding,
+            {"path", "schema_version", "identity", "file_sha256"},
+            "generator_config_local_binding_fields_mismatch",
+        )
+        _safe_logical_path(binding["path"], f"generator_config.bindings.{name}.path")
+        if binding != expected:
+            _fail("generator_config_local_binding_mismatch", name)
+
+    global_binding = _mapping(
+        bindings["global_seed_registry"],
+        "generator_config.bindings.global_seed_registry",
+    )
+    _require_exact_keys(
+        global_binding,
+        {
+            "path",
+            "schema_version",
+            "policy_version",
+            "registry_id",
+            "content_sha256",
+            "file_sha256",
+            "allocation_id",
+        },
+        "generator_config_global_binding_fields_mismatch",
+    )
+    global_path = _safe_logical_path(
+        global_binding["path"], "generator_config.global_seed_registry.path"
+    )
+    if global_binding != {
+        "path": (
+            "research_modules/scalable_3d_simulation/configs/"
+            "scalable_learning_global_seed_registry_v1.json"
+        ),
+        "schema_version": A1_V3_GLOBAL_SEED_REGISTRY_SCHEMA_V1,
+        "policy_version": A1_V3_GLOBAL_SEED_POLICY_V1,
+        "registry_id": A1_V3_GLOBAL_REGISTRY_ID,
+        "content_sha256": A1_V3_GLOBAL_REGISTRY_CONTENT_SHA256,
+        "file_sha256": A1_V3_GLOBAL_REGISTRY_FILE_SHA256,
+        "allocation_id": A1_V3_GLOBAL_ALLOCATION_ID,
+    }:
+        _fail("generator_config_global_binding_mismatch")
+
+    generation_plan = _mapping(
+        payload["generation_plan"], "generator_config.generation_plan"
+    )
+    if generation_plan != {
+        "source_kind": request.requested_source_kind,
+        "cell_count": 15,
+        "episode_count": 300,
+        "unique_seed_count": 300,
+        "per_cell_split_seed_counts": A1_V3_CELL_SPLIT_SEED_COUNTS,
+        "minimum_observable_frame_count": 2700,
+        "minimum_positive_frame_count": 900,
+        "minimum_negative_frame_count": 900,
+        "minimum_hard_negative_frame_count": 450,
+        "episode_payload_write_enabled": False,
+        "dataset_artifact_write_enabled": False,
+        "formal_payload_read_allowed": False,
+        "prior_v2_payload_read_allowed": False,
+    }:
+        _fail("generator_config_plan_mismatch")
+    _validate_permissions(payload["permissions"], "generator_config.permissions")
+    return A1V3GeneratorConfig(
+        config_id=A1_V3_GENERATOR_CONFIG_ID,
+        file_sha256=file_sha,
+        source_git_commit=source_git_commit,
+        repository_dirty=repository_dirty,
+        global_registry_path=global_path,
+        global_registry_id=A1_V3_GLOBAL_REGISTRY_ID,
+        global_registry_content_sha256=A1_V3_GLOBAL_REGISTRY_CONTENT_SHA256,
+        global_registry_file_sha256=A1_V3_GLOBAL_REGISTRY_FILE_SHA256,
+        allocation_id=A1_V3_GLOBAL_ALLOCATION_ID,
+    )
+
+
+def load_a1_v3_global_seed_allocation(
+    path: str | Path,
+    *,
+    config: A1V3GeneratorConfig,
+    request: A1V3FrozenRequest,
+    descriptor: A1V3ContractDescriptor,
+    exclusion_registry_file_sha256: str,
+) -> A1V3GlobalAllocation:
+    payload, file_sha = _read_json_file(path, "global_seed_registry")
+    if file_sha != config.global_registry_file_sha256:
+        _fail("global_registry_file_sha256_mismatch")
+    _require_exact_keys(
+        payload,
+        {
+            "schema_version",
+            "policy_version",
+            "registry_id",
+            "status",
+            "protected_seed_sets",
+            "allocations",
+            "unallocated_requests",
+            "generation_state",
+            "content_sha256",
+        },
+        "global_registry_fields_mismatch",
+    )
+    if payload["schema_version"] != A1_V3_GLOBAL_SEED_REGISTRY_SCHEMA_V1:
+        _fail("global_registry_schema_mismatch")
+    if payload["policy_version"] != A1_V3_GLOBAL_SEED_POLICY_V1:
+        _fail("global_registry_policy_mismatch")
+    if payload["registry_id"] != config.global_registry_id:
+        _fail("global_registry_id_mismatch")
+    if payload["status"] != "allocations_reserved_generation_not_started":
+        _fail("global_registry_status_mismatch")
+    declared_content_sha = _sha256_value(
+        payload["content_sha256"], "global_registry.content_sha256"
+    )
+    content_without_hash = dict(payload)
+    content_without_hash.pop("content_sha256", None)
+    reproduced_content_sha = canonical_json_sha256(content_without_hash)
+    if declared_content_sha != reproduced_content_sha:
+        _fail("global_registry_content_sha256_not_reproducible")
+    if declared_content_sha != config.global_registry_content_sha256:
+        _fail("global_registry_content_sha256_mismatch")
+    if _mapping(payload["generation_state"], "global_registry.generation_state") != {
+        "episode_generation_started": False,
+        "sample_generation_started": False,
+        "training_started": False,
+        "formal_seed_payload_read": False,
+        "module_readiness_required": True,
+    }:
+        _fail("global_registry_generation_state_mismatch")
+    if _list(payload["unallocated_requests"], "global_registry.unallocated_requests"):
+        _fail("global_registry_unallocated_request_present")
+
+    protected_values: set[int] = set()
+    protected_ids: set[str] = set()
+    formal_payload_read_allowed: bool | None = None
+    for index, raw_set in enumerate(
+        _list(payload["protected_seed_sets"], "global_registry.protected_seed_sets")
+    ):
+        protected = _mapping(raw_set, f"global_registry.protected_seed_sets[{index}]")
+        _require_exact_keys(
+            protected,
+            {
+                "set_id",
+                "purpose",
+                "seeds",
+                "dataset_generation_allowed",
+                "payload_read_allowed",
+            },
+            "global_protected_set_fields_mismatch",
+        )
+        set_id = _nonempty_string(protected["set_id"], "global_protected_set.set_id")
+        if set_id in protected_ids:
+            _fail("global_protected_set_id_duplicate", set_id)
+        protected_ids.add(set_id)
+        _nonempty_string(protected["purpose"], "global_protected_set.purpose")
+        seeds = set(_seed_sequence(protected["seeds"], "global_protected_set.seeds"))
+        if protected["dataset_generation_allowed"] is not False:
+            _fail("global_protected_generation_allowed", set_id)
+        payload_read_allowed = _boolean(
+            protected["payload_read_allowed"],
+            "global_protected_set.payload_read_allowed",
+        )
+        overlap = protected_values & seeds
+        if overlap:
+            _fail("global_protected_seed_overlap", repr(sorted(overlap)))
+        protected_values.update(seeds)
+        if set_id == "formal-evaluation-v1":
+            if seeds != set(range(1000, 1020)):
+                _fail("global_formal_seed_set_mismatch")
+            formal_payload_read_allowed = payload_read_allowed
+    if formal_payload_read_allowed is not False:
+        _fail("global_formal_payload_read_policy_mismatch")
+
+    allocations: dict[str, Mapping[str, Any]] = {}
+    allocated_values: set[int] = set()
+    for index, raw_allocation in enumerate(
+        _list(payload["allocations"], "global_registry.allocations")
+    ):
+        allocation = _mapping(raw_allocation, f"global_registry.allocations[{index}]")
+        _require_exact_keys(
+            allocation,
+            {
+                "allocation_id",
+                "owner",
+                "candidate_version",
+                "lifecycle",
+                "usage_class",
+                "split_policy",
+                "permitted_operations",
+                "seed_count",
+                "seeds",
+                "source_contract",
+            },
+            "global_allocation_fields_mismatch",
+        )
+        allocation_id = _nonempty_string(
+            allocation["allocation_id"], "global_allocation.allocation_id"
+        )
+        if allocation_id in allocations:
+            _fail("global_allocation_id_duplicate", allocation_id)
+        _nonempty_string(allocation["owner"], "global_allocation.owner")
+        _nonempty_string(
+            allocation["candidate_version"], "global_allocation.candidate_version"
+        )
+        _nonempty_string(allocation["lifecycle"], "global_allocation.lifecycle")
+        _nonempty_string(allocation["usage_class"], "global_allocation.usage_class")
+        _nonempty_string(allocation["split_policy"], "global_allocation.split_policy")
+        _unique_string_sequence(
+            allocation["permitted_operations"],
+            "global_allocation.permitted_operations",
+        )
+        seeds = _seed_sequence(allocation["seeds"], "global_allocation.seeds")
+        if _positive_integer(allocation["seed_count"], "global_allocation.seed_count") != len(seeds):
+            _fail("global_allocation_seed_count_mismatch", allocation_id)
+        protected_overlap = set(seeds) & protected_values
+        if protected_overlap:
+            _fail("global_allocation_protected_seed_overlap", allocation_id)
+        allocation_overlap = set(seeds) & allocated_values
+        if allocation_overlap:
+            _fail("global_allocation_seed_overlap", allocation_id)
+        allocated_values.update(seeds)
+        _mapping(allocation["source_contract"], "global_allocation.source_contract")
+        allocations[allocation_id] = allocation
+
+    d3_allocation = allocations.get(config.allocation_id)
+    if d3_allocation is None:
+        _fail("global_d3_allocation_missing")
+    expected_d3_source_contract = {
+        "bindings": [
+            {
+                "path": (
+                    "research_modules/d3_assignment_planner/configs/"
+                    "a1_source_independent_v3_data_contract_v1.json"
+                ),
+                "role": "data_contract",
+                "sha256": descriptor.file_sha256,
+            },
+            {
+                "path": (
+                    "research_modules/d3_assignment_planner/configs/"
+                    "a1_source_independent_v3_development_data_request_v1.json"
+                ),
+                "role": "development_data_request",
+                "sha256": request.file_sha256,
+            },
+            {
+                "path": (
+                    "research_modules/d3_assignment_planner/configs/"
+                    "a1_source_independent_v3_seed_exclusion_registry_v1.json"
+                ),
+                "role": "seed_exclusion_registry",
+                "sha256": exclusion_registry_file_sha256,
+            },
+        ],
+        "contract_id": descriptor.contract_id,
+        "request_id": request.request_id,
+    }
+    if d3_allocation != {
+        "allocation_id": A1_V3_GLOBAL_ALLOCATION_ID,
+        "owner": "D3",
+        "candidate_version": A1_V3_GLOBAL_ALLOCATION_CANDIDATE,
+        "lifecycle": "reserved",
+        "usage_class": "train_validation_test",
+        "split_policy": A1_V3_GLOBAL_ALLOCATION_SPLIT_POLICY,
+        "permitted_operations": ["dataset_generation"],
+        "seed_count": 300,
+        "seeds": list(range(23000, 23300)),
+        "source_contract": expected_d3_source_contract,
+    }:
+        _fail("global_d3_allocation_mismatch")
+    other_seeds = tuple(
+        sorted(
+            seed
+            for allocation_id, allocation in allocations.items()
+            if allocation_id != A1_V3_GLOBAL_ALLOCATION_ID
+            for seed in allocation["seeds"]
+        )
+    )
+    if any(
+        allocation["owner"] not in {"D4", "D5"}
+        for allocation_id, allocation in allocations.items()
+        if allocation_id != A1_V3_GLOBAL_ALLOCATION_ID
+    ):
+        _fail("global_other_allocation_owner_mismatch")
+    return A1V3GlobalAllocation(
+        registry_id=config.global_registry_id,
+        content_sha256=declared_content_sha,
+        file_sha256=file_sha,
+        allocation_id=config.allocation_id,
+        assigned_seeds=tuple(range(23000, 23300)),
+        protected_seeds=tuple(sorted(protected_values)),
+        other_allocation_seeds=other_seeds,
+    )
+
+
 def load_a1_v3_main_seed_registry(
     path: str | Path,
     *,
     request: A1V3FrozenRequest,
     exclusion_registry_file_sha256: str,
     known_forbidden_seeds: frozenset[int],
+    config: A1V3GeneratorConfig,
+    global_allocation: A1V3GlobalAllocation,
 ) -> A1V3SeedRegistry:
     payload, file_sha = _read_json_file(path, "v3_main_seed_registry")
     _require_exact_keys(
@@ -1568,6 +2028,7 @@ def load_a1_v3_main_seed_registry(
             "registry_id",
             "status",
             "request_binding",
+            "global_registry_binding",
             "source",
             "allocation",
             "split",
@@ -1577,7 +2038,9 @@ def load_a1_v3_main_seed_registry(
     )
     if payload["schema_version"] != A1_V3_MAIN_SEED_REGISTRY_SCHEMA_V1:
         _fail("main_seed_registry_schema_mismatch")
-    if payload["status"] != "assigned_generation_authorized":
+    if payload["registry_id"] != A1_V3_MAIN_REGISTRY_ID:
+        _fail("main_seed_registry_id_mismatch")
+    if payload["status"] != A1_V3_MAIN_REGISTRY_STATUS:
         _fail("main_seed_registry_status_mismatch")
     binding = _mapping(payload["request_binding"], "registry.request_binding")
     _require_exact_keys(
@@ -1596,6 +2059,48 @@ def load_a1_v3_main_seed_registry(
     }:
         _fail("registry_request_binding_mismatch")
 
+    global_binding = _mapping(
+        payload["global_registry_binding"], "registry.global_registry_binding"
+    )
+    _require_exact_keys(
+        global_binding,
+        {
+            "path",
+            "schema_version",
+            "policy_version",
+            "registry_id",
+            "content_sha256",
+            "file_sha256",
+            "allocation_id",
+            "owner",
+            "candidate_version",
+            "lifecycle",
+            "usage_class",
+            "split_policy",
+            "permitted_operations",
+            "exact_allocation_match",
+        },
+        "registry_global_binding_fields_mismatch",
+    )
+    _safe_logical_path(global_binding["path"], "registry.global_binding.path")
+    if global_binding != {
+        "path": config.global_registry_path,
+        "schema_version": A1_V3_GLOBAL_SEED_REGISTRY_SCHEMA_V1,
+        "policy_version": A1_V3_GLOBAL_SEED_POLICY_V1,
+        "registry_id": global_allocation.registry_id,
+        "content_sha256": global_allocation.content_sha256,
+        "file_sha256": global_allocation.file_sha256,
+        "allocation_id": global_allocation.allocation_id,
+        "owner": "D3",
+        "candidate_version": A1_V3_GLOBAL_ALLOCATION_CANDIDATE,
+        "lifecycle": "reserved",
+        "usage_class": "train_validation_test",
+        "split_policy": A1_V3_GLOBAL_ALLOCATION_SPLIT_POLICY,
+        "permitted_operations": ["dataset_generation"],
+        "exact_allocation_match": True,
+    }:
+        _fail("registry_global_binding_mismatch")
+
     source = _mapping(payload["source"], "registry.source")
     _require_exact_keys(
         source,
@@ -1603,8 +2108,8 @@ def load_a1_v3_main_seed_registry(
             "owner",
             "git_commit",
             "repository_dirty",
-            "canonical_d3_registry_snapshot_path",
-            "canonical_d3_registry_snapshot_sha256",
+            "global_registry_snapshot_path",
+            "global_registry_snapshot_file_sha256",
             "generator_config_path",
             "generator_config_sha256",
         },
@@ -1616,13 +2121,13 @@ def load_a1_v3_main_seed_registry(
     repository_dirty = _boolean(
         source["repository_dirty"], "source.repository_dirty"
     )
-    _safe_logical_path(
-        source["canonical_d3_registry_snapshot_path"],
-        "source.canonical_d3_registry_snapshot_path",
+    global_snapshot_path = _safe_logical_path(
+        source["global_registry_snapshot_path"],
+        "source.global_registry_snapshot_path",
     )
-    _sha256_value(
-        source["canonical_d3_registry_snapshot_sha256"],
-        "source.canonical_d3_registry_snapshot_sha256",
+    global_snapshot_sha = _sha256_value(
+        source["global_registry_snapshot_file_sha256"],
+        "source.global_registry_snapshot_file_sha256",
     )
     generator_config_path = _safe_logical_path(
         source["generator_config_path"], "source.generator_config_path"
@@ -1630,6 +2135,19 @@ def load_a1_v3_main_seed_registry(
     generator_config_sha = _sha256_value(
         source["generator_config_sha256"], "source.generator_config_sha256"
     )
+    if (
+        source_git_commit != config.source_git_commit
+        or repository_dirty != config.repository_dirty
+        or global_snapshot_path != config.global_registry_path
+        or global_snapshot_sha != config.global_registry_file_sha256
+        or generator_config_path
+        != (
+            "research_modules/d3_assignment_planner/configs/"
+            "a1_source_independent_v3_generator_config_v1.json"
+        )
+        or generator_config_sha != config.file_sha256
+    ):
+        _fail("registry_generator_source_mismatch")
 
     allocation = _mapping(payload["allocation"], "registry.allocation")
     _require_exact_keys(
@@ -1640,6 +2158,8 @@ def load_a1_v3_main_seed_registry(
             "forbidden_seed_values",
             "forbidden_seed_count",
             "forbidden_seed_values_sha256",
+            "global_protected_seed_count",
+            "global_other_allocation_seed_count",
             "canonical_registry_union_complete",
             "generation_authorized",
         },
@@ -1657,6 +2177,8 @@ def load_a1_v3_main_seed_registry(
         _fail("registry_assigned_seed_count_mismatch")
     if len(assigned) != request.requested_unique_seed_count:
         _fail("registry_assigned_seed_request_mismatch")
+    if assigned != global_allocation.assigned_seeds:
+        _fail("registry_assigned_seed_global_allocation_mismatch")
     if _nonnegative_integer(
         allocation["forbidden_seed_count"], "allocation.forbidden_seed_count"
     ) != len(forbidden):
@@ -1667,12 +2189,24 @@ def load_a1_v3_main_seed_registry(
     )
     if canonical_json_sha256(list(forbidden)) != forbidden_sha:
         _fail("registry_forbidden_seed_sha256_mismatch")
+    if _nonnegative_integer(
+        allocation["global_protected_seed_count"],
+        "allocation.global_protected_seed_count",
+    ) != len(global_allocation.protected_seeds):
+        _fail("registry_global_protected_seed_count_mismatch")
+    if _nonnegative_integer(
+        allocation["global_other_allocation_seed_count"],
+        "allocation.global_other_allocation_seed_count",
+    ) != len(global_allocation.other_allocation_seeds):
+        _fail("registry_global_other_allocation_seed_count_mismatch")
     if allocation["canonical_registry_union_complete"] is not True:
         _fail("registry_canonical_union_incomplete")
-    if allocation["generation_authorized"] is not True:
-        _fail("registry_generation_not_authorized")
+    if allocation["generation_authorized"] is not False:
+        _fail("registry_generation_permission_must_remain_false")
     if not known_forbidden_seeds.issubset(set(forbidden)):
         _fail("registry_known_exclusion_missing")
+    if forbidden != global_allocation.required_forbidden_seeds:
+        _fail("registry_global_forbidden_union_mismatch")
     overlap = set(assigned) & set(forbidden)
     if overlap:
         _fail("registry_seed_overlap", repr(sorted(overlap)))
@@ -1722,10 +2256,22 @@ def load_a1_v3_main_seed_registry(
     split_union = set().union(*(set(values) for values in split_seeds.values()))
     if split_union != set(assigned):
         _fail("registry_split_seed_coverage_mismatch")
+    expected_split_seeds = {
+        "train": tuple(range(23000, 23180)),
+        "validation": tuple(range(23180, 23240)),
+        "test": tuple(range(23240, 23300)),
+    }
+    if split_seeds != expected_split_seeds:
+        _fail("registry_fixed_split_seed_assignment_mismatch")
     _validate_permissions(payload["permissions"], "registry.permissions")
     return A1V3SeedRegistry(
         registry_id=_nonempty_string(payload["registry_id"], "registry_id"),
         file_sha256=file_sha,
+        global_registry_id=global_allocation.registry_id,
+        global_registry_content_sha256=global_allocation.content_sha256,
+        global_registry_file_sha256=global_allocation.file_sha256,
+        allocation_id=global_allocation.allocation_id,
+        generator_config_id=config.config_id,
         source_git_commit=source_git_commit,
         repository_dirty=repository_dirty,
         generator_config_path=generator_config_path,
@@ -1734,6 +2280,44 @@ def load_a1_v3_main_seed_registry(
         forbidden_seeds=forbidden,
         split_seed_values=split_seeds,
     )
+
+
+def _expected_a1_v3_scheduled_episodes(
+    request: A1V3FrozenRequest,
+    registry: A1V3SeedRegistry,
+) -> tuple[A1V3ScheduledEpisode, ...]:
+    episodes: list[A1V3ScheduledEpisode] = []
+    for cell_index, cell in enumerate(request.cells):
+        cell_episode_offset = 0
+        for split in A1_V3_SPLITS:
+            per_cell_count = A1_V3_CELL_SPLIT_SEED_COUNTS[split]
+            split_seeds = registry.split_seed_values[split]
+            start = cell_index * per_cell_count
+            for split_offset, seed in enumerate(
+                split_seeds[start : start + per_cell_count]
+            ):
+                episodes.append(
+                    A1V3ScheduledEpisode(
+                        episode_id=(
+                            f"a1-v3-cell-{cell_index:02d}-{split}-"
+                            f"{split_offset:02d}"
+                        ),
+                        cell_id=cell.cell_id,
+                        scenario_family=cell.scenario_family,
+                        seed=seed,
+                        split=split,
+                        configured_target_count=cell.configured_target_count,
+                        configured_resource_count=cell.configured_resource_count,
+                        minimum_observable_frames=9,
+                        minimum_positive_frames=3,
+                        minimum_negative_frames=3,
+                        minimum_hard_negative_frames=(
+                            2 if cell_episode_offset < 10 else 1
+                        ),
+                    )
+                )
+                cell_episode_offset += 1
+    return tuple(episodes)
 
 
 def load_a1_v3_generation_schedule(
@@ -1761,6 +2345,8 @@ def load_a1_v3_generation_schedule(
     )
     if payload["schema_version"] != A1_V3_GENERATION_SCHEDULE_SCHEMA_V1:
         _fail("generation_schedule_schema_mismatch")
+    if payload["schedule_id"] != A1_V3_GENERATION_SCHEDULE_ID:
+        _fail("generation_schedule_id_mismatch")
     if payload["status"] != "planned_not_generated":
         _fail("generation_schedule_status_mismatch")
     bindings = _mapping(payload["bindings"], "schedule.bindings")
@@ -1771,6 +2357,12 @@ def load_a1_v3_generation_schedule(
             "request_file_sha256",
             "registry_id",
             "registry_file_sha256",
+            "global_registry_id",
+            "global_registry_content_sha256",
+            "global_registry_file_sha256",
+            "allocation_id",
+            "generator_config_id",
+            "generator_config_file_sha256",
             "contract_id",
             "contract_file_sha256",
         },
@@ -1781,6 +2373,12 @@ def load_a1_v3_generation_schedule(
         "request_file_sha256": request.file_sha256,
         "registry_id": registry.registry_id,
         "registry_file_sha256": registry.file_sha256,
+        "global_registry_id": registry.global_registry_id,
+        "global_registry_content_sha256": registry.global_registry_content_sha256,
+        "global_registry_file_sha256": registry.global_registry_file_sha256,
+        "allocation_id": registry.allocation_id,
+        "generator_config_id": registry.generator_config_id,
+        "generator_config_file_sha256": registry.generator_config_sha256,
         "contract_id": descriptor.contract_id,
         "contract_file_sha256": descriptor.file_sha256,
     }:
@@ -1828,6 +2426,8 @@ def load_a1_v3_generation_schedule(
             "online_identity_representation",
             "online_truth_use_count",
             "all_permissions_false",
+            "plan_only",
+            "per_cell_split_seed_counts",
             "full_online_frame_exposed_by_training_loader",
         },
         "schedule_record_contract_fields_mismatch",
@@ -1848,6 +2448,12 @@ def load_a1_v3_generation_schedule(
         != "anonymous_ordinal_indices_only"
         or record_contract["online_truth_use_count"] != 0
         or record_contract["all_permissions_false"] is not True
+        or record_contract["plan_only"] is not True
+        or _mapping(
+            record_contract["per_cell_split_seed_counts"],
+            "schedule.record_contract.per_cell_split_seed_counts",
+        )
+        != A1_V3_CELL_SPLIT_SEED_COUNTS
         or record_contract["full_online_frame_exposed_by_training_loader"] is not False
     ):
         _fail("schedule_record_contract_incomplete")
@@ -1939,6 +2545,9 @@ def load_a1_v3_generation_schedule(
         _fail("schedule_duplicate_seed")
     if set(seeds) != set(registry.assigned_seeds):
         _fail("schedule_registry_seed_coverage_mismatch")
+    expected_episodes = _expected_a1_v3_scheduled_episodes(request, registry)
+    if tuple(episodes) != expected_episodes:
+        _fail("schedule_fixed_cell_seed_assignment_mismatch")
     cell_episode_counts = Counter(item.cell_id for item in episodes)
     for cell in request.cells:
         if cell_episode_counts[cell.cell_id] != cell.requested_episode_count:
@@ -2012,6 +2621,8 @@ def validate_a1_v3_pre_generation_readiness(
     request_path: str | Path = DEFAULT_A1_V3_REQUEST_PATH,
     exclusion_registry_path: str | Path = DEFAULT_A1_V3_EXCLUSION_REGISTRY_PATH,
     contract_path: str | Path = DEFAULT_A1_V3_DATA_CONTRACT_PATH,
+    generator_config_path: str | Path | None = None,
+    global_registry_path: str | Path | None = None,
     registry_path: str | Path | None = None,
     schedule_path: str | Path | None = None,
 ) -> A1V3ReadinessReport:
@@ -2046,6 +2657,23 @@ def validate_a1_v3_pre_generation_readiness(
                 registry=None,
                 schedule=None,
             )
+        if generator_config_path is None:
+            _fail("generator_config_missing")
+        if global_registry_path is None:
+            _fail("global_seed_registry_missing")
+        config = load_a1_v3_generator_config(
+            generator_config_path,
+            request=request,
+            descriptor=descriptor,
+            exclusion_registry_file_sha256=exclusion_sha,
+        )
+        global_allocation = load_a1_v3_global_seed_allocation(
+            global_registry_path,
+            config=config,
+            request=request,
+            descriptor=descriptor,
+            exclusion_registry_file_sha256=exclusion_sha,
+        )
         registry_payload, _ = _read_json_file(
             registry_path, "v3_main_seed_registry_probe"
         )
@@ -2065,6 +2693,8 @@ def validate_a1_v3_pre_generation_readiness(
             request=request,
             exclusion_registry_file_sha256=exclusion_sha,
             known_forbidden_seeds=forbidden,
+            config=config,
+            global_allocation=global_allocation,
         )
         if schedule_path is None:
             _fail("generation_schedule_missing")
@@ -2102,6 +2732,7 @@ def load_a1_v3_audit_dataset(
     registry_path: str | Path,
     schedule_path: str | Path,
     generator_config_path: str | Path,
+    global_registry_path: str | Path,
 ) -> A1V3AuditDataset:
     """Load and fully audit generated v3 artifacts without writing any file."""
 
@@ -2109,6 +2740,8 @@ def load_a1_v3_audit_dataset(
         request_path=request_path,
         exclusion_registry_path=exclusion_registry_path,
         contract_path=contract_path,
+        generator_config_path=generator_config_path,
+        global_registry_path=global_registry_path,
         registry_path=registry_path,
         schedule_path=schedule_path,
     )
@@ -2121,11 +2754,26 @@ def load_a1_v3_audit_dataset(
         request=request,
         exclusion_registry_file_sha256=exclusion_sha,
     )
+    config = load_a1_v3_generator_config(
+        generator_config_path,
+        request=request,
+        descriptor=descriptor,
+        exclusion_registry_file_sha256=exclusion_sha,
+    )
+    global_allocation = load_a1_v3_global_seed_allocation(
+        global_registry_path,
+        config=config,
+        request=request,
+        descriptor=descriptor,
+        exclusion_registry_file_sha256=exclusion_sha,
+    )
     registry = load_a1_v3_main_seed_registry(
         registry_path,
         request=request,
         exclusion_registry_file_sha256=exclusion_sha,
         known_forbidden_seeds=forbidden,
+        config=config,
+        global_allocation=global_allocation,
     )
     schedule = load_a1_v3_generation_schedule(
         schedule_path,
@@ -2199,6 +2847,7 @@ def load_a1_v3_training_dataset(
     registry_path: str | Path,
     schedule_path: str | Path,
     generator_config_path: str | Path,
+    global_registry_path: str | Path,
 ) -> A1V3TrainingDataset:
     """Return an immutable future-trainer view with audit identities removed."""
 
@@ -2210,6 +2859,7 @@ def load_a1_v3_training_dataset(
         registry_path=registry_path,
         schedule_path=schedule_path,
         generator_config_path=generator_config_path,
+        global_registry_path=global_registry_path,
     )
     samples = tuple(
         A1V3TrainingSample(
@@ -2708,6 +3358,13 @@ def _readiness_report(
         reason_codes=reason_codes,
         request_id=None if request is None else request.request_id,
         registry_id=None if registry is None else registry.registry_id,
+        global_registry_id=(
+            None if registry is None else registry.global_registry_id
+        ),
+        allocation_id=None if registry is None else registry.allocation_id,
+        generator_config_id=(
+            None if registry is None else registry.generator_config_id
+        ),
         schedule_id=None if schedule is None else schedule.schedule_id,
         cell_count=0 if schedule is None else len({item.cell_id for item in schedule.episodes}),
         episode_count=0 if schedule is None else len(schedule.episodes),
@@ -3024,8 +3681,22 @@ def build_a1_v3_contract_parser() -> argparse.ArgumentParser:
         "readiness", help="validate main seed registry and generation schedule"
     )
     _add_common_contract_arguments(readiness)
-    readiness.add_argument("--registry", type=Path)
-    readiness.add_argument("--schedule", type=Path)
+    readiness.add_argument(
+        "--generator-config",
+        type=Path,
+        default=DEFAULT_A1_V3_GENERATOR_CONFIG_PATH,
+    )
+    readiness.add_argument(
+        "--global-registry",
+        type=Path,
+        default=DEFAULT_A1_V3_GLOBAL_SEED_REGISTRY_PATH,
+    )
+    readiness.add_argument(
+        "--registry", type=Path, default=DEFAULT_A1_V3_MAIN_SEED_REGISTRY_PATH
+    )
+    readiness.add_argument(
+        "--schedule", type=Path, default=DEFAULT_A1_V3_GENERATION_SCHEDULE_PATH
+    )
     dataset = subparsers.add_parser(
         "validate-dataset", help="strictly load generated online/offline artifacts"
     )
@@ -3033,6 +3704,7 @@ def build_a1_v3_contract_parser() -> argparse.ArgumentParser:
     dataset.add_argument("--registry", type=Path, required=True)
     dataset.add_argument("--schedule", type=Path, required=True)
     dataset.add_argument("--generator-config", type=Path, required=True)
+    dataset.add_argument("--global-registry", type=Path, required=True)
     dataset.add_argument("--dataset", type=Path, required=True)
     return parser
 
@@ -3054,6 +3726,8 @@ def main(argv: Sequence[str] | None = None) -> int:
             request_path=args.request,
             exclusion_registry_path=args.exclusion_registry,
             contract_path=args.contract,
+            generator_config_path=args.generator_config,
+            global_registry_path=args.global_registry,
             registry_path=args.registry,
             schedule_path=args.schedule,
         )
@@ -3070,6 +3744,7 @@ def main(argv: Sequence[str] | None = None) -> int:
             registry_path=args.registry,
             schedule_path=args.schedule,
             generator_config_path=args.generator_config,
+            global_registry_path=args.global_registry,
         )
     except A1V3DataContractError as exc:
         print(

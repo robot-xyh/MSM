@@ -2124,3 +2124,40 @@ D3 实现缺口：epoch 分配、lease 时长、续租协议和过期后的 auth
 
 README、PLAN、模块原则、算法文档和 review 已同步。AirSim 集成计划、实验报告和 M-to-N
 专项已检查；本项没有 AirSim DTO/settings/episode、实验样本或成员调度变化，因此不修改。
+
+## 72. A1 v3 全局 seed allocation 接入（2026-08-01）
+
+### P1 状态：计划绑定缺口已关闭
+
+main 全局登记表已冻结 D3 allocation `d3-a1-v3-all-splits`，数值 seed 为
+`23000-23299`。D3 现通过版本化 generator config、allocation registry 和 generation
+schedule 同时绑定以下来源：
+
+- 全局 registry id：`scalable3d-learning-source-allocation-20260801-v1`；
+- content SHA-256：`89d99bf064a8c0e226eead5b675f05daf70ac2d4c6f6139322502da54ab0aea7`；
+- 文件 SHA-256：`1c9778e1cbfcd5679956ac2c1fc71a1e780207c4579abdc9b129d162a252c4b6`；
+- source commit：`4166fe8e8ab4a9a14cffb275ba0a9ffa50a43dbb`。
+
+计划固定 15 个 cell、每 cell 20 个 episode，并在每个 cell 内分配 12 个 TRAIN、4 个
+VALIDATION、4 个 TEST seed。全局合计保持 180/60/60。forbidden union 不再只依赖 D3
+旧排除表，而是精确包含 658 个全局 protected seed 及 428 个 D4/D5 其他 allocation
+seed，共 1086 个。任一缺项、额外 seed 或映射变化均失败关闭。
+
+默认 pre-generation readiness 实测为 `ready`，输出 15 cells、300 episodes、300 unique
+seeds 和最低帧数 `2700/900/900/450`。该结论为 `plan_only`。generation、training、
+optimizer、runtime、assignment、plan、control、physical 和全部准入权限仍为 false。
+没有生成数据、训练模型、读取正式 `1000-1019` payload 或读取既有 v2 test payload。
+
+专项 64 项全部通过；D3 全量 742 项为 `741 passed, 1 skipped`。唯一 skip 为可选
+OR-Tools。本项没有新增 P0。
+
+### 保持开放的 P1
+
+1. main 尚未按 schedule 生成 300 个 episode、online frames、offline labels 和 manifest。
+2. D6 尚未对未来生成数据执行 seed、split、cell、双时间戳、标签隔离和最低配额独立审计。
+3. A1 v3 尚未训练、选模或进行来源独立评价；所有 assist、运行和生产权限继续关闭。
+4. 正式生成前仍需在实际生成源提交上重跑同一 readiness；本轮冻结的 source commit 只说明
+   计划来源，不代替未来生成 manifest 的 clean-tree 证明。
+
+AirSim 集成计划、实验报告和 M-to-N 专项已检查。本项没有 AirSim 运行证据，也没有改变
+M-to-N 联盟成员、角色、波次和到达逻辑，因此这些文件不作内容更新。

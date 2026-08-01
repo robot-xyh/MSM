@@ -10,10 +10,9 @@ import pytest
 
 from d3_assignment_planner.a1_v3_data_contract import (
     A1_V3_DATASET_MANIFEST_SCHEMA_V1,
-    A1_V3_GENERATION_SCHEDULE_SCHEMA_V1,
-    A1_V3_MAIN_SEED_REGISTRY_SCHEMA_V1,
     A1_V3_OFFLINE_LABEL_SCHEMA_V1,
     A1_V3_ONLINE_FRAME_SCHEMA_V1,
+    A1_V3_PERMISSION_FIELDS,
     A1_V3_SPLIT_POLICY_V1,
     A1_V3_TRAINING_FEATURE_SCHEMA_V1,
     A1_V3_TRAINING_TARGET_SCHEMA_V1,
@@ -41,6 +40,20 @@ EXCLUSION_PATH = (
 )
 CONTRACT_PATH = (
     MODULE_ROOT / "configs/a1_source_independent_v3_data_contract_v1.json"
+)
+GENERATOR_CONFIG_PATH = (
+    MODULE_ROOT / "configs/a1_source_independent_v3_generator_config_v1.json"
+)
+MAIN_REGISTRY_PATH = (
+    MODULE_ROOT / "configs/a1_source_independent_v3_main_allocation_registry_v1.json"
+)
+SCHEDULE_PATH = (
+    MODULE_ROOT / "configs/a1_source_independent_v3_generation_schedule_v1.json"
+)
+GLOBAL_REGISTRY_PATH = (
+    MODULE_ROOT.parent
+    / "scalable_3d_simulation/configs/"
+    "scalable_learning_global_seed_registry_v1.json"
 )
 
 
@@ -174,144 +187,19 @@ def _offline_payload(
     }
 
 
-def _registry_payload(config_sha: str) -> dict:
-    forbidden = sorted(
-        set(range(0, 100))
-        | set(range(1000, 1020))
-        | set(range(20000, 20100))
+def _validate_frozen_readiness(
+    *,
+    generator_config_path: Path = GENERATOR_CONFIG_PATH,
+    global_registry_path: Path = GLOBAL_REGISTRY_PATH,
+    registry_path: Path = MAIN_REGISTRY_PATH,
+    schedule_path: Path = SCHEDULE_PATH,
+):
+    return validate_a1_v3_pre_generation_readiness(
+        generator_config_path=generator_config_path,
+        global_registry_path=global_registry_path,
+        registry_path=registry_path,
+        schedule_path=schedule_path,
     )
-    assigned = list(range(30000, 30300))
-    return {
-        "schema_version": A1_V3_MAIN_SEED_REGISTRY_SCHEMA_V1,
-        "registry_id": "main-a1-v3-unit-registry-v1",
-        "status": "assigned_generation_authorized",
-        "request_binding": {
-            "request_id": _json(REQUEST_PATH)["request_id"],
-            "request_file_sha256": _sha(REQUEST_PATH),
-            "exclusion_registry_file_sha256": _sha(EXCLUSION_PATH),
-        },
-        "source": {
-            "owner": "main",
-            "git_commit": "a" * 40,
-            "repository_dirty": True,
-            "canonical_d3_registry_snapshot_path": "main/d3_seed_registry.json",
-            "canonical_d3_registry_snapshot_sha256": "b" * 64,
-            "generator_config_path": "a1_v3_generator_config.json",
-            "generator_config_sha256": config_sha,
-        },
-        "allocation": {
-            "unique_seed_count": 300,
-            "assigned_seed_values": assigned,
-            "forbidden_seed_values": forbidden,
-            "forbidden_seed_count": len(forbidden),
-            "forbidden_seed_values_sha256": canonical_json_sha256(forbidden),
-            "canonical_registry_union_complete": True,
-            "generation_authorized": True,
-        },
-        "split": {
-            "policy_version": A1_V3_SPLIT_POLICY_V1,
-            "unit": "whole_seed_one_episode_atomic",
-            "ratios_percent": {"train": 60, "validation": 20, "test": 20},
-            "seed_counts": {"train": 180, "validation": 60, "test": 60},
-            "seed_values": {
-                "train": assigned[:180],
-                "validation": assigned[180:240],
-                "test": assigned[240:],
-            },
-            "cross_split_seed_overlap_allowed": False,
-        },
-        "permissions": _permissions(),
-    }
-
-
-def _schedule_payload(registry_path: Path) -> dict:
-    request = _json(REQUEST_PATH)
-    contract = _json(CONTRACT_PATH)
-    registry = _json(registry_path)
-    split_by_seed = {
-        seed: split
-        for split, values in registry["split"]["seed_values"].items()
-        for seed in values
-    }
-    episodes = []
-    seed_offset = 0
-    for cell_index, cell in enumerate(request["collection_cells"]):
-        for episode_offset in range(20):
-            seed = registry["allocation"]["assigned_seed_values"][seed_offset]
-            episodes.append(
-                {
-                    "episode_id": (
-                        f"a1-v3-cell-{cell_index:02d}-episode-{episode_offset:02d}"
-                    ),
-                    "cell_id": cell["cell_id"],
-                    "scenario_family": cell["scenario_family"],
-                    "seed": seed,
-                    "split": split_by_seed[seed],
-                    "configured_target_count": cell["configured_target_count"],
-                    "configured_resource_count": cell["configured_resource_count"],
-                    "minimum_observable_frames": 9,
-                    "minimum_positive_frames": 3,
-                    "minimum_negative_frames": 3,
-                    "minimum_hard_negative_frames": 2 if episode_offset < 10 else 1,
-                }
-            )
-            seed_offset += 1
-    return {
-        "schema_version": A1_V3_GENERATION_SCHEDULE_SCHEMA_V1,
-        "schedule_id": "main-a1-v3-unit-schedule-v1",
-        "status": "planned_not_generated",
-        "bindings": {
-            "request_id": request["request_id"],
-            "request_file_sha256": _sha(REQUEST_PATH),
-            "registry_id": registry["registry_id"],
-            "registry_file_sha256": _sha(registry_path),
-            "contract_id": contract["contract_id"],
-            "contract_file_sha256": _sha(CONTRACT_PATH),
-        },
-        "source": {
-            "git_commit": registry["source"]["git_commit"],
-            "repository_dirty": registry["source"]["repository_dirty"],
-            "generator_config_path": registry["source"]["generator_config_path"],
-            "generator_config_sha256": registry["source"][
-                "generator_config_sha256"
-            ],
-        },
-        "record_contract": {
-            "online_frame_schema_version": A1_V3_ONLINE_FRAME_SCHEMA_V1,
-            "offline_label_schema_version": A1_V3_OFFLINE_LABEL_SCHEMA_V1,
-            "training_feature_schema_version": A1_V3_TRAINING_FEATURE_SCHEMA_V1,
-            "training_target_schema_version": A1_V3_TRAINING_TARGET_SCHEMA_V1,
-            "split_policy_version": A1_V3_SPLIT_POLICY_V1,
-            "diagnostic_observability_requirements": request[
-                "diagnostic_observability_requirements"
-            ],
-            "online_identity_representation": "anonymous_ordinal_indices_only",
-            "online_truth_use_count": 0,
-            "all_permissions_false": True,
-            "full_online_frame_exposed_by_training_loader": False,
-        },
-        "episodes": episodes,
-        "declared_totals": {
-            "cell_count": 15,
-            "episode_count": 300,
-            "unique_seed_count": 300,
-            "minimum_observable_frame_count": 2700,
-            "minimum_positive_frame_count": 900,
-            "minimum_negative_frame_count": 900,
-            "minimum_hard_negative_frame_count": 450,
-        },
-        "permissions": _permissions(),
-    }
-
-
-def _contract_inputs(tmp_path: Path) -> tuple[Path, Path, Path]:
-    config_path = tmp_path / "a1_v3_generator_config.json"
-    _write_json(config_path, {"schema_version": "unit_generator_config_v1"})
-    registry_path = tmp_path / "registry.json"
-    _write_json(registry_path, _registry_payload(_sha(config_path)))
-    schedule_path = tmp_path / "schedule.json"
-    _write_json(schedule_path, _schedule_payload(registry_path))
-    return config_path, registry_path, schedule_path
 
 
 def _write_dataset(
@@ -514,25 +402,23 @@ def test_offline_label_is_separate_and_global_identity_remains_center_owned() ->
         )
 
 
-def test_readiness_without_main_registry_is_request_only_and_cli_exits_two(
+def test_api_can_report_request_only_while_default_cli_uses_frozen_plan(
     capsys: pytest.CaptureFixture[str],
 ) -> None:
     report = validate_a1_v3_pre_generation_readiness()
     assert report.status == "request_only"
     assert report.ready is False
     assert report.reason_codes == ("main_seed_registry_missing",)
-    assert contract_main(["readiness"]) == 2
+    assert contract_main(["readiness"]) == 0
     output = json.loads(capsys.readouterr().out)
-    assert output["status"] == "request_only"
+    assert output["status"] == "ready"
+    assert output["plan_only"] is True
     assert output["data_generated"] is False
+    assert output["permissions"] == _permissions()
 
 
-def test_readiness_accepts_exact_15_cell_300_episode_schedule(tmp_path: Path) -> None:
-    _, registry_path, schedule_path = _contract_inputs(tmp_path)
-    report = validate_a1_v3_pre_generation_readiness(
-        registry_path=registry_path,
-        schedule_path=schedule_path,
-    )
+def test_readiness_accepts_exact_global_allocation_and_fixed_schedule() -> None:
+    report = _validate_frozen_readiness()
     assert report.status == "ready"
     assert report.ready is True
     assert (report.cell_count, report.episode_count, report.unique_seed_count) == (
@@ -542,47 +428,143 @@ def test_readiness_accepts_exact_15_cell_300_episode_schedule(tmp_path: Path) ->
     )
     assert report.minimum_observable_frame_count == 2700
     assert report.minimum_hard_negative_frame_count == 450
+    assert report.global_registry_id == (
+        "scalable3d-learning-source-allocation-20260801-v1"
+    )
+    assert report.allocation_id == "d3-a1-v3-all-splits"
+    assert report.generator_config_id == "d3-a1-v3-generator-config-20260801-v1"
+    schedule = _json(SCHEDULE_PATH)
+    per_cell: dict[str, dict[str, int]] = {}
+    for episode in schedule["episodes"]:
+        counts = per_cell.setdefault(
+            episode["cell_id"], {"train": 0, "validation": 0, "test": 0}
+        )
+        counts[episode["split"]] += 1
+    assert len(per_cell) == 15
+    assert set(tuple(counts.values()) for counts in per_cell.values()) == {(12, 4, 4)}
 
 
-def test_readiness_rejects_seed_overlap(tmp_path: Path) -> None:
-    config_path, registry_path, _ = _contract_inputs(tmp_path)
-    registry = _registry_payload(_sha(config_path))
-    registry["allocation"]["assigned_seed_values"][0] = 0
-    registry["split"]["seed_values"]["train"][0] = 0
+def test_readiness_rejects_global_registry_file_or_hash_drift(tmp_path: Path) -> None:
+    global_registry = deepcopy(_json(GLOBAL_REGISTRY_PATH))
+    global_registry["generation_state"]["formal_seed_payload_read"] = True
+    path = tmp_path / "global_registry.json"
+    _write_json(path, global_registry)
+    report = _validate_frozen_readiness(global_registry_path=path)
+    assert report.status == "fail_closed"
+    assert report.reason_codes == ("global_registry_file_sha256_mismatch",)
+
+
+def test_readiness_rejects_generator_config_hash_or_source_drift(
+    tmp_path: Path,
+) -> None:
+    config = deepcopy(_json(GENERATOR_CONFIG_PATH))
+    config["source"]["repository_dirty"] = True
+    path = tmp_path / "generator_config.json"
+    _write_json(path, config)
+    report = _validate_frozen_readiness(generator_config_path=path)
+    assert report.status == "fail_closed"
+    assert report.reason_codes == ("registry_generator_source_mismatch",)
+
+
+def test_readiness_rejects_seed_drift_from_exact_global_allocation(
+    tmp_path: Path,
+) -> None:
+    registry = deepcopy(_json(MAIN_REGISTRY_PATH))
+    registry["allocation"]["assigned_seed_values"][0] = 22999
+    registry["split"]["seed_values"]["train"][0] = 22999
+    registry_path = tmp_path / "registry.json"
     _write_json(registry_path, registry)
-    schedule_path = tmp_path / "overlap_schedule.json"
-    _write_json(schedule_path, _schedule_payload(registry_path))
-    report = validate_a1_v3_pre_generation_readiness(
-        registry_path=registry_path,
-        schedule_path=schedule_path,
-    )
+    report = _validate_frozen_readiness(registry_path=registry_path)
     assert report.status == "fail_closed"
-    assert report.reason_codes == ("registry_seed_overlap",)
+    assert report.reason_codes == (
+        "registry_assigned_seed_global_allocation_mismatch",
+    )
 
 
-def test_schedule_rejects_schema_or_duplicate_episode(tmp_path: Path) -> None:
-    _, registry_path, schedule_path = _contract_inputs(tmp_path)
-    schedule = _json(schedule_path)
-    del schedule["record_contract"]["all_permissions_false"]
+def test_readiness_rejects_incomplete_global_forbidden_union(tmp_path: Path) -> None:
+    registry = deepcopy(_json(MAIN_REGISTRY_PATH))
+    forbidden = registry["allocation"]["forbidden_seed_values"]
+    forbidden.remove(24000)
+    registry["allocation"]["forbidden_seed_count"] = len(forbidden)
+    registry["allocation"]["forbidden_seed_values_sha256"] = canonical_json_sha256(
+        forbidden
+    )
+    registry_path = tmp_path / "registry.json"
+    _write_json(registry_path, registry)
+    report = _validate_frozen_readiness(registry_path=registry_path)
+    assert report.status == "fail_closed"
+    assert report.reason_codes == ("registry_global_forbidden_union_mismatch",)
+
+
+def test_readiness_rejects_whole_seed_split_drift(tmp_path: Path) -> None:
+    registry = deepcopy(_json(MAIN_REGISTRY_PATH))
+    train = registry["split"]["seed_values"]["train"]
+    validation = registry["split"]["seed_values"]["validation"]
+    train[-1], validation[0] = validation[0], train[-1]
+    train.sort()
+    validation.sort()
+    registry_path = tmp_path / "registry.json"
+    _write_json(registry_path, registry)
+    report = _validate_frozen_readiness(registry_path=registry_path)
+    assert report.status == "fail_closed"
+    assert report.reason_codes == ("registry_fixed_split_seed_assignment_mismatch",)
+
+
+def test_readiness_rejects_cell_assignment_drift(tmp_path: Path) -> None:
+    schedule = deepcopy(_json(SCHEDULE_PATH))
+    left = schedule["episodes"][0]
+    right = schedule["episodes"][20]
+    cell_fields = (
+        "cell_id",
+        "scenario_family",
+        "configured_target_count",
+        "configured_resource_count",
+    )
+    for field in cell_fields:
+        left[field], right[field] = right[field], left[field]
+    schedule_path = tmp_path / "schedule.json"
     _write_json(schedule_path, schedule)
-    report = validate_a1_v3_pre_generation_readiness(
-        registry_path=registry_path,
-        schedule_path=schedule_path,
-    )
+    report = _validate_frozen_readiness(schedule_path=schedule_path)
     assert report.status == "fail_closed"
-    assert report.reason_codes == ("schedule_record_contract_fields_mismatch",)
+    assert report.reason_codes == ("schedule_fixed_cell_seed_assignment_mismatch",)
+
+
+@pytest.mark.parametrize(
+    "artifact",
+    ("generator_config", "registry", "schedule"),
+)
+@pytest.mark.parametrize("permission_name", A1_V3_PERMISSION_FIELDS)
+def test_readiness_rejects_any_permission_drift(
+    tmp_path: Path,
+    artifact: str,
+    permission_name: str,
+) -> None:
+    source_paths = {
+        "generator_config": GENERATOR_CONFIG_PATH,
+        "registry": MAIN_REGISTRY_PATH,
+        "schedule": SCHEDULE_PATH,
+    }
+    payload = deepcopy(_json(source_paths[artifact]))
+    payload["permissions"][permission_name] = True
+    drifted_path = tmp_path / f"{artifact}.json"
+    _write_json(drifted_path, payload)
+    kwargs = {f"{artifact}_path": drifted_path}
+    if artifact == "generator_config":
+        kwargs = {"generator_config_path": drifted_path}
+    report = _validate_frozen_readiness(**kwargs)
+    assert report.status == "fail_closed"
+    assert report.reason_codes == ("permission_true_forbidden",)
 
 
 def test_read_only_loaders_validate_full_gate_and_strip_audit_identity(
     tmp_path: Path,
 ) -> None:
-    config_path, registry_path, schedule_path = _contract_inputs(tmp_path)
     dataset_path = tmp_path / "dataset"
     _write_dataset(
         dataset_path,
-        config_path=config_path,
-        registry_path=registry_path,
-        schedule_path=schedule_path,
+        config_path=GENERATOR_CONFIG_PATH,
+        registry_path=MAIN_REGISTRY_PATH,
+        schedule_path=SCHEDULE_PATH,
     )
     before = {
         path.name: path.read_bytes()
@@ -594,15 +576,17 @@ def test_read_only_loaders_validate_full_gate_and_strip_audit_identity(
     }
     audit = load_a1_v3_audit_dataset(
         dataset_path,
-        registry_path=registry_path,
-        schedule_path=schedule_path,
-        generator_config_path=config_path,
+        registry_path=MAIN_REGISTRY_PATH,
+        schedule_path=SCHEDULE_PATH,
+        generator_config_path=GENERATOR_CONFIG_PATH,
+        global_registry_path=GLOBAL_REGISTRY_PATH,
     )
     training = load_a1_v3_training_dataset(
         dataset_path,
-        registry_path=registry_path,
-        schedule_path=schedule_path,
-        generator_config_path=config_path,
+        registry_path=MAIN_REGISTRY_PATH,
+        schedule_path=SCHEDULE_PATH,
+        generator_config_path=GENERATOR_CONFIG_PATH,
+        global_registry_path=GLOBAL_REGISTRY_PATH,
     )
     assert len(audit.online_frames) == len(audit.offline_labels) == 2700
     assert len(training.samples) == 2700
@@ -645,13 +629,12 @@ def test_read_only_loaders_validate_full_gate_and_strip_audit_identity(
 def test_training_loader_rejects_rehashed_file_with_broken_frame_binding(
     tmp_path: Path,
 ) -> None:
-    config_path, registry_path, schedule_path = _contract_inputs(tmp_path)
     dataset_path = tmp_path / "dataset"
     _write_dataset(
         dataset_path,
-        config_path=config_path,
-        registry_path=registry_path,
-        schedule_path=schedule_path,
+        config_path=GENERATOR_CONFIG_PATH,
+        registry_path=MAIN_REGISTRY_PATH,
+        schedule_path=SCHEDULE_PATH,
     )
     offline_path = dataset_path / "offline_labels.jsonl"
     labels = [
@@ -674,9 +657,10 @@ def test_training_loader_rejects_rehashed_file_with_broken_frame_binding(
     ):
         load_a1_v3_training_dataset(
             dataset_path,
-            registry_path=registry_path,
-            schedule_path=schedule_path,
-            generator_config_path=config_path,
+            registry_path=MAIN_REGISTRY_PATH,
+            schedule_path=SCHEDULE_PATH,
+            generator_config_path=GENERATOR_CONFIG_PATH,
+            global_registry_path=GLOBAL_REGISTRY_PATH,
         )
 
 

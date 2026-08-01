@@ -2380,11 +2380,25 @@ truth/identity 及完整 payload hash 均不进入模型特征。offline 文件�
 
 ```bash
 python3 research_modules/d3_assignment_planner/simulations/validate_a1_v3_data_contract.py \
-  readiness --registry <main-registry.json> --schedule <main-schedule.json>
+  readiness
 ```
 
 门控要求 15 cells、300 个 whole-seed episode、180/60/60 seed 切分、最低
 2700/900/900/450 个可观测/正类/负类/困难负类帧，并校验排除 union、Git/dirty/config
-及文件 SHA-256、episode/frame 唯一性。当前 main registry 和 schedule 均未提供；不带
-二者运行时状态为 `request_only`、退出码 2。合同已实现，但 seed 未分配、数据未生成、
-模型未训练，v2 bundle 与阈值未修改，全部运行和准入权限仍为 false。
+及文件 SHA-256、episode/frame 唯一性。
+
+2026-08-01，main 全局登记表已把 `23000-23299` 共 300 个 seed 分配给
+`d3-a1-v3-all-splits`。D3 新增冻结 generator config、allocation registry 和 generation
+schedule。每个 cell 固定使用 12 个 TRAIN、4 个 VALIDATION 和 4 个 TEST seed，避免把
+全局 180/60/60 与单 cell 分布混淆。D3 forbidden union 精确包含 658 个全局 protected
+seed 和 428 个 D4/D5 allocation seed，共 1086 个；只包含旧 D3 排除表会失败关闭。
+
+默认命令现返回 `status=ready`、`plan_only=true`、15 cells、300 episodes、300 seeds 和
+最低帧数 `2700/900/900/450`。该状态只证明计划输入完整，不授予生成权限。generator、
+registry、schedule 的 generation/training/runtime/assignment/control 等权限仍全部为
+false。没有生成 episode、online frame、offline label、manifest、bundle 或权重，没有
+读取正式 `1000-1019` payload 或既有 v2 test payload，也没有修改 v2 bundle 和阈值。
+
+专项 64 项全部通过；D3 全量 742 项为 `741 passed, 1 skipped`。唯一 skip 为可选
+OR-Tools。新增负例覆盖全局登记表文件或内容漂移、generator 来源漂移、allocation seed、
+forbidden union、whole-seed split、cell 映射及三份计划文件的全部权限字段漂移。
