@@ -2,6 +2,34 @@
 
 **状态日期：2026-08-01（验收语料冻结于 2026-07-31）**
 
+## 补采动作合同与回归
+
+补采复用现有 `ActiveVisionCameraState`。main 每个决策时刻提供 `camera_id`、可唯一解析为
+`interceptor` 或 `recon` 的 `resource_id`、`state_timestamp`、方位/俯仰及其角速度、机械
+限位、速率上限、当前视场模式、`slew_available` 和 `action_in_progress_until`。调用
+`DeterministicLookAtScanPolicy.select_action()` 时，期望的 plan、coalition、communication
+版本必须与快照一致。
+
+策略首先检查版本和时间，再检查云台执行状态。若 `slew_available=false`，或
+`action_in_progress_until` 非空且晚于当前时刻，策略直接返回
+`rule_hold:gimbal_unavailable_or_busy`。返回动作的偏转量为零，不带目标或扇区字段。该分支位于
+投影选择之前，因此对拦截与侦察角色具有相同语义。
+
+cue-loss 补采保留 `ActiveVisionPlanReference` 中的相机目标分配、
+`ActiveVisionTrackReference` 中的中心只读航迹和健康通信状态，只在处理窗口内不提供该
+相机与目标对应的可用 `ActiveVisionProjectionEvidence`。策略找不到 fresh 或 reacquire 投影
+后调用确定性扫描，输出 `rule_scan:rule_no_usable_assigned_projection`。动作带扫描扇区但不带
+目标字段，原 `global_track_id` 仍只存在于中心计划与航迹引用中。
+
+测试使用实际策略选择函数，不注入所选标签。两类相机分别覆盖 busy 和 slew unavailable；
+侦察相机测试保留 `GT-A` 分配并移除本相机投影，验证输出搜索且分配未变化。语料审计测试从
+通过结构门的开发数据中删除三个指定动作角色单元，确认每个单元的 sample、episode、seed
+计数均为 0，补采请求分别要求 `2/2/2`，训练前门抛出失败关闭错误。
+
+2026-08-01 定向结果为 `26 passed in 4.14s`，全量结果为
+`776 passed, 2 warnings in 102.06s`。没有修改 D5 生产代码。完整运行语料仍待 main 生成；
+正式 seed 1000-1019、R0、assist/promotion/authority 状态均不变。
+
 ## 独立 A3 语料验收实现
 
 严格验收先调用 `load_active_vision_episode_dataset_lazy()`。loader 逐文件验证 SHA-256、gzip

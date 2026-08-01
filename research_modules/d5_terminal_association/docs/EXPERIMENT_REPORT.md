@@ -1,5 +1,27 @@
 # D5 末端视觉配准与身份认证实验报告
 
+## 2026-08-01 A3 补采合同测试
+
+本轮验证 main 计划采用的云台忙碌和侦察 cue-loss 输入能否通过现有 D5 规则自然形成缺失
+动作。测试没有启动 scalable runtime、AirSim 或训练，也没有生成新的语料文件。
+
+运行时用例覆盖拦截相机和侦察相机。每类相机分别输入未来的
+`action_in_progress_until` 和 `slew_available=false`，四个用例均得到
+`hold`，原因统一为 `rule_hold:gimbal_unavailable_or_busy`。动作不带目标或扫描扇区，快照中
+原有 `GT-A` 分配保持不变。侦察 cue-loss 用例保留 `GT-A` 的计划与航迹引用，只移除本相机
+投影，结果为 `search_sector`，原因是 `rule_scan:rule_no_usable_assigned_projection`。
+
+语料门负例删除 `hold+interceptor`、`hold+recon`、`search_sector+recon` 三个单元。三个
+单元的唯一样本、完整 episode 和独立 seed 均为 0，planner 对每项输出至少新增
+`2 sample / 2 episode / 2 seed`。`require_active_vision_training_corpus_ready()` 拒绝该语料，
+状态保持 `fail_closed_training_corpus`。
+
+定向测试共 `26 passed in 4.14s`。D5 全量回归为
+`776 passed, 2 warnings in 102.06s`，验收阈值为零失败。两条警告来自既有 Matplotlib
+`Axes3D` 环境和 NVML 初始化，与本轮合同无关。本结果只证明 D5 合同和失败关闭测试就绪。
+main 尚未生成补采 episode，现有 100-episode 语料及其审计结果不变；BC、PPO、assist、
+promotion 和全部 authority 仍为 false。
+
 ## 2026-07-31 A3 独立来源语料验收
 
 D5 于 2026-08-01 对 2026-07-31 冻结的独立三维质点语料完成严格复核。语料生产提交为

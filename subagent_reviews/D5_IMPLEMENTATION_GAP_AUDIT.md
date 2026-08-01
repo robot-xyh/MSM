@@ -1,5 +1,20 @@
 # D5 实现差距审计
 
+## 2026-08-01 A3 补采运行时合同 GAP
+
+| 缺口 | 当前状态 | 证据与剩余边界 |
+| --- | --- | --- |
+| 两类相机真实 `hold` 触发 | **D5-owned 合同与测试已关闭** | 现有 `ActiveVisionCameraState` 可表达 `slew_available=false` 和未来的 `action_in_progress_until`。拦截/侦察两类资源均由真实状态自然输出 `hold`，无需强制标签 API。 |
+| 侦察相机 `search_sector` 触发 | **D5-owned 合同与测试已关闭** | 保留中心计划、航迹和版本，仅在有界 cue-loss 窗口缺少本相机可用分配投影时，规则输出扫描扇区；不删除或换绑 `global_track_id`。 |
+| 三个动作角色单元的训练门 | **D5-owned 失败关闭测试已关闭** | `hold+interceptor`、`hold+recon`、`search_sector+recon` 分别按唯一样本、完整 episode 和独立 seed 计数；任一小于 2 均拒绝训练并生成精确补采请求。 |
+| scalable runtime treatment | **main-owned P1 开放** | main 尚需传入版本化真实云台忙碌窗口和按 cell 的侦察 cue-loss。必须保留当前计划/航迹，只改变相机可用性或本相机投影可用性，不得直接指定动作。 |
+| 来源独立补采语料 | **P1 开放，失败关闭** | 现有 100-episode 语料未改变。需使用新 training seed 生成每单元至少 2 seed/2 episode/2 sample 的完整语料；禁止复制、过采样、重加权、fixture 注入和标签制造。 |
+| 模型和运行权限 | **保持关闭** | 尚未补采、重验或训练。正式 seed 1000-1019 与 R0 保留，BC/PPO/assist/promotion 及相机、分配、降级、运行、生产、控制和全局编号写权限均为 false。 |
+
+验证日期为 2026-08-01。定向测试 `26 passed in 4.14s`，D5 全量
+`776 passed, 2 warnings in 102.06s`，零失败。本轮没有修改生产合同或阈值，也没有产生新的
+仿真、AirSim、模型或物理结果。
+
 ## 2026-07-31 A3 独立来源语料验收 GAP
 
 | 缺口 | 当前状态 | 证据与剩余边界 |

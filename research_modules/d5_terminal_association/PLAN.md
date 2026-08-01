@@ -1,5 +1,27 @@
 # D5 终端视觉配准与身份认证计划
 
+## 2026-08-01 A3 补采运行时合同
+
+- [x] 复核 `ActiveVisionCameraState` 与 `DeterministicLookAtScanPolicy`。现有
+  `slew_available`、`action_in_progress_until` 和投影缺失语义可以自然产生补采动作，无需
+  新增生产 API 或强制标签入口。
+- [x] 覆盖拦截/侦察两类相机的 busy 与 unavailable 状态。两类输入均输出无目标、无扫描扇区
+  的 `hold`，并保持中心计划中的 `global_track_id` 只读引用不变。
+- [x] 覆盖侦察相机有中心分配但本相机投影暂时缺失的 cue-loss 状态。当前版本与通信健康时
+  输出 `search_sector`，不把无投影解释为本地换绑。
+- [x] 覆盖 `hold+interceptor`、`hold+recon`、`search_sector+recon` 三个空单元。每个单元
+  的唯一样本、完整 episode、独立训练 seed 任一少于 2 时，训练入口保持失败关闭。
+- [x] 2026-08-01 定向测试 `26 passed in 4.14s`；D5 全量
+  `776 passed, 2 warnings in 102.06s`。本轮只增加合同回归，没有改生产策略。
+- [ ] main 在 scalable runtime 中传入真实云台忙碌窗口和按 cell cue-loss treatment。角色由
+  `resource_id` 中唯一的 `interceptor` 或 `recon` 标记确定；忙碌使用
+  `slew_available=false` 或未来的 `action_in_progress_until`；cue-loss 期间保留计划、航迹和
+  版本，只暂时不提供该相机目标投影。
+- [ ] main 使用新 training seed 生成完整、来源独立的补采 episode。保留 1000-1019 和 R0，
+  不复制、过采样、重加权、注入 fixture 或直接构造动作标签。
+- [ ] 新语料生成后重新运行严格 dataset、source 和 corpus gate。三个单元均达到
+  `2 sample / 2 episode / 2 seed` 前，不训练、不晋级，assist/promotion/authority 全 false。
+
 ## 2026-07-31 A3 独立来源语料验收
 
 - [x] 独立 clean producer 冻结 100 episode、100 seed、45 个场景规模单元、159,487 样本；

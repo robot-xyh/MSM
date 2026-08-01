@@ -2,6 +2,27 @@
 
 科研模块，用于把末端相机视场中的本地视觉轨迹保守关联到中心分配的 `global_track_id`。模块可在统一三维 episode 中在线运行；训练标签和真值评分仍保持离线。D5 只输出视觉关联与相机观察意图，不修改、重写或重新分配任何全局轨迹 ID。
 
+## 2026-08-01 A3 补采运行时合同复核
+
+D5 已确认现有 `ActiveVisionCameraState` 和 `DeterministicLookAtScanPolicy` 足以接收 main
+生成的真实云台状态，不需要新增强制动作或标签接口。拦截相机和侦察相机均在
+`slew_available=false`，或 `action_in_progress_until > current_timestamp` 时输出
+`hold`。相机仍保留中心计划中的目标引用，但在一个有界 cue-loss 窗口内没有可用的本相机
+`ActiveVisionProjectionEvidence` 时，侦察相机输出 `search_sector`。动作不会创建、改写或
+换绑 `global_track_id`，也不读取 truth、actor 或 object ID。
+
+main 必须为每台相机传入可判定角色的 `resource_id`、`camera_id`、`state_timestamp`、云台
+姿态/速率/限位、`slew_available` 和 `action_in_progress_until`；同时维持当前 plan、coalition、
+communication 版本及中心只读航迹引用。补采 episode 必须使用新的 training seed，保留正式
+seed 1000-1019，并由真实规则执行自然产生标签。不得复制、过采样、重加权、注入 fixture 或
+直接指定动作。
+
+2026-08-01 定向回归覆盖两类相机的 busy/unavailable `hold`、侦察相机 cue-loss
+`search_sector`，以及三个缺失动作角色单元的 `2 sample / 2 episode / 2 seed` 失败关闭门，
+结果为 `26 passed in 4.14s`。D5 全量为 `776 passed, 2 warnings in 102.06s`。本轮没有修改
+生产合同，也没有生成新语料、训练模型或开放 assist/promotion/authority。现有 100-episode
+语料仍按原审计失败关闭，等待 main 生成完整新语料后重验。
+
 ## 2026-07-31 A3 独立来源语料验收
 
 独立 producer 已在 clean commit

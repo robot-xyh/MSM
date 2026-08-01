@@ -268,6 +268,65 @@ def test_missing_hold_and_minority_action_generate_deterministic_requests() -> N
     assert report["scope"]["sample_reweighting_used_for_coverage"] is False
 
 
+def test_missing_runtime_action_role_cells_fail_closed_with_unique_requests() -> None:
+    missing_cells = {
+        (ActiveVisionIntent.HOLD.value, "interceptor"),
+        (ActiveVisionIntent.HOLD.value, "recon"),
+        (ActiveVisionIntent.SEARCH_SECTOR.value, "recon"),
+    }
+
+    def retain_other_cells(transition) -> bool:
+        role = active_vision_camera_role(
+            transition.snapshot.camera(transition.camera_id).resource_id
+        )
+        return (transition.selected_action.intent.value, role) not in missing_cells
+
+    report = audit_active_vision_training_corpus(
+        _filter_training(_balanced_dataset(), retain_other_cells)
+    )
+
+    assert report["training_gate"]["status"] == "fail_closed_training_corpus"
+    assert report["training_gate"]["development_training_allowed"] is False
+    pair_inventory = report["training_inventory"][
+        "by_action_intent_and_camera_role"
+    ]
+    for intent, role in missing_cells:
+        assert pair_inventory[intent][role] == {
+            "unique_sample_count": 0,
+            "unique_episode_count": 0,
+            "unique_seed_count": 0,
+            "unique_scenario_count": 0,
+        }
+        prefix = f"intent_camera_role:{intent}:{role}"
+        assert f"{prefix}:sample_coverage_below_minimum" in report[
+            "training_gate"
+        ]["failure_reasons"]
+        assert f"{prefix}:episode_coverage_below_minimum" in report[
+            "training_gate"
+        ]["failure_reasons"]
+        assert f"{prefix}:seed_coverage_below_minimum" in report[
+            "training_gate"
+        ]["failure_reasons"]
+
+    requests = {
+        (item["action_intent"], item["camera_role"]): item
+        for item in report["collection_plan"]["requests"]
+    }
+    assert set(requests) == missing_cells
+    for item in requests.values():
+        assert item["minimum_additional_unique_samples"] == 2
+        assert item["minimum_additional_unique_episodes"] == 2
+        assert item["minimum_additional_new_training_seeds"] == 2
+
+    with pytest.raises(
+        ActiveVisionCorpusCoverageError,
+        match="active-vision training corpus failed closed",
+    ):
+        require_active_vision_training_corpus_ready(
+            {"training_corpus_audit": report}
+        )
+
+
 def test_duplicate_episode_is_rejected_and_does_not_inflate_coverage() -> None:
     first = _episode(10)
     second = _episode(11)

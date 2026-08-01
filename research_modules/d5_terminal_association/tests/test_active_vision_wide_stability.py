@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import pytest
+
 from d5_terminal_association.active_vision_contracts import (
     ActiveVisionAssignmentReference,
     ActiveVisionCameraState,
@@ -13,6 +15,12 @@ from d5_terminal_association.active_vision_contracts import (
     ActiveVisionTrackReference,
     DeterministicLookAtScanPolicy,
     FriendlyObservationReservation,
+)
+from d5_terminal_association.active_vision_corpus_audit import (
+    active_vision_camera_role,
+)
+from d5_terminal_association.active_vision_learning import (
+    active_vision_candidate_batch,
 )
 
 
@@ -32,6 +40,7 @@ def _snapshot(
     include_projections: bool = True,
     current_fov_by_camera: dict[str, ActiveVisionFovMode] | None = None,
     busy_cameras: frozenset[str] = frozenset(),
+    slew_unavailable_cameras: frozenset[str] = frozenset(),
     reservations: tuple[FriendlyObservationReservation, ...] = (),
 ) -> ActiveVisionSnapshotV1:
     assignments_by_camera = assignments_by_camera or {"CAM-0": ("GT-A",)}
@@ -65,7 +74,7 @@ def _snapshot(
             current_fov_mode=current_fov_by_camera.get(
                 camera_id, ActiveVisionFovMode.WIDE
             ),
-            slew_available=True,
+            slew_available=camera_id not in slew_unavailable_cameras,
             action_in_progress_until=(now + 0.5 if camera_id in busy_cameras else None),
         )
         for camera_id in sorted(assignments_by_camera)
@@ -252,6 +261,80 @@ def test_reacquire_search_and_hold_all_select_wide_when_available() -> None:
         ActiveVisionIntent.HOLD,
         ActiveVisionFovMode.WIDE,
     )
+
+
+@pytest.mark.parametrize(
+    ("camera_id", "expected_role", "busy", "slew_unavailable"),
+    (
+        ("INTERCEPTOR-CAM-0", "interceptor", True, False),
+        ("INTERCEPTOR-CAM-1", "interceptor", False, True),
+        ("RECON-CAM-0", "recon", True, False),
+        ("RECON-CAM-1", "recon", False, True),
+    ),
+)
+def test_runtime_camera_role_busy_or_unavailable_produces_truth_free_hold(
+    camera_id: str,
+    expected_role: str,
+    busy: bool,
+    slew_unavailable: bool,
+) -> None:
+    snapshot = _snapshot(
+        10.0,
+        assignments_by_camera={camera_id: ("GT-A",)},
+        busy_cameras=frozenset({camera_id}) if busy else frozenset(),
+        slew_unavailable_cameras=(
+            frozenset({camera_id}) if slew_unavailable else frozenset()
+        ),
+    )
+
+    action = _select(
+        DeterministicLookAtScanPolicy(),
+        snapshot,
+        camera_id=camera_id,
+    )
+
+    assert (
+        active_vision_camera_role(snapshot.camera(camera_id).resource_id)
+        == expected_role
+    )
+    assert action.intent is ActiveVisionIntent.HOLD
+    assert action.target_global_track_id is None
+    assert action.search_sector_deg is None
+    assert action.reason == "rule_hold:gimbal_unavailable_or_busy"
+    assert snapshot.assigned_target_ids(camera_id) == ("GT-A",)
+    candidates = active_vision_candidate_batch(snapshot, camera_id=camera_id)
+    assert sum(
+        candidate.action_key == action.action_key
+        for candidate in candidates.actions
+    ) == 1
+
+
+def test_recon_cue_loss_with_assignment_selects_search_without_rebinding() -> None:
+    camera_id = "RECON-CAM-0"
+    snapshot = _snapshot(
+        10.0,
+        assignments_by_camera={camera_id: ("GT-A",)},
+        include_projections=False,
+    )
+
+    action = _select(
+        DeterministicLookAtScanPolicy(),
+        snapshot,
+        camera_id=camera_id,
+    )
+
+    assert active_vision_camera_role(snapshot.camera(camera_id).resource_id) == "recon"
+    assert snapshot.assigned_target_ids(camera_id) == ("GT-A",)
+    assert snapshot.projection(camera_id, "GT-A") is None
+    assert action.intent is ActiveVisionIntent.SEARCH_SECTOR
+    assert action.target_global_track_id is None
+    assert action.search_sector_deg is not None
+    assert action.reason == "rule_scan:rule_no_usable_assigned_projection"
+    candidates = active_vision_candidate_batch(snapshot, camera_id=camera_id)
+    assert sum(
+        candidate.action_key == action.action_key
+        for candidate in candidates.actions
+    ) == 1
 
 
 def test_version_and_communication_failures_reset_and_fail_closed() -> None:

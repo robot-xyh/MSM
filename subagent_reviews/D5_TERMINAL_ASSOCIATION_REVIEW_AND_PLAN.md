@@ -1,5 +1,28 @@
 # D5 末端视觉配准与协同身份认证综述及子方案
 
+## 2026-08-01 A3 补采运行时合同复核
+
+D5 对 main 拟增加的真实云台忙碌状态和按 cell 侦察 cue-loss treatment 完成合同审查。现有
+`ActiveVisionCameraState` 已提供 `slew_available` 和 `action_in_progress_until`。两类相机
+在不可转动或动作未完成时都由确定性规则输出 `hold`。该动作保持当前视场，不带目标或扫描
+扇区，不改变计划中的中心航迹引用。
+
+侦察 cue-loss 不应删除分配或中心航迹。main 应保留当前 plan、coalition、communication
+版本及 `GlobalTrack` 只读引用，只在限定时间内不提供该相机的可用目标投影。通信健康且扫描
+扇区可用时，规则自然输出 `search_sector`。输入不需要 truth、actor 或 object ID，也不得从
+局部动作创建或换绑 `global_track_id`。
+
+新增回归覆盖拦截/侦察相机各自的 busy 与 slew unavailable 状态，以及侦察相机保留分配但
+无投影的搜索状态。语料门回归精确删除 `hold+interceptor`、`hold+recon`、
+`search_sector+recon`，确认三个单元的唯一样本、完整 episode、独立 seed 均单独计数，补采
+下限均为 `2/2/2`，训练入口保持失败关闭。定向测试为 `26 passed in 4.14s`，D5 全量为
+`776 passed, 2 warnings in 102.06s`。
+
+本轮只完成 D5-owned 合同和测试准备，没有修改生产策略。下一步由 main 在 scalable runtime
+实现版本化 treatment，并使用新训练 seed 生成完整来源独立语料。正式 seed 1000-1019 和 R0
+不得读取或改写；不得复制、过采样、重加权、注入 fixture 或直接造标签。新语料通过严格
+dataset/source/corpus gate 前不训练、不晋级，assist/promotion/authority 全部保持 false。
+
 ## 2026-07-31 A3 独立来源语料复核
 
 独立 clean producer 已冻结 100 episode、100 seed、45 个场景规模单元和 159,487 个主动视觉
