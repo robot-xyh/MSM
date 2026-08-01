@@ -694,8 +694,32 @@ from .reserved_seed_intervention_audit import (
     render_reserved_seed_intervention_audit_markdown,
     write_reserved_seed_intervention_audit,
 )
+from .d1_global_track_a95_episode_ab import (
+    CANDIDATE_IMPLEMENTATION_ID as D1_GLOBAL_TRACK_A95_CANDIDATE_IMPLEMENTATION_ID,
+    CANDIDATE_SELECTOR as D1_GLOBAL_TRACK_A95_CANDIDATE_SELECTOR,
+    D1_GLOBAL_TRACK_A95_AGGREGATE_SCHEMA_VERSION,
+    D1_GLOBAL_TRACK_A95_EPISODE_AB_SCHEMA_VERSION,
+    D1_GLOBAL_TRACK_A95_PAIR_LIST_SCHEMA_VERSION,
+    D1GlobalTrackA95EvidenceError,
+    REFERENCE_IMPLEMENTATION_ID as D1_GLOBAL_TRACK_A95_REFERENCE_IMPLEMENTATION_ID,
+    REFERENCE_SELECTOR as D1_GLOBAL_TRACK_A95_REFERENCE_SELECTOR,
+    evaluate_d1_global_track_a95_episode_ab,
+    render_d1_global_track_a95_episode_ab_markdown,
+    write_d1_global_track_a95_episode_ab_report,
+)
 
 __all__ = [
+    "D1_GLOBAL_TRACK_A95_AGGREGATE_SCHEMA_VERSION",
+    "D1_GLOBAL_TRACK_A95_CANDIDATE_IMPLEMENTATION_ID",
+    "D1_GLOBAL_TRACK_A95_CANDIDATE_SELECTOR",
+    "D1_GLOBAL_TRACK_A95_EPISODE_AB_SCHEMA_VERSION",
+    "D1_GLOBAL_TRACK_A95_PAIR_LIST_SCHEMA_VERSION",
+    "D1_GLOBAL_TRACK_A95_REFERENCE_IMPLEMENTATION_ID",
+    "D1_GLOBAL_TRACK_A95_REFERENCE_SELECTOR",
+    "D1GlobalTrackA95EvidenceError",
+    "evaluate_d1_global_track_a95_episode_ab",
+    "render_d1_global_track_a95_episode_ab_markdown",
+    "write_d1_global_track_a95_episode_ab_report",
     "CANONICAL_SEED_SPLIT_READINESS_SCHEMA_VERSION",
     "CanonicalSeedSplitAuditError",
     "CROSS_MODULE_LEARNING_ADMISSION_DATE",

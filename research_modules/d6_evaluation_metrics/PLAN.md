@@ -4097,3 +4097,27 @@ generation contract 均为 `verified`：D1 最终代次等于 D2 最终消费代
 验收：专项 `18 passed`，新增 9 个失败关闭负例；D6 全量
 `1348 passed, 1 warning in 139.42s`，产物 `SHA256SUMS` 全部通过。AirSim 集成计划已检查；
 本任务不改变 AirSim 接口或运行流程。
+
+## 26. D1 GlobalTrack A95 物化配对审计（2026-08-01）
+
+### 已完成
+
+1. 实现独立只读 evaluator，严格绑定 reference/candidate selector、实现身份、clean source、
+   场景配置、运行 profile、真值制品和 A95 操作计数。
+2. 支持 `reference/seed_*` 与 `candidate/seed_*` 自动同 seed 配对；缺目录、集合不一致、哈希
+   不一致或必选指标缺失均不可用，不填零。
+3. 将 `online_observations.jsonl` 拆为外生传感器输入、运行时总线时序/传输和 D1/D2 业务面。
+   D3/D4 投递时间、顺序和传输摘要变化不再被解释为外生输入变化。
+4. 输出逐 pair CSV、聚合 JSON 和中文 Markdown。测试覆盖业务漂移、外生漂移、时序漂移、
+   缺指标、未执行批量路径和 seed 集合不完整等失败关闭情形。
+
+### 当前结果与开放条件
+
+source `4166fe8` 的 10-seed、200 对 200、2.0 秒开发批次中，外生输入和 D1/D2 业务均为
+`10/10` 等价，运行时总线完全时序等价为 `0/10`，但没有 D1/D2 分歧。候选更快比例仅
+`0.60`，墙钟和 D1 包含式计时中位改善分别为 `1.05%`、`2.04%`，未达到描述性性能门。
+candidate 继续 default-off，不运行正式 seed 1000-1019，不修改既有 450/900 结论。后续若
+申请晋级，main 需预注册更大独立批次，并单列纯物化计时和运行时总线漂移来源。
+
+验收：专项 `13 passed`；D6 全量 `1397 passed, 1 warning in 136.01s`；入口语法检查和
+限定路径 `git diff --check` 通过。

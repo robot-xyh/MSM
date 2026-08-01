@@ -4428,3 +4428,21 @@ test 子组教师完全匹配为 `0/25`。合同门限预注册为 292 帧总体
 `1348 passed, 1 warning in 139.42s`。warning 为既有
 Matplotlib `Axes3D` 导入环境提示，不影响本次纯文本审计。本次没有 AirSim 消息、episode
 编排或硬件接口变化，现有 AirSim 集成计划无需修改。
+
+## D1 GlobalTrack A95 完整 episode 配对评估（2026-08-01）
+
+新增只读入口 `d1_global_track_a95_episode_ab.py`，比较
+`per_track_a95_summary_v1` 与 default-off 的 `batched_a95_summary_v1`。入口支持显式
+pair-list、单 pair 目录以及 `reference/seed_*`、`candidate/seed_*` 两臂目录，seed 集合不完整
+时失败关闭。正式 seed 1000-1019 在 manifest 预检后拒绝，不读取 episode 载荷。
+
+在线日志分为三个审计面：按稳定身份排序的传感器外生输入、保留消息顺序和投递元数据的运行时
+总线时序面、D1/D2 业务面。后者比较 GlobalTrack 状态、协方差、双时间戳、独立复算 A95、
+航迹等级、身份谱系、D2 输入绑定和输出。运行时漂移若传播到 D1/D2，结果标为行为退化；未传播
+时单列漂移，不改写为初始输入差异。
+
+clean source `4166fe8` 的 200 对 200、2.0 秒、seed 43000-43009 只读结果为：外生输入等价
+`10/10`，D1/D2 业务等价 `10/10`，操作合同通过 `10/10`，运行时总线时序/传输完全等价
+`0/10`，时序漂移伴随 D1/D2 分歧 `0/10`。候选更快 `6/10`，墙钟中位改善 `1.05%`，
+D1 包含式计时中位改善 `2.04%`。样本仅支持开发阶段描述，`formal_promotion_supported=false`。
+专项测试 `13 passed`，D6 全量回归 `1397 passed, 1 warning in 136.01s`。

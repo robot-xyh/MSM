@@ -6718,3 +6718,38 @@ assignment/plan/runtime/version 输出必须全部为 0。
 
 CSV 固定 21 列、292 行全部闭合。独立 split hash 为 `f1380dd6...ca5`。R0、candidate、
 effective 各重算 21637 条边，索引越界、容量超额、硬禁边和 M 对 N 原子性违规均为 0。
+
+## 28. D1 GlobalTrack A95 episode A/B
+
+### 28.1 输入发现
+
+入口接受单 pair、显式 pair-list 和两臂 seed 目录。两臂目录按 `seed_<整数>` 建立集合，集合
+不等、manifest 缺失或同 seed comparison key 不同立即失败关闭。保留 seed 1000-1019 只读
+manifest 后拒绝，不打开其 episode 载荷。
+
+### 28.2 三面规范化
+
+外生输入面保留 `sensor.observations` 的来源、schema、记录到达时刻和完整 payload，删除总线
+sequence 后按规范 JSON 排序。量测时间、到达时间、量测值、协方差、分类和相机几何均参与
+SHA-256。内部模块发布和相机空帧不进入外生输入面。
+
+运行时总线面按原始记录顺序保留 sequence、topic、source、发布/投递时刻，以及 payload 中
+的时间、总线引用、消息编号和传输摘要。该面用于识别处理耗时导致的排序和通信漂移。
+
+D1 业务面按后验代次保存规范航迹和观测谱系，A95 从水平位置协方差最大特征值独立复算：
+
+```text
+A95 = sqrt(chi2_2(0.95) * lambda_max(P_xy))
+```
+
+D2 面保存来源 D1 后验代次、航迹、身份交换可用性、身份谱系和完整关联结果。发布包络时刻
+归入运行时面；航迹有效时刻、谱系中的量测/到达时刻仍属于业务面。
+
+### 28.3 判定与输出
+
+外生输入不同返回 `incomparable_exogenous_input_mismatch`。外生输入相同、运行时漂移且
+D1/D2 不同返回 `runtime_timing_induced_business_divergence`。D1/D2 相同则返回
+`business_equivalent_with_runtime_timing_drift`，同时保留时序差异路径。逐 pair CSV、聚合
+JSON 和中文报告均输出两个独立字段，不以整份在线日志哈希替代比较。
+
+专项测试 `13 passed`，D6 全量回归 `1397 passed, 1 warning in 136.01s`。

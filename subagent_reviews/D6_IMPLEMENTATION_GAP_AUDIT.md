@@ -3686,3 +3686,22 @@ CSV `21×292` 全闭合；split hash 为 `f1380dd6...ca5`；三组各 21637 条�
 当前无新增 D6-owned P0。D6-owned 来源独立 v2 外部审计 P1 已关闭。专项 `18 passed`，
 新增 9 个失败关闭负例；D6 全量 `1348 passed, 1 warning in 139.42s`。AirSim 集成计划已
 检查，本任务无 AirSim 接口或 episode 变化，无需修改。
+
+## 2026-08-01 D1 GlobalTrack A95 物化 A/B GAP
+
+### 已关闭的 D6-owned 项
+
+1. 已实现两臂 seed 目录自动配对和集合一致性失败关闭，不再要求 main 另写 pair-list。
+2. 已把外生传感器输入与内部发布、通信投递顺序和传输摘要拆开，分别输出
+   `exogenous_input_equivalent` 与 `runtime_bus_timing_equivalent`。
+3. 已独立比较 D1 状态、协方差、双时间戳、A95、航迹等级和谱系，以及 D2 输入、输出和身份
+   谱系。时序漂移伴随业务差异时不能被归一化隐藏。
+4. 已验证 reference 标量 A95 与 candidate 批量调用、矩阵数和公共操作计数守恒；缺指标与
+   candidate 未实际批量调用均失败关闭。
+
+### 仍开放的 P1 证据
+
+开发批次虽有 10 对，但 candidate 仅 6 对更快，中位改善较小，且 10 对均存在运行时总线
+时序/传输差异。当前没有纯 GlobalTrack 物化独立计时，也没有预注册正式批次。因此该候选不具
+备默认切换或正式晋级证据。D6 代码缺口已关闭，剩余项属于 main/D1 后续实验设计和运行证据。
+专项 `13 passed`，D6 全量 `1397 passed, 1 warning in 136.01s`。
