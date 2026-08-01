@@ -739,3 +739,10 @@ generation verified。该段保留增量阶段结论；当前完整结论见下�
 cell result 和 artifact tree，并逐项重算 D1/D2 后验代次。clean formal、实验矩阵资格和
 generation verified 均为 900/900；严格总门为 872/900。28 项均为高威胁 M 对 N 场景在
 episode 结束时仍处于 D4 成员 ACK 收集状态。完整父矩阵和学习变体对照尚未完成。
+
+2026-07-31 新增 D3 A1 来源独立 v2 外部审计，产物位于
+[`../reports/D3_A1_SOURCE_INDEPENDENT_V2_EXTERNAL_AUDIT_20260731/`](../reports/D3_A1_SOURCE_INDEPENDENT_V2_EXTERNAL_AUDIT_20260731/)。
+D6 不导入 D3 evaluator，独立扫描 100 个 episode、292 帧和逐帧结果。总体预注册机器门
+通过；test 子组教师完全匹配为 `0/25`，所有运行与正式权限保持关闭。补强审计增加 generation
+数据集路径绑定、split hash、连续小端双精度矩阵摘要、CSV 固定 21 列逐行闭合，以及基于动作
+掩码、目标需求和资源容量的三组选择边独立安全重算。专项测试现为 `18 passed`。

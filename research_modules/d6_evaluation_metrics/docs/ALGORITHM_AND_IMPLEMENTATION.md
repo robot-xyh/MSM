@@ -6467,3 +6467,131 @@ consumption/publication/pre-tick merge 为 `6411/6411/22366`；skip 为 0，pend
 新增测试覆盖 900 分母、20 分片、缺 cell、重复 progress、merged checksum 篡改、必需值
 不可用失败关闭和原五项配置兼容。专项联合测试为 `19 passed, 1 warning in 2.31s`，D6
 全量为 `1253 passed, 1 warning in 132.38s`。完整输出清单通过 `sha256sum -c`。
+
+## 27. D3 A1 来源独立 v2 外部审计
+
+### 27.1 输入与边界
+
+入口 `audit_d3_a1_source_independent_v2()` 接收六类只读输入：D3 v2 结果目录、生成根目录、
+D3 匿名数据集、v2 合同、冻结模型 bundle 和项目根目录。实现只依赖 Python 标准库，不导入
+D3 包。数据集目录必须满足
+`dataset_dir.resolve() == (generation_root / learning_dataset/d3_assignment).resolve()`。
+D3 aggregate 不参与指标生成，只在独立复算完成后用于声明闭合。
+
+审计固定锚点包括合同 SHA-256、schedule SHA-256、bundle manifest/state/tree SHA-256 和
+冻结评价源码树 SHA-256。结果目录只允许合同规定的五个文件。`SHA256SUMS` 不允许路径、
+重复条目或覆盖缺口。输入和输出目录中的符号链接均拒绝。
+
+### 27.2 数据扫描
+
+生成证据校验关系为：
+
+```text
+generation_plan SHA -> generation_checkpoint.plan_sha
+generation_summary SHA -> generation_checkpoint.summary_sha
+training_seed_registry SHA -> generation_summary.registry_sha
+schedule SHA -> contract / plan / summary / registry
+```
+
+progress 必须有 100 条唯一 sequence 和 seed，全部 `finite_state=true`、
+`online_truth_use_count=0`、`learning_export_components=[d3]`。checkpoint 必须 finalized，
+剩余 episode 为 0。
+
+数据集逐行扫描。帧身份定义为
+
+```text
+(episode, seed, scenario_version, frame_index, timestamp_s, split)
+```
+
+该身份在数据集内唯一，并与 292 条评价记录一一绑定。每条评价记录的配置目标数、观测匿名
+目标数、配置资源数、观测匿名资源数、规则矩阵形状、动作掩码形状、候选边数和需求槽数必须
+与合同和原始帧一致。目标观测数允许随 D1/D2 在线航迹基数变化，资源数仍按合同逐帧精确核对。
+
+D6 从帧清单独立建立 `seed -> split` 和
+`(scenario_version, seed, episode) -> split`。随后按冻结规范生成 seed assignments 与 episode
+assignments 的规范 JSON，重算 split SHA-256，并同时核对 manifest 和冻结值。矩阵摘要使用：
+
+```text
+canonical_json({"dtype":"<f8","shape":[target_count,resource_count]})
++ NUL
++ C-order little-endian float64 bytes
+```
+
+实现使用标准库 `struct.pack("<...d")` 按行写入摘要，不调用 D3 或 NumPy 摘要函数。
+
+### 27.3 CSV 与选择边闭合
+
+`per_frame_evaluation.csv` 必须恰好包含固定 21 列和 292 行。CSV parser 独立解析整数、有限
+时间和紧凑 JSON 边列表，再与同序 JSONL 逐项比较：
+
+```text
+frame identity + teacher opportunity
+R0/candidate/effective selected edges
+candidate/effective binding change
+positive teacher exact + negative exact-R0
+OOD + rejected + rejection reasons
+fallback exact-R0 matrix + binding
+```
+
+换绑数由两组边集合的对称差重新计算，正负类和 fallback 标志也从 JSONL 基础字段派生，
+不采信 CSV 自带值。结果目录 `SHA256SUMS` 被同步改写只能通过文件层检查，不能绕过内容闭合。
+
+每组选择边按 `(target_index, resource_index)` 解释。D6 独立检查索引范围，并从数据集读取：
+
+```text
+action_mask[target_index][resource_index]
+target_demand_slots[target_index]
+anonymous_resources[resource_index].assignment_capacity
+```
+
+资源使用次数超过容量的部分计为重复/容量超额。每个目标的已分配数必须为 0 或完整需求数，
+否则计一次 M 对 N 原子性违规。R0、candidate、effective 三组独立计数逐帧与 D3 自报字段
+闭合。机器门的三项安全总数来自 effective 独立结果。
+
+### 27.4 指标复算
+
+设正类帧集合为教师机会帧 `P`，负类集合为非机会帧 `N`：
+
+```text
+safe_change_rate = |effective_binding != R0_binding, frame in P| / |P|
+teacher_exact_rate = |effective_binding == teacher_binding, frame in P| / |P|
+negative_exact_R0_rate = |effective_binding == R0_binding, frame in N| / |N|
+```
+
+拒绝帧另行要求：
+
+```text
+effective_matrix_sha == R0_rule_matrix_sha
+effective_selected_edges == R0_selected_edges
+```
+
+拒绝原因和场景分布使用逐帧计数器重建，原因允许重叠。OOD 帧单独统计。评价 JSONL 与
+数据集都执行 forbidden identity key 扫描；评价中只允许零值审计字段
+`online_truth_use_count`。安全计数同时检查 R0、candidate 和 effective 三层，防止候选违规
+被最终回退掩盖。模型
+assignment/plan/runtime/version 输出必须全部为 0。
+
+### 27.5 门限与权限
+
+独立机器门使用合同中的预注册阈值：安全换绑至少 1 帧且不低于 5%，教师完全匹配至少 1 帧
+且不低于 2%，负类 exact-R0 不低于 99%。还要求分母非零、输入有限、seed 隔离、生成完整、
+回退完整、安全计数为 0、权限全部关闭。D6 复算完成后再与 aggregate 的总体、分组、门状态、
+权限和来源摘要逐项比较，任何差异均失败关闭。
+
+写盘函数要求输出目录不存在，固定生成 `audit.json`、中文报告和 `SHA256SUMS`。审计前后再次
+计算全部输入摘要，发现输入变化时不生成通过结论。
+
+### 27.6 测试与结果
+
+原有负例覆盖载荷篡改、缺文件、符号链接、汇总计数冒充、权限冒充、模型输出冒充和输出
+目录覆盖。本轮新增 9 个失败关闭用例：CSV 内容篡改且同步改写校验和、错误 dataset path、
+资源容量、硬禁边和原子性三类零计数冒充、边索引越界、规则矩阵摘要冒充、评价 JSONL 真值
+身份字段、split 清单摘要变化。专项增至 `18 passed`；D6 全量为
+`1348 passed, 1 warning in 139.42s`。
+
+正式复算得到正类安全换绑 `13/110`、教师完全匹配 `8/110`、负类 exact-R0
+`182/182`、fallback 矩阵和绑定 `94/94`、非零修正 98、OOD 27。总体门通过。test 子组
+教师完全匹配为 `0/25`，因此仍需独立正式保留集和物理闭环证据；本审计不授予任何运行权限。
+
+CSV 固定 21 列、292 行全部闭合。独立 split hash 为 `f1380dd6...ca5`。R0、candidate、
+effective 各重算 21637 条边，索引越界、容量超额、硬禁边和 M 对 N 原子性违规均为 0。
