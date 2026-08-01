@@ -1,5 +1,40 @@
 # D6 正式实验矩阵准入预检报告
 
+## D5 A3 v2 候选语料独立审计（2026-08-01）
+
+本次对象为 main 最终封装的 A3 v2 三维质点主动视觉候选语料。D6 只读输入数据集根目录，
+没有调用 D5 validator、corpus gate 或高层 loader，也没有读取、运行或修改保留 seed 的正式
+制品。生产提交为 `d7bf89060e88a5b1324f2d8d1de36b005ebe5e4d`，100 个 episode 均为
+clean source，来源域为 `scalable_3d_point_mass_runtime`，证据等级为
+`simulation_research`。
+
+审计实际解析 100 个 descriptor、100 个 gzip 在线流和 100 个离线文件。样本与离线标签均为
+159502，在线记录为 321215，其中 snapshot 2011、camera-feedback 159502。302 个
+`SHA256SUMS` 登记工件与实际集合一致；连同摘要清单共 303 个文件在审计期保持只读和元数据
+不变。100 个 header、100 个 footer 样本索引摘要和 100 个离线 episode 绑定全部通过。
+
+seed 为 `22100-22199`。train/validation/test 的 episode 与 seed 均为 60/20/20，三组互斥；
+与保留范围 `1000-1019` 的交集为 0。在线 truth、actor、object 标识计数分别为 0、0、0。
+拆分 SHA-256 为
+`fb4f6c0ce6566e05113c052af52f45b1ecfbdb3d77727b6c038010777477da7b`，训练集 SHA-256 为
+`3cc6ea166adc74e8cf89e9a5a6b44952b9e4f51d08c83678db39b7b9d1761776`。
+
+来源层 16 项和候选锚点层 13 项共 29/29 通过，状态为
+`simulation_research_integrity_confirmed`。manifest SHA-256 为
+`9b80e47aed8f4c7a416694220d63d9156010911951cbbf271905ce5c0d6f31d4`，摘要清单文件
+SHA-256 为 `38ea7d89d57f6b56bdceb70efd534872b37250ef59aceafb11ff3e55401fd216`。
+机器证据、中文报告和报告校验和位于
+`reports/D5_A3_SOURCE_INDEPENDENT_POINT_MASS_V2_AUDIT_20260801/`。
+
+main 提供的 generation plan SHA-256 作为外部冻结锚点登记。计划文件不在受审目录，D6 未
+从数据集重算计划内容。该限制不影响 manifest、descriptor、online/offline 和 split 的低层
+完整性结论，但 plan-content 独立证明仍需另行提供计划文件。
+
+专项测试 `18 passed, 1 warning in 2.32s`，D6 全量
+`1366 passed, 1 warning in 135.82s`。告警来自既有 Matplotlib `Axes3D` 导入环境。报告不
+评价 D5 动作角色覆盖、训练门或模型效果；行为克隆、近端策略优化、assist、assignment、
+degradation、runtime、production、control 和 `global_track_id` 写权限全部为 false。
+
 ## D5 A3 三维质点数据集来源审计（2026-07-31）
 
 本次验证对象是 main exporter 已完成最终封装的 D5 A3 独立来源三维质点数据集。生产提交为

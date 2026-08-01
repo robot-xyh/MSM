@@ -27,6 +27,8 @@ _DATASET_SCHEMA = "d5.active-vision-episode-dataset.v3"
 _DESCRIPTOR_SCHEMA = "d5.active-vision-episode-descriptor.v2"
 _RECORD_SCHEMA = "d5.active-vision-episode-record.v2"
 _SAMPLE_SCHEMA = "d5.active-vision-sample.v2"
+_OFFLINE_LABELS_SCHEMA = "d5.active-vision-offline-labels.v1"
+_OFFLINE_LABEL_SCHEMA = "d5.active-vision-offline-label.v1"
 _SOURCE_IDENTITY_SCHEMA = "d5.active-vision-source-identity.v1"
 _SOURCE_PROVENANCE_SCHEMA = "d5.active-vision-source-provenance.v1"
 _ONLINE_STORAGE_LAYOUT = "deduplicated-reference-stream-jsonl-gzip-v1"
@@ -134,6 +136,28 @@ _FOOTER_FIELDS = frozenset(
         "sample_index_sha256",
     }
 )
+_OFFLINE_FIELDS = frozenset(
+    {
+        "schema_version",
+        "episode_uid",
+        "scenario_version",
+        "seed",
+        "episode_id",
+        "reward_bounds",
+        "labels",
+    }
+)
+_OFFLINE_LABEL_FIELDS = frozenset(
+    {
+        "schema_version",
+        "sample_key",
+        "observation_key",
+        "reward",
+        "counterfactual",
+        "outcome",
+        "causal_label",
+    }
+)
 _SPLIT_POLICY_FIELDS = frozenset(
     {
         "unit",
@@ -203,8 +227,12 @@ _CHECK_NAMES = (
     "checksum_inventory_complete",
     "artifact_hashes_complete",
     "immutable_artifacts_complete",
+    "audit_input_unchanged_complete",
     "manifest_descriptor_binding_complete",
     "descriptor_header_binding_complete",
+    "online_object_hash_binding_complete",
+    "online_footer_index_binding_complete",
+    "offline_label_binding_complete",
     "source_domain_mapping_complete",
     "fixture_consistency_complete",
     "source_domain_summary_complete",
@@ -233,6 +261,17 @@ class _FileEvidence:
     inode: int
     size: int
     modified_ns: int
+    mode: int
+
+
+@dataclass(frozen=True, slots=True)
+class _OnlineStreamEvidence:
+    sample_count: int
+    snapshot_count: int
+    camera_feedback_count: int
+    record_count: int
+    sample_keys: tuple[str, ...]
+    observation_keys: tuple[str, ...]
 
 
 @dataclass(frozen=True, slots=True)
@@ -247,6 +286,8 @@ class _EpisodeEvidence:
     sample_count: int
     snapshot_count: int
     camera_feedback_count: int
+    online_record_count: int
+    offline_label_count: int
 
 
 def audit_d5_active_vision_source_dataset(
@@ -420,14 +461,29 @@ def _audit_dataset_strict(root: Path) -> dict[str, Any]:
     _validate_source_identity_summary(manifest["source_identity_summary"], episodes)
     split_summary = _validate_splits(manifest, raw_episodes, episodes)
 
-    _verify_unchanged(file_evidence[manifest_path])
-    _verify_unchanged(file_evidence[config_path])
+    for item in file_evidence.values():
+        _verify_unchanged(item)
+    seed_values = sorted({item.seed for item in episodes})
     return {
         "dataset_manifest_sha256": hashes["manifest.json"],
-        "checksums_sha256": _sha256_file(resolved / "SHA256SUMS"),
+        "checksums_sha256": file_evidence[resolved / "SHA256SUMS"].sha256,
         "artifact_count": len(hashes),
+        "audited_file_count": len(file_evidence),
+        "descriptor_count": len(episodes),
+        "online_stream_count": len(episodes),
+        "offline_file_count": len(episodes),
         "episode_count": len(episodes),
         "sample_count": sum(item.sample_count for item in episodes),
+        "online_record_count": sum(item.online_record_count for item in episodes),
+        "offline_label_count": sum(item.offline_label_count for item in episodes),
+        "online_snapshot_object_count": sum(item.snapshot_count for item in episodes),
+        "online_camera_feedback_object_count": sum(
+            item.camera_feedback_count for item in episodes
+        ),
+        "online_header_binding_count": len(episodes),
+        "online_footer_index_binding_count": len(episodes),
+        "offline_episode_binding_count": len(episodes),
+        "seed_values": seed_values,
         "source_domain": source_domain,
         "evidence_tier": _SOURCE_TIER_BY_DOMAIN[source_domain],
         "source_domain_episode_counts": dict(
@@ -528,16 +584,31 @@ def _audit_episode(
     if dataset_config_relative not in hashes:  # Defensive after root inventory audit.
         _fail("episode_dataset_config_artifact_missing", dataset_config_relative)
 
-    stream_counts = _audit_online_stream(
+    stream_evidence = _audit_online_stream(
         online_path,
         descriptor=descriptor,
         source_domain=source_domain,
         evidence_tier=evidence_tier,
     )
-    _require_equal(stream_counts[0], sample_count, "stream_sample_count_mismatch")
-    _require_equal(stream_counts[1], snapshot_count, "stream_snapshot_count_mismatch")
     _require_equal(
-        stream_counts[2], feedback_count, "stream_camera_feedback_count_mismatch"
+        stream_evidence.sample_count,
+        sample_count,
+        "stream_sample_count_mismatch",
+    )
+    _require_equal(
+        stream_evidence.snapshot_count,
+        snapshot_count,
+        "stream_snapshot_count_mismatch",
+    )
+    _require_equal(
+        stream_evidence.camera_feedback_count,
+        feedback_count,
+        "stream_camera_feedback_count_mismatch",
+    )
+    offline_label_count = _audit_offline_file(
+        offline_path,
+        descriptor=descriptor,
+        stream_evidence=stream_evidence,
     )
     for path in (descriptor_path, online_path, offline_path):
         _verify_unchanged(file_evidence[path])
@@ -553,6 +624,8 @@ def _audit_episode(
             sample_count=sample_count,
             snapshot_count=snapshot_count,
             camera_feedback_count=feedback_count,
+            online_record_count=stream_evidence.record_count,
+            offline_label_count=offline_label_count,
         ),
         (descriptor_relative, online_relative, offline_relative),
     )
@@ -564,15 +637,24 @@ def _audit_online_stream(
     descriptor: Mapping[str, Any],
     source_domain: str,
     evidence_tier: str,
-) -> tuple[int, int, int]:
+) -> _OnlineStreamEvidence:
     header: Mapping[str, Any] | None = None
     footer: Mapping[str, Any] | None = None
     sample_count = 0
     snapshot_keys: set[str] = set()
     feedback_keys: set[str] = set()
+    sample_keys: list[str] = []
+    observation_keys: list[str] = []
+    seen_sample_keys: set[str] = set()
+    seen_observation_keys: set[str] = set()
+    sample_index: list[dict[str, Any]] = []
+    record_count = 0
     try:
         with gzip.open(path, mode="rt", encoding="utf-8", newline="") as stream:
             for line_number, line in enumerate(stream, start=1):
+                if not line.endswith("\n"):
+                    _fail("online_stream_truncated", f"{path.name}:{line_number}")
+                record_count += 1
                 row = _load_json_line(line, path=path, line_number=line_number)
                 violations = _find_forbidden_online_identity(row)
                 if violations:
@@ -624,10 +706,72 @@ def _audit_online_stream(
                     )
                     footer = row
                 elif record_type == "sample":
+                    _require_equal(
+                        row.get("schema_version"),
+                        _SAMPLE_SCHEMA,
+                        "sample_schema_mismatch",
+                    )
+                    sequence_index = _strict_int(
+                        row.get("sequence_index"),
+                        "sample_sequence_index_invalid",
+                    )
+                    _require_equal(
+                        sequence_index,
+                        sample_count,
+                        "sample_sequence_index_mismatch",
+                    )
+                    sample_key = _nonempty_string(
+                        row.get("sample_key"), "sample_key_invalid"
+                    )
+                    observation_key = _nonempty_string(
+                        row.get("observation_key"), "observation_key_invalid"
+                    )
+                    snapshot_key = _nonempty_string(
+                        row.get("snapshot_key"), "sample_snapshot_key_invalid"
+                    )
+                    feedback_key = _nonempty_string(
+                        row.get("camera_feedback_key"),
+                        "sample_camera_feedback_key_invalid",
+                    )
+                    if (
+                        sample_key in seen_sample_keys
+                        or observation_key in seen_observation_keys
+                    ):
+                        _fail("online_sample_identity_duplicate", sample_key)
+                    if snapshot_key not in snapshot_keys:
+                        _fail("online_sample_snapshot_reference_missing", snapshot_key)
+                    if feedback_key not in feedback_keys:
+                        _fail("online_sample_feedback_reference_missing", feedback_key)
+                    sample_keys.append(sample_key)
+                    observation_keys.append(observation_key)
+                    seen_sample_keys.add(sample_key)
+                    seen_observation_keys.add(observation_key)
+                    sample_index.append(
+                        {
+                            "sequence_index": sequence_index,
+                            "sample_key": sample_key,
+                            "observation_key": observation_key,
+                            "snapshot_key": snapshot_key,
+                            "camera_feedback_key": feedback_key,
+                        }
+                    )
                     sample_count += 1
                 elif record_type in {"snapshot", "camera_feedback"}:
                     object_key = _nonempty_string(
                         row.get("object_key"), "online_object_key_invalid"
+                    )
+                    value = _mapping(
+                        row.get("value"), "online_object_value_invalid"
+                    )
+                    prefix = (
+                        "snapshot-sha256-"
+                        if record_type == "snapshot"
+                        else "camera-feedback-sha256-"
+                    )
+                    _require_equal(
+                        object_key,
+                        prefix + _sha256_json(value),
+                        "online_object_key_hash_mismatch",
                     )
                     destination = snapshot_keys if record_type == "snapshot" else feedback_keys
                     if object_key in destination:
@@ -671,7 +815,83 @@ def _audit_online_stream(
         len(feedback_keys),
         "stream_camera_feedback_count_mismatch",
     )
-    return sample_count, len(snapshot_keys), len(feedback_keys)
+    _require_equal(
+        footer["sample_index_sha256"],
+        _sha256_json(sample_index),
+        "sample_index_sha256_mismatch",
+    )
+    return _OnlineStreamEvidence(
+        sample_count=sample_count,
+        snapshot_count=len(snapshot_keys),
+        camera_feedback_count=len(feedback_keys),
+        record_count=record_count,
+        sample_keys=tuple(sample_keys),
+        observation_keys=tuple(observation_keys),
+    )
+
+
+def _audit_offline_file(
+    path: Path,
+    *,
+    descriptor: Mapping[str, Any],
+    stream_evidence: _OnlineStreamEvidence,
+) -> int:
+    payload = _load_json_object(path, "offline_labels")
+    _require_fields(payload, _OFFLINE_FIELDS, "offline_fields_mismatch")
+    _require_equal(
+        payload["schema_version"],
+        _OFFLINE_LABELS_SCHEMA,
+        "offline_labels_schema_mismatch",
+    )
+    for key in ("episode_uid", "scenario_version", "seed", "episode_id"):
+        _require_equal(
+            payload[key],
+            descriptor[key],
+            f"descriptor_offline_binding_mismatch.{key}",
+        )
+    reward_bounds = _mapping(payload["reward_bounds"], "offline_reward_bounds_invalid")
+    _require_fields(
+        reward_bounds,
+        frozenset({"minimum", "maximum"}),
+        "offline_reward_bounds_fields_mismatch",
+    )
+    labels = payload["labels"]
+    if not isinstance(labels, list):
+        _fail("offline_labels_invalid")
+    _require_equal(
+        len(labels),
+        stream_evidence.sample_count,
+        "offline_label_count_mismatch",
+    )
+    sample_keys: list[str] = []
+    observation_keys: list[str] = []
+    for raw_label in labels:
+        label = _mapping(raw_label, "offline_label_invalid")
+        _require_fields(label, _OFFLINE_LABEL_FIELDS, "offline_label_fields_mismatch")
+        _require_equal(
+            label["schema_version"],
+            _OFFLINE_LABEL_SCHEMA,
+            "offline_label_schema_mismatch",
+        )
+        sample_keys.append(
+            _nonempty_string(label["sample_key"], "offline_sample_key_invalid")
+        )
+        observation_keys.append(
+            _nonempty_string(
+                label["observation_key"], "offline_observation_key_invalid"
+            )
+        )
+    _require_equal(
+        tuple(sample_keys),
+        stream_evidence.sample_keys,
+        "offline_sample_key_binding_mismatch",
+    )
+    _require_equal(
+        tuple(observation_keys),
+        stream_evidence.observation_keys,
+        "offline_observation_key_binding_mismatch",
+    )
+    return len(labels)
 
 
 def _validate_source_provenance(
@@ -895,6 +1115,7 @@ def _verify_checksum_inventory(
     checksum_path = root / "SHA256SUMS"
     if checksum_path.is_symlink() or not checksum_path.is_file():
         _fail("checksums_missing_or_invalid")
+    checksum_evidence = _hash_regular_file(checksum_path)
     hashes = _read_checksums(checksum_path)
     actual_files: set[str] = set()
     for path in root.rglob("*"):
@@ -911,7 +1132,7 @@ def _verify_checksum_inventory(
             "checksum_artifact_set_mismatch",
             _set_difference_detail(set(hashes), actual_files),
         )
-    evidence: dict[Path, _FileEvidence] = {}
+    evidence: dict[Path, _FileEvidence] = {checksum_path: checksum_evidence}
     for relative, expected in hashes.items():
         path = _safe_artifact_path(root, relative)
         item = _hash_regular_file(path)
@@ -1001,12 +1222,14 @@ def _hash_regular_file(path: Path) -> _FileEvidence:
         before.st_ino,
         before.st_size,
         before.st_mtime_ns,
+        stat.S_IMODE(before.st_mode),
     )
     after_fingerprint = (
         after.st_dev,
         after.st_ino,
         after.st_size,
         after.st_mtime_ns,
+        stat.S_IMODE(after.st_mode),
     )
     if before_fingerprint != after_fingerprint:
         _fail("artifact_changed_during_audit", path.name)
@@ -1017,13 +1240,26 @@ def _hash_regular_file(path: Path) -> _FileEvidence:
         inode=int(after.st_ino),
         size=int(after.st_size),
         modified_ns=int(after.st_mtime_ns),
+        mode=stat.S_IMODE(after.st_mode),
     )
 
 
 def _verify_unchanged(evidence: _FileEvidence) -> None:
     info = evidence.path.stat(follow_symlinks=False)
-    actual = (int(info.st_dev), int(info.st_ino), int(info.st_size), int(info.st_mtime_ns))
-    expected = (evidence.device, evidence.inode, evidence.size, evidence.modified_ns)
+    actual = (
+        int(info.st_dev),
+        int(info.st_ino),
+        int(info.st_size),
+        int(info.st_mtime_ns),
+        stat.S_IMODE(info.st_mode),
+    )
+    expected = (
+        evidence.device,
+        evidence.inode,
+        evidence.size,
+        evidence.modified_ns,
+        evidence.mode,
+    )
     if actual != expected:
         _fail("artifact_changed_during_audit", evidence.path.name)
 
@@ -1176,14 +1412,6 @@ def _sha256_json(value: Any) -> str:
         + "\n"
     ).encode("utf-8")
     return sha256(payload).hexdigest()
-
-
-def _sha256_file(path: Path) -> str:
-    digest = sha256()
-    with path.open("rb") as stream:
-        for block in iter(lambda: stream.read(1024 * 1024), b""):
-            digest.update(block)
-    return digest.hexdigest()
 
 
 def _set_difference_detail(expected: set[str], actual: set[str]) -> str:

@@ -1,5 +1,42 @@
 # D6 实现差距审计
 
+## 2026-08-01 D5 A3 v2 来源完整性 P1 关闭
+
+### 已关闭范围
+
+D6 已完成 A3 v2 最终候选语料的独立低层来源审计。通用审计器由原 12 项扩展到 16 项，
+新增在线共享对象内容寻址键、footer 样本索引摘要、离线标签逐项绑定和包含摘要清单在内的
+全文件审计期不变性检查。生产实现仅调用 D6-owned 代码，不导入 D5 validator、corpus gate
+或高层 loader。
+
+固定候选层另执行 13 项锚点与范围检查。受审提交为
+`d7bf89060e88a5b1324f2d8d1de36b005ebe5e4d`；manifest 与 `SHA256SUMS` 摘要分别为
+`9b80e47...31d4` 和 `38ea7d89...216`。100 个 descriptor、100 个 gzip 在线流、100 个离线
+文件和 302 个清单工件全部闭合。连同摘要清单共 303 个文件在审计期间保持不变。
+
+语料含 159502 个在线样本和同数离线标签，在线记录共 321215 条。train/validation/test 的
+episode 与 seed 均为 60/20/20 且互斥。候选 seed `22100-22199` 与保留范围 `1000-1019`
+交集为 0；该检查只使用候选 descriptor 中的 seed 数值，没有读取或运行保留 seed 制品。
+在线 truth/actor/object 标识均为 0。来源层与候选层合计 29/29 通过，状态为
+`simulation_research_integrity_confirmed`。
+
+本项关闭“补采 v2 候选语料能否由 D6 独立复核来源、文件、划分和身份隔离”的 D6-owned
+P1。证据位于
+`research_modules/d6_evaluation_metrics/reports/`
+`D5_A3_SOURCE_INDEPENDENT_POINT_MASS_V2_AUDIT_20260801/`。专项测试为
+`18 passed, 1 warning in 2.32s`，D6 全量为
+`1366 passed, 1 warning in 135.82s`。
+
+### 未关闭边界
+
+1. D6 不评价 D5 action-role 覆盖、训练结构门、行为克隆或近端策略优化。来源完整性不能
+   替代 D5 模型准入。
+2. generation plan SHA-256 由 main 作为外部冻结锚点提供。计划文件不在只读数据集根目录，
+   因此 `generation_plan_content_recomputed=false`；若要求独立内容证明，需另行提供计划文件。
+3. 本批仅是三维质点仿真研究来源，不证明 AirSim、真实相机或物理性能。
+4. 模型准入、assist、assignment、degradation、runtime、production、control 和
+   `global_track_id` 写权限全部保持 false。没有新的 D6-owned P0。
+
 ## 2026-07-31 D5 主动视觉来源域审计 P1 关闭
 
 ### 已关闭范围

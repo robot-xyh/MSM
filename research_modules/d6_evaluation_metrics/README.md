@@ -1,5 +1,36 @@
 # D6 Evaluation Metrics
 
+## 2026-08-01 D5 A3 v2 主动视觉候选语料独立审计
+
+D6 已对 main 最终封装的 A3 v2 三维质点主动视觉候选语料完成独立、只读、低层审计。当前
+来源审计器不导入 D5 validator、corpus gate 或高层 loader，直接核对 `SHA256SUMS` 与实际
+文件集合，并逐项解析 manifest、100 个 episode descriptor、100 个在线 gzip 流和 100 个
+离线标签文件。v2 补强了共享对象内容寻址键、样本索引 footer 摘要、离线 episode/样本键
+绑定，以及包含 `SHA256SUMS` 在内的全文件审计期不变性。
+
+受审语料来自 clean commit `d7bf89060e88a5b1324f2d8d1de36b005ebe5e4d`，seed 为
+`22100-22199`。302 个清单工件与 `SHA256SUMS` 共 303 个文件闭合；100 个 episode 含
+159502 个样本、321215 条在线记录、2011 个快照对象、159502 个相机反馈对象和 159502 个
+离线标签。train/validation/test 的 episode 与 seed 均为 60/20/20 且互斥，保留 seed
+`1000-1019` 重叠为 0，在线 truth/actor/object 标识计数均为 0。
+
+16 项来源检查和 13 项候选锚点检查共 29/29 通过，状态为
+`simulation_research_integrity_confirmed`。manifest SHA-256 为
+`9b80e47aed8f4c7a416694220d63d9156010911951cbbf271905ce5c0d6f31d4`，
+`SHA256SUMS` SHA-256 为
+`38ea7d89d57f6b56bdceb70efd534872b37250ef59aceafb11ff3e55401fd216`。
+main 提供的 generation plan 摘要
+`ed9765395da89e682b250ba23bf7322b290b2a559d0eb4403a2469f9a2cc48a9` 作为外部冻结锚点
+登记；计划文件不在受审数据集根目录内，因此 D6 未把该摘要写成内容重算结果。
+
+本结论只确认仿真研究来源与制品完整性。D6 不评价 D5 动作角色覆盖和训练门，不形成模型
+准入，也不证明 AirSim 或真实相机来源。行为克隆、近端策略优化、assist、assignment、
+degradation、runtime、production、control 和 `global_track_id` 写权限全部保持 false。
+机器证据、中文报告和报告校验和位于
+`reports/D5_A3_SOURCE_INDEPENDENT_POINT_MASS_V2_AUDIT_20260801/`。专项测试为
+`18 passed, 1 warning in 2.32s`，D6 全量为
+`1366 passed, 1 warning in 135.82s`。
+
 ## 2026-07-31 D5 主动视觉来源域独立审计
 
 D6 已使用只读来源域审计器复核 finalized 的 D5 A3 独立三维质点数据集。审计器自行复算

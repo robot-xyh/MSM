@@ -3,15 +3,22 @@ from __future__ import annotations
 from collections import Counter
 import gzip
 from hashlib import sha256
+import inspect
 import json
 from pathlib import Path
 
 import pytest
 
 from d6_evaluation_metrics import (
+    D5_ACTIVE_VISION_CANDIDATE_AUDIT_SCHEMA_VERSION,
     D5_ACTIVE_VISION_SOURCE_AUDIT_SCHEMA_VERSION,
+    D5ActiveVisionCandidateAuditInputs,
+    audit_d5_active_vision_candidate,
     audit_d5_active_vision_source_dataset,
+    write_d5_active_vision_candidate_audit_report,
 )
+from d6_evaluation_metrics import d5_active_vision_candidate_audit as candidate_module
+from d6_evaluation_metrics import d5_active_vision_source_audit as source_module
 
 
 _DOMAIN_TIER = {
@@ -101,6 +108,8 @@ def _write_online_stream(
     source_provenance: dict[str, object] | None,
     synthetic_fixture: bool,
     online_identity_key: str | None,
+    tamper_object_key_hash: bool,
+    tamper_sample_index_sha: bool,
 ) -> None:
     header = {
         "record_type": "header",
@@ -116,36 +125,62 @@ def _write_online_stream(
     }
     if source_provenance is not None:
         header["source_provenance"] = source_provenance
+    feedback_value = {
+        "schema_version": "d5.active-vision-camera-feedback.v1",
+        "camera_id": "camera-local",
+        "accepted": True,
+    }
+    feedback_key = f"camera-feedback-sha256-{_sha_json(feedback_value)}"
+    if tamper_object_key_hash:
+        feedback_key = f"camera-feedback-sha256-{'0' * 64}"
     feedback = {
         "record_type": "camera_feedback",
-        "object_key": f"camera-feedback-sha256-{'c' * 64}",
-        "value": {"camera_id": "camera-local", "accepted": True},
+        "object_key": feedback_key,
+        "value": feedback_value,
     }
+    snapshot_value = {
+        "schema_version": "d5.active-vision-snapshot.v1",
+        "global_track_id": f"GT-{seed}",
+        "measurement_timestamp": 1.0,
+        "arrival_timestamp": 1.1,
+    }
+    snapshot_key = f"snapshot-sha256-{_sha_json(snapshot_value)}"
     snapshot = {
         "record_type": "snapshot",
-        "object_key": f"snapshot-sha256-{'d' * 64}",
-        "value": {
-            "global_track_id": f"GT-{seed}",
-            "measurement_timestamp": 1.0,
-            "arrival_timestamp": 1.1,
-        },
+        "object_key": snapshot_key,
+        "value": snapshot_value,
     }
+    sample_key = f"sample-{seed}"
+    observation_key = f"observation-{seed}"
     sample = {
         "record_type": "sample",
         "schema_version": "d5.active-vision-sample.v2",
         "sequence_index": 0,
-        "sample_key": f"sample-{seed}",
-        "observation_key": f"observation-{seed}",
+        "sample_key": sample_key,
+        "observation_key": observation_key,
+        "snapshot_key": snapshot_key,
+        "camera_feedback_key": feedback_key,
     }
     if online_identity_key is not None:
         sample[online_identity_key] = "Intruder_001"
+    sample_index = [
+        {
+            "sequence_index": 0,
+            "sample_key": sample_key,
+            "observation_key": observation_key,
+            "snapshot_key": snapshot_key,
+            "camera_feedback_key": feedback_key,
+        }
+    ]
     footer = {
         "record_type": "footer",
         "schema_version": "d5.active-vision-episode-record.v2",
         "sample_count": 1,
         "unique_snapshot_count": 1,
         "unique_camera_feedback_count": 1,
-        "sample_index_sha256": "e" * 64,
+        "sample_index_sha256": (
+            "f" * 64 if tamper_sample_index_sha else _sha_json(sample_index)
+        ),
     }
     path.parent.mkdir(parents=True, exist_ok=True)
     with path.open("wb") as raw:
@@ -166,6 +201,9 @@ def _build_dataset(
     fixture_override: bool | None = None,
     tamper_source_summary: bool = False,
     tamper_split_sha: bool = False,
+    tamper_object_key_hash: bool = False,
+    tamper_sample_index_sha: bool = False,
+    tamper_offline_binding: bool = False,
 ) -> Path:
     root.mkdir(parents=True)
     config = {
@@ -208,13 +246,36 @@ def _build_dataset(
             source_provenance=provenance,
             synthetic_fixture=synthetic_fixture,
             online_identity_key=online_identity_key,
+            tamper_object_key_hash=tamper_object_key_hash,
+            tamper_sample_index_sha=tamper_sample_index_sha,
         )
         _write_json(
             root / offline_relative,
             {
                 "schema_version": "d5.active-vision-offline-labels.v1",
                 "episode_uid": uid,
-                "labels": [],
+                "scenario_version": "d6-source-audit-fixture-v1",
+                "seed": seed,
+                "episode_id": f"episode-{seed}",
+                "reward_bounds": {"minimum": -1.0, "maximum": 1.0},
+                "labels": [
+                    {
+                        "schema_version": "d5.active-vision-offline-label.v1",
+                        "sample_key": (
+                            f"wrong-sample-{seed}"
+                            if tamper_offline_binding and index == 0
+                            else f"sample-{seed}"
+                        ),
+                        "observation_key": f"observation-{seed}",
+                        "reward": {"available": False, "value": None},
+                        "counterfactual": {
+                            "available": False,
+                            "reward": None,
+                        },
+                        "outcome": {"available": False, "value": None},
+                        "causal_label": {"available": False, "value": None},
+                    }
+                ],
             },
         )
         descriptor: dict[str, object] = {
@@ -362,10 +423,99 @@ def test_clean_point_mass_dataset_confirms_only_simulation_research_integrity(
     assert result["simulation_research_integrity_confirmed"] is True
     assert result["declaration_only"] is False
     assert result["evidence"]["episode_count"] == 5
+    assert result["evidence"]["descriptor_count"] == 5
+    assert result["evidence"]["online_stream_count"] == 5
+    assert result["evidence"]["offline_file_count"] == 5
+    assert result["evidence"]["online_footer_index_binding_count"] == 5
+    assert result["evidence"]["offline_episode_binding_count"] == 5
+    assert result["evidence"]["offline_label_count"] == 5
+    assert result["evidence"]["audited_file_count"] == 18
     assert result["evidence"]["split"]["seed_sets_mutually_exclusive"] is True
     assert all(result["checks"].values())
     assert all(value is False for value in result["authority"].values())
     assert result["d6_control_participation"] is False
+
+
+def test_candidate_audit_pins_low_level_source_and_writes_report(tmp_path: Path) -> None:
+    root = _build_dataset(tmp_path / "candidate")
+    inputs = D5ActiveVisionCandidateAuditInputs(
+        dataset_root=root,
+        expected_producer_git_commit="a" * 40,
+        expected_generation_plan_sha256="1" * 64,
+        expected_manifest_sha256=_sha_file(root / "manifest.json"),
+        expected_checksums_sha256=_sha_file(root / "SHA256SUMS"),
+        expected_episode_count=5,
+        expected_seed_first=200,
+        expected_seed_last=204,
+        reserved_seed_first=1000,
+        reserved_seed_last=1019,
+    )
+
+    result = audit_d5_active_vision_candidate(inputs)
+
+    assert result["schema_version"] == D5_ACTIVE_VISION_CANDIDATE_AUDIT_SCHEMA_VERSION
+    assert result["status"] == "simulation_research_integrity_confirmed"
+    assert result["check_counts"] == {
+        "source_passed": 16,
+        "source_total": 16,
+        "candidate_passed": 13,
+        "candidate_total": 13,
+        "passed": 29,
+        "total": 29,
+    }
+    assert result["evidence"]["reserved_seed_range"]["overlap_count"] == 0
+    assert result["evidence"]["online_truth_identifier_count"] == 0
+    assert result["production_evidence"]["generation_plan_content_recomputed"] is False
+    assert all(value is False for value in result["authority"].values())
+
+    output = tmp_path / "report"
+    hashes = write_d5_active_vision_candidate_audit_report(
+        output,
+        result,
+        validation_date="2026-08-01",
+        software_validation={
+            "passed": 1,
+            "warning_count": 0,
+            "duration_seconds": 0.1,
+        },
+    )
+    assert set(hashes) == {
+        "audit_evidence.json",
+        "D5_A3_V2_SOURCE_INDEPENDENT_AUDIT_CN.md",
+        "SHA256SUMS",
+    }
+    assert "29/29" in (output / "D5_A3_V2_SOURCE_INDEPENDENT_AUDIT_CN.md").read_text(
+        encoding="utf-8"
+    )
+
+
+def test_candidate_audit_rejects_reserved_seed_overlap(tmp_path: Path) -> None:
+    root = _build_dataset(tmp_path / "reserved-overlap")
+    result = audit_d5_active_vision_candidate(
+        D5ActiveVisionCandidateAuditInputs(
+            dataset_root=root,
+            expected_producer_git_commit="a" * 40,
+            expected_generation_plan_sha256="1" * 64,
+            expected_manifest_sha256=_sha_file(root / "manifest.json"),
+            expected_checksums_sha256=_sha_file(root / "SHA256SUMS"),
+            expected_episode_count=5,
+            expected_seed_first=200,
+            expected_seed_last=204,
+            reserved_seed_first=200,
+            reserved_seed_last=204,
+        )
+    )
+
+    assert result["status"] == "fail_closed"
+    assert result["blocker_codes"] == ["reserved_seed_overlap_zero"]
+    assert all(value is False for value in result["authority"].values())
+
+
+def test_source_auditors_do_not_import_d5_validator_or_loader() -> None:
+    for module in (source_module, candidate_module):
+        source = inspect.getsource(module)
+        assert "d5_terminal_association" not in source
+        assert "active_vision_corpus_audit" not in source
 
 
 @pytest.mark.parametrize(
@@ -419,6 +569,28 @@ def test_truth_identity_with_fully_rebound_hashes_fails_closed(tmp_path: Path) -
     assert result["blocker_codes"] == [
         "online_truth_actor_object_identity_forbidden"
     ]
+    assert all(value is False for value in result["authority"].values())
+
+
+@pytest.mark.parametrize(
+    ("kwargs", "expected_code"),
+    (
+        ({"tamper_object_key_hash": True}, "online_object_key_hash_mismatch"),
+        ({"tamper_sample_index_sha": True}, "sample_index_sha256_mismatch"),
+        ({"tamper_offline_binding": True}, "offline_sample_key_binding_mismatch"),
+    ),
+)
+def test_rebound_low_level_stream_and_offline_tampering_fails_closed(
+    tmp_path: Path,
+    kwargs: dict[str, object],
+    expected_code: str,
+) -> None:
+    root = _build_dataset(tmp_path / expected_code, **kwargs)
+
+    result = audit_d5_active_vision_source_dataset(root)
+
+    assert result["status"] == "fail_closed"
+    assert result["blocker_codes"] == [expected_code]
     assert all(value is False for value in result["authority"].values())
 
 

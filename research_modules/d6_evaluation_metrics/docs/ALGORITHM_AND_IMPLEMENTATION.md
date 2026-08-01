@@ -1,5 +1,44 @@
 # D6 系统级离线评估：算法原理与实施说明
 
+## A3 v2 候选语料低层审计
+
+当前 v2 审计由通用低层来源审计和固定候选锚点审计两层组成。第一层只接受数据集根目录，
+使用 Python 标准库逐文件和逐 JSON 记录验证，不导入 D5 的 validator、corpus gate 或高层
+loader。第二层在第一层通过后，核对本批次指定的 producer commit、manifest、摘要清单、
+episode 数和 seed 范围，并检查与保留 seed 范围的交集。
+
+低层处理顺序如下：
+
+1. 读取并哈希 `SHA256SUMS`，解析排序后的路径-摘要条目；遍历根目录重建实际文件集合，拒绝
+   symlink、非普通文件、额外文件、缺失文件、可写 finalized 文件和摘要不一致；
+2. 为摘要清单和 302 个登记工件保存设备、inode、大小、修改时间与权限，审计结束后再次
+   比较，形成 303 个文件的审计期不变性证据；
+3. 解析 manifest 与 dataset config，验证 schema、存储合同、来源合同和配置摘要；按
+   `episode_uid` 顺序读取 100 个独立 descriptor，并与 manifest 内嵌 descriptor 全等比较；
+4. 流式解压每个在线 JSONL。header 必须位于首行，footer 必须位于末行。snapshot 和
+   camera-feedback 的 `object_key` 由规范化 value 重算；sample 必须按连续序号引用已经出现的
+   snapshot 和 feedback；
+5. 根据全部 sample 重建五字段样本索引并复算 `sample_index_sha256`，再与 footer 比较；同时
+   核对样本、快照和反馈数量；
+6. 解析对应离线文件，核对 episode 身份和 label schema，要求 159502 个离线 sample key 与
+   observation key 和在线样本逐项同序；
+7. 从 descriptor 重建来源域、证据等级、fixture 和 clean source summary，流式拒绝在线
+   truth、actor、object 或身份型值；
+8. 按 split seed 重新执行确定性划分，复算 `split_sha256` 和 `training_set_sha256`，检查
+   train/validation/test 的 seed 集合互斥；
+9. 固定候选层核对 producer commit、manifest SHA-256、`SHA256SUMS` SHA-256、100 个
+   descriptor/online/offline 文件和 seed `22100-22199`，再计算与 `1000-1019` 的交集；
+10. 全部检查通过时只返回 `simulation_research_integrity_confirmed`。所有 authority 字段仍
+    为 false，D6 不把来源通过转换为训练或控制许可。
+
+本轮实际解析 321215 条在线记录，其中样本 159502 条、snapshot 2011 条、camera-feedback
+159502 条，另有 100 个 header 和 100 个 footer。离线 label 为 159502 条。来源层 16/16、
+候选层 13/13 通过。机器证据保留关键计数、哈希、拆分和边界，不复制全部在线载荷。
+
+generation plan SHA-256 作为 main 提供的外部锚点进入报告。数据集根不包含计划文件，审计器
+没有读取上级输出目录，也没有声称完成 plan-content 复算。manifest 与摘要清单则从受审输入
+实际读取并独立复算。
+
 ## D5 主动视觉来源域审计流程
 
 公开入口接收一个已 finalized 的数据集根目录，返回固定 schema 的只读审计结果。生产实现只

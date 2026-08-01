@@ -1,5 +1,31 @@
 # D6 系统评估指标综述及子方案
 
+## 2026-08-01 D5 A3 v2 候选语料独立审计评审
+
+评审接受 D6 的来源完整性结论。D6 从 302 项 checksum inventory 和实际文件集合开始，逐项
+解析 100 个 descriptor、100 个在线 gzip 流和 100 个离线文件。在线对象键、样本引用、
+footer 索引摘要、离线 sample/observation key 和全文件审计期不变性均由 D6 低层实现复核，
+没有调用 D5 validator、corpus gate 或高层 loader。
+
+受审范围为 clean commit `d7bf89060e88a5b1324f2d8d1de36b005ebe5e4d`、seed
+`22100-22199`、100 个 episode、159502 个样本和 159502 个离线标签。在线记录共 321215
+条，100 个 header、100 个 footer、2011 个 snapshot 对象和 159502 个 camera-feedback
+对象完成绑定。train/validation/test 为 60/20/20 whole-seed split，三组互斥；保留 seed
+范围重叠为 0，在线 truth/actor/object 标识为 0/0/0。
+
+来源检查 16/16、候选锚点检查 13/13，总计 29/29 通过。评审确认状态
+`simulation_research_integrity_confirmed` 仅适用于本批三维质点仿真研究语料。专项测试
+18 项、D6 全量 1366 项通过；唯一 warning 为既有 Matplotlib 三维投影导入环境。
+
+评审不把 main 提供的 generation plan 摘要写成 D6 内容复算。计划文件不在输入根目录，机器
+证据明确记录 `generation_plan_content_recomputed=false`。manifest、摘要清单、producer
+commit、descriptor、online/offline 和 split 均由受审输入独立核对。
+
+评审不接受由来源完整性推导 D5 动作角色覆盖、训练门、模型效果、AirSim/真实相机来源或
+任何运行权限。行为克隆、近端策略优化、assist、assignment、degradation、runtime、
+production、control 和 `global_track_id` 写权限全部为 false。D5 后续训练准入结果应以 D5
+owner 的独立 gate 为准，D6 只接收其公开结果，不重算 D5 结论。
+
 ## 2026-07-31 D5 A3 三维质点来源独立审计评审
 
 评审接受 D6-owned 低层审计结果。D6 未调用 D5 validator，直接从 finalized 数据集的

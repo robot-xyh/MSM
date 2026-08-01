@@ -1,5 +1,38 @@
 # D6 Evaluation Metrics Plan
 
+## 2026-08-01 D5 A3 v2 候选语料来源审计
+
+### 已完成
+
+- [x] 将通用来源审计从 12 项扩展为 16 项，新增审计期全文件不变性、在线共享对象内容
+  寻址键、footer 样本索引摘要和离线标签绑定检查。
+- [x] 直接解析 100 个 descriptor、100 个 gzip 在线流和 100 个离线文件；离线标签数量和
+  在线样本数量均为 159502，逐项 sample/observation key 顺序一致。
+- [x] 独立复算 302 项 checksum inventory，核对实际工件集；连同 `SHA256SUMS` 共 303 个
+  文件在审计前后保持只读、设备、inode、大小、修改时间和权限模式不变。
+- [x] 固定 producer commit、manifest 和 `SHA256SUMS` 摘要，核对 clean source、三维质点
+  来源域和 `simulation_research` 证据等级。
+- [x] 复算 whole-seed train/validation/test 分配、split SHA-256 和 training-set SHA-256；
+  三组均为 60/20/20，seed `22100-22199` 连续且互斥。
+- [x] 只按候选 seed 数值检查与保留范围 `1000-1019` 的交集，结果为 0；未读取或运行保留
+  seed 的正式制品。
+- [x] 流式扫描在线记录，truth/actor/object 标识计数为 0；全部模型、辅助、规划、降级、
+  运行和控制权限保持 false。
+- [x] 生成 v2/20260801 独立机器证据、中文报告和 `SHA256SUMS`，不覆盖 2026-07-31 v1
+  历史报告。
+- [x] 验证专项 `18 passed, 1 warning in 2.32s`；D6 全量
+  `1366 passed, 1 warning in 135.82s`。
+
+### 当前边界
+
+- [ ] D5 动作角色覆盖、训练结构门、行为克隆和近端策略优化准入不属于本审计结论，仍由
+  D5 owner 使用自己的正式门控证据判定。
+- [ ] generation plan SHA-256 由 main 作为固定生产锚点提供；计划文件不在本次只读数据集
+  根目录，D6 没有重算其内容。若要求 plan-content 独立证明，main 需另行提供只读计划文件。
+- [ ] 本批次是三维质点仿真研究语料，不形成 AirSim、真实相机、物理效果或部署性能证据。
+- [ ] 来源完整性通过不开放模型准入、assist、assignment、degradation、runtime、production、
+  control 或 `global_track_id` 写权限。
+
 ## 2026-07-31 D5 主动视觉来源域独立审计
 
 ### 已完成
