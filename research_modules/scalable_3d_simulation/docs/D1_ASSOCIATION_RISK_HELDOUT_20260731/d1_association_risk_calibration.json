@@ -1,0 +1,882 @@
+{
+  "case_count": 36,
+  "cases": [
+    {
+      "case_id": "100v100__seed_2000",
+      "composite_warning_count": 0,
+      "episode_dir": "/dev/shm/msm-d1-risk-heldout-dev-20260731/nominal/100v100/seed_2000",
+      "episode_id": "nominal_100v100-s2000-d9c9ff2ccdbf-r4d5e10daf3e3",
+      "evidence_count": 9,
+      "expected_failure_event_count": 0,
+      "expected_failure_events": [],
+      "flagged_expected_failure_event_count": 0,
+      "missed_failure_event_diagnostics": [],
+      "online_classification_complete": true,
+      "online_classification_count": 9,
+      "reason_counts": {
+        "multiple_gate_candidates": 1,
+        "projection_out_of_frame": 9
+      },
+      "strict_identity_metrics_available": true,
+      "strict_identity_metrics_reason": null
+    },
+    {
+      "case_id": "100v100__seed_2002",
+      "composite_warning_count": 0,
+      "episode_dir": "/dev/shm/msm-d1-risk-heldout-dev-20260731/nominal/100v100/seed_2002",
+      "episode_id": "nominal_100v100-s2002-1c0f142ebdab-r4d5e10daf3e3",
+      "evidence_count": 11,
+      "expected_failure_event_count": 0,
+      "expected_failure_events": [],
+      "flagged_expected_failure_event_count": 0,
+      "missed_failure_event_diagnostics": [],
+      "online_classification_complete": true,
+      "online_classification_count": 11,
+      "reason_counts": {
+        "multiple_gate_candidates": 2,
+        "projection_out_of_frame": 11,
+        "weak_assignment_margin": 1
+      },
+      "strict_identity_metrics_available": true,
+      "strict_identity_metrics_reason": null
+    },
+    {
+      "case_id": "100v100__seed_2003",
+      "composite_warning_count": 0,
+      "episode_dir": "/dev/shm/msm-d1-risk-heldout-dev-20260731/nominal/100v100/seed_2003",
+      "episode_id": "nominal_100v100-s2003-4af9e44e0699-r4d5e10daf3e3",
+      "evidence_count": 11,
+      "expected_failure_event_count": 0,
+      "expected_failure_events": [],
+      "flagged_expected_failure_event_count": 0,
+      "missed_failure_event_diagnostics": [],
+      "online_classification_complete": true,
+      "online_classification_count": 11,
+      "reason_counts": {
+        "multiple_gate_candidates": 2,
+        "near_projection_singularity": 1,
+        "projection_out_of_frame": 10
+      },
+      "strict_identity_metrics_available": true,
+      "strict_identity_metrics_reason": null
+    },
+    {
+      "case_id": "100v100__seed_2004",
+      "composite_warning_count": 0,
+      "episode_dir": "/dev/shm/msm-d1-risk-heldout-dev-20260731/nominal/100v100/seed_2004",
+      "episode_id": "nominal_100v100-s2004-d6e78d94e3c9-r4d5e10daf3e3",
+      "evidence_count": 11,
+      "expected_failure_event_count": 0,
+      "expected_failure_events": [],
+      "flagged_expected_failure_event_count": 0,
+      "missed_failure_event_diagnostics": [],
+      "online_classification_complete": true,
+      "online_classification_count": 11,
+      "reason_counts": {
+        "multiple_gate_candidates": 2,
+        "projection_out_of_frame": 11
+      },
+      "strict_identity_metrics_available": true,
+      "strict_identity_metrics_reason": null
+    },
+    {
+      "case_id": "100v100__seed_2005",
+      "composite_warning_count": 0,
+      "episode_dir": "/dev/shm/msm-d1-risk-heldout-dev-20260731/nominal/100v100/seed_2005",
+      "episode_id": "nominal_100v100-s2005-01a7947384ad-r4d5e10daf3e3",
+      "evidence_count": 7,
+      "expected_failure_event_count": 0,
+      "expected_failure_events": [],
+      "flagged_expected_failure_event_count": 0,
+      "missed_failure_event_diagnostics": [],
+      "online_classification_complete": true,
+      "online_classification_count": 7,
+      "reason_counts": {
+        "multiple_gate_candidates": 1,
+        "projection_out_of_frame": 7
+      },
+      "strict_identity_metrics_available": true,
+      "strict_identity_metrics_reason": null
+    },
+    {
+      "case_id": "100v100__seed_2006",
+      "composite_warning_count": 1,
+      "episode_dir": "/dev/shm/msm-d1-risk-heldout-dev-20260731/nominal/100v100/seed_2006",
+      "episode_id": "nominal_100v100-s2006-2fdd97a3ffcf-r4d5e10daf3e3",
+      "evidence_count": 17,
+      "expected_failure_event_count": 1,
+      "expected_failure_events": [
+        {
+          "measurement_timestamp": 1.8,
+          "sensor_id": "CAM-RECON-001"
+        }
+      ],
+      "flagged_expected_failure_event_count": 1,
+      "missed_failure_event_diagnostics": [],
+      "online_classification_complete": true,
+      "online_classification_count": 17,
+      "reason_counts": {
+        "multiple_gate_candidates": 2,
+        "projection_out_of_frame": 17,
+        "weak_assignment_margin": 2
+      },
+      "strict_identity_metrics_available": false,
+      "strict_identity_metrics_reason": "multiple_truth_targets_for_global_track"
+    },
+    {
+      "case_id": "100v100__seed_2008",
+      "composite_warning_count": 0,
+      "episode_dir": "/dev/shm/msm-d1-risk-heldout-dev-20260731/nominal/100v100/seed_2008",
+      "episode_id": "nominal_100v100-s2008-c32976063dad-r4d5e10daf3e3",
+      "evidence_count": 20,
+      "expected_failure_event_count": 0,
+      "expected_failure_events": [],
+      "flagged_expected_failure_event_count": 0,
+      "missed_failure_event_diagnostics": [],
+      "online_classification_complete": true,
+      "online_classification_count": 20,
+      "reason_counts": {
+        "ill_conditioned_innovation": 1,
+        "multiple_gate_candidates": 5,
+        "near_projection_singularity": 1,
+        "projection_out_of_frame": 19,
+        "weak_assignment_margin": 1
+      },
+      "strict_identity_metrics_available": true,
+      "strict_identity_metrics_reason": null
+    },
+    {
+      "case_id": "100v100__seed_2010",
+      "composite_warning_count": 0,
+      "episode_dir": "/dev/shm/msm-d1-risk-heldout-dev-20260731/nominal/100v100/seed_2010",
+      "episode_id": "nominal_100v100-s2010-b411b7b23520-r4d5e10daf3e3",
+      "evidence_count": 9,
+      "expected_failure_event_count": 0,
+      "expected_failure_events": [],
+      "flagged_expected_failure_event_count": 0,
+      "missed_failure_event_diagnostics": [],
+      "online_classification_complete": true,
+      "online_classification_count": 9,
+      "reason_counts": {
+        "multiple_gate_candidates": 3,
+        "projection_out_of_frame": 8
+      },
+      "strict_identity_metrics_available": true,
+      "strict_identity_metrics_reason": null
+    },
+    {
+      "case_id": "100v100__seed_2011",
+      "composite_warning_count": 0,
+      "episode_dir": "/dev/shm/msm-d1-risk-heldout-dev-20260731/nominal/100v100/seed_2011",
+      "episode_id": "nominal_100v100-s2011-d54892c33dbc-r4d5e10daf3e3",
+      "evidence_count": 19,
+      "expected_failure_event_count": 0,
+      "expected_failure_events": [],
+      "flagged_expected_failure_event_count": 0,
+      "missed_failure_event_diagnostics": [],
+      "online_classification_complete": true,
+      "online_classification_count": 19,
+      "reason_counts": {
+        "multiple_gate_candidates": 3,
+        "near_projection_singularity": 1,
+        "projection_out_of_frame": 19,
+        "weak_assignment_margin": 1
+      },
+      "strict_identity_metrics_available": true,
+      "strict_identity_metrics_reason": null
+    },
+    {
+      "case_id": "100v100__seed_2012",
+      "composite_warning_count": 2,
+      "episode_dir": "/dev/shm/msm-d1-risk-heldout-dev-20260731/nominal/100v100/seed_2012",
+      "episode_id": "nominal_100v100-s2012-1dd440ab6a4a-r4d5e10daf3e3",
+      "evidence_count": 15,
+      "expected_failure_event_count": 2,
+      "expected_failure_events": [
+        {
+          "measurement_timestamp": 1.8,
+          "sensor_id": "CAM-RECON-002"
+        },
+        {
+          "measurement_timestamp": 1.8,
+          "sensor_id": "CAM-RECON-004"
+        }
+      ],
+      "flagged_expected_failure_event_count": 2,
+      "missed_failure_event_diagnostics": [],
+      "online_classification_complete": true,
+      "online_classification_count": 15,
+      "reason_counts": {
+        "ill_conditioned_innovation": 1,
+        "multiple_gate_candidates": 3,
+        "near_projection_singularity": 2,
+        "projection_out_of_frame": 14,
+        "weak_assignment_margin": 1
+      },
+      "strict_identity_metrics_available": false,
+      "strict_identity_metrics_reason": "multiple_truth_targets_for_global_track"
+    },
+    {
+      "case_id": "100v100__seed_2013",
+      "composite_warning_count": 0,
+      "episode_dir": "/dev/shm/msm-d1-risk-heldout-dev-20260731/nominal/100v100/seed_2013",
+      "episode_id": "nominal_100v100-s2013-11038c92ca6a-r4d5e10daf3e3",
+      "evidence_count": 12,
+      "expected_failure_event_count": 0,
+      "expected_failure_events": [],
+      "flagged_expected_failure_event_count": 0,
+      "missed_failure_event_diagnostics": [],
+      "online_classification_complete": true,
+      "online_classification_count": 12,
+      "reason_counts": {
+        "multiple_gate_candidates": 2,
+        "projection_out_of_frame": 11
+      },
+      "strict_identity_metrics_available": true,
+      "strict_identity_metrics_reason": null
+    },
+    {
+      "case_id": "100v100__seed_2014",
+      "composite_warning_count": 0,
+      "episode_dir": "/dev/shm/msm-d1-risk-heldout-dev-20260731/nominal/100v100/seed_2014",
+      "episode_id": "nominal_100v100-s2014-390b26ab29fc-r4d5e10daf3e3",
+      "evidence_count": 15,
+      "expected_failure_event_count": 0,
+      "expected_failure_events": [],
+      "flagged_expected_failure_event_count": 0,
+      "missed_failure_event_diagnostics": [],
+      "online_classification_complete": true,
+      "online_classification_count": 15,
+      "reason_counts": {
+        "multiple_gate_candidates": 4,
+        "projection_out_of_frame": 13
+      },
+      "strict_identity_metrics_available": true,
+      "strict_identity_metrics_reason": null
+    },
+    {
+      "case_id": "100v100__seed_2015",
+      "composite_warning_count": 0,
+      "episode_dir": "/dev/shm/msm-d1-risk-heldout-dev-20260731/nominal/100v100/seed_2015",
+      "episode_id": "nominal_100v100-s2015-c514506452f3-r4d5e10daf3e3",
+      "evidence_count": 10,
+      "expected_failure_event_count": 0,
+      "expected_failure_events": [],
+      "flagged_expected_failure_event_count": 0,
+      "missed_failure_event_diagnostics": [],
+      "online_classification_complete": true,
+      "online_classification_count": 10,
+      "reason_counts": {
+        "multiple_gate_candidates": 3,
+        "projection_out_of_frame": 9
+      },
+      "strict_identity_metrics_available": true,
+      "strict_identity_metrics_reason": null
+    },
+    {
+      "case_id": "100v100__seed_2016",
+      "composite_warning_count": 0,
+      "episode_dir": "/dev/shm/msm-d1-risk-heldout-dev-20260731/nominal/100v100/seed_2016",
+      "episode_id": "nominal_100v100-s2016-e857ff1a4f05-r4d5e10daf3e3",
+      "evidence_count": 11,
+      "expected_failure_event_count": 0,
+      "expected_failure_events": [],
+      "flagged_expected_failure_event_count": 0,
+      "missed_failure_event_diagnostics": [],
+      "online_classification_complete": true,
+      "online_classification_count": 11,
+      "reason_counts": {
+        "multiple_gate_candidates": 4,
+        "projection_out_of_frame": 11,
+        "weak_assignment_margin": 1
+      },
+      "strict_identity_metrics_available": true,
+      "strict_identity_metrics_reason": null
+    },
+    {
+      "case_id": "100v100__seed_2017",
+      "composite_warning_count": 0,
+      "episode_dir": "/dev/shm/msm-d1-risk-heldout-dev-20260731/nominal/100v100/seed_2017",
+      "episode_id": "nominal_100v100-s2017-d4af72e65fd5-r4d5e10daf3e3",
+      "evidence_count": 9,
+      "expected_failure_event_count": 0,
+      "expected_failure_events": [],
+      "flagged_expected_failure_event_count": 0,
+      "missed_failure_event_diagnostics": [],
+      "online_classification_complete": true,
+      "online_classification_count": 9,
+      "reason_counts": {
+        "multiple_gate_candidates": 2,
+        "projection_out_of_frame": 9
+      },
+      "strict_identity_metrics_available": true,
+      "strict_identity_metrics_reason": null
+    },
+    {
+      "case_id": "100v100__seed_2018",
+      "composite_warning_count": 0,
+      "episode_dir": "/dev/shm/msm-d1-risk-heldout-dev-20260731/nominal/100v100/seed_2018",
+      "episode_id": "nominal_100v100-s2018-4b150be55cf4-r4d5e10daf3e3",
+      "evidence_count": 9,
+      "expected_failure_event_count": 0,
+      "expected_failure_events": [],
+      "flagged_expected_failure_event_count": 0,
+      "missed_failure_event_diagnostics": [],
+      "online_classification_complete": true,
+      "online_classification_count": 9,
+      "reason_counts": {
+        "multiple_gate_candidates": 1,
+        "projection_out_of_frame": 8
+      },
+      "strict_identity_metrics_available": true,
+      "strict_identity_metrics_reason": null
+    },
+    {
+      "case_id": "100v100__seed_2019",
+      "composite_warning_count": 0,
+      "episode_dir": "/dev/shm/msm-d1-risk-heldout-dev-20260731/nominal/100v100/seed_2019",
+      "episode_id": "nominal_100v100-s2019-18c1c182b88e-r4d5e10daf3e3",
+      "evidence_count": 18,
+      "expected_failure_event_count": 0,
+      "expected_failure_events": [],
+      "flagged_expected_failure_event_count": 0,
+      "missed_failure_event_diagnostics": [],
+      "online_classification_complete": true,
+      "online_classification_count": 18,
+      "reason_counts": {
+        "ill_conditioned_innovation": 1,
+        "multiple_gate_candidates": 7,
+        "near_projection_singularity": 2,
+        "projection_out_of_frame": 17
+      },
+      "strict_identity_metrics_available": true,
+      "strict_identity_metrics_reason": null
+    },
+    {
+      "case_id": "200v200__seed_2001",
+      "composite_warning_count": 2,
+      "episode_dir": "/dev/shm/msm-d1-risk-heldout-dev-20260731/nominal/200v200/seed_2001",
+      "episode_id": "nominal_200v200-s2001-3a7e6249fafa-r17ee5f55e2f4",
+      "evidence_count": 44,
+      "expected_failure_event_count": 2,
+      "expected_failure_events": [
+        {
+          "measurement_timestamp": 1.6,
+          "sensor_id": "CAM-RECON-004"
+        },
+        {
+          "measurement_timestamp": 1.8,
+          "sensor_id": "CAM-RECON-004"
+        }
+      ],
+      "flagged_expected_failure_event_count": 2,
+      "missed_failure_event_diagnostics": [],
+      "online_classification_complete": true,
+      "online_classification_count": 44,
+      "reason_counts": {
+        "multiple_gate_candidates": 20,
+        "projection_out_of_frame": 39,
+        "weak_assignment_margin": 3
+      },
+      "strict_identity_metrics_available": false,
+      "strict_identity_metrics_reason": "multiple_truth_targets_for_global_track"
+    },
+    {
+      "case_id": "200v200__seed_2002",
+      "composite_warning_count": 1,
+      "episode_dir": "/dev/shm/msm-d1-risk-heldout-dev-20260731/nominal/200v200/seed_2002",
+      "episode_id": "nominal_200v200-s2002-0c2f9520714e-r17ee5f55e2f4",
+      "evidence_count": 49,
+      "expected_failure_event_count": 1,
+      "expected_failure_events": [
+        {
+          "measurement_timestamp": 1.8,
+          "sensor_id": "CAM-RECON-001"
+        }
+      ],
+      "flagged_expected_failure_event_count": 1,
+      "missed_failure_event_diagnostics": [],
+      "online_classification_complete": true,
+      "online_classification_count": 49,
+      "reason_counts": {
+        "multiple_gate_candidates": 20,
+        "near_projection_singularity": 1,
+        "projection_out_of_frame": 44,
+        "weak_assignment_margin": 2
+      },
+      "strict_identity_metrics_available": false,
+      "strict_identity_metrics_reason": "multiple_truth_targets_for_global_track"
+    },
+    {
+      "case_id": "200v200__seed_2003",
+      "composite_warning_count": 0,
+      "episode_dir": "/dev/shm/msm-d1-risk-heldout-dev-20260731/nominal/200v200/seed_2003",
+      "episode_id": "nominal_200v200-s2003-23c8ba5def60-r17ee5f55e2f4",
+      "evidence_count": 43,
+      "expected_failure_event_count": 1,
+      "expected_failure_events": [
+        {
+          "measurement_timestamp": 1.8,
+          "sensor_id": "CAM-RECON-003"
+        }
+      ],
+      "flagged_expected_failure_event_count": 0,
+      "missed_failure_event_diagnostics": [
+        {
+          "candidate_evidence_count": 1,
+          "measurement_timestamp": 1.8,
+          "reason": "required_composite_criteria_not_met",
+          "selected_evidence_id": "d1-risk-sha256:587506877a51ee25a86f45090d3f3a166c10c65edae8fbb2fc500c6f5eb231db",
+          "sensor_id": "CAM-RECON-003",
+          "unmatched_required_checks": [
+            "selected_projection_out_of_frame"
+          ]
+        }
+      ],
+      "online_classification_complete": true,
+      "online_classification_count": 43,
+      "reason_counts": {
+        "multiple_gate_candidates": 29,
+        "near_projection_singularity": 1,
+        "projection_out_of_frame": 31,
+        "weak_assignment_margin": 3
+      },
+      "strict_identity_metrics_available": false,
+      "strict_identity_metrics_reason": "multiple_truth_targets_for_global_track"
+    },
+    {
+      "case_id": "200v200__seed_2004",
+      "composite_warning_count": 1,
+      "episode_dir": "/dev/shm/msm-d1-risk-heldout-dev-20260731/nominal/200v200/seed_2004",
+      "episode_id": "nominal_200v200-s2004-e09890af2da8-r17ee5f55e2f4",
+      "evidence_count": 42,
+      "expected_failure_event_count": 1,
+      "expected_failure_events": [
+        {
+          "measurement_timestamp": 1.8,
+          "sensor_id": "CAM-RECON-003"
+        }
+      ],
+      "flagged_expected_failure_event_count": 1,
+      "missed_failure_event_diagnostics": [],
+      "online_classification_complete": true,
+      "online_classification_count": 42,
+      "reason_counts": {
+        "ill_conditioned_innovation": 3,
+        "multiple_gate_candidates": 26,
+        "near_projection_singularity": 4,
+        "projection_out_of_frame": 37,
+        "weak_assignment_margin": 2
+      },
+      "strict_identity_metrics_available": false,
+      "strict_identity_metrics_reason": "multiple_truth_targets_for_global_track"
+    },
+    {
+      "case_id": "200v200__seed_2005",
+      "composite_warning_count": 0,
+      "episode_dir": "/dev/shm/msm-d1-risk-heldout-dev-20260731/nominal/200v200/seed_2005",
+      "episode_id": "nominal_200v200-s2005-17fbb40a75aa-r17ee5f55e2f4",
+      "evidence_count": 31,
+      "expected_failure_event_count": 0,
+      "expected_failure_events": [],
+      "flagged_expected_failure_event_count": 0,
+      "missed_failure_event_diagnostics": [],
+      "online_classification_complete": true,
+      "online_classification_count": 31,
+      "reason_counts": {
+        "multiple_gate_candidates": 7,
+        "projection_out_of_frame": 29,
+        "weak_assignment_margin": 1
+      },
+      "strict_identity_metrics_available": true,
+      "strict_identity_metrics_reason": null
+    },
+    {
+      "case_id": "200v200__seed_2006",
+      "composite_warning_count": 0,
+      "episode_dir": "/dev/shm/msm-d1-risk-heldout-dev-20260731/nominal/200v200/seed_2006",
+      "episode_id": "nominal_200v200-s2006-74ddb4d89efc-r17ee5f55e2f4",
+      "evidence_count": 35,
+      "expected_failure_event_count": 0,
+      "expected_failure_events": [],
+      "flagged_expected_failure_event_count": 0,
+      "missed_failure_event_diagnostics": [],
+      "online_classification_complete": true,
+      "online_classification_count": 35,
+      "reason_counts": {
+        "ill_conditioned_innovation": 1,
+        "multiple_gate_candidates": 15,
+        "near_projection_singularity": 2,
+        "projection_out_of_frame": 29,
+        "weak_assignment_margin": 1
+      },
+      "strict_identity_metrics_available": true,
+      "strict_identity_metrics_reason": null
+    },
+    {
+      "case_id": "200v200__seed_2007",
+      "composite_warning_count": 0,
+      "episode_dir": "/dev/shm/msm-d1-risk-heldout-dev-20260731/nominal/200v200/seed_2007",
+      "episode_id": "nominal_200v200-s2007-41a91dfc0478-r17ee5f55e2f4",
+      "evidence_count": 50,
+      "expected_failure_event_count": 0,
+      "expected_failure_events": [],
+      "flagged_expected_failure_event_count": 0,
+      "missed_failure_event_diagnostics": [],
+      "online_classification_complete": true,
+      "online_classification_count": 50,
+      "reason_counts": {
+        "multiple_gate_candidates": 15,
+        "projection_out_of_frame": 44,
+        "weak_assignment_margin": 1
+      },
+      "strict_identity_metrics_available": true,
+      "strict_identity_metrics_reason": null
+    },
+    {
+      "case_id": "200v200__seed_2008",
+      "composite_warning_count": 1,
+      "episode_dir": "/dev/shm/msm-d1-risk-heldout-dev-20260731/nominal/200v200/seed_2008",
+      "episode_id": "nominal_200v200-s2008-b4a6d56ee7ff-r17ee5f55e2f4",
+      "evidence_count": 48,
+      "expected_failure_event_count": 1,
+      "expected_failure_events": [
+        {
+          "measurement_timestamp": 1.8,
+          "sensor_id": "CAM-RECON-001"
+        }
+      ],
+      "flagged_expected_failure_event_count": 1,
+      "missed_failure_event_diagnostics": [],
+      "online_classification_complete": true,
+      "online_classification_count": 48,
+      "reason_counts": {
+        "multiple_gate_candidates": 19,
+        "projection_out_of_frame": 44,
+        "weak_assignment_margin": 2
+      },
+      "strict_identity_metrics_available": false,
+      "strict_identity_metrics_reason": "multiple_truth_targets_for_global_track"
+    },
+    {
+      "case_id": "200v200__seed_2009",
+      "composite_warning_count": 0,
+      "episode_dir": "/dev/shm/msm-d1-risk-heldout-dev-20260731/nominal/200v200/seed_2009",
+      "episode_id": "nominal_200v200-s2009-d095c66ab33d-r17ee5f55e2f4",
+      "evidence_count": 39,
+      "expected_failure_event_count": 0,
+      "expected_failure_events": [],
+      "flagged_expected_failure_event_count": 0,
+      "missed_failure_event_diagnostics": [],
+      "online_classification_complete": true,
+      "online_classification_count": 39,
+      "reason_counts": {
+        "multiple_gate_candidates": 16,
+        "near_projection_singularity": 1,
+        "projection_out_of_frame": 33
+      },
+      "strict_identity_metrics_available": true,
+      "strict_identity_metrics_reason": null
+    },
+    {
+      "case_id": "200v200__seed_2010",
+      "composite_warning_count": 2,
+      "episode_dir": "/dev/shm/msm-d1-risk-heldout-dev-20260731/nominal/200v200/seed_2010",
+      "episode_id": "nominal_200v200-s2010-453fbcd9c7a9-r17ee5f55e2f4",
+      "evidence_count": 33,
+      "expected_failure_event_count": 1,
+      "expected_failure_events": [
+        {
+          "measurement_timestamp": 1.8,
+          "sensor_id": "CAM-RECON-002"
+        }
+      ],
+      "flagged_expected_failure_event_count": 1,
+      "missed_failure_event_diagnostics": [],
+      "online_classification_complete": true,
+      "online_classification_count": 33,
+      "reason_counts": {
+        "ill_conditioned_innovation": 1,
+        "multiple_gate_candidates": 16,
+        "near_projection_singularity": 1,
+        "projection_out_of_frame": 31,
+        "weak_assignment_margin": 3
+      },
+      "strict_identity_metrics_available": false,
+      "strict_identity_metrics_reason": "multiple_truth_targets_for_global_track"
+    },
+    {
+      "case_id": "200v200__seed_2011",
+      "composite_warning_count": 0,
+      "episode_dir": "/dev/shm/msm-d1-risk-heldout-dev-20260731/nominal/200v200/seed_2011",
+      "episode_id": "nominal_200v200-s2011-2e62c50f2e65-r17ee5f55e2f4",
+      "evidence_count": 45,
+      "expected_failure_event_count": 0,
+      "expected_failure_events": [],
+      "flagged_expected_failure_event_count": 0,
+      "missed_failure_event_diagnostics": [],
+      "online_classification_complete": true,
+      "online_classification_count": 45,
+      "reason_counts": {
+        "multiple_gate_candidates": 24,
+        "near_projection_singularity": 1,
+        "projection_out_of_frame": 38,
+        "weak_assignment_margin": 1
+      },
+      "strict_identity_metrics_available": true,
+      "strict_identity_metrics_reason": null
+    },
+    {
+      "case_id": "200v200__seed_2012",
+      "composite_warning_count": 0,
+      "episode_dir": "/dev/shm/msm-d1-risk-heldout-dev-20260731/nominal/200v200/seed_2012",
+      "episode_id": "nominal_200v200-s2012-27e45854bf27-r17ee5f55e2f4",
+      "evidence_count": 48,
+      "expected_failure_event_count": 1,
+      "expected_failure_events": [
+        {
+          "measurement_timestamp": 1.8,
+          "sensor_id": "CAM-RECON-002"
+        }
+      ],
+      "flagged_expected_failure_event_count": 0,
+      "missed_failure_event_diagnostics": [
+        {
+          "candidate_evidence_count": 1,
+          "measurement_timestamp": 1.8,
+          "reason": "required_composite_criteria_not_met",
+          "selected_evidence_id": "d1-risk-sha256:237d438606e615e03432c23c424b31559e32c6f76b97f1d275ef5758466b6c14",
+          "sensor_id": "CAM-RECON-002",
+          "unmatched_required_checks": [
+            "plausible_in_frame_alternative"
+          ]
+        }
+      ],
+      "online_classification_complete": true,
+      "online_classification_count": 48,
+      "reason_counts": {
+        "multiple_gate_candidates": 17,
+        "projection_out_of_frame": 44,
+        "weak_assignment_margin": 1
+      },
+      "strict_identity_metrics_available": false,
+      "strict_identity_metrics_reason": "multiple_truth_targets_for_global_track"
+    },
+    {
+      "case_id": "200v200__seed_2013",
+      "composite_warning_count": 0,
+      "episode_dir": "/dev/shm/msm-d1-risk-heldout-dev-20260731/nominal/200v200/seed_2013",
+      "episode_id": "nominal_200v200-s2013-ca3506314e66-r17ee5f55e2f4",
+      "evidence_count": 37,
+      "expected_failure_event_count": 0,
+      "expected_failure_events": [],
+      "flagged_expected_failure_event_count": 0,
+      "missed_failure_event_diagnostics": [],
+      "online_classification_complete": true,
+      "online_classification_count": 37,
+      "reason_counts": {
+        "multiple_gate_candidates": 15,
+        "projection_out_of_frame": 33,
+        "weak_assignment_margin": 2
+      },
+      "strict_identity_metrics_available": true,
+      "strict_identity_metrics_reason": null
+    },
+    {
+      "case_id": "200v200__seed_2014",
+      "composite_warning_count": 0,
+      "episode_dir": "/dev/shm/msm-d1-risk-heldout-dev-20260731/nominal/200v200/seed_2014",
+      "episode_id": "nominal_200v200-s2014-1ebb1a9eaf48-r17ee5f55e2f4",
+      "evidence_count": 42,
+      "expected_failure_event_count": 0,
+      "expected_failure_events": [],
+      "flagged_expected_failure_event_count": 0,
+      "missed_failure_event_diagnostics": [],
+      "online_classification_complete": true,
+      "online_classification_count": 42,
+      "reason_counts": {
+        "ill_conditioned_innovation": 1,
+        "multiple_gate_candidates": 12,
+        "near_projection_singularity": 1,
+        "projection_out_of_frame": 40
+      },
+      "strict_identity_metrics_available": true,
+      "strict_identity_metrics_reason": null
+    },
+    {
+      "case_id": "200v200__seed_2015",
+      "composite_warning_count": 0,
+      "episode_dir": "/dev/shm/msm-d1-risk-heldout-dev-20260731/nominal/200v200/seed_2015",
+      "episode_id": "nominal_200v200-s2015-ad0a37c61935-r17ee5f55e2f4",
+      "evidence_count": 54,
+      "expected_failure_event_count": 0,
+      "expected_failure_events": [],
+      "flagged_expected_failure_event_count": 0,
+      "missed_failure_event_diagnostics": [],
+      "online_classification_complete": true,
+      "online_classification_count": 54,
+      "reason_counts": {
+        "multiple_gate_candidates": 31,
+        "projection_out_of_frame": 44,
+        "weak_assignment_margin": 1
+      },
+      "strict_identity_metrics_available": true,
+      "strict_identity_metrics_reason": null
+    },
+    {
+      "case_id": "200v200__seed_2016",
+      "composite_warning_count": 1,
+      "episode_dir": "/dev/shm/msm-d1-risk-heldout-dev-20260731/nominal/200v200/seed_2016",
+      "episode_id": "nominal_200v200-s2016-5910bb5b76ae-r17ee5f55e2f4",
+      "evidence_count": 27,
+      "expected_failure_event_count": 1,
+      "expected_failure_events": [
+        {
+          "measurement_timestamp": 1.8,
+          "sensor_id": "CAM-RECON-001"
+        }
+      ],
+      "flagged_expected_failure_event_count": 1,
+      "missed_failure_event_diagnostics": [],
+      "online_classification_complete": true,
+      "online_classification_count": 27,
+      "reason_counts": {
+        "multiple_gate_candidates": 13,
+        "projection_out_of_frame": 23
+      },
+      "strict_identity_metrics_available": false,
+      "strict_identity_metrics_reason": "multiple_truth_targets_for_global_track"
+    },
+    {
+      "case_id": "200v200__seed_2017",
+      "composite_warning_count": 1,
+      "episode_dir": "/dev/shm/msm-d1-risk-heldout-dev-20260731/nominal/200v200/seed_2017",
+      "episode_id": "nominal_200v200-s2017-923e5c6d8526-r17ee5f55e2f4",
+      "evidence_count": 41,
+      "expected_failure_event_count": 1,
+      "expected_failure_events": [
+        {
+          "measurement_timestamp": 1.7,
+          "sensor_id": "CAM-RECON-004"
+        }
+      ],
+      "flagged_expected_failure_event_count": 1,
+      "missed_failure_event_diagnostics": [],
+      "online_classification_complete": true,
+      "online_classification_count": 41,
+      "reason_counts": {
+        "multiple_gate_candidates": 18,
+        "projection_out_of_frame": 35,
+        "weak_assignment_margin": 1
+      },
+      "strict_identity_metrics_available": false,
+      "strict_identity_metrics_reason": "multiple_truth_targets_for_global_track"
+    },
+    {
+      "case_id": "200v200__seed_2018",
+      "composite_warning_count": 0,
+      "episode_dir": "/dev/shm/msm-d1-risk-heldout-dev-20260731/nominal/200v200/seed_2018",
+      "episode_id": "nominal_200v200-s2018-577ff91b647e-r17ee5f55e2f4",
+      "evidence_count": 39,
+      "expected_failure_event_count": 0,
+      "expected_failure_events": [],
+      "flagged_expected_failure_event_count": 0,
+      "missed_failure_event_diagnostics": [],
+      "online_classification_complete": true,
+      "online_classification_count": 39,
+      "reason_counts": {
+        "ill_conditioned_innovation": 1,
+        "multiple_gate_candidates": 14,
+        "near_projection_singularity": 1,
+        "projection_out_of_frame": 37,
+        "weak_assignment_margin": 2
+      },
+      "strict_identity_metrics_available": true,
+      "strict_identity_metrics_reason": null
+    },
+    {
+      "case_id": "200v200__seed_2019",
+      "composite_warning_count": 0,
+      "episode_dir": "/dev/shm/msm-d1-risk-heldout-dev-20260731/nominal/200v200/seed_2019",
+      "episode_id": "nominal_200v200-s2019-0b5ac72d1dc1-r17ee5f55e2f4",
+      "evidence_count": 55,
+      "expected_failure_event_count": 0,
+      "expected_failure_events": [],
+      "flagged_expected_failure_event_count": 0,
+      "missed_failure_event_diagnostics": [],
+      "online_classification_complete": true,
+      "online_classification_count": 55,
+      "reason_counts": {
+        "ill_conditioned_innovation": 1,
+        "multiple_gate_candidates": 26,
+        "near_projection_singularity": 3,
+        "projection_out_of_frame": 43,
+        "weak_assignment_margin": 3
+      },
+      "strict_identity_metrics_available": true,
+      "strict_identity_metrics_reason": null
+    }
+  ],
+  "control_case_count": 25,
+  "d1_posterior_changed": false,
+  "d2_enforcement_changed": false,
+  "evidence_class": "held_out_offline_shadow_validation",
+  "evidence_count": 1015,
+  "expected_failure_event_count": 13,
+  "failed_event_recall": 0.8461538461538461,
+  "flagged_expected_failure_event_count": 11,
+  "missed_failure_reason_counts": {
+    "plausible_in_frame_alternative": 1,
+    "selected_projection_out_of_frame": 1
+  },
+  "online_classification_complete_case_count": 36,
+  "online_classification_profile_match_count": 1015,
+  "online_classification_record_count": 1015,
+  "online_classifier_complete": true,
+  "online_decision_applied": false,
+  "online_truth_used": false,
+  "passing_control_warning_rate": 0.0,
+  "positive_case_count": 11,
+  "profile": {
+    "maximum_assignment_margin": 2.0,
+    "maximum_bbox_area_px2": 4.0,
+    "maximum_confidence": 0.1,
+    "maximum_selected_forward_depth_m": 5.0,
+    "minimum_selected_condition_number": 1000000.0,
+    "profile_version": "d1-eo-pathological-projection-composite-development-v2",
+    "required_checks": [
+      "multiple_gate_candidates",
+      "selected_projection_out_of_frame",
+      "plausible_in_frame_alternative",
+      "bbox_area_within_limit",
+      "confidence_within_limit"
+    ]
+  },
+  "reason_counts": {
+    "ill_conditioned_innovation": 11,
+    "multiple_gate_candidates": 400,
+    "near_projection_singularity": 23,
+    "projection_out_of_frame": 901,
+    "weak_assignment_margin": 36
+  },
+  "recommendation": "remain_raw_shadow_collect_more_failure_and_control_episodes",
+  "require_online_classifications": true,
+  "sample_sufficiency": {
+    "count_requirement_met": true,
+    "held_out_independent_validation_available": false,
+    "maximum_passing_control_warning_rate": 0.05,
+    "minimum_control_cases": 20,
+    "minimum_failed_event_recall": 0.9,
+    "minimum_positive_cases": 10,
+    "performance_requirement_met": false,
+    "reason": "count_or_performance_requirement_not_met",
+    "sufficient_for_enforcement": false,
+    "sufficient_for_shadow_classification_review": false
+  },
+  "schema_version": "scalable3d-d1-association-risk-calibration-v1",
+  "timestamp_tolerance_s": 1e-09,
+  "unexpected_warning_count": 0,
+  "validation_role": "held_out",
+  "warned_control_case_count": 0,
+  "warning_count": 12
+}

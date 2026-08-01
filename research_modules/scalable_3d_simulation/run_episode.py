@@ -120,6 +120,14 @@ def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
         ),
     )
     parser.add_argument(
+        "--d1-association-risk-evidence-shadow",
+        action="store_true",
+        help=(
+            "publish D1 truth-free pre-commit EO association-risk evidence "
+            "without changing fusion or D2 decisions; disabled by default"
+        ),
+    )
+    parser.add_argument(
         "--d1-identity-neutral-centroid-correction",
         action="store_true",
         help=(
@@ -344,6 +352,9 @@ def main() -> int:
                 ),
                 d1_publish_opaque_source_key=(
                     args.d1_publish_opaque_source_key
+                ),
+                d1_association_risk_evidence_shadow_enabled=(
+                    args.d1_association_risk_evidence_shadow
                 ),
                 d1_identity_neutral_centroid_correction_enabled=(
                     args.d1_identity_neutral_centroid_correction

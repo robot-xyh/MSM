@@ -21,6 +21,9 @@ from typing import Any, Iterable, Mapping
 import numpy as np
 
 from research_modules.d1_sensor_fusion.src.d1_sensor_fusion import (
+    ASSOCIATION_RISK_CLASSIFICATION_POLICY_VERSION,
+    ASSOCIATION_RISK_CLASSIFICATION_PROFILE_VERSION,
+    ASSOCIATION_RISK_CLASSIFICATION_SCHEMA_VERSION,
     ASSOCIATION_SPARSE_PREFILTER_CANDIDATE_SELECTOR,
     ASSOCIATION_SPARSE_PREFILTER_DEFAULT_SELECTOR,
     ASSOCIATION_SPARSE_PREFILTER_REFERENCE_SELECTOR,
@@ -384,6 +387,7 @@ class IntegratedStackConfig:
     d1_radar_assignment_ambiguity_governance_v2: bool = False
     d1_d2_structural_ambiguity_hold_enabled: bool = False
     d1_publish_opaque_source_key: bool = False
+    d1_association_risk_evidence_shadow_enabled: bool = False
     d1_identity_neutral_centroid_correction_enabled: bool = False
     d1_centroid_publication_overlay_shadow_enabled: bool = False
     d2_ambiguity_hold_gap_scan_periods: int = 2
@@ -681,6 +685,13 @@ class IntegratedStackConfig:
             )
         if not isinstance(self.d1_publish_opaque_source_key, bool):
             raise TypeError("d1_publish_opaque_source_key must be a bool")
+        if not isinstance(
+            self.d1_association_risk_evidence_shadow_enabled,
+            bool,
+        ):
+            raise TypeError(
+                "d1_association_risk_evidence_shadow_enabled must be a bool"
+            )
         if not isinstance(
             self.d1_identity_neutral_centroid_correction_enabled,
             bool,
@@ -1285,6 +1296,31 @@ class IntegratedScalableModuleStack:
                     self.stack_config
                 )
             ),
+            "d1_association_risk_shadow_classification_contract": {
+                "enabled": bool(
+                    self.stack_config
+                    .d1_association_risk_evidence_shadow_enabled
+                ),
+                "mode": (
+                    "shadow"
+                    if self.stack_config
+                    .d1_association_risk_evidence_shadow_enabled
+                    else "disabled"
+                ),
+                "decision": "evidence_only",
+                "schema_version": (
+                    ASSOCIATION_RISK_CLASSIFICATION_SCHEMA_VERSION
+                ),
+                "profile_version": (
+                    ASSOCIATION_RISK_CLASSIFICATION_PROFILE_VERSION
+                ),
+                "policy_version": (
+                    ASSOCIATION_RISK_CLASSIFICATION_POLICY_VERSION
+                ),
+                "d2_consumption_enabled": False,
+                "posterior_update_applied": False,
+                "online_truth_used": False,
+            },
         }
 
     def runtime_manifest_profile_for_scenario(
@@ -1317,6 +1353,10 @@ class IntegratedScalableModuleStack:
             ),
             publish_opaque_source_key=(
                 self.stack_config.d1_publish_opaque_source_key
+            ),
+            association_risk_evidence_shadow=(
+                self.stack_config
+                .d1_association_risk_evidence_shadow_enabled
             ),
             radar_assignment_ambiguity_neutral_centroid_correction=(
                 self.stack_config
@@ -2163,6 +2203,16 @@ class IntegratedScalableModuleStack:
             ),
             "d1_publish_opaque_source_key": bool(
                 self.stack_config.d1_publish_opaque_source_key
+            ),
+            "d1_association_risk_evidence_shadow_enabled": bool(
+                self.stack_config
+                .d1_association_risk_evidence_shadow_enabled
+            ),
+            "d1_association_risk_evidence_audit": (
+                self.d1.association_risk_evidence_audit()
+            ),
+            "d1_association_risk_classification_audit": (
+                self.d1.association_risk_classification_audit()
             ),
             "d1_identity_neutral_centroid_correction_enabled": bool(
                 self.stack_config
@@ -9422,6 +9472,12 @@ class IntegratedScalableModuleStack:
         structural_ambiguity_evidence = tuple(
             getattr(result, "structural_ambiguity_evidence", ())
         )
+        association_risk_evidence = tuple(
+            getattr(result, "association_risk_evidence", ())
+        )
+        association_risk_classifications = tuple(
+            getattr(result, "association_risk_classifications", ())
+        )
         source_observations = tuple(
             getattr(batch, "measurements", getattr(batch, "observations", ()))
         )
@@ -9531,6 +9587,27 @@ class IntegratedScalableModuleStack:
                 "structural_ambiguity_evidence": [
                     item.to_dict() for item in structural_ambiguity_evidence
                 ],
+                **(
+                    {
+                        "association_risk_evidence_count": len(
+                            association_risk_evidence
+                        ),
+                        "association_risk_evidence": [
+                            item.to_dict()
+                            for item in association_risk_evidence
+                        ],
+                        "association_risk_classification_count": len(
+                            association_risk_classifications
+                        ),
+                        "association_risk_classifications": [
+                            item.to_dict()
+                            for item in association_risk_classifications
+                        ],
+                    }
+                    if self.stack_config
+                    .d1_association_risk_evidence_shadow_enabled
+                    else {}
+                ),
             },
             copy_payload=False,
         )

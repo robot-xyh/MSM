@@ -3078,3 +3078,31 @@ D6 独立只读审计确认 644 个当前多成员联盟目标闭合，100/100 �
 6. 在正式 900-cell 矩阵前，先完成 D3/D4/D6 所有者完整回归、干净提交和 clean
    smoke。详细证据见
    `research_modules/scalable_3d_simulation/docs/SCALABLE_3D_HIGH_THREAT_P0_PRECHECK_V4_20260730_CN.md`。
+
+## 2026-07-31 D1 光电关联风险留出审查
+
+### 已关闭子项
+
+1. D1 原始风险证据、版本化分类、主总线字段和 observation governance 审计已形成同一
+   default-off 旁路合同。关闭开关时不增加字段；开启时只在 D1 载荷发布证据。
+2. 留出校准器强制区分 development/held-out。held-out 必须存在完整在线分类，离线复算逐条
+   核对 profile、正负结果和判据分区。
+3. seeds 2000 至 2019 的 nominal 100v100/200v200 共 40 个 episode 已执行。状态有限
+   `40/40`、在线真值使用 0、D2 只读因果诊断 `40/40`。
+4. 1,015 条在线分类与离线 v2 复算 `1015/1015` 一致。两组 shadow/control 业务等价复核中，
+   剔除旁路字段后的 D1、D2、身份语义和 truth NPZ 均相同。
+5. 版本化证据包和中文审查报告已保存。正式 producer、执行计划和 `450/900` 基线未改变，
+   shards 10 至 19 未使用。
+
+### P1 仍开放
+
+| 缺口 | 当前证据 | 判定与下一步 |
+| --- | --- | --- |
+| v2 分类性能 | 36 个可评估 case；故障事件命中 `11/13`，召回 0.8461538462；对照告警 `0/25` | 样本数量门通过、性能门失败。v2 保持 default-off shadow，禁止 D2 enforcement |
+| 两类漏检 | seed 2003 的错选投影仍在画面内；seed 2012 没有可信画面内替代候选 | 只能在新的 development 数据上形成新候选，不得使用本留出集调阈值 |
+| 事件去重 | seed 2010 同一传感器/量测时刻事件产生两条正证据 | 未来 consumer 前冻结 event/source 去重合同；当前不实现执行侧消费 |
+| 工程外推 | 当前为 2.0 秒质点 episode，工作树为 dirty development | 增加跨扫描、AirSim 标定、时延和目标平台验证，不宣称正式准入 |
+
+当前没有新增运行级 P0。D1 后验、D2 关联、D3 分配、D4 降级、D5 视觉绑定和 D7 控制路径
+均未由本项改变。详细证据见
+`research_modules/scalable_3d_simulation/docs/SCALABLE_3D_D1_ASSOCIATION_RISK_HELDOUT_REVIEW_20260731_CN.md`。

@@ -1659,6 +1659,162 @@ def test_d1_opaque_source_key_control_requires_bool(value: object) -> None:
         )
 
 
+def test_d1_association_risk_shadow_is_explicit_hashed_and_forwarded() -> None:
+    default = IntegratedStackConfig()
+    assert default.d1_association_risk_evidence_shadow_enabled is False
+
+    stack = IntegratedScalableModuleStack(
+        IntegratedStackConfig(
+            d1_publish_opaque_source_key=True,
+            d1_association_risk_evidence_shadow_enabled=True,
+        )
+    )
+    stack.reset(
+        ScenarioConfig(
+            scenario_name="d1_association_risk_shadow_2v2",
+            scenario_version="d1-association-risk-shadow-v1",
+            target_count=2,
+            resource_count=2,
+            recon_count=1,
+            region_count=1,
+            duration_s=0.2,
+            seed=29,
+        )
+    )
+
+    assert stack.d1.association_risk_evidence_shadow is True
+    profile = stack.runtime_manifest_profile()["configuration"]
+    assert profile["d1_association_risk_evidence_shadow_enabled"] is True
+    contract = stack.runtime_manifest_profile()[
+        "d1_association_risk_shadow_classification_contract"
+    ]
+    assert contract == {
+        "enabled": True,
+        "mode": "shadow",
+        "decision": "evidence_only",
+        "schema_version": "d1.association-risk-shadow-classification.v1",
+        "profile_version": (
+            "d1-eo-pathological-projection-composite-development-v2"
+        ),
+        "policy_version": (
+            "shadow_precommit_eo_pathological_projection_composite_v1"
+        ),
+        "d2_consumption_enabled": False,
+        "posterior_update_applied": False,
+        "online_truth_used": False,
+    }
+    audit = stack.observation_governance_audit()
+    assert audit["d1_association_risk_evidence_shadow_enabled"] is True
+    assert audit["d1_association_risk_evidence_audit"]["mode"] == "shadow"
+    assert audit["d1_association_risk_classification_audit"][
+        "mode"
+    ] == "shadow"
+    assert audit["d1_association_risk_classification_audit"][
+        "profile_version"
+    ] == "d1-eo-pathological-projection-composite-development-v2"
+
+
+@pytest.mark.parametrize("value", (None, 0, 1, "true"))
+def test_d1_association_risk_shadow_requires_bool(value: object) -> None:
+    with pytest.raises(
+        TypeError,
+        match="d1_association_risk_evidence_shadow_enabled must be a bool",
+    ):
+        IntegratedStackConfig(
+            d1_association_risk_evidence_shadow_enabled=value,  # type: ignore[arg-type]
+        )
+
+
+def test_d1_publication_carries_association_risk_sidecar() -> None:
+    stack = IntegratedScalableModuleStack(
+        IntegratedStackConfig(
+            d1_association_risk_evidence_shadow_enabled=True
+        )
+    )
+    risk_payload = {
+        "schema_version": "d1.association-risk-evidence.v1",
+        "decision": "evidence_only",
+        "online_truth_used": False,
+    }
+    classification_payload = {
+        "schema_version": "d1.association-risk-shadow-classification.v1",
+        "classification": "positive",
+        "decision": "evidence_only",
+        "online_truth_used": False,
+        "posterior_update_applied": False,
+    }
+    result = SimpleNamespace(
+        tracks_materialized=True,
+        tracks=(),
+        structural_ambiguity_evidence=(),
+        association_risk_evidence=(
+            SimpleNamespace(to_dict=lambda: dict(risk_payload)),
+        ),
+        association_risk_classifications=(
+            SimpleNamespace(to_dict=lambda: dict(classification_payload)),
+        ),
+        summary=SimpleNamespace(to_dict=lambda: {"published_at": 0.2}),
+    )
+    batch = SimpleNamespace(
+        measurements=(),
+        sensor_id="CAM-RECON-001",
+        batch_id="cam-recon-risk-shadow-001",
+    )
+
+    publication = stack._d1_publication(
+        result,
+        batch,
+        0.2,
+        evidence_by_observation={},
+        posterior_generation=1,
+    )
+
+    assert publication.payload["association_risk_evidence_count"] == 1
+    assert publication.payload["association_risk_evidence"] == [risk_payload]
+    assert publication.payload[
+        "association_risk_classification_count"
+    ] == 1
+    assert publication.payload["association_risk_classifications"] == [
+        classification_payload
+    ]
+
+    disabled = IntegratedScalableModuleStack()._d1_publication(
+        result,
+        batch,
+        0.2,
+        evidence_by_observation={},
+        posterior_generation=1,
+    )
+    assert "association_risk_evidence_count" not in disabled.payload
+    assert "association_risk_evidence" not in disabled.payload
+    assert "association_risk_classification_count" not in disabled.payload
+    assert "association_risk_classifications" not in disabled.payload
+
+
+def test_episode_cli_exposes_d1_association_risk_shadow() -> None:
+    episode_cli = importlib.import_module(
+        "research_modules.scalable_3d_simulation.run_episode"
+    )
+    default_args = episode_cli.parse_args(["--integrated-stack"])
+    assert default_args.d1_association_risk_evidence_shadow is False
+    args = episode_cli.parse_args(
+        ["--integrated-stack", "--d1-association-risk-evidence-shadow"]
+    )
+    assert args.d1_association_risk_evidence_shadow is True
+
+
+def test_batch_cli_exposes_d1_association_risk_shadow() -> None:
+    batch_cli = importlib.import_module(
+        "research_modules.scalable_3d_simulation.run_batch"
+    )
+    default_args = batch_cli.parse_args([])
+    assert default_args.d1_association_risk_evidence_shadow is False
+    args = batch_cli.parse_args(
+        ["--d1-association-risk-evidence-shadow"]
+    )
+    assert args.d1_association_risk_evidence_shadow is True
+
+
 def test_d1_identity_neutral_centroid_candidate_is_explicit_and_hashed() -> None:
     stack = IntegratedScalableModuleStack(
         IntegratedStackConfig(

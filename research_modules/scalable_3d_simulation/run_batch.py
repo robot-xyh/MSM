@@ -34,7 +34,7 @@ from research_modules.scalable_3d_simulation.scenarios import (
 DEFAULT_CONFIG = Path(__file__).with_name("configs") / "nominal_200v200.json"
 
 
-def parse_args() -> argparse.Namespace:
+def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--config", type=Path, default=DEFAULT_CONFIG)
     parser.add_argument("--scales", type=int, nargs="+", default=[5, 20, 50, 100, 200])
@@ -64,8 +64,16 @@ def parse_args() -> argparse.Namespace:
             "versioned assignment plan; disabled by default"
         ),
     )
+    parser.add_argument(
+        "--d1-association-risk-evidence-shadow",
+        action="store_true",
+        help=(
+            "publish bounded D1 EO association-risk evidence and its "
+            "development-only shadow classification; disabled by default"
+        ),
+    )
     add_learning_runtime_arguments(parser)
-    return parser.parse_args()
+    return parser.parse_args(argv)
 
 
 def main() -> int:
@@ -101,6 +109,9 @@ def main() -> int:
                         learning_options,
                         stack_config=IntegratedStackConfig(
                             capture_learning_artifacts=args.export_learning_data,
+                            d1_association_risk_evidence_shadow_enabled=(
+                                args.d1_association_risk_evidence_shadow
+                            ),
                             d5_recon_track_cues_enabled=(
                                 args.d5_recon_track_cues
                             ),

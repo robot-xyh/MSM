@@ -1,0 +1,1096 @@
+{
+  "created_at_utc": "2026-08-01T00:28:59Z",
+  "online_decision_applied": false,
+  "online_truth_used": false,
+  "outputs": {
+    "D1_ASSOCIATION_RISK_CALIBRATION_CN.md": "ad2805d6c7d0828557784bf03a2d1b9c03283dcbac431512765ed1cd0d8be7cb",
+    "d1_association_risk_calibration.json": "6eaa2ad696e086ac3b90ec149af23ca232943046ec568cd8469e54c500c76c28",
+    "d1_association_risk_evidence.csv": "a35ef4c5a7badc63439c48728956a56996859cb5c9785354502dfca55a2eb5cd"
+  },
+  "producer": "main-scalable3d-offline-d1-association-risk-calibration",
+  "require_online_classifications": true,
+  "schema_version": "scalable3d-d1-association-risk-calibration-v1",
+  "source_files": [
+    {
+      "case_id": "100v100__seed_2000",
+      "path": "/dev/shm/msm-d1-risk-heldout-dev-20260731/nominal/100v100/seed_2000/offline_identity/online_d1_records.jsonl",
+      "role": "d1_records",
+      "sha256": "fddda1a39e65c427182de3b64d8b546ff9b9482d63ede854f68f12ce8bebefb7"
+    },
+    {
+      "case_id": "100v100__seed_2000",
+      "path": "/dev/shm/msm-d1-risk-heldout-dev-20260731/nominal/100v100/seed_2000/observation_governance_audit.json",
+      "role": "governance",
+      "sha256": "4667f2700e52c2131214ac9102f08ff2998045bace4752d7412a4dac572f200e"
+    },
+    {
+      "case_id": "100v100__seed_2000",
+      "path": "/dev/shm/msm-d1-risk-heldout-dev-20260731/nominal/100v100/seed_2000/offline_identity/identity_evaluation.json",
+      "role": "identity",
+      "sha256": "27f6e632ebca3edd5c12e2abc64a134137d78965e483935b6fcbe1fdfdba04d1"
+    },
+    {
+      "case_id": "100v100__seed_2000",
+      "path": "/dev/shm/msm-d1-risk-heldout-dev-20260731/nominal/100v100/seed_2000/manifest.json",
+      "role": "manifest",
+      "sha256": "1568ba637e6de9d94dce8b2b0cbfdad901a0943c060116811803159acc44120b"
+    },
+    {
+      "case_id": "100v100__seed_2000",
+      "path": "/dev/shm/msm-d1-risk-heldout-dev-20260731/nominal/100v100/seed_2000/summary.json",
+      "role": "summary",
+      "sha256": "beecc44369555f93bbeece515a3a22ae4cde29e8c15bec326b33ed24d83d4e93"
+    },
+    {
+      "case_id": "100v100__seed_2002",
+      "path": "/dev/shm/msm-d1-risk-heldout-dev-20260731/nominal/100v100/seed_2002/offline_identity/online_d1_records.jsonl",
+      "role": "d1_records",
+      "sha256": "2ad148cf0a69f975cb6e232943261bda815efe9f5b0ddb95499442a54ca3aa6f"
+    },
+    {
+      "case_id": "100v100__seed_2002",
+      "path": "/dev/shm/msm-d1-risk-heldout-dev-20260731/nominal/100v100/seed_2002/observation_governance_audit.json",
+      "role": "governance",
+      "sha256": "1b9022069633082491d9829574f4a3f3407c3b780390f1078cb51b4fa1a9bb91"
+    },
+    {
+      "case_id": "100v100__seed_2002",
+      "path": "/dev/shm/msm-d1-risk-heldout-dev-20260731/nominal/100v100/seed_2002/offline_identity/identity_evaluation.json",
+      "role": "identity",
+      "sha256": "075d830046446f77ccae355f2dae7650f5e44f5fe960539cf3a00a6d1232dc3e"
+    },
+    {
+      "case_id": "100v100__seed_2002",
+      "path": "/dev/shm/msm-d1-risk-heldout-dev-20260731/nominal/100v100/seed_2002/manifest.json",
+      "role": "manifest",
+      "sha256": "05c5da8ba797d0dba80167651d9fcebc7c5afad643b39f81f52c697c1912704c"
+    },
+    {
+      "case_id": "100v100__seed_2002",
+      "path": "/dev/shm/msm-d1-risk-heldout-dev-20260731/nominal/100v100/seed_2002/summary.json",
+      "role": "summary",
+      "sha256": "7b13b23ee3ba7d8557e21457ca8d91a0c3e927c34b19f196538daa4789527663"
+    },
+    {
+      "case_id": "100v100__seed_2003",
+      "path": "/dev/shm/msm-d1-risk-heldout-dev-20260731/nominal/100v100/seed_2003/offline_identity/online_d1_records.jsonl",
+      "role": "d1_records",
+      "sha256": "5916d99d4ebe2b0b133c167be15730c00b8ead13b63aeda05a212f8f36a528fa"
+    },
+    {
+      "case_id": "100v100__seed_2003",
+      "path": "/dev/shm/msm-d1-risk-heldout-dev-20260731/nominal/100v100/seed_2003/observation_governance_audit.json",
+      "role": "governance",
+      "sha256": "6c2674f44e27a148bf0b7f5f0e21084bf297e49f4461dd439d460077e92737e4"
+    },
+    {
+      "case_id": "100v100__seed_2003",
+      "path": "/dev/shm/msm-d1-risk-heldout-dev-20260731/nominal/100v100/seed_2003/offline_identity/identity_evaluation.json",
+      "role": "identity",
+      "sha256": "90e899889e84f573cbe17bd15f4aebfe4fd90f554e604725fb49f54589c73fd1"
+    },
+    {
+      "case_id": "100v100__seed_2003",
+      "path": "/dev/shm/msm-d1-risk-heldout-dev-20260731/nominal/100v100/seed_2003/manifest.json",
+      "role": "manifest",
+      "sha256": "1219f61a5ba35d923ccfcc4813423a810931b2268d39fd791db0b2bb823dff4c"
+    },
+    {
+      "case_id": "100v100__seed_2003",
+      "path": "/dev/shm/msm-d1-risk-heldout-dev-20260731/nominal/100v100/seed_2003/summary.json",
+      "role": "summary",
+      "sha256": "986ea0e62c6a154868d1d3bcd575af4b8dc65271827ee1c108a4ec0e8bd33c0e"
+    },
+    {
+      "case_id": "100v100__seed_2004",
+      "path": "/dev/shm/msm-d1-risk-heldout-dev-20260731/nominal/100v100/seed_2004/offline_identity/online_d1_records.jsonl",
+      "role": "d1_records",
+      "sha256": "1b4f75a4972a1fc12b149ddd755b81e9216286f784491829a4f8ef883111a358"
+    },
+    {
+      "case_id": "100v100__seed_2004",
+      "path": "/dev/shm/msm-d1-risk-heldout-dev-20260731/nominal/100v100/seed_2004/observation_governance_audit.json",
+      "role": "governance",
+      "sha256": "82cd3aea1ab71cef16bec78ddda298d61ad68ab0152b88d9cc3691e79ba6d4a4"
+    },
+    {
+      "case_id": "100v100__seed_2004",
+      "path": "/dev/shm/msm-d1-risk-heldout-dev-20260731/nominal/100v100/seed_2004/offline_identity/identity_evaluation.json",
+      "role": "identity",
+      "sha256": "25dd9fe95f600c40ff17e139f60de399c4e6325f36e1590fd8e03391ba8fc1f7"
+    },
+    {
+      "case_id": "100v100__seed_2004",
+      "path": "/dev/shm/msm-d1-risk-heldout-dev-20260731/nominal/100v100/seed_2004/manifest.json",
+      "role": "manifest",
+      "sha256": "32db69ef386dd1f0db0ec892232754aeb947371b485b3de942dee4813e4b6138"
+    },
+    {
+      "case_id": "100v100__seed_2004",
+      "path": "/dev/shm/msm-d1-risk-heldout-dev-20260731/nominal/100v100/seed_2004/summary.json",
+      "role": "summary",
+      "sha256": "2a80e45541e0a2926e56df726db9227dc71d24aac755f103749d428da7cc33e3"
+    },
+    {
+      "case_id": "100v100__seed_2005",
+      "path": "/dev/shm/msm-d1-risk-heldout-dev-20260731/nominal/100v100/seed_2005/offline_identity/online_d1_records.jsonl",
+      "role": "d1_records",
+      "sha256": "8444c37a9135d56ab5046d084c00acd7c3c4636a61de03005308ba05f67b5094"
+    },
+    {
+      "case_id": "100v100__seed_2005",
+      "path": "/dev/shm/msm-d1-risk-heldout-dev-20260731/nominal/100v100/seed_2005/observation_governance_audit.json",
+      "role": "governance",
+      "sha256": "5001ba3b6a2644d5fb81eb3fb057d31fc5963b5b95107955b3e07dae5f71c1ff"
+    },
+    {
+      "case_id": "100v100__seed_2005",
+      "path": "/dev/shm/msm-d1-risk-heldout-dev-20260731/nominal/100v100/seed_2005/offline_identity/identity_evaluation.json",
+      "role": "identity",
+      "sha256": "45ffa88879117997e165aba2a23337e19107f2aec3ae6618cfa7213da2c116e6"
+    },
+    {
+      "case_id": "100v100__seed_2005",
+      "path": "/dev/shm/msm-d1-risk-heldout-dev-20260731/nominal/100v100/seed_2005/manifest.json",
+      "role": "manifest",
+      "sha256": "c387b109e73906bdd38f1c7c0f44a1981d13a2daca9525761e7554e7430a2eba"
+    },
+    {
+      "case_id": "100v100__seed_2005",
+      "path": "/dev/shm/msm-d1-risk-heldout-dev-20260731/nominal/100v100/seed_2005/summary.json",
+      "role": "summary",
+      "sha256": "2626bd1d2e1fbb07259108d8ccab1581ab87f337a4af8237e445457586bc777c"
+    },
+    {
+      "case_id": "100v100__seed_2006",
+      "path": "/dev/shm/msm-d1-risk-heldout-dev-20260731/nominal/100v100/seed_2006/offline_identity/online_d1_records.jsonl",
+      "role": "d1_records",
+      "sha256": "f83a7a5b6a6c07c9bf57d03b92f59a2179ae6f2a15807df62e0879b1315a01bc"
+    },
+    {
+      "case_id": "100v100__seed_2006",
+      "path": "/dev/shm/msm-d1-risk-heldout-dev-20260731/nominal/100v100/seed_2006/observation_governance_audit.json",
+      "role": "governance",
+      "sha256": "6a37994f63bc3ef33b098018a3a1584fdd2321d81f3e796b5a4e68d75c36e713"
+    },
+    {
+      "case_id": "100v100__seed_2006",
+      "path": "/dev/shm/msm-d1-risk-heldout-dev-20260731/nominal/100v100/seed_2006/offline_identity/identity_evaluation.json",
+      "role": "identity",
+      "sha256": "2bd2bc64f1369b807699bba1e80536f4112e0fbc0cc1f5fe9b7465d69a3cfd45"
+    },
+    {
+      "case_id": "100v100__seed_2006",
+      "path": "/dev/shm/msm-d1-risk-heldout-dev-20260731/nominal/100v100/seed_2006/manifest.json",
+      "role": "manifest",
+      "sha256": "dc28316d7d353176e8df97a9b1c2ebc2f5f0f17b02ac5867eafab21862494383"
+    },
+    {
+      "case_id": "100v100__seed_2006",
+      "path": "/dev/shm/msm-d1-risk-heldout-dev-20260731/nominal/100v100/seed_2006/summary.json",
+      "role": "summary",
+      "sha256": "d4a878d3579cd7f61d5ea21b7018e8ea3e81655db1e01989889698301003bad9"
+    },
+    {
+      "case_id": "100v100__seed_2008",
+      "path": "/dev/shm/msm-d1-risk-heldout-dev-20260731/nominal/100v100/seed_2008/offline_identity/online_d1_records.jsonl",
+      "role": "d1_records",
+      "sha256": "73394c7876246b66eeabad03678910278e90237496d865b168722d4ac8275b5f"
+    },
+    {
+      "case_id": "100v100__seed_2008",
+      "path": "/dev/shm/msm-d1-risk-heldout-dev-20260731/nominal/100v100/seed_2008/observation_governance_audit.json",
+      "role": "governance",
+      "sha256": "94cd4028e1fdca4ad752bf60d399bf0eb05bd715563990c0c379067b75ef2981"
+    },
+    {
+      "case_id": "100v100__seed_2008",
+      "path": "/dev/shm/msm-d1-risk-heldout-dev-20260731/nominal/100v100/seed_2008/offline_identity/identity_evaluation.json",
+      "role": "identity",
+      "sha256": "1d66f9183b57a0cc45b4e2725a581c14b99504789150582f4a7fdc5f6e48af7c"
+    },
+    {
+      "case_id": "100v100__seed_2008",
+      "path": "/dev/shm/msm-d1-risk-heldout-dev-20260731/nominal/100v100/seed_2008/manifest.json",
+      "role": "manifest",
+      "sha256": "c2be4c9b75e313794f69ddf90d6d8d9da9f100dafabead0c800fa563df95e6ab"
+    },
+    {
+      "case_id": "100v100__seed_2008",
+      "path": "/dev/shm/msm-d1-risk-heldout-dev-20260731/nominal/100v100/seed_2008/summary.json",
+      "role": "summary",
+      "sha256": "e24a420600755462b84c350757990fabb923192acb58d6bd9db1d80b1506f48e"
+    },
+    {
+      "case_id": "100v100__seed_2010",
+      "path": "/dev/shm/msm-d1-risk-heldout-dev-20260731/nominal/100v100/seed_2010/offline_identity/online_d1_records.jsonl",
+      "role": "d1_records",
+      "sha256": "3d9b19b737c19e456352b7b9416e6ea76cfb6df051b6b3023c5b4fa3dd558e04"
+    },
+    {
+      "case_id": "100v100__seed_2010",
+      "path": "/dev/shm/msm-d1-risk-heldout-dev-20260731/nominal/100v100/seed_2010/observation_governance_audit.json",
+      "role": "governance",
+      "sha256": "cf932e31433fe129785290c81d33f1c60c441b6c089a8dffd2820e62b520876c"
+    },
+    {
+      "case_id": "100v100__seed_2010",
+      "path": "/dev/shm/msm-d1-risk-heldout-dev-20260731/nominal/100v100/seed_2010/offline_identity/identity_evaluation.json",
+      "role": "identity",
+      "sha256": "30fd8a27e2fb780645b29f993c77c2db617be078e4b99f27e647093b46df40cd"
+    },
+    {
+      "case_id": "100v100__seed_2010",
+      "path": "/dev/shm/msm-d1-risk-heldout-dev-20260731/nominal/100v100/seed_2010/manifest.json",
+      "role": "manifest",
+      "sha256": "955477314a9a05c8ccda1bfee8fa71c2a189971186567b20186d81690be1cc6d"
+    },
+    {
+      "case_id": "100v100__seed_2010",
+      "path": "/dev/shm/msm-d1-risk-heldout-dev-20260731/nominal/100v100/seed_2010/summary.json",
+      "role": "summary",
+      "sha256": "de8114056273d6a43e16c44ea1dc45180959ac8b03b1563d9fb07823b3d68eef"
+    },
+    {
+      "case_id": "100v100__seed_2011",
+      "path": "/dev/shm/msm-d1-risk-heldout-dev-20260731/nominal/100v100/seed_2011/offline_identity/online_d1_records.jsonl",
+      "role": "d1_records",
+      "sha256": "c749e1f119c71c2a249e13a4ab72f9be18fbdd4530df023af21dd10e03f97c86"
+    },
+    {
+      "case_id": "100v100__seed_2011",
+      "path": "/dev/shm/msm-d1-risk-heldout-dev-20260731/nominal/100v100/seed_2011/observation_governance_audit.json",
+      "role": "governance",
+      "sha256": "a7f88af6d40db5998f5dce44e4bb8a76743c426c458c0a5aa7b2b34fce6e7a60"
+    },
+    {
+      "case_id": "100v100__seed_2011",
+      "path": "/dev/shm/msm-d1-risk-heldout-dev-20260731/nominal/100v100/seed_2011/offline_identity/identity_evaluation.json",
+      "role": "identity",
+      "sha256": "2a2a2fdd3d7f2a7dc2e74c33433ade5b5bb874c35ea9c79b2e6541cebe9f7ab2"
+    },
+    {
+      "case_id": "100v100__seed_2011",
+      "path": "/dev/shm/msm-d1-risk-heldout-dev-20260731/nominal/100v100/seed_2011/manifest.json",
+      "role": "manifest",
+      "sha256": "f41408113c43310261d5ffac21172ee5d2b04b2e5083574eb3e570da12937b93"
+    },
+    {
+      "case_id": "100v100__seed_2011",
+      "path": "/dev/shm/msm-d1-risk-heldout-dev-20260731/nominal/100v100/seed_2011/summary.json",
+      "role": "summary",
+      "sha256": "bec9c64e3d1ec222f537b351f4a7b7f59a551e74b2d845698c15ba4f2c2f4b90"
+    },
+    {
+      "case_id": "100v100__seed_2012",
+      "path": "/dev/shm/msm-d1-risk-heldout-dev-20260731/nominal/100v100/seed_2012/offline_identity/online_d1_records.jsonl",
+      "role": "d1_records",
+      "sha256": "c9d55843c3a562400a88827d182cded28ac354eafcf4de3278e37d3578f51b69"
+    },
+    {
+      "case_id": "100v100__seed_2012",
+      "path": "/dev/shm/msm-d1-risk-heldout-dev-20260731/nominal/100v100/seed_2012/observation_governance_audit.json",
+      "role": "governance",
+      "sha256": "468f2fdf8d3c6aa68350723beaa211ce8c1b69a0b72c20e1f9e242c84c4ac956"
+    },
+    {
+      "case_id": "100v100__seed_2012",
+      "path": "/dev/shm/msm-d1-risk-heldout-dev-20260731/nominal/100v100/seed_2012/offline_identity/identity_evaluation.json",
+      "role": "identity",
+      "sha256": "0630647e5d915273cb7222c184552b240396e379380d0b2c81c2d9a8ac4fe2ab"
+    },
+    {
+      "case_id": "100v100__seed_2012",
+      "path": "/dev/shm/msm-d1-risk-heldout-dev-20260731/nominal/100v100/seed_2012/manifest.json",
+      "role": "manifest",
+      "sha256": "d612542c81e52c13cda84684665d19d00a239c86479e20e8df9438b4be700551"
+    },
+    {
+      "case_id": "100v100__seed_2012",
+      "path": "/dev/shm/msm-d1-risk-heldout-dev-20260731/nominal/100v100/seed_2012/summary.json",
+      "role": "summary",
+      "sha256": "77e2a6f2a617238dbfe7d99a34d6f0870f46df10b121032a3c296ea0b6c9095d"
+    },
+    {
+      "case_id": "100v100__seed_2013",
+      "path": "/dev/shm/msm-d1-risk-heldout-dev-20260731/nominal/100v100/seed_2013/offline_identity/online_d1_records.jsonl",
+      "role": "d1_records",
+      "sha256": "d41dea78a3422f8914ecc4525bf5bf6ceef85f905e9081ae689ac17b9ed462d7"
+    },
+    {
+      "case_id": "100v100__seed_2013",
+      "path": "/dev/shm/msm-d1-risk-heldout-dev-20260731/nominal/100v100/seed_2013/observation_governance_audit.json",
+      "role": "governance",
+      "sha256": "f0882427a7d257ce35feb2bf18f97e500d2f70a1dcf37b876ef62fb11702f06f"
+    },
+    {
+      "case_id": "100v100__seed_2013",
+      "path": "/dev/shm/msm-d1-risk-heldout-dev-20260731/nominal/100v100/seed_2013/offline_identity/identity_evaluation.json",
+      "role": "identity",
+      "sha256": "f16f07a4da63ad89169a29934c090d59467b69f2c6792229f776f737138985c0"
+    },
+    {
+      "case_id": "100v100__seed_2013",
+      "path": "/dev/shm/msm-d1-risk-heldout-dev-20260731/nominal/100v100/seed_2013/manifest.json",
+      "role": "manifest",
+      "sha256": "29215894de53fe413be5d378321889baddaa516637baa6ad77805b9d0c5b0083"
+    },
+    {
+      "case_id": "100v100__seed_2013",
+      "path": "/dev/shm/msm-d1-risk-heldout-dev-20260731/nominal/100v100/seed_2013/summary.json",
+      "role": "summary",
+      "sha256": "5af1cf62badfa583ae2e2c70ee0e00eb5494326d9c952a7015c5ae5a31829467"
+    },
+    {
+      "case_id": "100v100__seed_2014",
+      "path": "/dev/shm/msm-d1-risk-heldout-dev-20260731/nominal/100v100/seed_2014/offline_identity/online_d1_records.jsonl",
+      "role": "d1_records",
+      "sha256": "01b34246c46aa1c6306fb43a2fb07eb21b491420539528a820d6c1efb69ce5c8"
+    },
+    {
+      "case_id": "100v100__seed_2014",
+      "path": "/dev/shm/msm-d1-risk-heldout-dev-20260731/nominal/100v100/seed_2014/observation_governance_audit.json",
+      "role": "governance",
+      "sha256": "3000c433a42d6cfe4dd58640b22b9ce3e6981eed0a675989592a5f0602903629"
+    },
+    {
+      "case_id": "100v100__seed_2014",
+      "path": "/dev/shm/msm-d1-risk-heldout-dev-20260731/nominal/100v100/seed_2014/offline_identity/identity_evaluation.json",
+      "role": "identity",
+      "sha256": "302b004e889c2284860be8678711deae9dc32d3ee81d4effafbe3bd22d10f985"
+    },
+    {
+      "case_id": "100v100__seed_2014",
+      "path": "/dev/shm/msm-d1-risk-heldout-dev-20260731/nominal/100v100/seed_2014/manifest.json",
+      "role": "manifest",
+      "sha256": "e05339a9e34026d33d26869dd72d6dc2f236a2d9337355fecda9ec2980e44d06"
+    },
+    {
+      "case_id": "100v100__seed_2014",
+      "path": "/dev/shm/msm-d1-risk-heldout-dev-20260731/nominal/100v100/seed_2014/summary.json",
+      "role": "summary",
+      "sha256": "c3fbeca5adf68b9810a4eea3574a6a3223a12f85bbad8f30e9bd4ddea62f5796"
+    },
+    {
+      "case_id": "100v100__seed_2015",
+      "path": "/dev/shm/msm-d1-risk-heldout-dev-20260731/nominal/100v100/seed_2015/offline_identity/online_d1_records.jsonl",
+      "role": "d1_records",
+      "sha256": "f3e1c0a3765682c2652c7ddd7a6344962074086cefcba5cae9a3e172f38ebba5"
+    },
+    {
+      "case_id": "100v100__seed_2015",
+      "path": "/dev/shm/msm-d1-risk-heldout-dev-20260731/nominal/100v100/seed_2015/observation_governance_audit.json",
+      "role": "governance",
+      "sha256": "2dd02206ea985e2f3fb0aaffe2519ba5f352daf3cda5e24b2681337337e67adb"
+    },
+    {
+      "case_id": "100v100__seed_2015",
+      "path": "/dev/shm/msm-d1-risk-heldout-dev-20260731/nominal/100v100/seed_2015/offline_identity/identity_evaluation.json",
+      "role": "identity",
+      "sha256": "b0b025aea1976eea64f253650e26622a12e626a4bdb52c012b9198193b0feee5"
+    },
+    {
+      "case_id": "100v100__seed_2015",
+      "path": "/dev/shm/msm-d1-risk-heldout-dev-20260731/nominal/100v100/seed_2015/manifest.json",
+      "role": "manifest",
+      "sha256": "c877b22ee8e608c083bc62139e4409abc1e53a0229045d8188f72a29cadf0cda"
+    },
+    {
+      "case_id": "100v100__seed_2015",
+      "path": "/dev/shm/msm-d1-risk-heldout-dev-20260731/nominal/100v100/seed_2015/summary.json",
+      "role": "summary",
+      "sha256": "d63395248f831d09a8d975967fc708aba7e5c4ed0e36ddd1991c5ceb98475680"
+    },
+    {
+      "case_id": "100v100__seed_2016",
+      "path": "/dev/shm/msm-d1-risk-heldout-dev-20260731/nominal/100v100/seed_2016/offline_identity/online_d1_records.jsonl",
+      "role": "d1_records",
+      "sha256": "d27675c530e63ba91c672f8725c9c7d477359c453848b9db2b4928584d17aca0"
+    },
+    {
+      "case_id": "100v100__seed_2016",
+      "path": "/dev/shm/msm-d1-risk-heldout-dev-20260731/nominal/100v100/seed_2016/observation_governance_audit.json",
+      "role": "governance",
+      "sha256": "a0f70a7596b6ab1b1a6a6ef25e7515d9cf8c2437908c1e7c7ce31f2b2e3fe553"
+    },
+    {
+      "case_id": "100v100__seed_2016",
+      "path": "/dev/shm/msm-d1-risk-heldout-dev-20260731/nominal/100v100/seed_2016/offline_identity/identity_evaluation.json",
+      "role": "identity",
+      "sha256": "ca55ccf9b5ca8d623bfd4d63e6b1e1606ca14e888ec3883054b323dfc85616fe"
+    },
+    {
+      "case_id": "100v100__seed_2016",
+      "path": "/dev/shm/msm-d1-risk-heldout-dev-20260731/nominal/100v100/seed_2016/manifest.json",
+      "role": "manifest",
+      "sha256": "9d515d70487e5e7d92fdd92bebb3e53377419aff32ccf74131d30494fb7ba399"
+    },
+    {
+      "case_id": "100v100__seed_2016",
+      "path": "/dev/shm/msm-d1-risk-heldout-dev-20260731/nominal/100v100/seed_2016/summary.json",
+      "role": "summary",
+      "sha256": "995577b1a06fe37deac0448c1717505cff2517db18be396fbeb3fd318dfa2fc6"
+    },
+    {
+      "case_id": "100v100__seed_2017",
+      "path": "/dev/shm/msm-d1-risk-heldout-dev-20260731/nominal/100v100/seed_2017/offline_identity/online_d1_records.jsonl",
+      "role": "d1_records",
+      "sha256": "bf2baf5feb50959190b4d00dde9f23d3044b7b24bbd32bd40233b7839b831257"
+    },
+    {
+      "case_id": "100v100__seed_2017",
+      "path": "/dev/shm/msm-d1-risk-heldout-dev-20260731/nominal/100v100/seed_2017/observation_governance_audit.json",
+      "role": "governance",
+      "sha256": "e8be2ea9603ce50eb2e13dde06e4ade59fb242f7888185d9b3249e31b4306d99"
+    },
+    {
+      "case_id": "100v100__seed_2017",
+      "path": "/dev/shm/msm-d1-risk-heldout-dev-20260731/nominal/100v100/seed_2017/offline_identity/identity_evaluation.json",
+      "role": "identity",
+      "sha256": "3803de4049948ea0afcd70e4be6793706bd5a06ba5196fcbad3d1fafda40d6e9"
+    },
+    {
+      "case_id": "100v100__seed_2017",
+      "path": "/dev/shm/msm-d1-risk-heldout-dev-20260731/nominal/100v100/seed_2017/manifest.json",
+      "role": "manifest",
+      "sha256": "492051aed037d75b6b5b56f65accaaf5cb3ebcf76062108b80e794e85785b3ef"
+    },
+    {
+      "case_id": "100v100__seed_2017",
+      "path": "/dev/shm/msm-d1-risk-heldout-dev-20260731/nominal/100v100/seed_2017/summary.json",
+      "role": "summary",
+      "sha256": "fccbabcc89eb33407225fe1976b089eacf29a6e593edb4578a206bdc721fb103"
+    },
+    {
+      "case_id": "100v100__seed_2018",
+      "path": "/dev/shm/msm-d1-risk-heldout-dev-20260731/nominal/100v100/seed_2018/offline_identity/online_d1_records.jsonl",
+      "role": "d1_records",
+      "sha256": "4b582bc3e3e1ca97ad815a6b9ad8d6fe9f353eeb2e5ff7928d4341f66db5c2c6"
+    },
+    {
+      "case_id": "100v100__seed_2018",
+      "path": "/dev/shm/msm-d1-risk-heldout-dev-20260731/nominal/100v100/seed_2018/observation_governance_audit.json",
+      "role": "governance",
+      "sha256": "17951a5b4e95c1a990ccd09df3fffa15b8c54c469904bc9775fd96eaeb0c3f46"
+    },
+    {
+      "case_id": "100v100__seed_2018",
+      "path": "/dev/shm/msm-d1-risk-heldout-dev-20260731/nominal/100v100/seed_2018/offline_identity/identity_evaluation.json",
+      "role": "identity",
+      "sha256": "0c65d9143b19dc5b449b46fed6df16b757fe6600edaecbb51a10405792fe96ec"
+    },
+    {
+      "case_id": "100v100__seed_2018",
+      "path": "/dev/shm/msm-d1-risk-heldout-dev-20260731/nominal/100v100/seed_2018/manifest.json",
+      "role": "manifest",
+      "sha256": "29bc0f9cfd6f1a8fb6db8370aaebc970bab658ae3eca950828424c7557f8f750"
+    },
+    {
+      "case_id": "100v100__seed_2018",
+      "path": "/dev/shm/msm-d1-risk-heldout-dev-20260731/nominal/100v100/seed_2018/summary.json",
+      "role": "summary",
+      "sha256": "ccad1824b4a822e620c79bac9eead69935fda8ed2d31ea4107e2861348e1fffa"
+    },
+    {
+      "case_id": "100v100__seed_2019",
+      "path": "/dev/shm/msm-d1-risk-heldout-dev-20260731/nominal/100v100/seed_2019/offline_identity/online_d1_records.jsonl",
+      "role": "d1_records",
+      "sha256": "c2c87fa9ebd775268bed5ca48d8c6e8438352f0897f4b76f78fab923d1efaf62"
+    },
+    {
+      "case_id": "100v100__seed_2019",
+      "path": "/dev/shm/msm-d1-risk-heldout-dev-20260731/nominal/100v100/seed_2019/observation_governance_audit.json",
+      "role": "governance",
+      "sha256": "7a3f938ac759d37cf70831c2405574a91cea79a6eb44f7012e5cdea62d0df9c8"
+    },
+    {
+      "case_id": "100v100__seed_2019",
+      "path": "/dev/shm/msm-d1-risk-heldout-dev-20260731/nominal/100v100/seed_2019/offline_identity/identity_evaluation.json",
+      "role": "identity",
+      "sha256": "2c121911581c021681d8e17e7c7314b9bdd8acfb76e89ebac4b50310fb65b436"
+    },
+    {
+      "case_id": "100v100__seed_2019",
+      "path": "/dev/shm/msm-d1-risk-heldout-dev-20260731/nominal/100v100/seed_2019/manifest.json",
+      "role": "manifest",
+      "sha256": "9a1e0ca6c5467b5936d0f070fa1b9458e4b0410344ebf186ca9f769694653a6f"
+    },
+    {
+      "case_id": "100v100__seed_2019",
+      "path": "/dev/shm/msm-d1-risk-heldout-dev-20260731/nominal/100v100/seed_2019/summary.json",
+      "role": "summary",
+      "sha256": "36529216a0420ea5cb60b617c1dcf8009214ed2a0c23f8d097e5d65876298d01"
+    },
+    {
+      "case_id": "200v200__seed_2001",
+      "path": "/dev/shm/msm-d1-risk-heldout-dev-20260731/nominal/200v200/seed_2001/offline_identity/online_d1_records.jsonl",
+      "role": "d1_records",
+      "sha256": "80ad74de91361f418290896a1317e5843780208cd2e481a28bd1939d5046ad7b"
+    },
+    {
+      "case_id": "200v200__seed_2001",
+      "path": "/dev/shm/msm-d1-risk-heldout-dev-20260731/nominal/200v200/seed_2001/observation_governance_audit.json",
+      "role": "governance",
+      "sha256": "05f90769623d4a15b21dcc3df2f0ee2cee4bcb43e152dda7666a9fc03fd45dc3"
+    },
+    {
+      "case_id": "200v200__seed_2001",
+      "path": "/dev/shm/msm-d1-risk-heldout-dev-20260731/nominal/200v200/seed_2001/offline_identity/identity_evaluation.json",
+      "role": "identity",
+      "sha256": "11dedb35c79909ee03694c954ef00f497fb5cb35181c80d306f9ce3805c1afa9"
+    },
+    {
+      "case_id": "200v200__seed_2001",
+      "path": "/dev/shm/msm-d1-risk-heldout-dev-20260731/nominal/200v200/seed_2001/manifest.json",
+      "role": "manifest",
+      "sha256": "31576aed8a6ac3a1d8a07c88f31698d7cdc40b7b4e5e9768f894283a19f03d10"
+    },
+    {
+      "case_id": "200v200__seed_2001",
+      "path": "/dev/shm/msm-d1-risk-heldout-dev-20260731/nominal/200v200/seed_2001/summary.json",
+      "role": "summary",
+      "sha256": "e785b07c64e371b2a4698cceacaacec87d8baea72f191be4de595d1aa34ca0d6"
+    },
+    {
+      "case_id": "200v200__seed_2002",
+      "path": "/dev/shm/msm-d1-risk-heldout-dev-20260731/nominal/200v200/seed_2002/offline_identity/online_d1_records.jsonl",
+      "role": "d1_records",
+      "sha256": "af31469215e2516c8ed9a177dad26215f1a860b66b310fafe2d1dc26aae4699d"
+    },
+    {
+      "case_id": "200v200__seed_2002",
+      "path": "/dev/shm/msm-d1-risk-heldout-dev-20260731/nominal/200v200/seed_2002/observation_governance_audit.json",
+      "role": "governance",
+      "sha256": "7f79509e1e79db6aabe0073f2d33ca5cbc82f24d102d1295f6cfd0543428b410"
+    },
+    {
+      "case_id": "200v200__seed_2002",
+      "path": "/dev/shm/msm-d1-risk-heldout-dev-20260731/nominal/200v200/seed_2002/offline_identity/identity_evaluation.json",
+      "role": "identity",
+      "sha256": "9d15d968a32fdd8af5bca682c56eaa0b6a030695b6e0fca0e10461e9a768b4df"
+    },
+    {
+      "case_id": "200v200__seed_2002",
+      "path": "/dev/shm/msm-d1-risk-heldout-dev-20260731/nominal/200v200/seed_2002/manifest.json",
+      "role": "manifest",
+      "sha256": "4e58b35e05ed83a358f5d6cd9d410aa00f7efe784bc7488edd78daad862d69ba"
+    },
+    {
+      "case_id": "200v200__seed_2002",
+      "path": "/dev/shm/msm-d1-risk-heldout-dev-20260731/nominal/200v200/seed_2002/summary.json",
+      "role": "summary",
+      "sha256": "d29da190f1d2480d1e447848f6fdb8a37c1efb9cd531936484b70b96f704a848"
+    },
+    {
+      "case_id": "200v200__seed_2003",
+      "path": "/dev/shm/msm-d1-risk-heldout-dev-20260731/nominal/200v200/seed_2003/offline_identity/online_d1_records.jsonl",
+      "role": "d1_records",
+      "sha256": "c41d08c1bcdbbfb45d94be18bd5c6ad89060daadc141fbd262fe37550ab2515c"
+    },
+    {
+      "case_id": "200v200__seed_2003",
+      "path": "/dev/shm/msm-d1-risk-heldout-dev-20260731/nominal/200v200/seed_2003/observation_governance_audit.json",
+      "role": "governance",
+      "sha256": "c1145a922de03864ec63cd20d453f99ba5e2bfeba1cf50f6a14fe0283af50b3e"
+    },
+    {
+      "case_id": "200v200__seed_2003",
+      "path": "/dev/shm/msm-d1-risk-heldout-dev-20260731/nominal/200v200/seed_2003/offline_identity/identity_evaluation.json",
+      "role": "identity",
+      "sha256": "97ad4854e4c5df961f69aa00ae42a7fc140005ab0324020679779b41d90e883c"
+    },
+    {
+      "case_id": "200v200__seed_2003",
+      "path": "/dev/shm/msm-d1-risk-heldout-dev-20260731/nominal/200v200/seed_2003/manifest.json",
+      "role": "manifest",
+      "sha256": "55ba3300dc62762b4fa0945956c709bb12e6210ad4ffee4a70e8d00abbce8bf1"
+    },
+    {
+      "case_id": "200v200__seed_2003",
+      "path": "/dev/shm/msm-d1-risk-heldout-dev-20260731/nominal/200v200/seed_2003/summary.json",
+      "role": "summary",
+      "sha256": "d5eeff76d9ff05f779a69c6ccf7a376553f7f675e763711536ee078b55f9fa6d"
+    },
+    {
+      "case_id": "200v200__seed_2004",
+      "path": "/dev/shm/msm-d1-risk-heldout-dev-20260731/nominal/200v200/seed_2004/offline_identity/online_d1_records.jsonl",
+      "role": "d1_records",
+      "sha256": "a4b3f087fed669ecf50f48490c848dfcf7c7b800debf9632f3be2d75e1952963"
+    },
+    {
+      "case_id": "200v200__seed_2004",
+      "path": "/dev/shm/msm-d1-risk-heldout-dev-20260731/nominal/200v200/seed_2004/observation_governance_audit.json",
+      "role": "governance",
+      "sha256": "161d733a1c26a1bb0676ba20552492162880aeee335133dd7e05a98389e91856"
+    },
+    {
+      "case_id": "200v200__seed_2004",
+      "path": "/dev/shm/msm-d1-risk-heldout-dev-20260731/nominal/200v200/seed_2004/offline_identity/identity_evaluation.json",
+      "role": "identity",
+      "sha256": "dfbadbebccfdd48134ae39dd0502dfa58d61a756b566d585f4904543d8fc6b0b"
+    },
+    {
+      "case_id": "200v200__seed_2004",
+      "path": "/dev/shm/msm-d1-risk-heldout-dev-20260731/nominal/200v200/seed_2004/manifest.json",
+      "role": "manifest",
+      "sha256": "56be85be4da180319cf7b0f45aae0b2d54912df9b5ac8989274f202d7c3b31c5"
+    },
+    {
+      "case_id": "200v200__seed_2004",
+      "path": "/dev/shm/msm-d1-risk-heldout-dev-20260731/nominal/200v200/seed_2004/summary.json",
+      "role": "summary",
+      "sha256": "fdd64cab72dea9dad65431bb173f2a533489e4eb6b0cf8ee2a668f42d527636e"
+    },
+    {
+      "case_id": "200v200__seed_2005",
+      "path": "/dev/shm/msm-d1-risk-heldout-dev-20260731/nominal/200v200/seed_2005/offline_identity/online_d1_records.jsonl",
+      "role": "d1_records",
+      "sha256": "74a63f8386ecf3b72d90075815fd360a2b09097540f440dec563c1d7aece85d6"
+    },
+    {
+      "case_id": "200v200__seed_2005",
+      "path": "/dev/shm/msm-d1-risk-heldout-dev-20260731/nominal/200v200/seed_2005/observation_governance_audit.json",
+      "role": "governance",
+      "sha256": "c562c0ec70eabeb26cc1216a9004cd5ea90d18f69f8e15f6ae68607af5085a24"
+    },
+    {
+      "case_id": "200v200__seed_2005",
+      "path": "/dev/shm/msm-d1-risk-heldout-dev-20260731/nominal/200v200/seed_2005/offline_identity/identity_evaluation.json",
+      "role": "identity",
+      "sha256": "b3561cd45e8a5c45a439db047b66ac7361ca58dab8cd21fb943eb48d5be5978e"
+    },
+    {
+      "case_id": "200v200__seed_2005",
+      "path": "/dev/shm/msm-d1-risk-heldout-dev-20260731/nominal/200v200/seed_2005/manifest.json",
+      "role": "manifest",
+      "sha256": "d96303134abb2c467340d7a225ce4ce36371ba74a2b415d08238a22be36aa22b"
+    },
+    {
+      "case_id": "200v200__seed_2005",
+      "path": "/dev/shm/msm-d1-risk-heldout-dev-20260731/nominal/200v200/seed_2005/summary.json",
+      "role": "summary",
+      "sha256": "51c6d62269afd072be5dff769ce9bd8e8dbf63d08d28c1f48730f440a1868bf2"
+    },
+    {
+      "case_id": "200v200__seed_2006",
+      "path": "/dev/shm/msm-d1-risk-heldout-dev-20260731/nominal/200v200/seed_2006/offline_identity/online_d1_records.jsonl",
+      "role": "d1_records",
+      "sha256": "8793422f40aac3843eb515a9ee7bb8f8e31ca737e7598e1072a39e1c199b8572"
+    },
+    {
+      "case_id": "200v200__seed_2006",
+      "path": "/dev/shm/msm-d1-risk-heldout-dev-20260731/nominal/200v200/seed_2006/observation_governance_audit.json",
+      "role": "governance",
+      "sha256": "cea00908e4449cd7f0c7818e7968fc2ef150356cd089a8402d15741eff8f4f33"
+    },
+    {
+      "case_id": "200v200__seed_2006",
+      "path": "/dev/shm/msm-d1-risk-heldout-dev-20260731/nominal/200v200/seed_2006/offline_identity/identity_evaluation.json",
+      "role": "identity",
+      "sha256": "4d831ad6ab1d61dd85ec6eefebd9d9ad93f9027680dbfa4bb7e8c42c5f47ca2d"
+    },
+    {
+      "case_id": "200v200__seed_2006",
+      "path": "/dev/shm/msm-d1-risk-heldout-dev-20260731/nominal/200v200/seed_2006/manifest.json",
+      "role": "manifest",
+      "sha256": "4f4e2121f50ab06f137ecced1fdce9ee4bca8faeaf951d9fbda91dbb6d020ae9"
+    },
+    {
+      "case_id": "200v200__seed_2006",
+      "path": "/dev/shm/msm-d1-risk-heldout-dev-20260731/nominal/200v200/seed_2006/summary.json",
+      "role": "summary",
+      "sha256": "90595d8f8179719dd2cc19a2fb99e3ef08c195dd5a8a6524c602bb86d523adb9"
+    },
+    {
+      "case_id": "200v200__seed_2007",
+      "path": "/dev/shm/msm-d1-risk-heldout-dev-20260731/nominal/200v200/seed_2007/offline_identity/online_d1_records.jsonl",
+      "role": "d1_records",
+      "sha256": "285222c7770c442a7e6f73d328c90562e114a45d49cfed49503cc2c2f04fe04d"
+    },
+    {
+      "case_id": "200v200__seed_2007",
+      "path": "/dev/shm/msm-d1-risk-heldout-dev-20260731/nominal/200v200/seed_2007/observation_governance_audit.json",
+      "role": "governance",
+      "sha256": "083b9c8fd03fc9392c2049c0fac4fff9fddb030785f266610a23108647dcc03b"
+    },
+    {
+      "case_id": "200v200__seed_2007",
+      "path": "/dev/shm/msm-d1-risk-heldout-dev-20260731/nominal/200v200/seed_2007/offline_identity/identity_evaluation.json",
+      "role": "identity",
+      "sha256": "de5204f5edd7a3fb11d38ca700be0cc162d8a53f4c27ef0ab537c6b2dbff1491"
+    },
+    {
+      "case_id": "200v200__seed_2007",
+      "path": "/dev/shm/msm-d1-risk-heldout-dev-20260731/nominal/200v200/seed_2007/manifest.json",
+      "role": "manifest",
+      "sha256": "1c0f11863dff21d539915457dd8691e241a9bd3267a27e722db5f6c22ad09e2e"
+    },
+    {
+      "case_id": "200v200__seed_2007",
+      "path": "/dev/shm/msm-d1-risk-heldout-dev-20260731/nominal/200v200/seed_2007/summary.json",
+      "role": "summary",
+      "sha256": "65d348e3b263d7c6f35bce4f08319e7b3013a6ecdefb87a94fef3c69067331d4"
+    },
+    {
+      "case_id": "200v200__seed_2008",
+      "path": "/dev/shm/msm-d1-risk-heldout-dev-20260731/nominal/200v200/seed_2008/offline_identity/online_d1_records.jsonl",
+      "role": "d1_records",
+      "sha256": "f4e3761c4a376449e1e359e8651d2fdd8a74844449c0652e25b6e2227672bb81"
+    },
+    {
+      "case_id": "200v200__seed_2008",
+      "path": "/dev/shm/msm-d1-risk-heldout-dev-20260731/nominal/200v200/seed_2008/observation_governance_audit.json",
+      "role": "governance",
+      "sha256": "67d61de2300702edb5ccb6d369bf190d695ea7f156bd5ccedf852a4d1b826e29"
+    },
+    {
+      "case_id": "200v200__seed_2008",
+      "path": "/dev/shm/msm-d1-risk-heldout-dev-20260731/nominal/200v200/seed_2008/offline_identity/identity_evaluation.json",
+      "role": "identity",
+      "sha256": "cf563053c3886ac8b409e589b63e2a1ebb0de8ee844d4726cc60cf0738c2680f"
+    },
+    {
+      "case_id": "200v200__seed_2008",
+      "path": "/dev/shm/msm-d1-risk-heldout-dev-20260731/nominal/200v200/seed_2008/manifest.json",
+      "role": "manifest",
+      "sha256": "f1fba5cf086e9e7464c43f56f259486c2627d1d3c6e6a34fc0e6b67ec6b89244"
+    },
+    {
+      "case_id": "200v200__seed_2008",
+      "path": "/dev/shm/msm-d1-risk-heldout-dev-20260731/nominal/200v200/seed_2008/summary.json",
+      "role": "summary",
+      "sha256": "56e7afac51c39b6a973eaedb4d1c214302af67c64ffa4b08491d36b9101ca274"
+    },
+    {
+      "case_id": "200v200__seed_2009",
+      "path": "/dev/shm/msm-d1-risk-heldout-dev-20260731/nominal/200v200/seed_2009/offline_identity/online_d1_records.jsonl",
+      "role": "d1_records",
+      "sha256": "d48b62e342c1a04248eb7ab8e5989e132e5e74cd381e3980e5f5407758fc94b0"
+    },
+    {
+      "case_id": "200v200__seed_2009",
+      "path": "/dev/shm/msm-d1-risk-heldout-dev-20260731/nominal/200v200/seed_2009/observation_governance_audit.json",
+      "role": "governance",
+      "sha256": "ea2b6d4fcab3813b2e9e2bb6c21aa778baca6d13e77dc9836767254623854a84"
+    },
+    {
+      "case_id": "200v200__seed_2009",
+      "path": "/dev/shm/msm-d1-risk-heldout-dev-20260731/nominal/200v200/seed_2009/offline_identity/identity_evaluation.json",
+      "role": "identity",
+      "sha256": "4fbecd0099ba4a0feb2d6cf2b904e6db10d6f1fec89805af6854c620ea8ce6ae"
+    },
+    {
+      "case_id": "200v200__seed_2009",
+      "path": "/dev/shm/msm-d1-risk-heldout-dev-20260731/nominal/200v200/seed_2009/manifest.json",
+      "role": "manifest",
+      "sha256": "f00e0032558fd65283cf41f16203bc4f99d604081a1bcc39fd7d64ee521612cf"
+    },
+    {
+      "case_id": "200v200__seed_2009",
+      "path": "/dev/shm/msm-d1-risk-heldout-dev-20260731/nominal/200v200/seed_2009/summary.json",
+      "role": "summary",
+      "sha256": "179066f3dd23c57b676837de7f3bd4efd74622cdb056afe861ff93bb81ebe07f"
+    },
+    {
+      "case_id": "200v200__seed_2010",
+      "path": "/dev/shm/msm-d1-risk-heldout-dev-20260731/nominal/200v200/seed_2010/offline_identity/online_d1_records.jsonl",
+      "role": "d1_records",
+      "sha256": "a6d485cabe16c46b48bb3f357122e1a5c7a7879e46a2a0eb87709caf775ef4ca"
+    },
+    {
+      "case_id": "200v200__seed_2010",
+      "path": "/dev/shm/msm-d1-risk-heldout-dev-20260731/nominal/200v200/seed_2010/observation_governance_audit.json",
+      "role": "governance",
+      "sha256": "e1b8af00358ad038dd2ce45c19a3d46089318a03049b509e3b3fb40371d4e058"
+    },
+    {
+      "case_id": "200v200__seed_2010",
+      "path": "/dev/shm/msm-d1-risk-heldout-dev-20260731/nominal/200v200/seed_2010/offline_identity/identity_evaluation.json",
+      "role": "identity",
+      "sha256": "a29ef18180e2d3e640aff7a556e2134c788d921cf3ec6b178f13d5795084c190"
+    },
+    {
+      "case_id": "200v200__seed_2010",
+      "path": "/dev/shm/msm-d1-risk-heldout-dev-20260731/nominal/200v200/seed_2010/manifest.json",
+      "role": "manifest",
+      "sha256": "59e0d4bb8b00ddff05399d9411f9e96405ae5c04a884faaa577acf861bfde16a"
+    },
+    {
+      "case_id": "200v200__seed_2010",
+      "path": "/dev/shm/msm-d1-risk-heldout-dev-20260731/nominal/200v200/seed_2010/summary.json",
+      "role": "summary",
+      "sha256": "49c04003be1325f8714a42b6821a311abd6d3d9759a232b9c362d1fc80c0a517"
+    },
+    {
+      "case_id": "200v200__seed_2011",
+      "path": "/dev/shm/msm-d1-risk-heldout-dev-20260731/nominal/200v200/seed_2011/offline_identity/online_d1_records.jsonl",
+      "role": "d1_records",
+      "sha256": "336b915849eca3aed4d4b86eff1d491b028089880ac0f502a1a4c007cd758d0a"
+    },
+    {
+      "case_id": "200v200__seed_2011",
+      "path": "/dev/shm/msm-d1-risk-heldout-dev-20260731/nominal/200v200/seed_2011/observation_governance_audit.json",
+      "role": "governance",
+      "sha256": "b1da5cb965e010b68dc00a28be9282efe90b259bb5795f86fa342f18fe5a2e32"
+    },
+    {
+      "case_id": "200v200__seed_2011",
+      "path": "/dev/shm/msm-d1-risk-heldout-dev-20260731/nominal/200v200/seed_2011/offline_identity/identity_evaluation.json",
+      "role": "identity",
+      "sha256": "e692d2d7a0f9a83115768b4387f3355aac49438e48bc826556ededcbc0a7bd2e"
+    },
+    {
+      "case_id": "200v200__seed_2011",
+      "path": "/dev/shm/msm-d1-risk-heldout-dev-20260731/nominal/200v200/seed_2011/manifest.json",
+      "role": "manifest",
+      "sha256": "2cf1474f57bd6223c7f2b7f527e28b3b5f621e5ddbba79a7b3c91b99adeb13ae"
+    },
+    {
+      "case_id": "200v200__seed_2011",
+      "path": "/dev/shm/msm-d1-risk-heldout-dev-20260731/nominal/200v200/seed_2011/summary.json",
+      "role": "summary",
+      "sha256": "30d3e7a74f23a46db7ed97938fed37254ab03c517f5ff942c4d744914bd9980d"
+    },
+    {
+      "case_id": "200v200__seed_2012",
+      "path": "/dev/shm/msm-d1-risk-heldout-dev-20260731/nominal/200v200/seed_2012/offline_identity/online_d1_records.jsonl",
+      "role": "d1_records",
+      "sha256": "0e696acabd660ce0f2e4175b76ab114c34593f904dcc59fc51e5be71810b367d"
+    },
+    {
+      "case_id": "200v200__seed_2012",
+      "path": "/dev/shm/msm-d1-risk-heldout-dev-20260731/nominal/200v200/seed_2012/observation_governance_audit.json",
+      "role": "governance",
+      "sha256": "94ccb521489d894774f73f05846573a86e3406a22b8c144327535cfd3a8e1396"
+    },
+    {
+      "case_id": "200v200__seed_2012",
+      "path": "/dev/shm/msm-d1-risk-heldout-dev-20260731/nominal/200v200/seed_2012/offline_identity/identity_evaluation.json",
+      "role": "identity",
+      "sha256": "1929c03b269e8e603e615648547210afd194020d6f19acb03471e3060c3595b3"
+    },
+    {
+      "case_id": "200v200__seed_2012",
+      "path": "/dev/shm/msm-d1-risk-heldout-dev-20260731/nominal/200v200/seed_2012/manifest.json",
+      "role": "manifest",
+      "sha256": "bb8f360add73455f4c8d4578bbe17139fa5c5d5d64fbb295a4b6b0a4c54bee2d"
+    },
+    {
+      "case_id": "200v200__seed_2012",
+      "path": "/dev/shm/msm-d1-risk-heldout-dev-20260731/nominal/200v200/seed_2012/summary.json",
+      "role": "summary",
+      "sha256": "201cd6711fb5355bc8ab55f3203302d0131cd81482894e7682163e1e624807b5"
+    },
+    {
+      "case_id": "200v200__seed_2013",
+      "path": "/dev/shm/msm-d1-risk-heldout-dev-20260731/nominal/200v200/seed_2013/offline_identity/online_d1_records.jsonl",
+      "role": "d1_records",
+      "sha256": "6eb8da65619e5539dda611c71420a0f36239537d9983e8feb282d1390d78d732"
+    },
+    {
+      "case_id": "200v200__seed_2013",
+      "path": "/dev/shm/msm-d1-risk-heldout-dev-20260731/nominal/200v200/seed_2013/observation_governance_audit.json",
+      "role": "governance",
+      "sha256": "61fdd1a1a48361dcfd583168f6efa4526d0ca59996178afe30884bf2d952cd91"
+    },
+    {
+      "case_id": "200v200__seed_2013",
+      "path": "/dev/shm/msm-d1-risk-heldout-dev-20260731/nominal/200v200/seed_2013/offline_identity/identity_evaluation.json",
+      "role": "identity",
+      "sha256": "f834ddfc2113d1707b0fb04647a2f89026b90ee6461a5652b65f61d76c00814e"
+    },
+    {
+      "case_id": "200v200__seed_2013",
+      "path": "/dev/shm/msm-d1-risk-heldout-dev-20260731/nominal/200v200/seed_2013/manifest.json",
+      "role": "manifest",
+      "sha256": "555e523938e49570764b122314312954764ccc98d324cf3d0c0a27d70d92eef9"
+    },
+    {
+      "case_id": "200v200__seed_2013",
+      "path": "/dev/shm/msm-d1-risk-heldout-dev-20260731/nominal/200v200/seed_2013/summary.json",
+      "role": "summary",
+      "sha256": "d0501504defe4b0a72077ac7f6dc41d0855760975704341b881dfae33ed5230c"
+    },
+    {
+      "case_id": "200v200__seed_2014",
+      "path": "/dev/shm/msm-d1-risk-heldout-dev-20260731/nominal/200v200/seed_2014/offline_identity/online_d1_records.jsonl",
+      "role": "d1_records",
+      "sha256": "d935acf3757d702aeb857817c87ec4bb690124d2fb3acdd3c6c7c9402ab78b15"
+    },
+    {
+      "case_id": "200v200__seed_2014",
+      "path": "/dev/shm/msm-d1-risk-heldout-dev-20260731/nominal/200v200/seed_2014/observation_governance_audit.json",
+      "role": "governance",
+      "sha256": "b6f14feeb1c0c100eb65a0e32ca0d54ed07025416cfbe158e2488f2074656fe9"
+    },
+    {
+      "case_id": "200v200__seed_2014",
+      "path": "/dev/shm/msm-d1-risk-heldout-dev-20260731/nominal/200v200/seed_2014/offline_identity/identity_evaluation.json",
+      "role": "identity",
+      "sha256": "70ecc45c13da83427fb2739f8db5310ecbab3b2b3bf008f4ca2325c8a53f1138"
+    },
+    {
+      "case_id": "200v200__seed_2014",
+      "path": "/dev/shm/msm-d1-risk-heldout-dev-20260731/nominal/200v200/seed_2014/manifest.json",
+      "role": "manifest",
+      "sha256": "8b5ae0c713c28d799dd36ca16b7c6b4269fe06546fca5b45c8861a298bdba368"
+    },
+    {
+      "case_id": "200v200__seed_2014",
+      "path": "/dev/shm/msm-d1-risk-heldout-dev-20260731/nominal/200v200/seed_2014/summary.json",
+      "role": "summary",
+      "sha256": "807f831bd9bf62be1af370cb1c7cd44c7a554be859ca7dee049800a93bb7c2ea"
+    },
+    {
+      "case_id": "200v200__seed_2015",
+      "path": "/dev/shm/msm-d1-risk-heldout-dev-20260731/nominal/200v200/seed_2015/offline_identity/online_d1_records.jsonl",
+      "role": "d1_records",
+      "sha256": "fa18bb3f550fbb1f6d15117225e8f8038542d2e8d6ba1d71855c4abaed5942f9"
+    },
+    {
+      "case_id": "200v200__seed_2015",
+      "path": "/dev/shm/msm-d1-risk-heldout-dev-20260731/nominal/200v200/seed_2015/observation_governance_audit.json",
+      "role": "governance",
+      "sha256": "1b9cdaf938ec62622dd0f9942f6f3e9cece72e65cd8cea089d6ef865d62d1afc"
+    },
+    {
+      "case_id": "200v200__seed_2015",
+      "path": "/dev/shm/msm-d1-risk-heldout-dev-20260731/nominal/200v200/seed_2015/offline_identity/identity_evaluation.json",
+      "role": "identity",
+      "sha256": "f5b3fef52e3d75ae4b533e5a688a3aa824e79cb597ced143566d8402892a711e"
+    },
+    {
+      "case_id": "200v200__seed_2015",
+      "path": "/dev/shm/msm-d1-risk-heldout-dev-20260731/nominal/200v200/seed_2015/manifest.json",
+      "role": "manifest",
+      "sha256": "8d53a24a418167bb6bbd447aa55328d203414fb66ca5ad28a3175f83f61ab80a"
+    },
+    {
+      "case_id": "200v200__seed_2015",
+      "path": "/dev/shm/msm-d1-risk-heldout-dev-20260731/nominal/200v200/seed_2015/summary.json",
+      "role": "summary",
+      "sha256": "7aae7e2e518c7e362d5788124b35f8168ff1605f7c4116b5ae2802f1aa2debae"
+    },
+    {
+      "case_id": "200v200__seed_2016",
+      "path": "/dev/shm/msm-d1-risk-heldout-dev-20260731/nominal/200v200/seed_2016/offline_identity/online_d1_records.jsonl",
+      "role": "d1_records",
+      "sha256": "1363271ca654da71c3043d8828e6b2f23192759025fe59a151819b8bb4ae6c82"
+    },
+    {
+      "case_id": "200v200__seed_2016",
+      "path": "/dev/shm/msm-d1-risk-heldout-dev-20260731/nominal/200v200/seed_2016/observation_governance_audit.json",
+      "role": "governance",
+      "sha256": "0916ed4c688ef538d02fde9d8aab19d4226ad5e5fe7c534497b8f7ee84c150e9"
+    },
+    {
+      "case_id": "200v200__seed_2016",
+      "path": "/dev/shm/msm-d1-risk-heldout-dev-20260731/nominal/200v200/seed_2016/offline_identity/identity_evaluation.json",
+      "role": "identity",
+      "sha256": "c8e165b4c1b59cc052d8f5de191810bf58e0b949fe874408638e1eb0b3366b49"
+    },
+    {
+      "case_id": "200v200__seed_2016",
+      "path": "/dev/shm/msm-d1-risk-heldout-dev-20260731/nominal/200v200/seed_2016/manifest.json",
+      "role": "manifest",
+      "sha256": "ffd85b47fe63616906d6e72e5bd8e09a15989c4852f1d51307adca470dc1fc22"
+    },
+    {
+      "case_id": "200v200__seed_2016",
+      "path": "/dev/shm/msm-d1-risk-heldout-dev-20260731/nominal/200v200/seed_2016/summary.json",
+      "role": "summary",
+      "sha256": "1f2e996d88f8145d1fc70e1d7f581c134b427b64e6e54fc6c1eb3698050b79f6"
+    },
+    {
+      "case_id": "200v200__seed_2017",
+      "path": "/dev/shm/msm-d1-risk-heldout-dev-20260731/nominal/200v200/seed_2017/offline_identity/online_d1_records.jsonl",
+      "role": "d1_records",
+      "sha256": "0e8ea5257f500d2330cff3929207ca30d4ccc268b8de1bcd68364e88df2b4642"
+    },
+    {
+      "case_id": "200v200__seed_2017",
+      "path": "/dev/shm/msm-d1-risk-heldout-dev-20260731/nominal/200v200/seed_2017/observation_governance_audit.json",
+      "role": "governance",
+      "sha256": "860b481fba9b82ce7148e2ee0678f252613814a55c23309dbfbc39773059f4d2"
+    },
+    {
+      "case_id": "200v200__seed_2017",
+      "path": "/dev/shm/msm-d1-risk-heldout-dev-20260731/nominal/200v200/seed_2017/offline_identity/identity_evaluation.json",
+      "role": "identity",
+      "sha256": "742ee9da732bda0b7964e8f285d3c69a6a488d6d567ab1fc34641482444e261a"
+    },
+    {
+      "case_id": "200v200__seed_2017",
+      "path": "/dev/shm/msm-d1-risk-heldout-dev-20260731/nominal/200v200/seed_2017/manifest.json",
+      "role": "manifest",
+      "sha256": "5456441dec91d0d30aa61cf99c900085b40a4e7748a87a01ac1de1dca1d35c8d"
+    },
+    {
+      "case_id": "200v200__seed_2017",
+      "path": "/dev/shm/msm-d1-risk-heldout-dev-20260731/nominal/200v200/seed_2017/summary.json",
+      "role": "summary",
+      "sha256": "d68d18212906862e40809757f7c44ebb7730ae2571d7aa4cd115e81e42b7a6f7"
+    },
+    {
+      "case_id": "200v200__seed_2018",
+      "path": "/dev/shm/msm-d1-risk-heldout-dev-20260731/nominal/200v200/seed_2018/offline_identity/online_d1_records.jsonl",
+      "role": "d1_records",
+      "sha256": "00633788ee2c0e7d373fcfcb3c0b23f08365d87d9e26d49d73d4998f95d08d7f"
+    },
+    {
+      "case_id": "200v200__seed_2018",
+      "path": "/dev/shm/msm-d1-risk-heldout-dev-20260731/nominal/200v200/seed_2018/observation_governance_audit.json",
+      "role": "governance",
+      "sha256": "ec65b025ac7a66c4de0face792b14f4277e2f814cfac946056b87e2607d509b4"
+    },
+    {
+      "case_id": "200v200__seed_2018",
+      "path": "/dev/shm/msm-d1-risk-heldout-dev-20260731/nominal/200v200/seed_2018/offline_identity/identity_evaluation.json",
+      "role": "identity",
+      "sha256": "cefc0a468b16f0f3a246234e307e832989a96283eb6a32b5053a055840ee8e91"
+    },
+    {
+      "case_id": "200v200__seed_2018",
+      "path": "/dev/shm/msm-d1-risk-heldout-dev-20260731/nominal/200v200/seed_2018/manifest.json",
+      "role": "manifest",
+      "sha256": "0f506a0dfe3dbb0564e98571f17de34c9881c5d33c9328a1a4e3af56dba2a101"
+    },
+    {
+      "case_id": "200v200__seed_2018",
+      "path": "/dev/shm/msm-d1-risk-heldout-dev-20260731/nominal/200v200/seed_2018/summary.json",
+      "role": "summary",
+      "sha256": "647911d8c00f152441748d7b496ada1972408702f8d23545d94c0d060f2b6541"
+    },
+    {
+      "case_id": "200v200__seed_2019",
+      "path": "/dev/shm/msm-d1-risk-heldout-dev-20260731/nominal/200v200/seed_2019/offline_identity/online_d1_records.jsonl",
+      "role": "d1_records",
+      "sha256": "b0925ccb54ce55d79d2cd3d44d375182275fb11563c5f4d22988287554969d8b"
+    },
+    {
+      "case_id": "200v200__seed_2019",
+      "path": "/dev/shm/msm-d1-risk-heldout-dev-20260731/nominal/200v200/seed_2019/observation_governance_audit.json",
+      "role": "governance",
+      "sha256": "6b6a4724dc494a807e2453899248d0812e4cc696beb1466802c1ba738a73bac7"
+    },
+    {
+      "case_id": "200v200__seed_2019",
+      "path": "/dev/shm/msm-d1-risk-heldout-dev-20260731/nominal/200v200/seed_2019/offline_identity/identity_evaluation.json",
+      "role": "identity",
+      "sha256": "ff2410a5d96c27c41da12f470ea544fda0533fddd02b7d5c0b070c0917e06d9c"
+    },
+    {
+      "case_id": "200v200__seed_2019",
+      "path": "/dev/shm/msm-d1-risk-heldout-dev-20260731/nominal/200v200/seed_2019/manifest.json",
+      "role": "manifest",
+      "sha256": "6e85d48084609d564b90ed46ca333df4c9660925718a12c698b6a001c2939cdf"
+    },
+    {
+      "case_id": "200v200__seed_2019",
+      "path": "/dev/shm/msm-d1-risk-heldout-dev-20260731/nominal/200v200/seed_2019/summary.json",
+      "role": "summary",
+      "sha256": "936c8f1558d613a4a26b4a16f9bb598f18ec53b827a8edd426501f52675714dd"
+    }
+  ],
+  "validation_role": "held_out"
+}
