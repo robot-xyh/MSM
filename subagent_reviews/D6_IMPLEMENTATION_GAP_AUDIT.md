@@ -1,5 +1,36 @@
 # D6 实现差距审计
 
+## 2026-08-01 D5 A3 v2 BC model 独立审计 P1 部分关闭
+
+### 已关闭范围
+
+D6 已具备不依赖 D5 evaluator、corpus gate、precheck 和模型类的低层模型审计器。它独立验证
+冻结配置、generation 元数据、33 个 cache binary、bundle checksum、weights、7 个 tracked
+D5 source 和两份 tracked 结果摘要，并按 state_dict 形状重建 actor 前向。专项负例覆盖 cache
+篡改、每个 authority true、多配置、test 调参和零少数类召回却声明通过。
+
+2026-08-01 实际开发候选覆盖 40133 个 test 样本和 276437 个候选。exact 为
+`0.9599581391872025`，但 observe_target/search_sector recall 均为 0，macro recall
+`0.49550658912024403`，ECE `0.3682385335452162`。独立质量门因此失败关闭；所有 authority
+false，`paired_shadow_allowed=false`。机器证据位于
+`research_modules/d6_evaluation_metrics/reports/D5_A3_V2_BC_MODEL_INDEPENDENT_AUDIT_20260801/`，
+专项测试为 `18 passed, 1 warning in 2.85s`，D6 全量为
+`1384 passed, 1 warning in 135.21s`。
+
+主审窄修复已将机器证据输入改为 repo-relative POSIX 路径，并加入审计 schema、实现版本和
+审计器源码 SHA-256；未登记未经核验的 clean Git 状态。报告目录校验和由专项测试重验。
+
+本项关闭“D6 能否从冻结 cache 与 weights 独立复现 D5 候选指标并阻断多数类掩盖”的
+D6-owned P1。此前来源完整性 P1 不变；本次不把模型判为通过。
+
+### 未关闭边界
+
+1. 候选未达到 per-intent recall 0.25、macro recall 0.5 和 ECE 0.25 门，不能进入 paired shadow。
+2. 未执行正式 reserved-seed/R0、AirSim、真实相机、applied action outcome 或物理配对非退化；
+   当前没有物理性能或部署准入证据。
+3. assist、promotion、PPO、assignment、degradation、runtime、production、control、camera
+   command 和 `global_track_id` 写权限全部关闭。没有新增 D6-owned P0。
+
 ## 2026-08-01 D5 A3 v2 来源完整性 P1 关闭
 
 ### 已关闭范围

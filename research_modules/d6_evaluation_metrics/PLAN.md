@@ -1,5 +1,39 @@
 # D6 Evaluation Metrics Plan
 
+## 2026-08-01 D5 A3 v2 BC model 独立审计
+
+### 已完成
+
+- [x] 新增 D6-owned 低层审计器和 CLI；不调用 D5 evaluator、corpus gate、precheck 或模型类。
+- [x] 独立核对 frozen config 单配置/test 未调参合同、generation plan/summary/registry 内容与
+  SHA-256、feature cache manifest 和全部 33 个 cache 文件、bundle manifest/`SHA256SUMS`、
+  weights、7 个 tracked D5 源文件及 tracked summary/report。
+- [x] 只对开发 generation seed `22100-22199` 与保留 `1000-1019` 做集合交集检查；未读取或
+  运行正式 seed episode，也未读取 R0 shard 10-19。
+- [x] 直接读取 test 的 candidate count、selected index、camera type、intent、FOV、yaw、pitch
+  和 35 维 features；按 state_dict 形状和 tanh/linear 代数独立生成 40133 个样本的 prediction、
+  confidence 和 OOD。
+- [x] 复算 exact `0.9599581391872025`、macro recall `0.49550658912024403`、ECE
+  `0.3682385335452162`、OOD `0`；observe_target/search_sector recall 均为 0，
+  interceptor/recon exact 为 `0.9723771235896771/0.6565272496831432`。
+- [x] 独立质量门因两个少数动作零召回、macro recall 和 ECE 失败关闭；所有 authority false，
+  `paired_shadow_allowed=false`，高总体准确率不覆盖少数类失败。
+- [x] 负例覆盖 cache 摘要篡改、每个 authority 字段 true、多配置、hyperparameter search、
+  test 调参、gate 失败重跑和少数动作零召回却声明通过。
+- [x] 生成 `audit.json`、`REPORT_CN.md` 和 `SHA256SUMS`；专项测试
+  `18 passed, 1 warning in 2.85s`，D6 全量 `1384 passed, 1 warning in 135.21s`。
+- [x] 将机器证据 inputs 固定为 repo-relative POSIX 路径和 `repo_root="."`，并记录审计
+  schema、实现版本与审计器自身源码 SHA-256；专项测试重验报告目录 `SHA256SUMS`。
+
+### 未完成边界
+
+- [ ] 当前只复核开发三维质点 test cache，不形成正式 reserved-seed/R0、AirSim、真实相机、
+  applied action outcome、物理配对非退化或部署性能证据。
+- [ ] D5 必须产生通过少数动作召回、macro recall、校准和后续物理门的新版本候选，才可重新
+  申请 paired shadow；本候选不得因 exact accuracy 较高而重分类。
+- [ ] 规则回退继续有效；assist、promotion、PPO、assignment、degradation、runtime、production、
+  control、camera command 和 `global_track_id` 写权限继续关闭。
+
 ## 2026-08-01 D5 A3 v2 候选语料来源审计
 
 ### 已完成

@@ -1,5 +1,23 @@
 # D6 系统级离线评估模块原理
 
+## BC 候选必须按少数动作和校准失败关闭
+
+D6 对行为克隆候选的独立审计从冻结字节开始，不调用被审模块的 evaluator、corpus gate、
+precheck 或模型类。frozen config、source generation 元数据、cache manifest/binary、bundle
+manifest/checksum、weights 和 tracked source 都必须形成一致摘要链；单配置、test 未参与训练
+或选择以及全部 authority false 是结构前置条件。
+
+动作准确率不是独立准入充分条件。D6 同时按真实动作支持数计算每 intent recall、macro recall，
+按相机角色计算 exact accuracy，按逐候选 softmax confidence 计算 ECE，并按训练 feature bounds
+与冻结 margin 计算每样本 OOD。任一受支持少数动作 recall 低于阈值时，即使总体 exact accuracy
+接近 1，也必须失败关闭，且不能进入 paired shadow。
+
+2026-08-01 对 A3 v2 开发候选的实际复算覆盖 40133 个 test 样本和 276437 个候选：exact
+`0.9599581391872025`，observe_target/search_sector recall 均为 0，macro recall
+`0.49550658912024403`，ECE `0.3682385335452162`，OOD `0`。独立门阈值分别为 per-intent
+recall 0.25、macro recall 0.5、ECE 0.25、OOD 0.1、两种有样本相机角色 accuracy 0.5；结论
+为失败关闭。该开发质点证据不等于正式 R0、AirSim、真实相机或物理非退化证据。
+
 ## A3 v2 候选语料的来源完整性
 
 D6 将最终封装语料视为不可信输入。审计从摘要清单开始，而不是从 producer 或 D5 给出的

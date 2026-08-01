@@ -1,5 +1,39 @@
 # D6 系统级离线评估：算法原理与实施说明
 
+## D5 A3 v2 BC model 独立前向与指标复算
+
+输入为冻结配置、候选公共 evidence、source generation plan/summary/registry、feature cache 和
+model bundle。实现先复算文件 SHA-256 与 bundle `SHA256SUMS`，再核对 plan/summary cell、
+registry seed catalog、source commit、单配置和 test 未调参合同。保留 seed 只按 catalog 做集合
+交集，不打开对应 episode 或正式 R0 shard。
+
+test cache 用 manifest dtype 直接读取。令第 i 个样本候选数为 n_i，累计 offset 为 o_i，真值
+索引为 y_i。对全部候选特征 x 独立解析 state_dict 并计算：
+
+```text
+h1 = tanh(x W1^T + b1)
+h2 = tanh(h1 W2^T + b2)
+logit = h2 Wa^T + ba
+p_i = softmax(logit[o_i:o_i+n_i])
+prediction_i = argmax(p_i)
+confidence_i = max(p_i)
+```
+
+critic 张量只做 key、shape、finite 审计，不参与动作选择。exact action 是预测候选索引与
+selected index 完全相等；intent recall 使用真值候选与预测候选的 intent code；macro recall
+对四个有真值支持的 intent 等权平均；相机角色 accuracy 按 camera type 子集计算。ECE 使用 10
+个 `[0,1]` 等宽 confidence bin，对 `|bin accuracy-bin mean confidence|` 按样本数加权。
+
+OOD 对每个特征使用训练界限 `[l_j,u_j]` 和 margin m=0.05：
+`[l_j-m max(u_j-l_j,1e-6), u_j+m max(u_j-l_j,1e-6)]`。任一有效候选任一特征越界，样本即
+OOD。审计前后再次复算全部 cache SHA-256；每样本 prediction/confidence/OOD 及其向量摘要写入
+机器证据。
+
+2026-08-01 实际结果为 40133 样本、276437 候选，exact `0.9599581391872025`，四 intent
+recall 依次为 `0/0/0.9850199203187251/0.9970064361622512`，macro
+`0.49550658912024403`，interceptor/recon `0.9723771235896771/0.6565272496831432`，ECE
+`0.3682385335452162`，OOD `0`。独立门失败，所有 authority 与 paired shadow 保持关闭。
+
 ## A3 v2 候选语料低层审计
 
 当前 v2 审计由通用低层来源审计和固定候选锚点审计两层组成。第一层只接受数据集根目录，

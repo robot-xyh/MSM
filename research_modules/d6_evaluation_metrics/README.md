@@ -1,5 +1,36 @@
 # D6 Evaluation Metrics
 
+## 2026-08-01 D5 A3 v2 BC model 低层独立审计
+
+D6 新增 `d5_a3_v2_bc_model_audit.py`，不导入或调用 D5 evaluator、corpus gate、precheck
+和模型类。审计器直接复算 frozen config、generation plan/summary/registry、feature cache
+manifest 与 33 个二进制文件、bundle manifest/`SHA256SUMS`、`weights.pt`、7 个 tracked D5
+源文件及 tracked summary/report 的 SHA-256。generation seed 只读取开发目录中的
+`22100-22199` 元数据；对保留 `1000-1019` 只做数值交集检查，未读取或运行正式 episode，
+也未读取 R0 shard 10-19。
+
+审计器按 state_dict 的固定形状独立重建 35-64-64-1 两层 tanh actor，对 test 的 40133 个
+样本、276437 个候选逐样本生成 prediction、confidence 和 feature-boundary OOD。复算结果为
+exact action accuracy `0.9599581391872025`；observe_target/search_sector recall 均为 `0`，
+hold/reacquire 为 `0.9850199203187251/0.9970064361622512`；macro recall
+`0.49550658912024403`；interceptor/recon exact accuracy
+`0.9723771235896771/0.6565272496831432`；ECE `0.3682385335452162`；OOD fraction `0`。
+ECE 与 D5 声明差 `2.47e-10`，其余核心指标相同。
+
+独立门要求每 intent recall 至少 0.25、macro recall 至少 0.5、ECE 至多 0.25、OOD 至多
+0.1 且 interceptor/recon accuracy 至少 0.5。结果因两个少数动作零召回、macro recall 和
+ECE 失败关闭；总体准确率不能覆盖少数类失败。`paired_shadow_allowed=false`，assist、
+promotion、PPO、assignment、degradation、runtime、production、control、camera command
+和 `global_track_id` 写权限均为 false。机器证据位于
+`reports/D5_A3_V2_BC_MODEL_INDEPENDENT_AUDIT_20260801/`。专项测试为
+`18 passed, 1 warning in 2.85s`，D6 全量为
+`1384 passed, 1 warning in 135.21s`；warning 为既有 Matplotlib `Axes3D` 环境提示。该证据
+不构成正式 R0、AirSim、真实相机或物理非退化证据。
+
+窄修复后的机器证据只持久化 repo-relative POSIX inputs，`repo_root="."`；auditor 与
+integrity 同时记录审计 schema `d6.d5-a3-v2-bc-model-independent-audit.v1`、实现版本和当前
+审计器 Python 源码 SHA-256。证据不记录未经核验的 clean Git 状态。
+
 ## 2026-08-01 D5 A3 v2 主动视觉候选语料独立审计
 
 D6 已对 main 最终封装的 A3 v2 三维质点主动视觉候选语料完成独立、只读、低层审计。当前

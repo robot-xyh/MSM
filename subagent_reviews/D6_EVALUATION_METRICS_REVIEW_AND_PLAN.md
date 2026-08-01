@@ -1,5 +1,23 @@
 # D6 系统评估指标综述及子方案
 
+## 2026-08-01 D5 A3 v2 BC model 独立审计评审
+
+评审接受 D6 低层复算链。实现不导入 D5 运行代码，直接验证 frozen config、source generation
+plan/summary/registry、feature cache、bundle、weights 和 tracked 文件摘要，按 state_dict 的
+35-64-64-1 形状及 tanh/linear 运算生成每样本 prediction、confidence 和 OOD。registry 只用于
+开发 seed 与保留 seed 集合交集检查，没有读取或运行保留 episode 或 R0 shard 10-19。
+
+40133 个 test 样本、276437 个候选的复算 exact 为 `0.9599581391872025`，macro recall
+`0.49550658912024403`，ECE `0.3682385335452162`，OOD `0`；observe_target 和
+search_sector recall 均为 0。评审明确拒绝用总体准确率覆盖少数类零召回。独立阈值检查返回
+fail closed，`paired_shadow_allowed=false`，全部 authority false。专项测试 18 项通过，含真实
+候选端到端和所要求的篡改/权限/调参/伪通过负例；D6 全量 1384 项通过，唯一 warning 为既有
+Matplotlib `Axes3D` 环境提示。
+
+评审结论只确认开发质点 cache、模型字节和指标声明可复现。正式 R0、AirSim、真实相机、
+applied action outcome 和物理配对非退化仍未完成，因此本候选不能晋级或进入 paired shadow，
+规则回退继续有效。
+
 ## 2026-08-01 D5 A3 v2 候选语料独立审计评审
 
 评审接受 D6 的来源完整性结论。D6 从 302 项 checksum inventory 和实际文件集合开始，逐项

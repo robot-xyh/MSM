@@ -1,5 +1,37 @@
 # D6 正式实验矩阵准入预检报告
 
+## D5 A3 v2 BC model 独立审计（2026-08-01）
+
+D6 对开发三维质点候选执行低层独立审计，没有调用 D5 evaluator、corpus gate、precheck 或
+模型类。输入绑定 frozen config、generation plan/summary/registry、feature cache、bundle、
+weights 和 tracked D5 文件。33 个 cache 文件、7 个 tracked source 文件、bundle
+`SHA256SUMS`、weights、tracked summary/report 摘要通过；单配置、test 未用于训练/选择和
+全部 authority false 的声明一致。只检查开发 seed `22100-22199` 与保留 `1000-1019` 的数值
+交集为 0，未读取或运行保留 episode 或 R0 shard 10-19。
+
+按 state_dict 形状重建 35-64-64-1 tanh actor 后，对 40133 个 test 样本、276437 个候选逐样本
+生成 prediction、confidence 和 OOD。exact action accuracy 为 `0.9599581391872025`；
+observe_target/search_sector/hold/reacquire recall 为
+`0/0/0.9850199203187251/0.9970064361622512`；macro recall
+`0.49550658912024403`；interceptor/recon exact accuracy
+`0.9723771235896771/0.6565272496831432`；ECE `0.3682385335452162`；feature-boundary OOD
+fraction `0`。核心指标与 D5 声明匹配，ECE 绝对差为 `2.47e-10`。
+
+验收阈值为每 intent recall 至少 0.25、macro recall 至少 0.5、ECE 至多 0.25、OOD 至多 0.1、
+interceptor/recon accuracy 至少 0.5。候选因两个少数动作零召回、macro recall 和 ECE 失败，
+状态为 `completed_fail_closed_quality_gate`。总体准确率不能覆盖少数类失败；所有 authority false，
+`paired_shadow_allowed=false`。机器证据、中文报告和校验和位于
+`reports/D5_A3_V2_BC_MODEL_INDEPENDENT_AUDIT_20260801/`；专项测试
+`18 passed, 1 warning in 2.85s`，D6 全量 `1384 passed, 1 warning in 135.21s`。warning
+为既有 Matplotlib `Axes3D` 环境提示。
+
+重生成证据中的全部 input 均为 repo-relative POSIX 路径，`repo_root="."`，不含本地主目录。
+auditor/integrity 记录 schema、实现版本及当前审计器 Python 源码 SHA-256；未写入未经核验的
+clean Git 声明。专项测试同时重验报告目录 `SHA256SUMS`。
+
+该结果只证明开发 cache 和模型字节可独立复现，不形成正式 R0、AirSim、真实相机、applied
+action outcome、物理配对非退化、assist、运行或控制准入证据。规则回退继续生效。
+
 ## D5 A3 v2 候选语料独立审计（2026-08-01）
 
 本次对象为 main 最终封装的 A3 v2 三维质点主动视觉候选语料。D6 只读输入数据集根目录，
