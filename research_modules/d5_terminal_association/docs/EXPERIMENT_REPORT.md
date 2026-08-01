@@ -1,5 +1,53 @@
 # D5 末端视觉配准与身份认证实验报告
 
+## 2026-08-01 A3 v2 开发态行为克隆实验
+
+本轮在已通过 owner 验收的 100-episode 语料上执行一次冻结训练。输入共 159,502 个样本，
+train/validation/test 分别为 95,040/24,329/40,133，对应 60/20/20 个互异 seed。manifest、
+split、training-set、generation plan、generation summary 和 training seed registry SHA-256
+分别为 `9b80e47a...31d4`、`fb4f6c0c...7da7`、`3cc6ea16...61776`、
+`ed976539...c48a9`、`78d814b5...ba50`、`6e4cb133...18f5`。summary 内 registry 哈希与实际
+文件一致；plan 本体不含该字段。1000-1019 只做禁止集合核对，零重叠，未读取正式 R0。
+
+训练使用 CPU、固定 seed `20260720`、5 epochs、hidden dimension 64、完整 train split 和
+有界逆平方根意图权重。四类 train 样本及实际权重为：`hold=44,441/0.9062`、
+`observe_target=839/4.9575`、`reacquire=47,570/0.8759`、
+`search_sector=2,190/4.0823`。每 epoch 使用 95,040 个原始样本一次，没有复制、过采样、
+跨 split 借样或补造正样本。validation loss 从 `1.622838` 降至 `0.859567`，最低点在 epoch 5。
+
+| 分割 | 精确动作 | 宏召回 | 期望校准误差 | 特征边界 OOD |
+| --- | ---: | ---: | ---: | ---: |
+| train | 0.959322 | 0.495345 | 0.367223 | 0.000000 |
+| validation | 0.953512 | 0.494985 | 0.361986 | 0.000082 |
+| test | 0.959958 | 0.495507 | 0.368239 | 0.000000 |
+
+test 四类动作召回为 `hold=0.985020`、`observe_target=0`、`reacquire=0.997006`、
+`search_sector=0`。模型的预测动作只包含 hold 和 reacquire。拦截相机 38,555 个 test 样本的
+精确动作准确率为 `0.972377`，侦察相机 1,578 个样本为 `0.656527`；两类角色都超过 0.50
+角色门，但少数动作和校准门未通过。总体高准确率不能覆盖两个少数意图完全漏判。
+
+development precheck 状态为 `fail_closed_model_precheck`。失败原因为两类少数动作召回低于
+0.25、宏召回低于 0.50、期望校准误差高于 0.25。test 特征边界 OOD 为 0，但真正场景域、
+AirSim 和真实相机 OOD 均 unavailable。没有因失败调整阈值、split、配置或再次训练。
+
+完整流水线耗时 `887.994 s`，严格输入完整性检查 `78.996 s`，优化器训练 `2.876 s`。CPU
+峰值 RSS 为 `2342.352 MiB`；CUDA 可见 RTX 4050 Laptop 6,053,232,640 bytes，但本轮 CUDA
+allocated/reserved 均为 0。单候选集模型 forward P50/P95/P99 为
+`0.0719/0.0788/0.0852 ms`。feature cache 与 bundle 共约 161 MiB，权重为 47,045 bytes，
+只保存在 ignored outputs。
+
+bundle 状态为 `development_shadow_only`，权重、bundle manifest 和 cache manifest SHA-256
+分别为 `b984e305...d01c`、`9f370a4e...793f`、`8576ae62...fe1a`。shadow loader 通过，assist
+loader 失败关闭。assist、promotion、PPO、assignment、degradation、runtime、production、
+control、camera command 和 `global_track_id` write 全为 false。该候选不进入 A3/R0 paired
+shadow，也不替换确定性规则。
+
+训练后相关回归为 `35 passed in 4.29s`。训练批次内 D5 全量为
+`779 passed, 2 warnings in 102.40s`，收尾复跑为
+`779 passed, 2 warnings in 124.10s`，验收阈值为零失败。py_compile、机器 JSON、中文报告、
+cache/model/config SHA-256 和 `git diff --check` 均通过。两条 warning 为既有 Matplotlib
+Axes3D 与 NVML 环境告警。
+
 ## 2026-08-01 A3 v2 来源独立语料验收
 
 D5 对 clean commit `d7bf89060e88a5b1324f2d8d1de36b005ebe5e4d` 生成的候选语料完成
@@ -80,9 +128,9 @@ simulation-research development evaluation；全部 authority 和 runtime/produc
 claim 均为 false。AirSim 与真实相机只得到 declaration-only 等级。
 
 测试中的 episode 是临时软件合同 fixture，不是独立 producer 生成的 point-mass 训练语料，
-也不是 AirSim 或真实相机实验数据。本轮没有重训 A3，没有得到新的未见 seed、A3/R0 收益、
-现实泛化或物理结果。当前只关闭“来源域语义和仿真研究门”软件 P1，模型准入和运行权限继续
-保持开放缺口。
+也不是 AirSim 或真实相机实验数据。该段记录 2026-07-31 来源域合同验证，当时没有重训 A3，
+也没有未见 seed、A3/R0 收益、现实泛化或物理结果。后续 v2 冻结训练及未见 seed 诊断见本报告
+首节；A3/R0、现实泛化、物理结果和运行权限仍为开放缺口。
 
 ## 2026-07-28 主动视觉训练语料门
 

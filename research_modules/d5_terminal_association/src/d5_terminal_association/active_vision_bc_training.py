@@ -12,6 +12,7 @@ import argparse
 from collections import Counter, defaultdict
 from contextlib import ExitStack
 from dataclasses import asdict, dataclass
+from datetime import date, datetime
 import hashlib
 import json
 import math
@@ -19,10 +20,12 @@ import os
 from pathlib import Path
 import platform
 import random
+import re
 import resource
 import sys
 import time
 from typing import Any, Iterable, Mapping, Sequence
+from zoneinfo import ZoneInfo
 
 import numpy as np
 import torch
@@ -46,6 +49,7 @@ from .active_vision_corpus_audit import (
     ActiveVisionCorpusCoveragePolicy,
     active_vision_camera_role,
     audit_active_vision_training_corpus,
+    require_active_vision_simulation_research_corpus_ready,
     require_active_vision_training_corpus_ready,
     validate_active_vision_corpus_audit,
 )
@@ -74,8 +78,16 @@ ACTIVE_VISION_BC_SUMMARY_SCHEMA_VERSION = "d5.active-vision-bc-tracked-summary.v
 ACTIVE_VISION_BC_MODEL_DIAGNOSTICS_SCHEMA_VERSION = (
     "d5.active-vision-bc-model-diagnostics.v1"
 )
-VALIDATION_DATE = "2026-07-27"
+ACTIVE_VISION_BC_SOURCE_BINDING_SCHEMA_VERSION = (
+    "d5.active-vision-bc-point-mass-source-binding.v1"
+)
+ACTIVE_VISION_BC_FROZEN_CONFIG_SCHEMA_VERSION = (
+    "d5.active-vision-bc-frozen-config.v1"
+)
 VALIDATION_TIMEZONE = "America/Los_Angeles"
+_GENERATION_PLAN_SCHEMA_VERSION = "scalable3d-learning-generation-plan-v1"
+_TRAINING_SEED_REGISTRY_SCHEMA_VERSION = "scalable3d-training-seed-registry-v1"
+_SHA256_PATTERN = re.compile(r"^[0-9a-f]{64}$")
 _SPLITS = ("train", "validation", "test")
 _INTENT_VALUES = tuple(item.value for item in ActiveVisionIntent)
 _FOV_VALUES = tuple(item.value for item in ActiveVisionFovMode)
@@ -167,6 +179,371 @@ class ActiveVisionBcDevelopmentCriteria:
             value = float(getattr(self, name))
             if not np.isfinite(value) or not 0.0 <= value <= 1.0:
                 raise ValueError(f"{name} must be finite and in [0, 1]")
+
+
+def point_mass_development_source_binding(
+    dataset: LazyActiveVisionEpisodeDataset,
+    *,
+    generation_plan_path: str | Path,
+    generation_summary_path: str | Path,
+    training_seed_registry_path: str | Path,
+) -> dict[str, Any]:
+    """Bind one standalone point-mass corpus to its frozen generation evidence."""
+
+    plan_path = Path(generation_plan_path)
+    summary_path = Path(generation_summary_path)
+    registry_path = Path(training_seed_registry_path)
+    plan = read_json(plan_path)
+    summary = read_json(summary_path)
+    registry = read_json(registry_path)
+    plan_sha256 = sha256_file(plan_path)
+    summary_sha256 = sha256_file(summary_path)
+    registry_sha256 = sha256_file(registry_path)
+
+    if plan.get("schema_version") != _GENERATION_PLAN_SCHEMA_VERSION:
+        raise ValueError("active-vision generation plan schema mismatch")
+    if summary.get("schema_version") != _GENERATION_PLAN_SCHEMA_VERSION:
+        raise ValueError("active-vision generation summary schema mismatch")
+    expected_registry_fields = {
+        "schema_version",
+        "git_commit",
+        "repository_dirty",
+        "schedule_sha256",
+        "training_seed_count",
+        "training_seeds",
+        "reserved_evaluation_seed_count",
+        "reserved_evaluation_seeds",
+        "overlap_count",
+    }
+    if set(registry) != expected_registry_fields:
+        raise ValueError("active-vision training seed registry fields mismatch")
+    if registry.get("schema_version") != _TRAINING_SEED_REGISTRY_SCHEMA_VERSION:
+        raise ValueError("active-vision training seed registry schema mismatch")
+
+    training_seeds = _strict_seed_catalog(
+        registry.get("training_seeds"),
+        label="training seeds",
+    )
+    reserved_seeds = _strict_seed_catalog(
+        registry.get("reserved_evaluation_seeds"),
+        label="reserved evaluation seeds",
+    )
+    if registry.get("training_seeds") != list(training_seeds):
+        raise ValueError("active-vision training seed registry is not sorted")
+    if registry.get("reserved_evaluation_seeds") != list(reserved_seeds):
+        raise ValueError("active-vision reserved seed registry is not sorted")
+    if int(registry.get("training_seed_count", -1)) != len(training_seeds):
+        raise ValueError("active-vision training seed count mismatch")
+    if int(registry.get("reserved_evaluation_seed_count", -1)) != len(
+        reserved_seeds
+    ):
+        raise ValueError("active-vision reserved evaluation seed count mismatch")
+    overlap = sorted(set(training_seeds) & set(reserved_seeds))
+    if overlap or registry.get("overlap_count") != 0:
+        raise ValueError("active-vision training and reserved seeds overlap")
+
+    plan_cells = plan.get("cells")
+    summary_cells = summary.get("cells")
+    if not isinstance(plan_cells, list) or not isinstance(summary_cells, list):
+        raise ValueError("active-vision generation cells are unavailable")
+    plan_seeds = _strict_seed_catalog(
+        [item.get("seed") for item in plan_cells if isinstance(item, Mapping)],
+        label="generation plan seeds",
+    )
+    if len(plan_seeds) != len(plan_cells):
+        raise ValueError("active-vision generation plan cell fields mismatch")
+    if plan_seeds != training_seeds:
+        raise ValueError("active-vision generation plan and registry seeds differ")
+    if summary_cells != plan_cells:
+        raise ValueError("active-vision generation summary and plan cells differ")
+    if int(plan.get("cell_count", -1)) != len(plan_cells):
+        raise ValueError("active-vision generation plan cell count mismatch")
+    if int(plan.get("generation_seed_count", -1)) != len(training_seeds):
+        raise ValueError("active-vision generation plan seed count mismatch")
+    if int(summary.get("completed_episode_count", -1)) != len(training_seeds):
+        raise ValueError("active-vision generation summary episode count mismatch")
+    if int(summary.get("generation_seed_count", -1)) != len(training_seeds):
+        raise ValueError("active-vision generation summary seed count mismatch")
+    if summary.get("training_seed_registry_sha256") != registry_sha256:
+        raise ValueError("active-vision generation summary registry hash mismatch")
+    if summary.get("training_seed_registry") != registry_path.name:
+        raise ValueError("active-vision generation summary registry path mismatch")
+
+    schedule_sha256 = registry.get("schedule_sha256")
+    _require_sha256(schedule_sha256, "schedule SHA-256")
+    if plan.get("schedule_sha256") != schedule_sha256:
+        raise ValueError("active-vision plan and registry schedule hashes differ")
+    if summary.get("schedule_sha256") != schedule_sha256:
+        raise ValueError("active-vision summary and registry schedule hashes differ")
+    commits = {
+        str(plan.get("git_commit", "")),
+        str(summary.get("git_commit", "")),
+        str(registry.get("git_commit", "")),
+    }
+    if len(commits) != 1 or not re.fullmatch(r"[0-9a-f]{40}", next(iter(commits))):
+        raise ValueError("active-vision generation Git commit binding mismatch")
+    source_commit = next(iter(commits))
+    if any(
+        value is not False
+        for value in (
+            plan.get("repository_dirty"),
+            summary.get("repository_dirty"),
+            registry.get("repository_dirty"),
+        )
+    ):
+        raise ValueError("active-vision generation source is not clean")
+    if plan.get("formal") is not False or summary.get("formal") is not False:
+        raise ValueError("active-vision development corpus is marked formal")
+    if plan.get("reserved_evaluation_seeds") != list(reserved_seeds):
+        raise ValueError("active-vision plan reserved seed catalog mismatch")
+    if summary.get("reserved_evaluation_seeds") != list(reserved_seeds):
+        raise ValueError("active-vision summary reserved seed catalog mismatch")
+
+    descriptors = tuple(dataset.episode_descriptors)
+    dataset_seeds = _strict_seed_catalog(
+        [item.get("seed") for item in descriptors],
+        label="dataset episode seeds",
+    )
+    if dataset_seeds != training_seeds:
+        raise ValueError("active-vision dataset and registry seeds differ")
+    descriptor_commits = {
+        str(item.get("source_identity", {}).get("git_commit", ""))
+        for item in descriptors
+        if isinstance(item, Mapping)
+    }
+    if descriptor_commits != {source_commit}:
+        raise ValueError("active-vision dataset source commit differs from registry")
+    if any(
+        item.get("source_identity", {}).get("git_dirty") is not False
+        for item in descriptors
+    ):
+        raise ValueError("active-vision dataset contains dirty source episodes")
+    dataset_reserved_overlap = sorted(set(dataset_seeds) & set(reserved_seeds))
+    if dataset_reserved_overlap:
+        raise ValueError("active-vision dataset contains reserved evaluation seeds")
+
+    split_seed_catalogs = {
+        split: sorted(
+            int(item["seed"])
+            for item in descriptors
+            if item.get("split") == split
+        )
+        for split in _SPLITS
+    }
+    if set().union(*(set(values) for values in split_seed_catalogs.values())) != set(
+        training_seeds
+    ):
+        raise ValueError("active-vision split seed catalog is incomplete")
+    for index, left in enumerate(_SPLITS):
+        for right in _SPLITS[index + 1 :]:
+            if set(split_seed_catalogs[left]) & set(split_seed_catalogs[right]):
+                raise ValueError("active-vision split seed catalogs overlap")
+
+    manifest = dataset.manifest
+    manifest_sha256 = dataset.manifest_sha256
+    split_sha256 = _require_sha256(manifest.get("split_sha256"), "split SHA-256")
+    training_set_sha256 = _require_sha256(
+        manifest.get("training_set_sha256"),
+        "training-set SHA-256",
+    )
+    _require_sha256(manifest_sha256, "dataset manifest SHA-256")
+    sample_counts = {
+        split: sum(
+            int(item.get("sample_count", 0))
+            for item in descriptors
+            if item.get("split") == split
+        )
+        for split in _SPLITS
+    }
+    checks = {
+        "dataset_manifest_internal_hashes_validated_by_strict_loader": True,
+        "dataset_manifest_split_and_training_set_bound": True,
+        "generation_plan_registry_seed_catalog_equal": True,
+        "generation_summary_plan_cells_equal": True,
+        "generation_summary_registry_sha256_equal": True,
+        "git_commit_equal_across_external_evidence_and_dataset": True,
+        "clean_source_required": True,
+        "whole_seed_split_disjoint": True,
+        "training_reserved_seed_overlap_zero": True,
+        "formal_r0_or_reserved_seed_samples_read": False,
+    }
+    return {
+        "schema_version": ACTIVE_VISION_BC_SOURCE_BINDING_SCHEMA_VERSION,
+        "status": "valid_point_mass_development_source_binding",
+        "binding_scope": {
+            "dataset_manifest_internal_binding": (
+                "manifest_sha256_split_sha256_training_set_sha256"
+            ),
+            "external_frozen_generation_binding": (
+                "generation_summary_to_training_registry_sha256_and_"
+                "plan_summary_cell_equality"
+            ),
+            "generation_plan_embeds_training_registry_sha256": False,
+        },
+        "dataset": {
+            "manifest_sha256": manifest_sha256,
+            "split_sha256": split_sha256,
+            "training_set_sha256": training_set_sha256,
+            "episode_count": len(descriptors),
+            "sample_count": sum(sample_counts.values()),
+            "episode_count_by_split": {
+                split: len(split_seed_catalogs[split]) for split in _SPLITS
+            },
+            "sample_count_by_split": sample_counts,
+            "seed_count_by_split": {
+                split: len(split_seed_catalogs[split]) for split in _SPLITS
+            },
+        },
+        "generation_plan": {
+            "path": str(plan_path),
+            "sha256": plan_sha256,
+            "schema_version": plan["schema_version"],
+            "cell_count": len(plan_cells),
+            "formal": False,
+        },
+        "generation_summary": {
+            "path": str(summary_path),
+            "sha256": summary_sha256,
+            "schema_version": summary["schema_version"],
+            "completed_episode_count": int(summary["completed_episode_count"]),
+            "training_seed_registry_sha256": registry_sha256,
+            "checkpoint_recovery_count": int(
+                summary.get("checkpoint_recovery_count", 0)
+            ),
+            "generation_wall_s": float(
+                summary.get("timing_summary", {}).get("generation_wall_s", 0.0)
+            ),
+        },
+        "training_seed_registry": {
+            "path": str(registry_path),
+            "sha256": registry_sha256,
+            "schema_version": registry["schema_version"],
+            "git_commit": source_commit,
+            "training_seed_count": len(training_seeds),
+            "training_seed_minimum": min(training_seeds),
+            "training_seed_maximum": max(training_seeds),
+        },
+        "reserved_evaluation": {
+            "policy": "prohibited_set_check_only",
+            "seed_count": len(reserved_seeds),
+            "seeds": list(reserved_seeds),
+            "dataset_overlap": dataset_reserved_overlap,
+            "formal_r0_read_or_run": False,
+            "reserved_seed_sample_read_or_run": False,
+        },
+        "checks": checks,
+    }
+
+
+def load_frozen_behavior_cloning_config(
+    path: str | Path,
+) -> tuple[ActiveVisionBcConfig, dict[str, Any]]:
+    """Load one pre-run configuration and retain its immutable evidence hash."""
+
+    config_path = Path(path)
+    payload = read_json(config_path)
+    expected_fields = {
+        "schema_version",
+        "work_package",
+        "frozen_before_training",
+        "source_hashes",
+        "selection_contract",
+        "authority",
+        "config",
+    }
+    if set(payload) != expected_fields:
+        raise ValueError("active-vision frozen configuration fields mismatch")
+    if payload.get("schema_version") != ACTIVE_VISION_BC_FROZEN_CONFIG_SCHEMA_VERSION:
+        raise ValueError("active-vision frozen configuration schema mismatch")
+    if payload.get("frozen_before_training") is not True:
+        raise ValueError("active-vision configuration was not frozen before training")
+    selection = payload.get("selection_contract")
+    if selection != {
+        "configuration_count": 1,
+        "hyperparameter_search": False,
+        "validation_used_for_best_epoch": True,
+        "test_used_for_training_or_selection": False,
+        "repeat_on_gate_failure": False,
+    }:
+        raise ValueError("active-vision frozen selection contract mismatch")
+    expected_authority = {
+        "assist": False,
+        "promotion": False,
+        "ppo": False,
+        "assignment": False,
+        "degradation": False,
+        "runtime": False,
+        "production": False,
+        "control": False,
+        "camera_command": False,
+        "global_track_id_write": False,
+    }
+    if payload.get("authority") != expected_authority:
+        raise ValueError("active-vision frozen authority contract mismatch")
+    config_payload = payload.get("config")
+    if not isinstance(config_payload, Mapping) or set(config_payload) != set(
+        asdict(ActiveVisionBcConfig())
+    ):
+        raise ValueError("active-vision frozen model configuration fields mismatch")
+    config = ActiveVisionBcConfig(**dict(config_payload))
+    source_hashes = payload.get("source_hashes")
+    if not isinstance(source_hashes, Mapping) or set(source_hashes) != {
+        "dataset_manifest_sha256",
+        "generation_plan_sha256",
+        "generation_summary_sha256",
+        "training_seed_registry_sha256",
+    }:
+        raise ValueError("active-vision frozen source hash fields mismatch")
+    for name, value in source_hashes.items():
+        _require_sha256(value, name)
+    return config, {
+        "schema_version": ACTIVE_VISION_BC_FROZEN_CONFIG_SCHEMA_VERSION,
+        "path": str(config_path),
+        "sha256": sha256_file(config_path),
+        "work_package": payload["work_package"],
+        "frozen_before_training": True,
+        "source_hashes": dict(source_hashes),
+        "selection_contract": dict(selection),
+        "authority": dict(expected_authority),
+        "config_sha256": sha256_json(asdict(config)),
+    }
+
+
+def validate_frozen_behavior_cloning_binding(
+    evidence: Mapping[str, Any],
+    *,
+    config: ActiveVisionBcConfig,
+    source_binding: Mapping[str, Any],
+) -> None:
+    expected = {
+        "dataset_manifest_sha256": source_binding["dataset"]["manifest_sha256"],
+        "generation_plan_sha256": source_binding["generation_plan"]["sha256"],
+        "generation_summary_sha256": source_binding["generation_summary"]["sha256"],
+        "training_seed_registry_sha256": source_binding[
+            "training_seed_registry"
+        ]["sha256"],
+    }
+    if evidence.get("source_hashes") != expected:
+        raise ValueError("active-vision frozen configuration source binding mismatch")
+    if evidence.get("config_sha256") != sha256_json(asdict(config)):
+        raise ValueError("active-vision frozen configuration content changed")
+
+
+def _strict_seed_catalog(value: Any, *, label: str) -> tuple[int, ...]:
+    if not isinstance(value, list) or not value:
+        raise ValueError(f"active-vision {label} are unavailable")
+    if any(type(item) is not int or item < 0 for item in value):
+        raise ValueError(f"active-vision {label} are invalid")
+    if len(set(value)) != len(value):
+        raise ValueError(f"active-vision {label} must be unique")
+    return tuple(sorted(value))
+
+
+def _require_sha256(value: Any, label: str) -> str:
+    token = str(value)
+    if _SHA256_PATTERN.fullmatch(token) is None:
+        raise ValueError(f"active-vision {label} is invalid")
+    return token
 
 
 @dataclass
@@ -282,6 +659,7 @@ def build_behavior_cloning_feature_cache(
     *,
     corpus_policy: ActiveVisionCorpusCoveragePolicy | None = None,
     reserved_evaluation_seeds: Sequence[int] | None = None,
+    source_binding: Mapping[str, Any] | None = None,
 ) -> tuple[dict[str, Any], dict[str, Any], str]:
     """Stream every split into compact candidate arrays and return the data audit."""
 
@@ -400,6 +778,7 @@ def build_behavior_cloning_feature_cache(
             "split_sha256": dataset.manifest["split_sha256"],
             "training_set_sha256": dataset.manifest["training_set_sha256"],
         },
+        "source_binding": _json_ready(source_binding),
         "feature_schema_version": ACTIVE_VISION_FEATURE_SCHEMA_VERSION,
         "action_space_version": ACTIVE_VISION_ACTION_SPACE_VERSION,
         "feature_names": list(ACTIVE_VISION_FEATURE_NAMES),
@@ -438,6 +817,25 @@ def load_behavior_cloning_feature_cache(
         raise ValueError("active-vision BC cache schema mismatch")
     if schema_version == ACTIVE_VISION_BC_CACHE_SCHEMA_VERSION:
         validate_active_vision_corpus_audit(manifest.get("training_corpus_audit"))
+        source_binding = manifest.get("source_binding")
+        if source_binding is not None:
+            if (
+                not isinstance(source_binding, Mapping)
+                or source_binding.get("schema_version")
+                != ACTIVE_VISION_BC_SOURCE_BINDING_SCHEMA_VERSION
+                or source_binding.get("status")
+                != "valid_point_mass_development_source_binding"
+                or not all(
+                    value is True
+                    for name, value in source_binding.get("checks", {}).items()
+                    if name != "formal_r0_or_reserved_seed_samples_read"
+                )
+                or source_binding.get("checks", {}).get(
+                    "formal_r0_or_reserved_seed_samples_read"
+                )
+                is not False
+            ):
+                raise ValueError("active-vision BC cache source binding is invalid")
     if tuple(manifest.get("feature_names", ())) != ACTIVE_VISION_FEATURE_NAMES:
         raise ValueError("active-vision BC cache feature order mismatch")
     caches = {
@@ -674,6 +1072,7 @@ def train_cached_behavior_cloning(
         "ppo_started": False,
         "training_corpus_audit_sha256": corpus_audit["content_sha256"],
         "config": asdict(config),
+        "config_sha256": sha256_json(asdict(config)),
         "intent_weighting": intent_weighting,
         "train_sample_count": train_cache.sample_count,
         "samples_seen_per_epoch": train_cache.sample_count,
@@ -1684,8 +2083,12 @@ def run_formal_behavior_cloning(
     tracked_report_path: str | Path | None = None,
     external_observed_outcome_count: int | None = None,
     canonical_view_manifest_path: str | Path | None = None,
+    generation_plan_path: str | Path | None = None,
+    generation_summary_path: str | Path | None = None,
     training_seed_registry_path: str | Path | None = None,
     shared_seed_registry_path: str | Path | None = None,
+    frozen_config_path: str | Path | None = None,
+    validation_date: str | None = None,
 ) -> dict[str, Any]:
     output_root = Path(output_dir)
     if output_root.exists() and any(output_root.iterdir()):
@@ -1696,15 +2099,56 @@ def run_formal_behavior_cloning(
     dataset = _load_behavior_cloning_dataset(
         dataset_dir,
         canonical_view_manifest_path=canonical_view_manifest_path,
+        generation_plan_path=generation_plan_path,
+        generation_summary_path=generation_summary_path,
         training_seed_registry_path=training_seed_registry_path,
         shared_seed_registry_path=shared_seed_registry_path,
     )
     integrity_elapsed = time.perf_counter() - audit_started
+    standalone_source_values = (
+        generation_plan_path,
+        generation_summary_path,
+        training_seed_registry_path,
+    )
+    source_binding = None
+    if all(value is not None for value in standalone_source_values) and (
+        canonical_view_manifest_path is None and shared_seed_registry_path is None
+    ):
+        source_binding = point_mass_development_source_binding(
+            dataset,
+            generation_plan_path=generation_plan_path,
+            generation_summary_path=generation_summary_path,
+            training_seed_registry_path=training_seed_registry_path,
+        )
+    frozen_config_binding = None
+    if frozen_config_path is not None:
+        frozen_config, frozen_config_binding = load_frozen_behavior_cloning_config(
+            frozen_config_path
+        )
+        if asdict(frozen_config) != asdict(config):
+            raise ValueError("active-vision frozen configuration differs from runtime config")
+        if source_binding is None:
+            raise ValueError(
+                "active-vision frozen configuration requires standalone source binding"
+            )
+        validate_frozen_behavior_cloning_binding(
+            frozen_config_binding,
+            config=config,
+            source_binding=source_binding,
+        )
     capacity = audit_capacity_probe(dataset)
     cache_manifest, data_audit, cache_manifest_sha256 = build_behavior_cloning_feature_cache(
         dataset,
         output_root / "feature_cache",
+        reserved_evaluation_seeds=(
+            source_binding["reserved_evaluation"]["seeds"]
+            if source_binding is not None
+            else None
+        ),
+        source_binding=source_binding,
     )
+    if source_binding is not None:
+        require_active_vision_simulation_research_corpus_ready(cache_manifest)
     corpus_audit_path = output_root / "training_corpus_audit.json"
     write_json_atomic(
         corpus_audit_path,
@@ -1740,13 +2184,20 @@ def run_formal_behavior_cloning(
     audit_sha256 = sha256_file(audit_path)
     training_config = {
         **asdict(config),
+        "config_sha256": sha256_json(asdict(config)),
         "dataset_audit_sha256": audit_sha256,
         "training_corpus_audit_sha256": corpus_audit_sha256,
         "feature_cache_manifest_sha256": cache_manifest_sha256,
         "full_train_split_used": True,
         "ppo_enabled": False,
         "observed_outcome_used_as_reward": False,
+        "validation_used_for_best_epoch": True,
+        "test_used_for_training_or_selection": False,
+        "hyperparameter_search_used": False,
+        "configuration_count": 1,
     }
+    if frozen_config_binding is not None:
+        training_config["frozen_config_binding"] = frozen_config_binding
     canonical_view = canonical_view_binding(dataset)
     if canonical_view is not None:
         training_config["canonical_seed_view"] = canonical_view
@@ -1802,7 +2253,7 @@ def run_formal_behavior_cloning(
     }
     report = {
         "schema_version": ACTIVE_VISION_BC_REPORT_SCHEMA_VERSION,
-        "validation_date": VALIDATION_DATE,
+        "validation_date": _validation_date(validation_date),
         "validation_timezone": VALIDATION_TIMEZONE,
         "dataset": {
             "path": str(Path(dataset_dir)),
@@ -1813,7 +2264,17 @@ def run_formal_behavior_cloning(
             "strict_integrity_audit_seconds": integrity_elapsed,
             "canonical_seed_view": canonical_view,
             "training_corpus_audit_sha256": corpus_audit_sha256,
+            "binding_layers": {
+                "dataset_manifest_internal": (
+                    "manifest_sha256_split_sha256_training_set_sha256"
+                ),
+                "external_frozen_generation": (
+                    "generation_summary_registry_hash_and_plan_summary_cells"
+                ),
+            },
         },
+        "source_binding": source_binding,
+        "frozen_config": frozen_config_binding,
         "data_audit": data_audit,
         "capacity_probe": capacity,
         "feature_cache": {
@@ -1824,6 +2285,21 @@ def run_formal_behavior_cloning(
         "training": training,
         "evaluation": evaluation,
         "model_diagnostics": model_diagnostics,
+        "generalization_scope": {
+            "feature_boundary_ood": {
+                "available": True,
+                "definition": "outside_train_feature_min_max_with_configured_margin",
+                "test_fraction": evaluation["test"]["out_of_distribution"][
+                    "out_of_distribution_fraction"
+                ],
+            },
+            "true_scenario_distribution_ood": unavailable(
+                "no_independent_out_of_scenario_domain_corpus"
+            ),
+            "airsim_or_real_camera_distribution_shift": unavailable(
+                "point_mass_projection_corpus_only"
+            ),
+        },
         "hardware": hardware_summary(config.device),
         "bundle": {
             "directory": str(bundle_dir),
@@ -1848,11 +2324,20 @@ def run_formal_behavior_cloning(
             "training_readiness": "pass_development_behavior_cloning",
             "runtime_status": "development_shadow_only",
             "assist": False,
+            "promotion": False,
+            "promotion_status": "fail_closed",
+            "development_model_precheck_passed": bool(
+                model_diagnostics["development_model_precheck_passed"]
+            ),
             "active_vision_authority_granted": False,
             "assignment_authority_granted": False,
+            "degradation_authority_granted": False,
+            "runtime_authority_granted": False,
+            "production_authority_granted": False,
             "control_authority_granted": False,
+            "camera_command_authority_granted": False,
+            "global_track_id_write_authority_granted": False,
             "ppo": False,
-            "promotion": "fail_closed",
             "rule_fallback_required": True,
             "failure_reasons": data_audit["generalization_risks"]
             + model_diagnostics["failure_reasons"]
@@ -1890,11 +2375,14 @@ def tracked_summary(report: Mapping[str, Any], *, command: Sequence[str]) -> dic
         "validation_timezone": report["validation_timezone"],
         "command": list(command),
         "dataset": report["dataset"],
+        "source_binding": report["source_binding"],
+        "frozen_config": report["frozen_config"],
         "data_audit": report["data_audit"],
         "capacity_probe": report["capacity_probe"],
         "training": report["training"],
         "evaluation": report["evaluation"],
         "model_diagnostics": report["model_diagnostics"],
+        "generalization_scope": report["generalization_scope"],
         "hardware": report["hardware"],
         "bundle": report["bundle"],
         "external_evidence": report["external_evidence"],
@@ -1911,14 +2399,15 @@ def report_markdown(report: Mapping[str, Any]) -> str:
     evaluation = report["evaluation"]
     diagnostics = report["model_diagnostics"]
     bundle = report["bundle"]
+    source_binding = report.get("source_binding")
     lines = [
-        "# D5 主动视觉行为克隆正式数据审计",
+        "# D5 A3 v2 主动视觉开发态行为克隆候选",
         "",
         f"验证日期：{report['validation_date']}（{report['validation_timezone']}）",
         "",
         "## 结论",
         "",
-        f"正式数据共 `{audit['sample_count']}` 个样本，完整训练集 `{audit['split_sample_counts']['train']}` 个样本已用于行为克隆。",
+        f"本批语料共 `{audit['sample_count']}` 个样本，完整 train split `{audit['split_sample_counts']['train']}` 个样本已用于一次固定配置的行为克隆。",
         f"训练语料结构门为 `{corpus_gate['status']}`。该门只证明训练 split 的动作、相机角色、episode 和 seed 基础覆盖，不构成正式模型准入。",
         "模型仅为 development shadow-only，不具备 assist 权限，未启动 PPO，规则策略仍是强制回退。",
         "观测 outcome 没有动作执行归因，reward、counterfactual 和 causal label 均不可用，不能用于强化学习或晋级。",
@@ -1942,10 +2431,39 @@ def report_markdown(report: Mapping[str, Any]) -> str:
         "",
         "逆平方根权重只调整已有样本的损失贡献。语料门按唯一 episode、seed、动作和相机角色计数，复制、过采样和重加权均不能补足覆盖。",
         "",
+        "## 来源绑定",
+        "",
+    ]
+    if source_binding is None:
+        lines.extend(
+            [
+                "- 外部冻结生成证据：`unavailable`",
+                "- dataset manifest 内生绑定仍由严格 loader 校验。",
+            ]
+        )
+    else:
+        lines.extend(
+            [
+                f"- dataset manifest SHA-256：`{source_binding['dataset']['manifest_sha256']}`",
+                f"- split SHA-256：`{source_binding['dataset']['split_sha256']}`",
+                f"- training-set SHA-256：`{source_binding['dataset']['training_set_sha256']}`",
+                f"- generation plan SHA-256：`{source_binding['generation_plan']['sha256']}`",
+                f"- generation summary SHA-256：`{source_binding['generation_summary']['sha256']}`",
+                f"- training seed registry SHA-256：`{source_binding['training_seed_registry']['sha256']}`",
+                f"- generation summary 内嵌 registry SHA-256：`{source_binding['generation_summary']['training_seed_registry_sha256']}`",
+                "- generation plan 本体不内嵌 registry SHA-256；外部绑定由 generation summary 的 registry 哈希、plan/summary cell 完全相等和三者共同 schedule/Git 绑定建立。",
+                "- dataset manifest 内生绑定仅覆盖 manifest、split 和 training-set；不把外部 generation plan/registry 误写成 manifest 内生字段。",
+                f"- 正式保留 seed：`{source_binding['reserved_evaluation']['seed_count']}` 个，仅做禁止集合核对；R0 和保留 seed 样本读取/运行均为 `false`。",
+            ]
+        )
+    lines.extend(
+        [
+            "",
         "## 训练",
         "",
         f"固定 seed `{report['training']['config']['seed']}`，训练 `{report['training']['config']['epochs']}` 个 epoch，",
         f"最佳 epoch `{report['training']['best_epoch']}`。训练耗时 `{report['training']['training_elapsed_seconds']:.3f} s`。",
+        f"训练配置 SHA-256：`{report['training']['config_sha256']}`；配置总数为 `1`，未做超参数搜索，test 未参与训练或选模。",
         f"完整训练样本每个 epoch 使用一次，总样本呈现次数 `{report['training']['total_sample_presentations']}`。",
         f"损失加权：`{report['training']['intent_weighting']['strategy']}`；缺失动作："
         f"`{json.dumps(report['training']['intent_weighting']['unavailable_intents'], ensure_ascii=False)}`。"
@@ -1955,7 +2473,8 @@ def report_markdown(report: Mapping[str, Any]) -> str:
         "",
         "| 分割 | 损失 | 精确动作 | 意图准确率 | 视场准确率 | 偏航误差 | 俯仰误差 |",
         "| --- | ---: | ---: | ---: | ---: | ---: | ---: |",
-    ]
+        ]
+    )
     for split in _SPLITS:
         item = evaluation[split]
         overall = item["overall"]
@@ -1982,6 +2501,7 @@ def report_markdown(report: Mapping[str, Any]) -> str:
             f"- test 相机角色精确动作：`{json.dumps(diagnostics['test_camera_role_exact_action_accuracy'], ensure_ascii=False, sort_keys=True)}`",
             f"- test 期望校准误差：`{metric_text(test_calibration['expected_calibration_error'])}`",
             f"- test 分布外比例：`{metric_text(test_ood['out_of_distribution_fraction'])}`",
+            "- 上述分布外比例只表示特征超出 train 边界及配置 margin，不等于真正场景分布外验证。独立场景域、AirSim 和真实相机分布外结果均为 unavailable。",
             f"- 诊断回退原因计数：`{json.dumps(diagnostics['diagnostic_fallback_reason_counts'], ensure_ascii=False, sort_keys=True)}`",
             "",
             f"单次候选集前向推理 P50/P95/P99 为 `{latency['p50_ms']:.4f}/"
@@ -1990,8 +2510,10 @@ def report_markdown(report: Mapping[str, Any]) -> str:
             "## 准入",
             "",
             f"- bundle 状态：`{bundle['status']}`",
+            f"- development precheck：`{str(diagnostics['development_model_precheck_passed']).lower()}`",
             f"- assist：`{str(bundle['assist_admitted']).lower()}`",
             f"- PPO：`{str(bundle['ppo_enabled']).lower()}`",
+            "- promotion/assignment/degradation/runtime/production/control/camera command/global_track_id write：`false`",
             f"- assist 加载：`{str(bundle['assist_load_available']).lower()}`（{bundle['assist_load_failure_reason']}）",
             f"- 模型前置检查：`{diagnostics['status']}`",
             f"- 前置检查失败原因：`{json.dumps(diagnostics['failure_reasons'], ensure_ascii=False)}`",
@@ -2389,6 +2911,30 @@ def sha256_file(path: str | Path) -> str:
     return digest.hexdigest()
 
 
+def sha256_json(value: Any) -> str:
+    encoded = json.dumps(
+        _json_ready(value),
+        sort_keys=True,
+        separators=(",", ":"),
+        ensure_ascii=True,
+        allow_nan=False,
+    ).encode("utf-8")
+    return hashlib.sha256(encoded).hexdigest()
+
+
+def _validation_date(value: str | None) -> str:
+    candidate = (
+        datetime.now(ZoneInfo(VALIDATION_TIMEZONE)).date().isoformat()
+        if value is None
+        else str(value)
+    )
+    try:
+        date.fromisoformat(candidate)
+    except ValueError as exc:
+        raise ValueError("validation_date must be an ISO calendar date") from exc
+    return candidate
+
+
 def write_json_atomic(path: Path, value: Any) -> None:
     encoded = (
         json.dumps(
@@ -2454,17 +3000,21 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--ood-margin", type=float, default=0.05)
     parser.add_argument("--external-observed-outcome-count", type=int, default=None)
     parser.add_argument("--canonical-view-manifest")
+    parser.add_argument("--generation-plan")
+    parser.add_argument("--generation-summary")
     parser.add_argument("--training-seed-registry")
     parser.add_argument("--shared-seed-registry")
+    parser.add_argument("--frozen-config")
+    parser.add_argument("--validation-date")
     return parser
 
 
 def main(argv: Sequence[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
-    report = run_formal_behavior_cloning(
-        args.dataset_dir,
-        args.output_dir,
-        config=ActiveVisionBcConfig(
+    if args.frozen_config is not None:
+        config, _ = load_frozen_behavior_cloning_config(args.frozen_config)
+    else:
+        config = ActiveVisionBcConfig(
             seed=args.seed,
             epochs=args.epochs,
             batch_size=args.batch_size,
@@ -2480,13 +3030,21 @@ def main(argv: Sequence[str] | None = None) -> int:
             maximum_intent_weight=args.maximum_intent_weight,
             calibration_bin_count=args.calibration_bin_count,
             ood_margin=args.ood_margin,
-        ),
+        )
+    report = run_formal_behavior_cloning(
+        args.dataset_dir,
+        args.output_dir,
+        config=config,
         tracked_summary_path=args.tracked_summary,
         tracked_report_path=args.tracked_report,
         external_observed_outcome_count=args.external_observed_outcome_count,
         canonical_view_manifest_path=args.canonical_view_manifest,
+        generation_plan_path=args.generation_plan,
+        generation_summary_path=args.generation_summary,
         training_seed_registry_path=args.training_seed_registry,
         shared_seed_registry_path=args.shared_seed_registry,
+        frozen_config_path=args.frozen_config,
+        validation_date=args.validation_date,
     )
     print(
         json.dumps(
@@ -2508,9 +3066,26 @@ def _load_behavior_cloning_dataset(
     dataset_dir: str | Path,
     *,
     canonical_view_manifest_path: str | Path | None,
+    generation_plan_path: str | Path | None = None,
+    generation_summary_path: str | Path | None = None,
     training_seed_registry_path: str | Path | None,
     shared_seed_registry_path: str | Path | None,
 ) -> LazyActiveVisionEpisodeDataset:
+    standalone_values = (
+        generation_plan_path,
+        generation_summary_path,
+        training_seed_registry_path,
+    )
+    if any(value is not None for value in standalone_values):
+        if all(value is not None for value in standalone_values) and (
+            canonical_view_manifest_path is None and shared_seed_registry_path is None
+        ):
+            return load_active_vision_episode_dataset_lazy(dataset_dir)
+        if generation_plan_path is not None or generation_summary_path is not None:
+            raise ValueError(
+                "standalone active-vision source binding requires generation plan, "
+                "generation summary, and training registry without canonical view"
+            )
     canonical_values = (
         canonical_view_manifest_path,
         training_seed_registry_path,
@@ -2538,6 +3113,8 @@ __all__ = [
     "ACTIVE_VISION_BC_CACHE_SCHEMA_VERSION",
     "ACTIVE_VISION_BC_MODEL_DIAGNOSTICS_SCHEMA_VERSION",
     "ACTIVE_VISION_BC_REPORT_SCHEMA_VERSION",
+    "ACTIVE_VISION_BC_SOURCE_BINDING_SCHEMA_VERSION",
+    "ACTIVE_VISION_BC_FROZEN_CONFIG_SCHEMA_VERSION",
     "ActiveVisionBcConfig",
     "ActiveVisionBcDevelopmentCriteria",
     "ActiveVisionBcSplitCache",
@@ -2549,6 +3126,8 @@ __all__ = [
     "evaluate_behavior_cloning_model",
     "intent_weighting_profile",
     "load_behavior_cloning_feature_cache",
+    "load_frozen_behavior_cloning_config",
+    "point_mass_development_source_binding",
     "out_of_distribution_metrics",
     "run_formal_behavior_cloning",
     "selected_intent_codes",

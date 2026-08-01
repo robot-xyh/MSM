@@ -2,6 +2,39 @@
 
 **状态日期：2026-08-01**
 
+## A3 v2 行为克隆判定原则
+
+本轮只回答“已验收语料能否形成开发态行为克隆候选”。数据完整性、训练结构和模型质量按三道
+门独立判断。dataset manifest 内生绑定 manifest、split 和 training-set；generation summary
+通过 registry SHA-256 与外部冻结 training seed registry 绑定，plan/summary 再以 cell 全等、
+schedule 和 Git commit 建立一致性。generation plan 本体没有 registry 哈希，不能把这层外部
+证据写成 manifest 内生绑定。正式 seed 1000-1019 只参与集合交集运算，R0 与对应样本不进入
+任何 loader、cache 或 evaluator。
+
+训练配置在运行前固定为一组。95,040 个 train 样本每个 epoch 各使用一次，validation 只在
+同一 5-epoch 运行中选择最低加权损失 checkpoint，test 只在训练结束后计算一次结果。逆平方根
+权重提高已有少数意图的 loss 权重，最大值为 8；它不复制样本、不改变 coverage、不借用
+validation/test，也不保证模型一定学习少数动作。
+
+实际 test 总体精确动作准确率为 `0.959958`，多数动作基线仅为 `0.499414`。该总体值仍不能
+支持准入，因为模型只预测 `hold` 与 `reacquire`，没有预测 `observe_target` 或
+`search_sector`。两类少数意图召回均为 0，宏平均召回 `0.495507`，期望校准误差
+`0.368239`。拦截相机与侦察相机精确动作准确率分别为 `0.972377` 与 `0.656527`。因此
+development precheck 按四项原因失败关闭，不进入正式 paired shadow。
+
+特征边界 OOD 使用 train 特征逐维 min/max 和 0.05 margin。test 结果为 0 只表示没有候选特征
+越过这一数值边界。当前 train/validation/test 来自同一三维质点 producer，不能据此声称真正
+场景分布外、AirSim 或真实相机泛化。后三类证据保持 unavailable。
+
+开发候选允许 shadow loader 复现模型输出，不允许 assist loader。模型不发布相机命令，不参与
+分配或降级，不控制飞行，也不创建或改写 `global_track_id`。本轮失败结果保留为固定基线；后续
+少数意图和校准研究必须作为新工作包重新冻结方法，不得回看当前 test 反复调参。
+
+本轮相关回归为 `35 passed in 4.29s`。训练批次内 D5 全量为
+`779 passed, 2 warnings in 102.40s`，收尾复跑为
+`779 passed, 2 warnings in 124.10s`。两条警告来自既有 Matplotlib Axes3D 环境和 NVML
+初始化；CPU 训练的 CUDA allocated/reserved 均为 0。
+
 ## A3 v2 语料验收原则
 
 2026-08-01 的 v2 候选语料来自 clean commit `d7bf89060e88a5b1324f2d8d1de36b005ebe5e4d`，
@@ -78,9 +111,9 @@ identity、完整版本和哈希绑定、互斥 seed split、在线 truth-free �
 
 2026-07-31 定向测试为 `43 passed in 7.83s`，D5 全量为
 `769 passed, 2 warnings in 104.87s`。该轮只关闭来源域语义与仿真研究门软件 P1，测试数据是
-临时合同 fixture。后续独立质点语料的来源/完整性已按上一节通过，但训练覆盖仍失败；A3 没有
-重训。该句描述 2026-07-31 v1 批次；v2 训练结构状态以本文件首节为准。AirSim 和真实相机
-声明没有外部证明，任何 production/runtime/control 权限均未获得。
+临时合同 fixture。该句描述 2026-07-31 v1 批次，当时训练覆盖失败且 A3 没有重训。后续 v2
+语料已通过结构门并完成一次冻结行为克隆训练，但模型预检失败；状态以本文件首节为准。
+AirSim 和真实相机声明没有外部证明，任何 production/runtime/control 权限均未获得。
 
 ## 主动视觉训练语料覆盖原则
 

@@ -1,0 +1,163 @@
+{
+  "schema_version": "d5.active-vision-bc-development-candidate-evidence.v1",
+  "validation_date": "2026-08-01",
+  "work_package": "a3_v2_accepted_corpus_to_development_bc_candidate",
+  "status": "development_shadow_only",
+  "training_run_count": 1,
+  "source_binding": {
+    "dataset_manifest_sha256": "9b80e47aed8f4c7a416694220d63d9156010911951cbbf271905ce5c0d6f31d4",
+    "split_sha256": "fb4f6c0ce6566e05113c052af52f45b1ecfbdb3d77727b6c038010777477da7b",
+    "training_set_sha256": "3cc6ea166adc74e8cf89e9a5a6b44952b9e4f51d08c83678db39b7b9d1761776",
+    "generation_plan_sha256": "ed9765395da89e682b250ba23bf7322b290b2a559d0eb4403a2469f9a2cc48a9",
+    "generation_summary_sha256": "78d814b5dba41533ea9380154a6b8f243f9bfff65da11328679e396b2a89ba50",
+    "training_seed_registry_sha256": "6e4cb133fcd91c12e3aa38039fc2d2fe7fb9ace6b2c3bdb27cc5ce498a7618f5",
+    "generation_summary_embedded_registry_sha256_matches": true,
+    "generation_plan_embeds_registry_sha256": false,
+    "formal_r0_read_or_run": false,
+    "reserved_seed_sample_read_or_run": false,
+    "reserved_seed_overlap": []
+  },
+  "dataset": {
+    "episode_count": 100,
+    "sample_count": 159502,
+    "episode_count_by_split": {
+      "train": 60,
+      "validation": 20,
+      "test": 20
+    },
+    "sample_count_by_split": {
+      "train": 95040,
+      "validation": 24329,
+      "test": 40133
+    },
+    "validation_and_test_used_for_training_coverage": false,
+    "sample_copy_or_oversampling_used": false
+  },
+  "frozen_config": {
+    "file_sha256": "b1b1d39deb54f4ddd1d8f7371db671cd4c40106c645edd690c6d8e13fe439642",
+    "content_sha256": "87fc2330450afa2487b7a7b3902cbdef2a36a323ba42fc0d6b6cdecef0a51048",
+    "configuration_count": 1,
+    "hyperparameter_search": false,
+    "test_used_for_training_or_selection": false,
+    "repeat_on_gate_failure": false,
+    "config": {
+      "seed": 20260720,
+      "epochs": 5,
+      "batch_size": 2048,
+      "evaluation_batch_size": 4096,
+      "learning_rate": 0.0003,
+      "weight_decay": 0.0,
+      "hidden_dim": 64,
+      "device": "cpu",
+      "cpu_threads": 16,
+      "latency_samples": 2048,
+      "latency_warmup": 64,
+      "intent_weighting": "inverse_sqrt",
+      "maximum_intent_weight": 8.0,
+      "calibration_bin_count": 10,
+      "ood_margin": 0.05
+    }
+  },
+  "artifacts": {
+    "feature_cache_manifest_sha256": "8576ae62e7400c09b89b0a366bb4fef0d00c04ae178193f3682764b6ae21fe1a",
+    "model_bundle_manifest_sha256": "9f370a4e6d69fcdd6c484016332befdd567a3e8e8645221ae1a95f2962e0793f",
+    "model_weights_sha256": "b984e3052556879b2acd51d108c862a7ecd9361b2a823733e220f1e1419ad01c",
+    "model_weights_size_bytes": 47045,
+    "tracked_summary_sha256": "9df0956b001492cb8baec6859b8b481f0e479f118f8bb0ae67d8c3826cbd3ea7",
+    "chinese_report_sha256": "73c7d3f953bd9a2545224b9524daae2ea68c0c877524917cc6264558f667ea33",
+    "cache_bundle_output_gitignored": true,
+    "weights_committed_to_git": false
+  },
+  "training": {
+    "best_epoch": 5,
+    "best_validation_loss": 0.8595673361240311,
+    "total_sample_presentations": 475200,
+    "pipeline_elapsed_seconds": 887.9935894450173,
+    "training_elapsed_seconds": 2.8757121660746634,
+    "peak_rss_mib": 2342.3515625,
+    "cuda_peak_allocated_bytes": 0,
+    "cuda_peak_reserved_bytes": 0
+  },
+  "test_metrics": {
+    "exact_action_accuracy": 0.9599581391872025,
+    "macro_intent_recall": 0.49550658912024403,
+    "expected_calibration_error": 0.36823853379191995,
+    "feature_boundary_ood_fraction": 0.0,
+    "per_action_recall": {
+      "hold": 0.9850199203187251,
+      "observe_target": 0.0,
+      "reacquire": 0.9970064361622512,
+      "search_sector": 0.0
+    },
+    "per_camera_role_exact_action_accuracy": {
+      "interceptor": 0.9723771235896771,
+      "recon": 0.6565272496831432
+    },
+    "cpu_forward_latency_ms": {
+      "p50": 0.07190799806267023,
+      "p95": 0.07884832448326051,
+      "p99": 0.08520197123289108
+    }
+  },
+  "generalization": {
+    "feature_boundary_ood_available": true,
+    "true_scenario_distribution_ood_available": false,
+    "airsim_distribution_shift_available": false,
+    "real_camera_distribution_shift_available": false
+  },
+  "development_precheck": {
+    "passed": false,
+    "status": "fail_closed_model_precheck",
+    "failure_reasons": [
+      "action_recall_below_threshold:observe_target",
+      "action_recall_below_threshold:search_sector",
+      "macro_intent_recall_below_threshold",
+      "expected_calibration_error_above_threshold"
+    ],
+    "paired_shadow_allowed": false
+  },
+  "authority": {
+    "assist": false,
+    "promotion": false,
+    "ppo": false,
+    "assignment": false,
+    "degradation": false,
+    "runtime": false,
+    "production": false,
+    "control": false,
+    "camera_command": false,
+    "global_track_id_write": false
+  },
+  "software_validation": {
+    "related_tests": "35 passed in 4.29s",
+    "d5_full_suite": "779 passed, 2 warnings in 102.40s",
+    "py_compile_passed": true,
+    "json_report_hash_validation_passed": true,
+    "git_diff_check_passed": true,
+    "warnings": [
+      "existing Matplotlib Axes3D import warning",
+      "existing NVML initialization warning"
+    ]
+  },
+  "command": [
+    "/home/linux/Documents/MSM/research_modules/d5_terminal_association/src/d5_terminal_association/active_vision_bc_training.py",
+    "--dataset-dir",
+    "research_modules/scalable_3d_simulation/outputs/d5_a3_source_independent_point_mass_v2_20260801_d7bf890/learning_dataset/d5_active_vision",
+    "--output-dir",
+    "research_modules/d5_terminal_association/outputs/a3_v2_active_vision_bc_development_20260801_d7bf890",
+    "--tracked-summary",
+    "research_modules/d5_terminal_association/results/a3_v2_active_vision_bc_development_candidate_20260801.json",
+    "--tracked-report",
+    "research_modules/d5_terminal_association/reports/D5_A3_V2_ACTIVE_VISION_BC_DEVELOPMENT_CANDIDATE_20260801_CN.md",
+    "--generation-plan",
+    "research_modules/scalable_3d_simulation/outputs/d5_a3_source_independent_point_mass_v2_20260801_d7bf890/generation_plan.json",
+    "--generation-summary",
+    "research_modules/scalable_3d_simulation/outputs/d5_a3_source_independent_point_mass_v2_20260801_d7bf890/generation_summary.json",
+    "--training-seed-registry",
+    "research_modules/scalable_3d_simulation/outputs/d5_a3_source_independent_point_mass_v2_20260801_d7bf890/training_seed_registry.json",
+    "--frozen-config",
+    "research_modules/d5_terminal_association/configs/a3_v2_active_vision_bc_development_20260801.json",
+    "--validation-date",
+    "2026-08-01"
+  ]
+}

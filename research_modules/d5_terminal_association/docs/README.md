@@ -17,6 +17,13 @@ D5 文档遵循 `research_modules/DOCUMENTATION_STANDARD.md`。推荐阅读顺�
 13. `../reports/D5_ACTIVE_VISION_CANONICAL_SEED_VIEW_20260721.md`：主动视觉共享 seed 只读视图、正式样本计数和 shadow-only 边界。
 14. `../reports/D5_A3_SOURCE_INDEPENDENT_CORPUS_OWNER_ACCEPTANCE_V2_20260801_CN.md`：A3 v2
     来源独立质点语料的严格复载、动作角色覆盖、来源门、训练结构门和权限边界。
+15. `../reports/D5_A3_V2_ACTIVE_VISION_BC_DEVELOPMENT_CANDIDATE_20260801_CN.md`：A3 v2
+    冻结单配置行为克隆、逐动作与相机角色指标、校准、边界分布外诊断和失败关闭结论。
+
+2026-08-01，D5 在验收后的 v2 语料上执行了一次冻结行为克隆训练。候选为
+`development_shadow_only`，开发预检因 `observe_target`、`search_sector` 召回均为 0、宏召回
+`0.495507` 和期望校准误差 `0.368239` 而失败。严格 shadow 加载可用，assist 加载按
+`bundle_assist_not_admitted` 拒绝；全部运行、控制和全局编号写权限保持 false。
 
 2026-08-01，A3 v2 语料完成 D5 owner 验收。100 episode、100 seed、159,502 sample 通过
 严格文件和来源校验；训练结构门与质点仿真研究组合门均通过。三个原空动作角色单元在 train
@@ -26,8 +33,9 @@ D5 文档遵循 `research_modules/DOCUMENTATION_STANDARD.md`。推荐阅读顺�
 2026-07-27，主动视觉行为克隆开发链增加有界逆平方根意图加权、动作签名统计、宏平均与
 每动作召回、相机角色分层、置信度校准、分布外比例和诊断回退原因。99:1 多数类 fixture
 即使达到 0.99 总体精确动作准确率，也因少数动作召回 0 和 `hold` 无正样本被模型预检查
-拒绝。D5 全量为 `744 passed, 2 warnings in 111.52s`。本轮未重训正式模型；第 11 项报告
-仍是 2026-07-20 历史证据，新 v2 报告需 clean/frozen 重训后生成。所有运行权限保持 false。
+拒绝。D5 全量为 `744 passed, 2 warnings in 111.52s`。该段记录 2026-07-27 的历史状态；当时
+第 11 项仍是 2026-07-20 证据。后续 v2 冻结训练与失败关闭结果见第 15 项，所有运行权限仍为
+false。
 
 2026-07-27，A3 证据桥已增加 main runtime 的严格结构适配、相机姿态版本血缘、逐帧匿名观测
 窗口、独立规则 `ActiveVisionA3RuleArmTrace`、唯一同键 R0 配对验证和逐候选 disposition。

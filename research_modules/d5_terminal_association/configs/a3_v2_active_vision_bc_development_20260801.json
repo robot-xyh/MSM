@@ -1,0 +1,47 @@
+{
+  "schema_version": "d5.active-vision-bc-frozen-config.v1",
+  "work_package": "a3_v2_accepted_corpus_to_development_bc_candidate",
+  "frozen_before_training": true,
+  "source_hashes": {
+    "dataset_manifest_sha256": "9b80e47aed8f4c7a416694220d63d9156010911951cbbf271905ce5c0d6f31d4",
+    "generation_plan_sha256": "ed9765395da89e682b250ba23bf7322b290b2a559d0eb4403a2469f9a2cc48a9",
+    "generation_summary_sha256": "78d814b5dba41533ea9380154a6b8f243f9bfff65da11328679e396b2a89ba50",
+    "training_seed_registry_sha256": "6e4cb133fcd91c12e3aa38039fc2d2fe7fb9ace6b2c3bdb27cc5ce498a7618f5"
+  },
+  "selection_contract": {
+    "configuration_count": 1,
+    "hyperparameter_search": false,
+    "validation_used_for_best_epoch": true,
+    "test_used_for_training_or_selection": false,
+    "repeat_on_gate_failure": false
+  },
+  "authority": {
+    "assist": false,
+    "promotion": false,
+    "ppo": false,
+    "assignment": false,
+    "degradation": false,
+    "runtime": false,
+    "production": false,
+    "control": false,
+    "camera_command": false,
+    "global_track_id_write": false
+  },
+  "config": {
+    "seed": 20260720,
+    "epochs": 5,
+    "batch_size": 2048,
+    "evaluation_batch_size": 4096,
+    "learning_rate": 0.0003,
+    "weight_decay": 0.0,
+    "hidden_dim": 64,
+    "device": "cpu",
+    "cpu_threads": 16,
+    "latency_samples": 2048,
+    "latency_warmup": 64,
+    "intent_weighting": "inverse_sqrt",
+    "maximum_intent_weight": 8.0,
+    "calibration_bin_count": 10,
+    "ood_margin": 0.05
+  }
+}

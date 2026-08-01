@@ -2,6 +2,39 @@
 
 科研模块，用于把末端相机视场中的本地视觉轨迹保守关联到中心分配的 `global_track_id`。模块可在统一三维 episode 中在线运行；训练标签和真值评分仍保持离线。D5 只输出视觉关联与相机观察意图，不修改、重写或重新分配任何全局轨迹 ID。
 
+## 2026-08-01 A3 v2 开发态行为克隆候选
+
+D5 已在 v2 owner 验收语料上完成一次冻结配置训练。外部生成证据由 generation summary
+内嵌的 training seed registry SHA-256、generation plan 与 summary 的完整 cell 相等关系，
+以及三者共同的 schedule/Git 绑定建立。dataset manifest 的内生绑定单独覆盖 manifest、
+split 和 training-set，不把外部 registry 误写为 manifest 字段。1000-1019 只作为禁止集合
+核对，正式 R0 和对应样本均未读取或运行。
+
+固定配置使用 CPU、seed `20260720`、5 epochs、hidden dimension 64、完整 train split 和
+有界 `inverse_sqrt` 意图权重。train/validation/test 为 95,040/24,329/40,133 样本；
+validation 只选择 5 个 epoch 内的最佳 checkpoint，test 不参与训练、配置选择或阈值调整。
+流水线耗时 `887.994 s`，其中优化器训练 `2.876 s`；CPU 峰值 RSS `2342.352 MiB`，CUDA
+allocated/reserved 均为 0。cache 与 47,045-byte 权重只保存在 ignored outputs。
+
+test 总体精确动作准确率为 `0.959958`，但 `observe_target` 与 `search_sector` 召回均为 0，
+宏平均召回 `0.495507`，期望校准误差 `0.368239`。拦截和侦察相机精确动作准确率分别为
+`0.972377` 和 `0.656527`。development precheck 因两类少数动作、宏召回和校准四项失败
+关闭；特征边界 OOD 为 0 只说明 test 特征未超出 train min/max 加 margin，不证明真正场景
+分布外、AirSim 或真实相机泛化。
+
+模型包状态固定为 `development_shadow_only`。assist、promotion、PPO、assignment、
+degradation、runtime、production、control、camera command 和 `global_track_id` write 均为
+false，默认确定性规则不变。权重/manifest/cache SHA-256 分别为
+`b984e305...d01c`、`9f370a4e...793f`、`8576ae62...fe1a`。机器摘要与中文报告见
+[`results/a3_v2_active_vision_bc_development_candidate_20260801.json`](results/a3_v2_active_vision_bc_development_candidate_20260801.json)
+、
+[`results/a3_v2_active_vision_bc_development_candidate_evidence_20260801.json`](results/a3_v2_active_vision_bc_development_candidate_evidence_20260801.json)
+和
+[`reports/D5_A3_V2_ACTIVE_VISION_BC_DEVELOPMENT_CANDIDATE_20260801_CN.md`](reports/D5_A3_V2_ACTIVE_VISION_BC_DEVELOPMENT_CANDIDATE_20260801_CN.md)。
+本工作包相关测试为 `35 passed in 4.29s`。训练批次内 D5 全量为
+`779 passed, 2 warnings in 102.40s`；收尾复跑为
+`779 passed, 2 warnings in 124.10s`，均为零失败。
+
 ## 2026-08-01 A3 v2 来源独立语料 owner 验收
 
 D5 已用严格 lazy loader 全量复载 main 冻结的 A3 v2 质点语料。语料绑定 clean commit
@@ -16,9 +49,9 @@ D5 已用严格 lazy loader 全量复载 main 冻结的 A3 v2 质点语料。语
 SHA-256 为 `bce869573f6c1084c2db10b263818d98be2de562f7701fc19ec95aaf56bfc872`。
 
 全语料 ACK 为 159,502/159,502 accepted，匿名 observation key 全部唯一。在线 truth、actor、
-object ID 消费和 `global_track_id` 创建/改写均为 0。行为克隆、近端策略优化、权重写入、
-assist、promotion 及分配、降级、runtime、production、control 和全局编号写权限均未启动或
-开放。详细证据见
+object ID 消费和 `global_track_id` 创建/改写均为 0。owner 验收阶段没有训练或写权重；随后
+使用同一冻结语料完成的一次行为克隆训练见本文件首节。近端策略优化未启动，assist、promotion
+及分配、降级、runtime、production、control 和全局编号写权限均未开放。详细证据见
 [`reports/D5_A3_SOURCE_INDEPENDENT_CORPUS_OWNER_ACCEPTANCE_V2_20260801_CN.md`](reports/D5_A3_SOURCE_INDEPENDENT_CORPUS_OWNER_ACCEPTANCE_V2_20260801_CN.md)。
 本次 D5 全量回归为 `776 passed, 2 warnings in 102.23s`，零失败。
 
@@ -86,8 +119,8 @@ fixture，其他旧制品只映射为 `legacy_unspecified`，两者均不能晋�
 2026-07-31 定向回归为 `43 passed in 7.83s`，D5 全量为
 `769 passed, 2 warnings in 104.87s`。两条警告来自既有 Matplotlib `Axes3D` 环境和 NVML
 初始化。该次软件回归只关闭“来源域语义和仿真研究门”软件 P1；当时尚未生成独立质点来源
-语料。后续独立语料状态以上一节严格验收为准。A3 模型仍未重训，也没有取得 AirSim、真实
-相机、production、runtime 或 control 权限。
+语料，也没有重训 A3。后续 v2 语料及一次冻结行为克隆训练状态以本文件首节为准；AirSim、
+真实相机、production、runtime 和 control 权限仍未取得。
 
 ## 2026-07-28 A3 主动视觉训练语料治理
 

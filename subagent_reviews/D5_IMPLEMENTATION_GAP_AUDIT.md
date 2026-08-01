@@ -1,5 +1,26 @@
 # D5 实现差距审计
 
+## 2026-08-01 A3 v2 开发态行为克隆候选 GAP
+
+| 缺口 | 当前状态 | 证据与剩余边界 |
+| --- | --- | --- |
+| standalone 来源与 registry 绑定 | **D5-owned P1 已关闭** | dataset manifest 内生绑定 manifest/split/training-set；generation summary 内 registry SHA 与实际 `6e4cb133...18f5` 相等，plan/summary cell 全等，三者 schedule/Git 一致。plan 不含 registry SHA，报告已分层表述。 |
+| 冻结单配置与 test 隔离 | **本工作包关闭** | 运行前冻结 1 个 CPU 配置：seed `20260720`、5 epochs、hidden 64、完整 train、`inverse_sqrt`。validation 只选 epoch，test 不训练、不选模；无失败重跑或阈值放宽。 |
+| strict cache 与开发候选 | **本工作包关闭** | cache v2 绑定 source/corpus；质点来源门先于 optimizer 通过。bundle 为 `development_shadow_only`，权重/cache/manifest SHA 为 `b984e305...d01c`、`8576ae62...fe1a`、`9f370a4e...793f`，大产物均 ignored。 |
+| 逐动作模型质量 | **P1 开放，development precheck 失败** | test 总体精确动作 `0.959958`，但 `observe_target`、`search_sector` 召回均为 0，宏召回 `0.495507 < 0.50`。不得用总体值关闭该项。 |
+| 相机角色与置信校准 | **P1 部分形成证据，未通过** | interceptor/recon 精确动作 `0.972377/0.656527`，角色门通过；test 期望校准误差 `0.368239 > 0.25`，校准门失败。下一方法必须独立预冻结，不能用当前 test 重复调参。 |
+| 未见 seed 与 OOD 口径 | **训练未见 seed 已评估；真正 OOD 开放** | validation/test 各 20 个与 train 不重叠 seed。feature-boundary OOD test=0 只表示 train min/max+margin 内；独立场景域、AirSim、真实相机分布外均 unavailable。 |
+| A3/R0 paired shadow | **P1 未获准开始** | development precheck=false，因此不生成 formal paired-shadow 非退化结论。当前失败候选只作为固定开发基线。 |
+| 结果归因与 PPO | **P1 开放** | outcome/reward/counterfactual/causal label 仍 unavailable；runtime ACK 不等于动作收益。PPO 未启动。 |
+| 权限与默认路径 | **保持失败关闭** | assist、promotion、PPO、assignment、degradation、runtime、production、control、camera command、`global_track_id` write 均 false；确定性规则不变。 |
+
+本轮没有新增 P0。关闭的是“验收语料到一次可追溯开发候选”的执行工作包；模型质量 GAP 没有
+关闭。下一工作包应先冻结少数意图判别和校准方法，并使用新的开发/评估 seed。当前 test 只保留
+为本候选的最终证据，不再用于该候选调参。
+相关测试为 `35 passed in 4.29s`。训练批次内 D5 全量为
+`779 passed, 2 warnings in 102.40s`，收尾复跑为
+`779 passed, 2 warnings in 124.10s`；均无失败，无新增 P0。
+
 ## 2026-08-01 A3 v2 来源独立语料 owner 验收 GAP
 
 | 缺口 | 当前状态 | 证据与剩余边界 |
@@ -10,7 +31,7 @@
 | 严格 dataset/source/corpus gate | **本批次通过** | 状态依次为 `valid_detached_immutable_dataset`、`point_mass_simulation_research_eligible`、`pass_development_corpus_only`；组合门通过，failure/warning/exclusion 为空。corpus SHA=`bce86957...c872`。 |
 | truth、中心身份与 seed 隔离 | **本批次通过** | 在线 truth/actor/object ID=0，`global_track_id` 创建/改写=0；1000-1019 只作为禁止值检查，dataset/training overlap=0，未读取或运行正式 R0。 |
 | ACK 与匿名键 | **记录完整，结果谱系仍开放** | 159,502/159,502 ACK accepted，匿名 observation key 全部唯一；outcome/reward/counterfactual/causal 均 unavailable，不能据此证明视野、关联或物理收益。 |
-| BC/PPO 与运行权限 | **保持关闭，不因结构门通过自动关闭 GAP** | 未训练、未写权重；assist、promotion、assignment、degradation、runtime、production、control 和 `global_track_id` write 全 false。后续模型质量、未见 seed、A3/R0、AirSim/真实相机与物理结果仍开放。 |
+| BC/PPO 与运行权限 | **owner 验收时保持关闭；后续 BC 状态见首节** | owner 验收阶段未训练、未写权重。随后已形成 development shadow-only BC 候选，但 precheck 失败；PPO 与全部运行权限仍 false，A3/R0、AirSim/真实相机与物理结果仍开放。 |
 
 本轮关闭的是 A3 非合成质点训练语料的结构覆盖 P1。它没有关闭模型准入、现实泛化和运行权限
 P1。旧 v1 批次继续保留为历史失败证据，不与 v2 合并。D5 全量回归为
@@ -25,7 +46,7 @@ P1。旧 v1 批次继续保留为历史失败证据，不与 v2 合并。D5 全�
 | 三个动作角色单元的训练门 | **D5-owned 失败关闭测试已关闭** | `hold+interceptor`、`hold+recon`、`search_sector+recon` 分别按唯一样本、完整 episode 和独立 seed 计数；任一小于 2 均拒绝训练并生成精确补采请求。 |
 | scalable runtime treatment | **后续 v2 证据已关闭该项** | 历史计划已由 main 实现并形成 v2 语料；具体证据以上一节为准。 |
 | 来源独立补采语料 | **后续 v2 证据已关闭该项** | 历史空单元已由新 seed 的完整 episode 自然补齐；没有复制、过采样、重加权、fixture 注入或标签制造。 |
-| 模型和运行权限 | **保持关闭** | 补采与重验已完成，但尚未训练或晋级。正式 seed 1000-1019 与 R0 保留，BC/PPO/assist/promotion 及相机、分配、降级、运行、生产、控制和全局编号写权限均为 false。 |
+| 模型和运行权限 | **BC 后续已运行，权限仍关闭** | 当前已形成 development shadow-only BC 候选，但模型 precheck 失败；正式 seed 1000-1019 与 R0 未读取，PPO/assist/promotion 及相机、分配、降级、运行、生产、控制和全局编号写权限均为 false。 |
 
 验证日期为 2026-08-01。定向测试 `26 passed in 4.14s`，D5 全量
 `776 passed, 2 warnings in 102.06s`，零失败。本轮没有修改生产合同或阈值，也没有产生新的
@@ -57,7 +78,7 @@ P1。旧 v1 批次继续保留为历史失败证据，不与 v2 合并。D5 全�
 | 摘要与权限防篡改 | **关闭并保持回归** | 来源 envelope 字段、tier、domain 和 dataset source summary 均重新验证；即使同步重写文件校验和，摘要不一致仍拒绝。全部 authority 位保持 false。 |
 | 质点仿真研究门 | **D5-owned 软件 P1 已关闭** | 仅严格复载、显式全质点来源、clean source identity、哈希/split、truth-free 和语料完整数据可进入 `simulation_research` 开发评估；formal、runtime、production、control 等权限不随门通过。 |
 | AirSim/真实相机来源 | **P1 开放，声明不等于证明** | 来源域只提供 declaration-only 证据等级。当前没有外部 AirSim episode 证明、真实相机 provenance 审计或现实泛化结果。 |
-| 独立质点语料与 A3 模型 | **v1 历史语料结构失败；v2 已关闭结构 P1，模型 P1 开放** | 该节的 v1 批次因 `hold` 和 `search_sector+recon` 缺失而禁止训练；2026-08-01 v2 已通过结构门。A3 仍未重训，仍无新的未见 seed 或 A3/R0 收益证据。 |
+| 独立质点语料与 A3 模型 | **v1 历史语料结构失败；v2 结构已关闭，模型质量 P1 开放** | 该节的 v1 批次因 `hold` 和 `search_sector+recon` 缺失而禁止训练；2026-08-01 v2 已通过结构门并完成一次冻结行为克隆。20 validation 和 20 test 未见 seed 已评估，但少数动作与校准预检失败，仍无 A3/R0、AirSim 或真实相机收益证据。 |
 
 验证日期为 2026-07-31。来源域、episode dataset 和 corpus audit 定向测试为
 `43 passed in 7.83s`；D5 全量为 `769 passed, 2 warnings in 104.87s`。警告来自既有
@@ -77,14 +98,15 @@ runtime、assist、相机命令、分配、接管或 control 权限，也没有�
 | 行为克隆训练前门 | **D5-owned 软件缺口已关闭** | cache 升级为 v2 并绑定审计；训练在模型初始化前验证审计。旧 v1 cache 可读但缺审计，训练失败关闭。正式入口先写 `training_corpus_audit.json`。 |
 | 权限升级隔离 | **关闭并保持回归** | 审计固定正式候选、非合成未见 seed、运行 ACK/结果为 unavailable，assist、主动视觉、相机命令、分配、接管、控制和全局编号写权限均为 false；重新计算摘要后篡改权限仍拒绝。 |
 | 非合成正式训练语料 | **后续 v2 结构 P1 已关闭** | 本节记录的 fixture 缺口已由 2026-08-01 v2 clean point-mass 语料关闭。该结论只覆盖开发训练结构，不代表模型或生产准入。 |
-| 少数动作真实 producer | **后续 v2 数据 P1 已关闭** | v2 规则执行已自然产生四类动作和两类相机角色，无复制或重采样。历史模型 `observe_target` 召回 0 仍待新模型评估关闭。 |
-| 侦察相机正式泛化 | **P1 开放** | 历史侦察相机精确动作准确率约 `0.621823`。本轮仅实现角色覆盖门，没有生成非合成侦察语料或新正式模型指标。 |
-| 未见 seed 与运行结果 | **P1 开放，unavailable** | 至少 20 个独立未见非合成 seed、A3/R0 同配置非退化、真实运行 ACK、动作结果和正式权限均未形成。本轮未运行 900-cell、大写盘或 AirSim。 |
+| 少数动作真实 producer | **后续 v2 数据 P1 已关闭；模型召回 P1 开放** | v2 规则执行已自然产生四类动作和两类相机角色，无复制或重采样。新冻结模型的 `observe_target` 与 `search_sector` test 召回仍为 0，数据存在不等于模型已学会少数动作。 |
+| 侦察相机正式泛化 | **质点未见 seed 指标已形成；现实泛化 P1 开放** | v2 test 侦察相机精确动作准确率为 `0.656527`，高于 0.50 开发门；该值只覆盖质点同来源未见 seed，AirSim、真实相机和真正场景分布外仍 unavailable。 |
+| 未见 seed 与运行结果 | **质点未见 seed 已关闭；跨域与结果 P1 开放** | validation/test 各有 20 个与 train 不重叠的 v2 seed。A3/R0 同配置非退化、真实 applied-action/outcome、AirSim/真实相机和正式权限均未形成；1000-1019 未读取或运行。 |
 
 验证日期为 2026-07-28。语料专项 `11 passed in 5.03s`，D5 全量
 `755 passed, 2 warnings in 123.86s`。警告来自既有 Matplotlib `Axes3D` 多版本环境和 NVML
-初始化失败。当前没有新增 D5-owned P0。A3 类别不平衡 P1 已从“缺少可执行语料治理和补采
-计划”收敛为“缺非合成正式 producer、独立未见 seed、运行结果和正式准入证据”。
+初始化失败。当前没有新增 D5-owned P0。该段是 2026-07-28 历史结论；后续 v2 已关闭
+非合成 producer 和质点未见 seed 覆盖，剩余缺口收敛为少数动作判别、置信校准、A3/R0、
+跨域运行结果和正式准入证据。
 
 ## 2026-07-27 A3 主动视觉模型前置 GAP
 
@@ -96,14 +118,15 @@ runtime、assist、相机命令、分配、接管或 control 权限，也没有�
 | 多数类准入投机 | **D5-owned 软件门已关闭** | 新 development precheck 同时要求 train split 每动作有真实正样本，并要求 test split 每动作召回、宏平均召回、两类相机角色、校准和分布外同时可用并达标；99:1 fixture 即使总体准确率 0.99，仍因 `observe_target` 召回 0 与 `hold/search_sector` 无正样本失败关闭。 |
 | 指标分母与边界 | **D5-owned 软件缺口已关闭** | precision、recall、F1 分别按预测数、真实正样本数和 `2TP+FP+FN` 计算；分母为零时 unavailable。缓存标签越界、非法权重、非有限评估特征均失败关闭。 |
 | `hold` 正样本 | **后续 v2 数据 P1 已关闭** | v2 train 包含 44,441 个自然 `hold`，覆盖 60 episode/60 seed；其中拦截/侦察分别为 42,669 和 1,772。没有把零检测、补零或重采样解释为 hold。 |
-| 侦察相机泛化 | **P1 开放** | 旧 test recon 精确动作准确率约 `0.621823`。本轮增加角色分层和门限，没有生成新的正式模型指标。 |
-| 正式 bundle 准入 | **P1 开放，权限保持关闭** | 本轮未启动 900-cell/大写盘重训。旧 2026-07-20 模型仍是当前证据：总体 `0.955978`、`observe_target` 召回 0、`hold=0`。至少需要 clean/frozen 数据/模型谱系、20 个明确未见且非 synthetic seed、同配置 A3/R0 成对非退化和逐 episode 安全/可见率/重捕获无退化；production evidence assembler 可用前不得晋级。 |
+| 侦察相机泛化 | **质点开发门通过；现实泛化 P1 开放** | v2 test recon 精确动作准确率为 `0.656527`。该值来自同一质点来源的未见 seed，不能证明 AirSim、真实相机或真正场景分布外泛化。 |
+| 正式 bundle 准入 | **P1 开放，权限保持关闭** | v2 已形成 clean/frozen development bundle，但 `observe_target/search_sector` 召回均为 0、宏召回和校准不达标，因此仅为 `development_shadow_only`。必须先以新的预冻结方法通过 development precheck，再取得同配置 A3/R0 与逐 episode 安全、可见率、重捕获非退化证据；production evidence assembler 可用前不得晋级。 |
 | 零检测安全语义 | **关闭并保持回归** | observation-frame v2 有分配目标时仍固定为 `reacquire + coverage=false`，不会计为 locked、ambiguous、hold 或模型正收益。 |
 
 本轮新增两项极端不平衡回归，D5 全量为
 `744 passed, 2 warnings in 111.52s`。警告来自既有 Matplotlib `Axes3D` 多版本环境和 NVML
-初始化失败。没有在线 truth ID、`global_track_id` 改写或权限变化。P1 从“缺少不平衡训练与
-诊断软件门”收敛为“缺真实少数动作/侦察相机 producer、正式重训及未见 seed 非退化证据”。
+初始化失败。没有在线 truth ID、`global_track_id` 改写或权限变化。该段是 2026-07-27 历史
+结论；后续 v2 已补齐真实少数动作 producer 并完成一次冻结训练，当前 P1 是少数动作召回、
+校准、A3/R0 非退化和跨域运行证据。
 
 ## 2026-07-27 A3 主动视觉采用证据 GAP
 

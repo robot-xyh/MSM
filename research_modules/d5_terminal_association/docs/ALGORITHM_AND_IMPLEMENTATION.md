@@ -2,6 +2,44 @@
 
 **状态日期：2026-08-01**
 
+## A3 v2 开发态行为克隆实现
+
+训练入口新增 standalone point-mass 来源绑定。严格 loader 先验证 dataset manifest、split、
+training-set 和逐文件哈希。随后入口分别读取 generation plan、generation summary 与 training
+seed registry：summary 必须内嵌实际 registry SHA-256；plan 与 summary 的 100 个 cell 必须
+完全一致；三者的 schedule SHA-256、clean 标志和 Git commit 必须相同；dataset 的 100 个
+episode seed 和 source commit 必须与 registry 相等。plan 不含 registry SHA-256，这一事实在
+机器摘要中显式为 false。任一不一致均在创建 feature cache 前抛错。
+
+冻结配置文件同时绑定 dataset manifest、plan、summary 和 registry 四个 SHA-256。文件限定
+配置数为 1，禁止超参数搜索、失败重跑和 test 选模，并把十类权限全部固定为 false。CLI 从该
+文件构造 `ActiveVisionBcConfig`，不使用命令行默认值覆盖。实际配置为 CPU、seed
+`20260720`、5 epochs、batch 2048、evaluation batch 4096、learning rate 0.0003、hidden
+dimension 64、16 CPU threads、`inverse_sqrt` 权重和最大意图权重 8。
+
+feature cache v2 按 split 流式写入候选特征、意图、视场、方位/俯仰增量、目标引用、相机角色、
+场景和规模。cache manifest 绑定来源证据和 corpus audit。优化器启动前再次调用严格质点研究
+语料门。每个 epoch 以固定 `seed+epoch` 生成 train 排列，所有 95,040 个 train 样本各出现
+一次；交叉熵按 train 意图计数生成的有界逆平方根权重加权。validation 使用同一权重选出
+epoch 5，test 不参与梯度、checkpoint 或阈值选择。
+
+评估按 train/validation/test、四类动作、拦截/侦察相机和五档规模输出精确动作、意图、视场、
+角误差、precision/recall/F1、置信校准和特征边界 OOD。模型诊断要求宏召回至少 0.50、每意图
+召回至少 0.25、两类相机精确动作至少 0.50、期望校准误差不高于 0.25、边界 OOD 比例不高于
+0.10。实际失败项为 `observe_target`、`search_sector` 召回、宏召回和校准误差。代码没有
+自动修改阈值或重启训练。
+
+输出 bundle 使用 `development_shadow_only` profile。strict shadow loader 可加载，assist loader
+返回 `bundle_assist_not_admitted`。权重只保存在 `.gitignore` 覆盖的 outputs；tracked JSON
+记录完整命令、配置、硬件、延迟、失败原因和 SHA-256。CPU 前向 P50/P95/P99 为
+`0.0719/0.0788/0.0852 ms`，该指标只覆盖单次候选集模型 forward，不含快照构造、通信、相机
+执行或视觉检测。
+
+新增来源绑定和冻结配置专项随相关训练测试共 `35 passed in 4.29s`。训练批次内 D5 全量为
+`779 passed, 2 warnings in 102.40s`，收尾复跑为
+`779 passed, 2 warnings in 124.10s`。py_compile、机器 JSON、报告哈希与 feature-cache/
+bundle/weights 哈希交叉校验均通过。
+
 ## A3 v2 owner 验收实现
 
 验收首先调用 `load_active_vision_episode_dataset_lazy()` 和
@@ -18,9 +56,10 @@ episode 的在线记录、离线 sidecar、descriptor 和 split。随后
 每单元 `2 sample / 2 episode / 2 seed` 下限。
 
 全量汇总只读取严格复载后的在线 record，核对 159,502 个 ACK 与匿名 observation key。
-truth/actor/object ID 消费和 `global_track_id` 改写均为 0。本轮没有调用 BC/PPO trainer、
-cache writer、model bundle 或相机 executor，因此不产生权重或任何运行权限。
-2026-08-01 D5 全量回归为 `776 passed, 2 warnings in 102.23s`，零失败。
+truth/actor/object ID 消费和 `global_track_id` 改写均为 0。owner 验收步骤没有调用 BC/PPO
+trainer、cache writer、model bundle 或相机 executor；随后独立执行的一次冻结行为克隆见本文件
+首节。该候选没有获得任何运行权限。owner 验收阶段 D5 全量回归为
+`776 passed, 2 warnings in 102.23s`，零失败。
 
 ## 补采动作合同与回归
 

@@ -1,5 +1,34 @@
 # D5 终端视觉配准与身份认证计划
 
+## 2026-08-01 A3 v2 开发态行为克隆候选
+
+- [x] 分开冻结并验证 dataset manifest 内生的 manifest/split/training-set 哈希，与外部
+  generation plan、generation summary、training seed registry 绑定。summary 内 registry
+  SHA-256 与实际文件一致；plan 本体不宣称内嵌该字段。
+- [x] 仅以 registry 中 1000-1019 做禁止集合交集检查，确认 100 个开发 seed、三个 split 和
+  保留集合零重叠；未读取或运行正式 R0 与保留 seed 样本。
+- [x] 训练前冻结唯一配置：CPU、seed `20260720`、5 epochs、hidden dimension 64、batch
+  2048、完整 train split、有界 `inverse_sqrt` 权重；无超参数搜索、无失败重跑，test 不参与
+  训练或选择。
+- [x] 构建 v2 strict feature cache，运行 corpus/source gate 后训练一次；cache、bundle 和
+  47,045-byte 权重保存在 ignored outputs，不普通提交权重。
+- [x] 评估 20 validation 和 20 test 未见 seed，输出逐动作、逐相机角色、置信校准、特征边界
+  OOD、CPU 推理延迟和失败原因。validation/test 样本数为 24,329/40,133。
+- [x] 保存 tracked JSON、中文报告、完整命令/config 及 model/manifest/cache/source SHA-256。
+  bundle 状态为 `development_shadow_only`，shadow load 可用，assist load 失败关闭。
+- [x] development precheck 实际未通过：`observe_target/search_sector` 召回均为 0，宏召回
+  `0.495507 < 0.50`，期望校准误差 `0.368239 > 0.25`。未放宽门限、未改变 split、未重训。
+- [ ] 下一独立工作包研究少数意图判别与置信校准。必须使用新的开发语料或预先冻结的方法，
+  保留当前失败候选和 test 只读边界；本工作包不开展重复选模。
+- [ ] 在新的模型通过 development precheck 前，不进入 A3/R0 paired shadow。AirSim、真实
+  相机、applied-action/outcome 与真正场景域 OOD 仍需独立证据。
+- [x] assist、promotion、PPO、assignment、degradation、runtime、production、control、
+  camera command 和 `global_track_id` write 全部保持 false；默认确定性规则未改变。
+- [x] 相关测试 `35 passed in 4.29s`；训练批次内 D5 全量
+  `779 passed, 2 warnings in 102.40s`，收尾复跑
+  `779 passed, 2 warnings in 124.10s`。py_compile、JSON/报告/哈希校验和与 owned-path
+  `git diff --check` 通过。
+
 ## 2026-08-01 A3 v2 来源独立语料 owner 验收
 
 - [x] 使用 D5 严格 lazy loader 全量校验 100 episode、159,502 sample 的 finalized immutable
@@ -18,8 +47,8 @@
   runtime、production、control 和 `global_track_id` write 全部保持 false。
 - [x] 2026-08-01 D5 全量回归 `776 passed, 2 warnings in 102.23s`，机器 JSON 解析和
   owned-path `git diff --check` 通过。
-- [ ] 在独立开发任务中决定是否构建行为克隆 cache。进入该任务前继续冻结默认规则路径和全部
-  运行权限；模型仍需逐动作/角色、未见 seed、分布外和 A3/R0 非退化评估。
+- [x] 独立开发任务已构建行为克隆 cache 并完成一次固定训练。模型逐动作/角色和未见 seed
+  指标已形成，但 development precheck 失败；A3/R0 非退化评估尚未获准开始。
 - [ ] 由 main/D6 后续提供 AirSim、真实相机和物理 applied-action/outcome 证据。本次质点语料
   结构门通过不能关闭这些跨模块边界。
 
@@ -82,10 +111,11 @@
   `769 passed, 2 warnings in 104.87s`。警告为既有 Matplotlib `Axes3D` 与 NVML 环境问题。
 - [x] 由独立 producer 生成并冻结三维质点来源语料。2026-07-31 批次为 100 episode、
   100 seed、45 个场景规模单元；该 v1 批次来源/完整性通过，训练结构覆盖未通过。
-- [ ] v2 训练结构已补齐；下一步仍需执行独立未见 seed 模型评估。本次 owner 验收没有启动
-  development training。
-- [ ] 在独立语料上重训和评估 A3。AirSim/真实相机外部证明形成前，production、runtime、
-  assist、相机命令、分配、接管和 control 权限继续关闭。
+- [x] v2 训练结构已补齐，并已在 20 validation/20 test 未见 seed 上完成一次固定配置模型
+  评估。模型前置检查失败，不能进入 paired shadow。
+- [x] 在独立语料上完成 A3 开发态行为克隆和评估；结果为
+  `development_shadow_only/fail_closed_model_precheck`。AirSim/真实相机外部证明形成前，
+  production、runtime、assist、相机命令、分配、接管和 control 权限继续关闭。
 
 本节只关闭“来源域语义和仿真研究门”软件 P1，不改变后续模型与运行准入计划。
 

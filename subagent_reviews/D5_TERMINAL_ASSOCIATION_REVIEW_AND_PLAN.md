@@ -1,5 +1,31 @@
 # D5 末端视觉配准与协同身份认证综述及子方案
 
+## 2026-08-01 A3 v2 开发态行为克隆复核
+
+D5 已把 owner 验收语料转换为一个可追溯的开发态候选。来源绑定分为 dataset manifest 内生
+哈希和外部冻结生成证据两层。外部层由 generation summary 中的 registry SHA-256、plan 与
+summary 的 cell 全等、共同 schedule/Git 绑定构成；generation plan 本身没有 registry 哈希。
+1000-1019 只用于禁止集合交集，正式 R0 与对应样本均未读取。
+
+唯一训练配置为 CPU、seed `20260720`、5 epochs、hidden dimension 64、完整 train split 和
+有界逆平方根意图权重。95,040 个 train 样本每 epoch 使用一次；24,329 个 validation 样本只
+选择最佳 epoch；40,133 个 test 样本只在训练后评估。没有配置搜索、失败重跑、样本复制、
+过采样或 test 调参。完整流水线 `887.994 s`，优化器 `2.876 s`，峰值 RSS
+`2342.352 MiB`，CUDA 内存为 0。
+
+候选未通过 development precheck。test 总体精确动作准确率 `0.959958`，但模型只预测
+`hold/reacquire`；`observe_target/search_sector` 召回均为 0，宏召回 `0.495507`，期望校准
+误差 `0.368239`。interceptor/recon 精确动作分别为 `0.972377/0.656527`。特征边界 OOD 为 0
+不代表真正场景、AirSim 或真实相机 OOD，后三项保持 unavailable。
+
+bundle 只允许 `development_shadow_only`，assist loader 失败关闭。当前不开展 A3/R0 paired
+shadow。assist、promotion、PPO、assignment、degradation、runtime、production、control、
+camera command 和 `global_track_id` write 全为 false，确定性规则继续默认。后续少数意图和
+校准改进须作为新工作包预先冻结方法与新 seed，不能回看当前 test 反复选模。
+相关回归为 `35 passed in 4.29s`。训练批次内 D5 全量为
+`779 passed, 2 warnings in 102.40s`，收尾复跑为
+`779 passed, 2 warnings in 124.10s`，均为零失败。
+
 ## 2026-08-01 A3 v2 来源独立语料 owner 复核
 
 D5 已对 main 冻结的 v2 质点语料执行严格 owner 验收。100 episode、100 seed 和 159,502 个
@@ -10,10 +36,11 @@ D5 已对 main 冻结的 v2 质点语料执行严格 owner 验收。100 episode�
 validation/test 也均有对应动作角色样本，但没有被用于补训练门。ACK 和匿名键覆盖全部样本，
 在线 truth/actor/object ID 与全局编号改写为 0。
 
-该结果关闭“缺非合成质点动作角色结构覆盖”的 D5 P1，不改变模型和系统权限。BC/PPO 未启动，
-未写权重，assist/promotion/assignment/degradation/runtime/production/control/global-ID-write
-均为 false。下一步仍需独立模型评估、未见 seed 非退化、AirSim/真实相机和物理结果证据。
-D5 全量回归为 `776 passed, 2 warnings in 102.23s`。
+该 owner 验收结果关闭“缺非合成质点动作角色结构覆盖”的 D5 P1。验收阶段没有训练或写权重；
+随后一次冻结行为克隆及失败关闭结果见本文件首节。PPO 未启动，assist/promotion/assignment/
+degradation/runtime/production/control/global-ID-write 均为 false。下一步仍需新的少数动作与校准
+方法、A3/R0、AirSim/真实相机和物理结果证据。owner 验收阶段 D5 全量回归为
+`776 passed, 2 warnings in 102.23s`。
 
 ## 2026-08-01 A3 补采运行时合同复核
 
@@ -87,11 +114,10 @@ episode 和新训练 seed 数量。污染、缺 seed 注册证据和合同错误
 1200 sample 补充课程也属于合成数据。本轮没有运行 900-cell、大写盘训练或 AirSim，未生成
 新权重和新正式指标。
 
-后续 P1 由训练数据 producer 承担。需要按补采清单生成独立、非合成的 `hold`、少数动作和
-高空侦察相机 episode，冻结 train/validation/test/reserved seed 注册表，再运行行为克隆 v2。
-至少 20 个独立未见非合成 seed 上还需形成 A3/R0 成对非退化、运行 ACK 和动作结果。当前
-历史证据仍为 `hold=0`、`observe_target` 召回 0、侦察相机约 `0.621823`，全部运行权限保持
-unavailable/false。
+该段记录 2026-07-28 的后续计划。当时仍需训练数据 producer 补采独立、非合成的 `hold`、
+少数动作和高空侦察相机 episode。2026-08-01 v2 已完成补采、冻结 split/registry，并在
+validation/test 各 20 个训练未见 seed 上完成一次行为克隆；当前指标见本文件首节。A3/R0
+成对非退化、真实运行 ACK 和动作结果仍未形成，全部运行权限保持 unavailable/false。
 
 ## 2026-07-27 A3 主动视觉模型前置复核
 
