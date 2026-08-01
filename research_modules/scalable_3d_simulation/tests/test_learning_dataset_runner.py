@@ -230,6 +230,44 @@ def test_committed_balanced_schedule_meets_formal_preflight() -> None:
     )
 
 
+def test_d5_a3_source_independent_schedule_is_disjoint_and_cell_complete() -> None:
+    cells, reserved = _load_schedule_plan(
+        SCALABLE_ROOT
+        / "configs"
+        / "d5_a3_source_independent_point_mass_v1.json",
+        default_duration_s=3.0,
+    )
+
+    assert len(cells) == 100
+    generation_seeds = {seed for _, _, seed, _ in cells}
+    assert generation_seeds == set(range(21000, 21100))
+    assert generation_seeds.isdisjoint(range(1000, 1020))
+    assert reserved == tuple(range(1000, 1020))
+    expected_catalog = {
+        (scenario, scale)
+        for scenario in AVAILABLE_SCENARIOS
+        for scale in (5, 20, 50, 100, 200)
+    }
+    counts = {
+        key: sum((scenario, scale) == key for scenario, scale, _, _ in cells)
+        for key in expected_catalog
+    }
+    assert set(counts) == expected_catalog
+    assert set(counts.values()) == {2, 3}
+    assert sum(count == 3 for count in counts.values()) == 10
+    assert all(duration_s == 3.0 for _, _, _, duration_s in cells)
+    for start in (0, len(expected_catalog)):
+        block = cells[start : start + len(expected_catalog)]
+        assert {(scenario, scale) for scenario, scale, _, _ in block} == (
+            expected_catalog
+        )
+    _validate_generation_plan(
+        cells,
+        reserved_evaluation_seeds=reserved,
+        formal=False,
+    )
+
+
 def test_committed_capacity_probe_schedule_covers_each_scenario_once() -> None:
     cells, reserved = _load_schedule_plan(
         SCALABLE_ROOT / "configs" / "capacity_probe_200v200_v1.json",
