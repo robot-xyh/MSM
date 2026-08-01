@@ -2,6 +2,34 @@
 
 科研模块，用于把末端相机视场中的本地视觉轨迹保守关联到中心分配的 `global_track_id`。模块可在统一三维 episode 中在线运行；训练标签和真值评分仍保持离线。D5 只输出视觉关联与相机观察意图，不修改、重写或重新分配任何全局轨迹 ID。
 
+## 2026-08-01 A3 v3 全局 seed 分配与来源计划
+
+D5 已把 main 的全局 seed 登记表接入冻结的 A3 v3 少数意图协议。新增版本化 allocation
+binding 和 source collection schedule，分别绑定全局登记表 ID、内容哈希、文件哈希、协议哈希、
+三组 allocation 及其来源文件。train、validation、future-held-out 使用 `24000-24047`、
+`24048-24071`、`24072-24103`，对应 48、24、32 个互斥 seed。每个 seed 只对应一个完整
+episode，禁止跨 split 复用、复制样本、过采样、合成 fixture 和在线 truth 注入。
+
+采集 schedule 明列 104 条 per-episode 计划。每条记录 split、seed、episode ID、场景、规模、
+目标/资源/侦察节点数量、6 秒时长、相机角色、四段意图窗口、两类困难混淆 treatment 和最低
+唯一样本配额。每个 episode 的四段窗口合计 96 个计划样本，interceptor/recon 角色交替分配；
+8 个意图-角色单元在 train/validation/future-held-out 中分别覆盖 24/12/16 个 episode。五类
+困难混淆按 seed 分散安排，每个 episode 只承担两类，集合计数均达到协议下限。三个 split 的
+计划最低样本量为 4608、2304、3072。这些都是计划计数，不是已生成语料证据。
+
+`validate_a3_v3_source_readiness.py` 只读协议和元数据。它复现全局登记表自哈希并核对固定文件
+SHA-256，检查 D5 allocation 的 owner/version/lifecycle/usage/operations、精确 seed 集、来源
+绑定、逐 episode 配额重算、正式/v2 禁止范围和全 false authority。它还固定核对 main producer
+入口、采集 treatment 和 v2 参考 schedule 的文件哈希。当前输出为
+`plan_ready_but_producer_adapter_missing`：计划已冻结，`pre_generation_ready=false`，生成请求和
+训练均未就绪。现有 producer 只支持场景、规模、seed、时长及整次运行的 collection profile，
+尚不能执行逐 episode split/ID/节点数量、意图窗口、困难混淆 treatment 或生成时配额约束。
+
+专项协议与 readiness 回归为 `58 passed in 1.29s`，D5 全量为
+`837 passed, 2 warnings in 103.78s`。两条 warning 是既有 Matplotlib Axes3D 与 NVML 环境告警。
+本轮没有生成 episode、sample、source manifest、cache 或权重，没有训练，也没有授予 shadow、
+assist、runtime、camera command、control 或 `global_track_id` 写权限。
+
 ## 2026-08-01 A3 v3 少数意图开发协议冻结
 
 下一模型版本冻结为“集合上下文意图分类 + 合法候选排序”。共享候选编码经 masked mean/max
@@ -15,10 +43,10 @@ v2 train/validation 结构事实与已发布失败摘要只用于冻结方法；
 精确动作和 ECE 门；future held-out 仅在 validation 通过且模型冻结后一次性揭盲，失败后禁止
 重训、重校准、改阈值或二次访问。
 
-main 后续必须分配全新的 train/validation/future held-out seed。三者互斥，并与
-`22100-22199`（v2 全 split/test）及 `1000-1019`（正式保留）零重叠。来源清单必须覆盖四类
+main 已在独立全局登记表分配全新的 train/validation/future held-out seed。三者互斥，并与
+`22100-22199`（v2 全 split/test）及 `1000-1019`（正式保留）零重叠。来源清单仍须覆盖四类
 意图、interceptor/recon 两类角色、全部 8 个意图角色单元和五类困难混淆场景的唯一样本、
-episode、seed 下限；协议文件本身不分配 seed。
+episode、seed 下限；协议文件本身保持 seed 空值，实际分配由版本化 binding 承载。
 
 当前状态固定为 `protocol_frozen_data_not_generated`。本批未生成或读取新 episode，未运行训练，
 未写权重；训练入口只是后续协议预备，默认只校验协议且不创建输出。shadow、assist、PPO、

@@ -1,5 +1,26 @@
 # D5 末端视觉配准与协同身份认证综述及子方案
 
+## 2026-08-01 A3 v3 来源分配复核
+
+D5 已接受 main 登记的三组新 seed，但只以版本化 binding 和 schedule 保存分配事实。train
+`24000-24047`、validation `24048-24071`、future-held-out `24072-24103` 整集互斥，均采用
+whole-episode 原子分配。登记表自哈希、固定文件哈希、协议和 schema 来源哈希需要同时一致；
+owner/version/usage/operations 或任一 seed 改动均拒绝 readiness。
+
+schedule 已展开为 104 条 episode。每条安排四段意图窗口、确定的相机角色、两类困难混淆
+treatment 和最低样本配额；集合级重算证明 8 个意图-角色单元和五类困难混淆达到协议下限。
+一个 episode 不再宣称覆盖全部 8 个组合或全部五类困难混淆。该计划仍不能证明 producer 已形成
+唯一有效样本。
+
+现有 producer 只能映射 scenario、scale、seed、duration 和整次运行的 collection profile。
+逐 episode split/ID/节点数、意图窗口以及投影边界、遮挡、角色匹配、近似并列目标 treatment
+尚不可执行。因此 readiness 为 `plan_ready_but_producer_adapter_missing`，生成请求保持关闭。
+main 补齐并验收 adapter 后，才能生成三 partition；其后再进行 manifest 验收、train/validation
+开发、模型冻结、future-held-out 一次性评估和 D6 独立审计。
+
+专项回归为 `58 passed`，D5 全量为 `837 passed, 2 warnings`。本轮没有 AirSim 或实际语料结果，
+因此不调整相机、检测、跨视角配准和运行准入口径。
+
 ## 2026-08-01 A3 v2 开发态行为克隆复核
 
 D5 已把 owner 验收语料转换为一个可追溯的开发态候选。来源绑定分为 dataset manifest 内生

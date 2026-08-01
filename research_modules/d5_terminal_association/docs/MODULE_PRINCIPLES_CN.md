@@ -2,6 +2,30 @@
 
 **状态日期：2026-08-01**
 
+## A3 v3 全局 seed 与留出治理原则
+
+A3 v3 的数据来源先由 main 统一分配 seed，再由 D5 绑定分配结果。D5 不能自行选择、扩展或替换
+seed。绑定同时固定全局登记表的内容哈希和文件哈希，避免修改登记表后重算自哈希绕过审计。
+每个 allocation 还固定 owner、候选版本、生命周期、用途、允许的离线操作和协议来源文件。
+
+train、validation 和 future-held-out 以 whole-episode seed 为最小单元。一个 seed 只能生成一个
+split 的一个 episode，不能按 frame 或 sample 拆分，也不能跨 split 复制。schedule 使用
+seed 派生的场景扰动产生不同观测历史，在线策略看不到 truth identity。中心提供的
+`global_track_id` 仍是只读引用，D5 不创建、不改写、不换绑。
+
+来源计划把 104 个 seed 逐项展开为 episode。每个 episode 安排四段意图窗口，每段计划 24 个
+唯一样本；角色采用两种互补模式交替，使 8 个“意图×相机角色”单元在每个 split 达到协议
+episode/seed 下限。每个 episode 只安排五类困难混淆中的两类，集合级计数再检查每类下限。
+计划计数只说明采集设计容量，不能替代按特征指纹、episode 和 seed 去重后的实际语料证据。
+
+计划可审计不等于 producer 可执行。当前 main producer 只支持 scenario、scale、seed、duration，
+collection profile 只能按整次运行设置；逐 episode 意图窗口、困难混淆 treatment 和节点数量尚未
+映射。readiness 因此保持 `pre_generation_ready=false`，在 adapter 完成前不得开始生成。
+
+future-held-out 在开发期间只允许登记 metadata。episode 和 sample payload 要等 validation
+gate 通过且模型权重、校准结果冻结后才能打开一次。评估结果不能反馈训练、选模、温度校准或
+置信阈值。一次访问后，无论通过或失败都禁止再次读取。该原则把最终泛化评估与开发迭代分开。
+
 ## A3 v3 少数意图判别与校准协议原则
 
 v2 的高总体精确动作准确率不能解释为四类意图均已学会。旧模型用共享 actor 为每个合法候选
@@ -25,17 +49,20 @@ v3 冻结为“集合上下文意图分类 + 合法候选排序”。共享候�
 宏召回与 ECE。future held-out 只能在 validation 通过且模型与校准均冻结后访问一次；无论通过
 或失败，结果都不得反馈重训、重校准、改阈值或第二次揭盲。
 
-新来源 seed 由 main 后续分配，协议文件本身保持空值。train、validation、future held-out 三组
-必须互斥，并与 v2 全 split/test 的 `22100-22199`、正式保留的 `1000-1019` 零重叠。最低总
+新来源 seed 已由 main 在全局登记表中分配，协议文件本身仍保持空值。train、validation、
+future held-out 三组必须互斥，并与 v2 全 split/test 的 `22100-22199`、正式保留的
+`1000-1019` 零重叠。最低总
 唯一 seed 分别为 `48/24/32`；八个“意图×相机角色”单元的最低
 sample/episode/seed 分别为 train `128/16/16`、validation `64/8/8`、future
 `96/12/12`，并覆盖五类冻结困难混淆场景。来源 manifest 只提供 seed、覆盖、来源与身份审计，
 在线 truth 使用、`global_track_id` 创建/改写和全部 authority 必须为 0/false。
 
-当前状态是 `protocol_frozen_data_not_generated`。实现只提供冻结配置、JSON Schema、静态来源/
-future ledger 校验和后续训练入口预备；默认入口缺新 source manifest 时不读取 cache、不创建
-输出、不写权重。2026-08-01 静态专项为 `32 passed in 1.00s`，D5 全量为
-`811 passed, 2 warnings in 111.61s`；测试未执行优化器训练。两条 warning 仍来自既有
+协议基础状态仍是 `protocol_frozen_data_not_generated`；来源 readiness 状态为
+`plan_ready_but_producer_adapter_missing`。实现已有冻结配置、JSON Schema、allocation binding、
+104 条 episode schedule、集合配额重算和 producer 能力审计；默认入口不读取 cache、不创建输出、
+不写权重。初始协议静态专项为 `32 passed in 1.00s`，本轮协议与 readiness 专项为
+`58 passed in 1.29s`，D5 全量为 `837 passed, 2 warnings in 103.78s`；测试未执行优化器训练。
+两条 warning 仍来自既有
 Matplotlib Axes3D 与 NVML 环境。本批没有新 episode、数据、训练、模型、AirSim 或物理结果，
 shadow、assist、PPO、runtime、camera command、control、分配、降级、生产、晋级及
 `global_track_id` create/write 全部为 false。

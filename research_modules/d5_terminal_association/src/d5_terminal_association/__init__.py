@@ -125,6 +125,17 @@ from .active_vision_a3_v3_protocol import (
     validate_frozen_a3_v3_protocol,
     validate_future_heldout_access,
 )
+from .active_vision_a3_v3_source_readiness import (
+    A3V3PreGenerationReadiness,
+    A3V3SourceReadinessError,
+    A3_V3_ALLOCATION_BINDING_SCHEMA_VERSION,
+    A3_V3_PRE_GENERATION_READINESS_SCHEMA_VERSION,
+    A3_V3_SOURCE_SCHEDULE_SCHEMA_VERSION,
+    validate_a3_v3_allocation_binding,
+    validate_a3_v3_pre_generation_readiness,
+    validate_a3_v3_registry_allocation,
+    validate_a3_v3_source_schedule,
+)
 from .active_vision_a3_v3_training import (
     ACTIVE_VISION_A3_V3_DEVELOPMENT_CACHE_SCHEMA_VERSION,
     ACTIVE_VISION_A3_V3_DEVELOPMENT_REPORT_SCHEMA_VERSION,

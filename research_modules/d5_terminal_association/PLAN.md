@@ -1,5 +1,31 @@
 # D5 终端视觉配准与身份认证计划
 
+## 2026-08-01 A3 v3 全局 seed 接线计划
+
+- [x] 冻结 D5 allocation binding，固定 main 全局登记表 ID、内容 SHA-256、文件 SHA-256、
+  A3 v3 协议 SHA-256 和三个来源 allocation。
+- [x] 固定 train `24000-24047`、validation `24048-24071`、future-held-out
+  `24072-24103`。三组 seed 整集互斥，每个 seed 只属于一个完整 episode。
+- [x] 冻结含 104 条 per-episode entry 的 source collection schedule。每条安排四段意图窗口、
+  两类相机角色中的确定角色、两类困难混淆 treatment 和 96 个最低唯一样本；集合覆盖 8 个
+  意图-角色单元及五类困难混淆，不复制、重采样或注入在线 truth。
+- [x] 实现只读 readiness 和 CLI。严格检查登记表双哈希、来源绑定、精确 seed/episode 集、
+  协议配额重算、producer 文件哈希、能力声明和全 false authority。
+- [x] 增加 allocation、split、coverage、future 权限、协议哈希、来源哈希、身份和 authority
+  漂移负例。专项 `58 passed`，D5 全量 `837 passed, 2 warnings`。
+- [ ] main 先补齐 producer adapter：映射逐 episode split/ID/节点数量、意图窗口和困难混淆
+  treatment，并在生成后审计计划配额。完成前 readiness 固定为
+  `plan_ready_but_producer_adapter_missing`，不得发起来源生成。
+- [ ] producer adapter 通过独立验收后，main 才能按冻结 schedule 生成三 split 来源并输出逐
+  episode/source manifest；不得读取 `1000-1019` 或复用 `22100-22199`。
+- [ ] D5 对实际 source manifest 重新核验唯一 sample/episode/seed 覆盖。计划计数不能代替实际
+  producer 证据；未通过前不得训练。
+- [ ] 仅使用 train 更新参数，validation 只做最佳 epoch、温度校准和冻结门。通过后冻结模型。
+- [ ] 模型冻结且 validation gate 通过后，future-held-out 才能一次性打开；失败后禁止训练反馈、
+  重新校准、调整阈值或第二次读取。
+- [ ] 在独立 D6 审计前保持 shadow、assist、promotion、runtime、camera command、control 和
+  `global_track_id` 写权限为 false。
+
 ## 2026-08-01 A3 v3 少数意图开发协议
 
 - [x] 仅依据 v2 train/validation 结构事实和已发布失败摘要，冻结层次化意图分类与合法候选
@@ -14,8 +40,9 @@
   `protocol_frozen_data_not_generated`；缺新 source manifest 时不读取 cache、不训练、不写权重。
 - [x] shadow、assist、PPO、runtime、camera command、control 和 `global_track_id` create/write
   等全部权限保持 false；确定性规则继续默认。
-- [ ] main 后续分配并生成全新开发与 future evaluation seed/episode，提交 source/coverage
-  manifest。该步骤及训练、validation、future held-out 均不属于本批。
+- [ ] main 按已冻结的三组 allocation 生成全新开发与 future evaluation episode，提交
+  source/coverage manifest。分配合同已关闭；实际生成、训练、validation 和 future held-out
+  仍未执行。
 
 ## 2026-08-01 A3 v2 开发态行为克隆候选
 

@@ -2,15 +2,61 @@
 
 **状态日期：2026-08-01**
 
+## A3 v3 全局 seed allocation 与生成前校验实现
+
+`a3_v3_global_seed_allocation_binding_20260801.json` 固定 main 全局登记表的 registry ID、内容
+SHA-256 和文件 SHA-256，并为 train、validation、future-held-out 记录三个 allocation 的完整
+期望。校验器先按排序、紧凑 JSON 复现登记表自哈希，再检查文件字节哈希。随后扫描全部 protected
+set 和 allocation，拒绝保护 seed 混入、allocation 间交叉、重复 seed 和非规范排序。D5 的三条
+allocation 还必须逐字段等于冻结期望，并对协议、协议 schema 和 source manifest schema 文件
+重新计算 SHA-256。
+
+`a3_v3_source_collection_schedule_20260801.json` 明列 104 条 episode metadata。每条包含 split、
+seed、episode ID、九类场景之一、规模与目标/资源/侦察数量、6 秒时长、采集 profile、两类相机
+角色、四段意图窗口、两类困难混淆 treatment 和最低样本配额。四段窗口各规划 24 个唯一样本，
+因此 split \(s\) 的计划总下限为
+
+\[
+N_s = E_s\times 4\times 24.
+\]
+
+train、validation、future-held-out 的 \(E_s\) 分别为 48、24、32，对应 \(N_s\) 为 4608、2304、
+3072。两种互补角色模式逐 episode 交替，8 个意图-角色单元分别覆盖 24/12/16 个 train/
+validation/future episode。困难混淆采用每 episode 两类的轮转分配，各 split 的五类 episode/seed
+计数均超过协议下限。validator 从 104 条 entry 重新计算 total、per-intent、per-role、per-intent-
+role 和困难混淆计数，不信任 schedule 内声明的汇总值。删除或篡改任一 entry、窗口、recipe 或
+配额均失败关闭。
+
+producer 能力审计固定绑定 `run_learning_dataset.py`、`active_vision_collection.py` 和 v2 参考
+schedule 的 SHA-256。现有入口支持 scenario、scale、seeds、duration；collection profile 只能
+按整次运行设置。逐 episode split/ID/目标资源数量、意图窗口、投影边界、陈旧或遮挡投影、角色
+匹配几何、多个合法目标近似并列和生成时样本配额均未映射。周期性侦察 cue loss 与命令后相机
+settle 只能提供部分自然 treatment，不能按计划窗口执行。
+
+`active_vision_a3_v3_source_readiness.py` 只读取上述 metadata 和冻结协议。成功结果为
+`plan_ready_but_producer_adapter_missing`。返回值固定 `plan_ready=true`、
+`pre_generation_ready=false`、`producer_adapter_complete=false`、
+`source_generation_request_ready=false` 和 `training_ready=false`，并列出五项 producer blocker。
+episode/sample payload read count 均为 0，future-held-out payload 不可读。CLI 只向标准输出打印
+JSON，不创建目录或输出产物。
+
+负向测试覆盖登记表自哈希、文件哈希、来源文件哈希、owner/version/lifecycle/usage/operations、
+精确 seed 集、split 交叉、意图/角色/困难混淆缺项、计划样本不足、future 提前读取、协议哈希、
+身份写权限和任一 authority 漂移。即使篡改方重算 binding、schedule 或 registry 的内容哈希，
+固定文件哈希和代码锚点仍会失败关闭。专项协议与 readiness 测试为 `58 passed in 1.29s`，D5
+全量为 `837 passed, 2 warnings in 103.78s`。本轮没有生成数据或权重，也没有训练、AirSim 或
+运行权限变化。
+
 ## A3 v3 分层意图与合法候选排序协议实现
 
 冻结文件 `configs/a3_v3_minority_intent_protocol_20260801.json` 使用
 `d5.active-vision-a3-minority-intent-protocol.v1`，并配套协议与来源 manifest 两份 JSON
 Schema。`active_vision_a3_v3_protocol.py` 对字段集合、单配置、证据边界、split 职责、方法
 上界、指标门、seed 禁止范围、覆盖下限、future 一次性 ledger、中心 ID 所有权和全 false
-authority 做严格校验。配置中的 development/future seed 均为 null，校验器不分配 seed，也不
-打开 episode；main 后续提供的 source manifest 仅在三组 seed 互斥且避开 `1000-1019`、
-`22100-22199` 后才能进入开发数据就绪状态。
+authority 做严格校验。配置中的 development/future seed 均为 null，协议校验器不分配 seed，
+也不打开 episode；main 的实际分配由独立 allocation binding 承载。后续 source manifest 只有
+在三组 seed 与该 binding 精确相等、整集互斥且避开 `1000-1019`、`22100-22199` 后才能进入
+开发数据就绪状态。
 
 `HierarchicalIntentLegalCandidateRanker` 复用 35 维主动视觉候选特征。每个候选先经过共享两层
 tanh MLP，padding mask 后的 mean/max 拼接为集合上下文并输出四类意图 logit；另一共享线性头

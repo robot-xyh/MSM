@@ -1,0 +1,183 @@
+{
+  "schema_version": "d5.active-vision-a3-v3-global-seed-allocation-binding.v1",
+  "binding_id": "d5-a3-v3-global-seed-binding-20260801-v1",
+  "status": "allocation_reserved_source_not_generated",
+  "frozen_on": "2026-08-01",
+  "protocol_binding": {
+    "path": "research_modules/d5_terminal_association/configs/a3_v3_minority_intent_protocol_20260801.json",
+    "protocol_id": "a3_v3_hierarchical_intent_legal_candidate_ranking_20260801",
+    "sha256": "5a01b9f5f0636a3d22338ac1c3212a242d51944a974263ca7a165909ab3dcb64"
+  },
+  "global_seed_registry_binding": {
+    "path": "research_modules/scalable_3d_simulation/configs/scalable_learning_global_seed_registry_v1.json",
+    "schema_version": "scalable3d-global-seed-registry-v1",
+    "policy_version": "scalable3d-seed-allocation-policy-v1",
+    "registry_id": "scalable3d-learning-source-allocation-20260801-v1",
+    "status": "allocations_reserved_generation_not_started",
+    "content_sha256": "89d99bf064a8c0e226eead5b675f05daf70ac2d4c6f6139322502da54ab0aea7",
+    "file_sha256": "1c9778e1cbfcd5679956ac2c1fc71a1e780207c4579abdc9b129d162a252c4b6"
+  },
+  "split_allocations": {
+    "train": {
+      "allocation_id": "d5-a3-v3-train",
+      "owner": "D5",
+      "candidate_version": "d5-a3-v3",
+      "lifecycle": "reserved",
+      "usage_class": "train_only",
+      "split_policy": "whole_episode_train_v1",
+      "permitted_operations": [
+        "dataset_generation",
+        "training"
+      ],
+      "seed_range": [
+        24000,
+        24047
+      ],
+      "seed_count": 48,
+      "source_contract": {
+        "protocol_id": "a3_v3_hierarchical_intent_legal_candidate_ranking_20260801",
+        "split": "train",
+        "bindings": [
+          {
+            "role": "minority_intent_protocol",
+            "path": "research_modules/d5_terminal_association/configs/a3_v3_minority_intent_protocol_20260801.json",
+            "sha256": "5a01b9f5f0636a3d22338ac1c3212a242d51944a974263ca7a165909ab3dcb64"
+          },
+          {
+            "role": "protocol_schema",
+            "path": "research_modules/d5_terminal_association/configs/a3_v3_minority_intent_protocol.schema.json",
+            "sha256": "531763bee3a28e12b36bcd6aecacab8236fb20a4b0cb9e8e0cec8f339a145e79"
+          },
+          {
+            "role": "source_manifest_schema",
+            "path": "research_modules/d5_terminal_association/configs/a3_v3_minority_source_manifest.schema.json",
+            "sha256": "c858206bfefde1db0717658c55eb16a723b387c4c257b5c8c1bec18406537040"
+          }
+        ]
+      }
+    },
+    "validation": {
+      "allocation_id": "d5-a3-v3-validation",
+      "owner": "D5",
+      "candidate_version": "d5-a3-v3",
+      "lifecycle": "reserved",
+      "usage_class": "validation_only",
+      "split_policy": "whole_episode_validation_v1",
+      "permitted_operations": [
+        "dataset_generation",
+        "validation"
+      ],
+      "seed_range": [
+        24048,
+        24071
+      ],
+      "seed_count": 24,
+      "source_contract": {
+        "protocol_id": "a3_v3_hierarchical_intent_legal_candidate_ranking_20260801",
+        "split": "validation",
+        "bindings": [
+          {
+            "role": "minority_intent_protocol",
+            "path": "research_modules/d5_terminal_association/configs/a3_v3_minority_intent_protocol_20260801.json",
+            "sha256": "5a01b9f5f0636a3d22338ac1c3212a242d51944a974263ca7a165909ab3dcb64"
+          },
+          {
+            "role": "protocol_schema",
+            "path": "research_modules/d5_terminal_association/configs/a3_v3_minority_intent_protocol.schema.json",
+            "sha256": "531763bee3a28e12b36bcd6aecacab8236fb20a4b0cb9e8e0cec8f339a145e79"
+          },
+          {
+            "role": "source_manifest_schema",
+            "path": "research_modules/d5_terminal_association/configs/a3_v3_minority_source_manifest.schema.json",
+            "sha256": "c858206bfefde1db0717658c55eb16a723b387c4c257b5c8c1bec18406537040"
+          }
+        ]
+      }
+    },
+    "future_held_out": {
+      "allocation_id": "d5-a3-v3-future-held-out",
+      "owner": "D5",
+      "candidate_version": "d5-a3-v3",
+      "lifecycle": "reserved",
+      "usage_class": "test_only",
+      "split_policy": "whole_episode_one_shot_future_held_out_v1",
+      "permitted_operations": [
+        "dataset_generation",
+        "test"
+      ],
+      "seed_range": [
+        24072,
+        24103
+      ],
+      "seed_count": 32,
+      "source_contract": {
+        "protocol_id": "a3_v3_hierarchical_intent_legal_candidate_ranking_20260801",
+        "split": "future_held_out",
+        "maximum_evaluation_access_count": 1,
+        "bindings": [
+          {
+            "role": "minority_intent_protocol",
+            "path": "research_modules/d5_terminal_association/configs/a3_v3_minority_intent_protocol_20260801.json",
+            "sha256": "5a01b9f5f0636a3d22338ac1c3212a242d51944a974263ca7a165909ab3dcb64"
+          },
+          {
+            "role": "protocol_schema",
+            "path": "research_modules/d5_terminal_association/configs/a3_v3_minority_intent_protocol.schema.json",
+            "sha256": "531763bee3a28e12b36bcd6aecacab8236fb20a4b0cb9e8e0cec8f339a145e79"
+          },
+          {
+            "role": "source_manifest_schema",
+            "path": "research_modules/d5_terminal_association/configs/a3_v3_minority_source_manifest.schema.json",
+            "sha256": "c858206bfefde1db0717658c55eb16a723b387c4c257b5c8c1bec18406537040"
+          }
+        ]
+      }
+    }
+  },
+  "prohibited_payload_sources": [
+    {
+      "source_id": "formal-evaluation-v1",
+      "seed_range": [
+        1000,
+        1019
+      ],
+      "episode_or_sample_payload_read_allowed": false,
+      "reuse_allowed": false
+    },
+    {
+      "source_id": "d5-a3-v2-corpus",
+      "seed_range": [
+        22100,
+        22199
+      ],
+      "episode_or_sample_payload_read_allowed": false,
+      "reuse_allowed": false
+    }
+  ],
+  "generation_state": {
+    "episode_generation_started": false,
+    "sample_generation_started": false,
+    "source_manifest_generated": false,
+    "training_started": false,
+    "model_frozen": false,
+    "validation_gate_passed": false,
+    "future_held_out_payload_read_count": 0,
+    "formal_seed_payload_read_count": 0,
+    "v2_seed_payload_read_count": 0
+  },
+  "authority": {
+    "shadow": false,
+    "assist": false,
+    "promotion": false,
+    "ppo": false,
+    "assignment": false,
+    "degradation": false,
+    "runtime": false,
+    "production": false,
+    "control": false,
+    "camera_command": false,
+    "global_track_id_create": false,
+    "global_track_id_write": false
+  },
+  "content_sha256": "29148699e3089d15de506fec4f3b1525c408aa4a070adbe7537cf7c44162e640"
+}

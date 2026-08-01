@@ -1,5 +1,20 @@
 # D5 实现差距审计
 
+## 2026-08-01 A3 v3 全局 seed 接线 GAP
+
+| 项目 | 当前状态 | 证据与剩余限制 |
+| --- | --- | --- |
+| main 全局 seed allocation 绑定 | **合同缺口已关闭** | D5 绑定全局登记表 `scalable3d-learning-source-allocation-20260801-v1` 的内容哈希和文件哈希，并逐 split 固定 owner、candidate version、lifecycle、usage、operations、来源合同与精确 seed 集。任何登记表或来源文件漂移均失败关闭。 |
+| 三 split 原子性和互斥 | **计划缺口已关闭** | train/validation/future-held-out 为 48/24/32 个 whole-episode seed，交集为 0。`1000-1019` 和 `22100-22199` 禁止读取或复用。尚未生成 episode，不能把计划解释为数据证据。 |
+| 少数意图与困难混淆覆盖计划 | **计划合同已关闭，实际覆盖 P1 开放** | schedule 明列 104 条 episode。每条含四段意图窗口和两类困难混淆 treatment；8 个意图-角色单元按集合覆盖 24/12/16 个 episode，五类困难混淆均高于协议下限。计划最低样本量为 4608/2304/3072，实际覆盖仍需 source manifest 验收。 |
+| main producer adapter | **P1 阻断** | `run_learning_dataset.py` 只接收 scenario/scale/seeds/duration，collection profile 只能按整次运行设置。逐 episode split/ID/节点数、意图窗口、投影边界、遮挡/陈旧投影、角色匹配几何、近似并列目标及生成时配额约束均未映射。 |
+| future-held-out 治理 | **生成前权限合同已关闭** | metadata 可预先冻结；payload 在模型冻结和 validation gate 通过前不可读。后续最多一次评估，不能训练、选模、校准、调阈值、失败回训或二次读取。当前 payload read count 为 0。 |
+| 数据、训练和运行能力 | **P1 开放** | 当前 readiness 为 `plan_ready_but_producer_adapter_missing`，`plan_ready=true`、`pre_generation_ready=false`、`source_generation_request_ready=false`。source manifest、cache、权重和模型均不存在；全部运行和身份权限为 false。 |
+
+专项合同测试为 `58 passed in 1.29s`，D5 全量为
+`837 passed, 2 warnings in 103.78s`。本轮验证日期为 2026-08-01，验证对象为静态合同和失败关闭
+路径，没有 AirSim、真实相机或物理运行证据。
+
 ## 2026-08-01 A3 v3 少数意图协议冻结 GAP
 
 | 缺口 | 当前状态 | 证据与剩余边界 |
@@ -8,7 +23,7 @@
 | 少数意图方法合同 | **静态实现已关闭** | 冻结集合上下文四类意图头、class-balanced train-only 辅助损失和合法候选排序；权重与 intent logit 修正有界，规则回退强制保留。尚无新数据训练或模型质量证据。 |
 | 校准与开发门 | **静态实现已关闭** | 最早最佳 epoch 只按 validation composite loss；温度只在 validation 固定网格拟合；逐动作、逐角色和 ECE 门已冻结。 |
 | future held-out 治理 | **访问合同已关闭，实证开放** | 仅允许 validation 通过且模型冻结后一次揭盲；失败后不得重训、重校准、改阈值或二次访问。本批未访问 future 数据。 |
-| 新来源覆盖 | **请求合同已关闭，数据开放** | seed 由 main 后续分配；train/validation/future 互斥，并与 `22100-22199`、`1000-1019` 零重叠。8 个意图角色单元和五类困难混淆场景均有唯一 episode/seed 下限；本批未生成 episode。 |
+| 新来源覆盖 | **分配与计划合同已关闭，producer P1 开放** | main 已分配三组互斥 seed；104 条 episode 计划满足 8 个意图角色单元和五类困难混淆的下限。producer adapter 未完成，生成请求仍关闭，本批未生成 episode。 |
 | 训练与权重 | **P1 开放** | 状态为 `protocol_frozen_data_not_generated`。入口仅为协议预备，缺新 source manifest 时默认失败关闭且不写输出；本批未运行训练、未写权重。 |
 | 权限与默认路径 | **保持失败关闭** | shadow、assist、PPO、runtime、camera command、control、assignment、degradation、production、promotion、`global_track_id` create/write 全 false；规则路径不变。 |
 
