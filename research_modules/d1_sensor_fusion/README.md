@@ -2508,3 +2508,41 @@ D2 总线、严格身份评估语义和 truth NPZ 的 SHA 均与对照完全相�
 未改变业务载荷。本轮属于留出执行证据，但验收失败，不构成正式准入证据；v2 继续
 default-off、shadow、`evidence_only`，D2 enforcement 仍禁止。不得使用该留出集调参；下一候选
 必须使用新的开发数据形成，并另建新的独立留出集。
+
+## GlobalTrack 批量 A95 物化候选（2026-08-01）
+
+当前 main 已使用不可变共享审计树，但完整发布仍需为每条航迹计算二维位置误差半径、质量分档、
+状态/协方差副本和轨迹专属 metadata。对 seed 42000 的非正式 200v200 冻结回放重新剖析后，
+`global_tracks` 累计为 `0.443068 s`，高于同轮 scan-input 墙钟 `0.138621 s`。本轮因此只研究
+完整 `GlobalTrack` 物化，不复用已拒绝的 required-observation subset、fixed-lag prefix summary
+或 association sparse prefilter 候选。
+
+新增默认关闭的 `batched_global_track_a95_summary`。reference 实现身份为
+`d1.publication.global_track_materialization.per_track_a95_summary.v1`，candidate 为
+`d1.publication.global_track_materialization.batched_a95_summary.v1`。候选先按 reference 顺序
+执行协方差限制，再把同一发布帧内所有二维位置协方差组成批量矩阵，一次调用
+`numpy.linalg.eigvalsh`，按原公式计算 A95。随后仍逐条调用完整物化函数，复制状态、协方差和
+轨迹专属字典。`GlobalTrack` 字段、质量门限、双时间戳、NED、谱系和编号均未改变。
+
+冻结输入为 86 个扫描、2,051 条匿名观测，SHA-256 为
+`c6dcc69d58b0fc9a51e9cfcf2368b4faeb882d5a90991ffcdf1f7605bba55e53`。预注册门采用 7 对
+交替 fresh-process：
+
+| 指标 | 结果 | 门限 |
+| --- | ---: | ---: |
+| candidate 更快比例 | 7/7 | >=80% |
+| 模块墙钟中位数 | 0.228742 -> 0.190582 s | 改善 >=10% |
+| 中位改善 | 16.6824% | >=10% |
+| 配对差 bootstrap 95% 区间 | [-0.044637, -0.031457] s | 上界 <0 |
+| 逐扫描语义 | 7/7 | 7/7 |
+| 业务操作数守恒 | 7/7 | 7/7 |
+| 峰值 RSS 中位数 | 165528 -> 165312 KiB | 报告项 |
+
+每个 arm 完整发布 59 次、物化 11,188 条航迹。reference 执行 11,188 次标量 A95 摘要；
+candidate 对同样 11,188 个矩阵执行 56 次非空批量特征值调用。逐扫描后验、协方差、NIS、
+门控观测编号、完整 publication payload、consistency evidence、融合操作数和最终离线导出
+严格一致。在线真值使用和 `global_track_id` 写权限均为 0。
+
+报告位于 `reports/D1_GLOBAL_TRACK_MATERIALIZATION_PERFORMANCE_20260801_CN.md`。候选虽然通过
+D1 模块门，仍保持默认关闭，等待 main 的独立集成审查。正式 seeds 1000--1019、正式 R0、
+AirSim、目标硬件和系统实时容量均未运行或关闭。

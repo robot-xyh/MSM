@@ -3639,3 +3639,45 @@ D2 总线、严格身份评估语义和 truth NPZ 的 SHA 均与对照完全相�
 业务结果。该留出执行没有通过准入验收，也没有使用正式分片，因此不构成正式 evidence。v2
 继续 default-off、shadow、`evidence_only`；下一候选必须在新 development 数据上形成，并使用
 新的独立留出集。
+
+## GlobalTrack 批量 A95 摘要候选（2026-08-01）
+
+### 热点归因
+
+非正式 200v200 冻结回放的当前 reference profile 中，`global_tracks`、`_to_global_track` 和
+`covariance_a95` 累计耗时分别为 `0.443068/0.290990/0.137480 s`。同轮 scan-input 墙钟为
+`0.138621 s`。本轮因此只推进完整 `GlobalTrack` 物化中的 A95 重复特征值计算，不并行修改
+scan-input，也不复用已拒绝的 observation subset、fixed-lag prefix summary 或 association
+sparse prefilter 候选。
+
+### 实现路径
+
+`FusionAdapter` 新增严格布尔开关 `batched_global_track_a95_summary`，默认值为 `False`。
+reference/candidate 的显式实现身份分别为：
+
+- `d1.publication.global_track_materialization.per_track_a95_summary.v1`；
+- `d1.publication.global_track_materialization.batched_a95_summary.v1`。
+
+候选要求 `reuse_track_classification_a95=True`。`global_tracks()` 先固定当前航迹顺序，对所有
+记录执行既有协方差限制，再堆叠二维位置协方差并批量求最大特征值。预计算的有限非负 A95 传给
+`_to_global_track()`；后者仍逐条执行质量分档、状态和协方差复制、来源支持、身份似然、时间戳
+及轨迹专属 metadata 构造。空发布帧不调用特征值求解。返回数组与内部状态的隔离方式保持不变。
+
+诊断 schema `d1.global_track_materialization_diagnostics.v1` 明确记录实际实现身份、开关状态、
+逐航迹质量摘要请求数、标量 A95 调用数、批量构建数、批量矩阵数、批量特征值调用数和结果复用
+数。性能运行使用 14 个独立进程形成 7 对交替样本，profile 进程单独运行且不进入门限统计。
+
+### 等价与准入边界
+
+比较器逐扫描散列内部后验和协方差、NIS 与门控观测编号、完整 `GlobalTrack.to_dict()` 发布流、
+一致性证据、scan-input/fusion/publication 业务操作数以及最终离线导出。只允许上述 A95 实现相关
+计数不同。7/7 对语义和工作量守恒均通过；每臂完整发布 59 次、物化 11,188 条航迹。
+
+候选在 7/7 对中更快，模块墙钟 P50/P95/max 从
+`0.228742/0.229523/0.229629 s` 降至
+`0.190582/0.194719/0.195816 s`。中位改善 `16.6824%`，配对差 bootstrap 95% 上界为
+`-0.031457 s`。峰值 RSS P50/P95/max 为 reference
+`165528/165853/165908 KiB`、candidate `165312/165987/166000 KiB`。
+
+候选通过 D1 模块门，但继续 default-off。main/scalable 接线、正式多 seed、系统实时、AirSim、
+目标硬件、RMSE、NEES 和正式 R0 均不属于本次证据。

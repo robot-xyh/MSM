@@ -1312,3 +1312,17 @@ D2 总线、严格身份评估语义和 truth NPZ 的 SHA 均完全相同。该�
 `docs/MODULE_PRINCIPLES_CN.md` 已同步影子分类原则。`docs/AIRSIM_INTEGRATION_PLAN.md` 已检查；
 该变更不改变 AirSim adapter、settings、episode/reset、输入 topic、相机模型或运行证据，因此
 无需修改。
+
+## GlobalTrack 批量 A95 物化候选 GAP（2026-08-01）
+
+| GAP/合同 | 当前状态 | D1-owned 证据 | 剩余关闭条件 |
+| --- | --- | --- | --- |
+| 允许热点的定量选择 | **已关闭** | 非正式 seed 42000 冻结回放 profile：`global_tracks=0.443068 s`，高于同轮 scan-input `0.138621 s`；只推进批量 A95 单一身份 | 后续候选仍须重新绑定冻结输入和实际实现身份 |
+| 重复 A95 特征值计算 | **D1 模块门通过，candidate default-off** | `d1.publication.global_track_materialization.batched_a95_summary.v1`；11,188 次标量调用变为 56 次非空批量调用，完整物化仍为 11,188 条 | main 独立决定是否进入系统 selector；不得直接按模块门晋级 |
+| 语义与权限守恒 | **7/7 通过** | 后验、协方差、NIS、门控 ID、完整 payload、consistency evidence、业务操作数和最终 export 严格一致；在线 truth 和 `global_track_id` 写权限为 0 | main 接线时重复跨模块合同和 D2 消费审计 |
+| 预注册性能门 | **7/7 通过** | candidate 更快 100%；模块墙钟 P50 `0.228742 -> 0.190582 s`，改善 16.6824%；bootstrap 配对差 95% 上界 `-0.031457 s`；P95/max 和 RSS 已报告 | 在 clean、同提交、未见开发输入上完成 main 级核心墙钟、RSS 和长期容量门 |
+| 完整系统实时与正式效果 | **P1 开放，main-owned** | 本轮仅 2.2 秒非正式冻结 fixture，未运行正式 seeds 1000--1019 或正式 R0 | 目标平台预算、正式多 seed、长时容量、AirSim、RMSE/NEES/NIS 和完整系统验收 |
+
+本轮没有新增 P0。候选不改变 EKF/OOSM、fixed lag、融合数学、门控、双时间戳、NED、协方差、
+谱系、质量分档或完整 `GlobalTrack` 内容。D1-owned 模块性能门已闭合，但系统级实时 P1 保持
+开放。

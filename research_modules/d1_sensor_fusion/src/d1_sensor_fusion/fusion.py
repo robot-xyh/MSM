@@ -114,6 +114,15 @@ OPAQUE_SOURCE_IDENTITY_CANDIDATE_IMPLEMENTATION_ID = (
 OPAQUE_SOURCE_IDENTITY_CACHE_DIAGNOSTICS_SCHEMA_VERSION = (
     "d1.opaque_source_identity_cache_diagnostics.v1"
 )
+GLOBAL_TRACK_MATERIALIZATION_REFERENCE_IMPLEMENTATION_ID = (
+    "d1.publication.global_track_materialization.per_track_a95_summary.v1"
+)
+GLOBAL_TRACK_MATERIALIZATION_CANDIDATE_IMPLEMENTATION_ID = (
+    "d1.publication.global_track_materialization.batched_a95_summary.v1"
+)
+GLOBAL_TRACK_MATERIALIZATION_DIAGNOSTICS_SCHEMA_VERSION = (
+    "d1.global_track_materialization_diagnostics.v1"
+)
 COVARIANCE_CHOLESKY_RELATIVE_DETERMINANT_FLOOR = (
     4_096.0 * np.finfo(float).eps
 )
@@ -937,6 +946,7 @@ class FusionAdapter:
             ASSOCIATION_SPARSE_PREFILTER_DEFAULT_SELECTOR
         ),
         reuse_track_classification_a95: bool = True,
+        batched_global_track_a95_summary: bool = False,
         direct_checkpoint_state_queries: bool = True,
         fixed_lag_checkpoint_suffix_reuse: bool = True,
         trusted_replay_checkpoint_prefix: bool = True,
@@ -1331,6 +1341,19 @@ class FusionAdapter:
         self.reuse_track_classification_a95 = bool(
             reuse_track_classification_a95
         )
+        if not isinstance(batched_global_track_a95_summary, bool):
+            raise TypeError("batched_global_track_a95_summary must be a bool")
+        self.batched_global_track_a95_summary = (
+            batched_global_track_a95_summary
+        )
+        if (
+            self.batched_global_track_a95_summary
+            and not self.reuse_track_classification_a95
+        ):
+            raise ValueError(
+                "batched global-track A95 summary requires "
+                "reuse_track_classification_a95=True"
+            )
         self.direct_checkpoint_state_queries = bool(direct_checkpoint_state_queries)
         self.fixed_lag_checkpoint_suffix_reuse = bool(
             fixed_lag_checkpoint_suffix_reuse
@@ -2546,10 +2569,50 @@ class FusionAdapter:
             if self.shared_publication_audit_snapshot
             else None
         )
+        if self.batched_global_track_a95_summary:
+            records = tuple(self.tracks.values())
+            a95_values = self._batched_global_track_a95_values(records)
+            return [
+                self._to_global_track(
+                    record,
+                    publication_context,
+                    precomputed_a95_m=float(a95_m),
+                )
+                for record, a95_m in zip(records, a95_values)
+            ]
         return [
             self._to_global_track(record, publication_context)
             for record in self.tracks.values()
         ]
+
+    def _batched_global_track_a95_values(
+        self,
+        records: tuple[TrackRecord, ...],
+    ) -> np.ndarray:
+        """Compute one publication frame's unchanged A95 summaries in bulk."""
+
+        operations = self._publication_materialization_operations
+        operations["batched_a95_summary_build_count"] += 1
+        operations["batched_a95_summary_matrix_count"] += len(records)
+        if not records:
+            return np.empty(0, dtype=float)
+
+        # The reference path applies the same limiter immediately before each
+        # scalar A95 calculation. Keep that ordering boundary explicit before
+        # assembling the read-only numerical batch.
+        for record in records:
+            if not record.current_state_covariance_limited:
+                self._limit_record_covariance(record)
+
+        position_covariances = np.stack(
+            tuple(record.current_state.covariance[:2, :2] for record in records),
+            axis=0,
+        )
+        largest_eigenvalues = np.linalg.eigvalsh(position_covariances)[:, -1]
+        operations["batched_a95_eigvalsh_call_count"] += 1
+        return np.sqrt(
+            CHI2_2_95 * np.maximum(largest_eigenvalues, 0.0)
+        )
 
     def publication_materialization_diagnostics(self) -> dict[str, Any]:
         """Return implementation identity and materialization operation counts."""
@@ -2561,6 +2624,17 @@ class FusionAdapter:
         )
         return {
             "implementation_id": implementation_id,
+            "schema_version": (
+                GLOBAL_TRACK_MATERIALIZATION_DIAGNOSTICS_SCHEMA_VERSION
+            ),
+            "global_track_materialization_implementation_id": (
+                GLOBAL_TRACK_MATERIALIZATION_CANDIDATE_IMPLEMENTATION_ID
+                if self.batched_global_track_a95_summary
+                else GLOBAL_TRACK_MATERIALIZATION_REFERENCE_IMPLEMENTATION_ID
+            ),
+            "batched_global_track_a95_summary": bool(
+                self.batched_global_track_a95_summary
+            ),
             "publication_audit_contract_version": (
                 PUBLICATION_AUDIT_TREE_CONTRACT_VERSION
                 if self.immutable_shared_publication_metadata
@@ -7824,6 +7898,8 @@ class FusionAdapter:
         self,
         record: TrackRecord,
         publication_context: _TrackPublicationContext | None = None,
+        *,
+        precomputed_a95_m: float | None = None,
     ) -> GlobalTrack:
         batch_context = self._batch_context
         if batch_context is not None:
@@ -7831,12 +7907,29 @@ class FusionAdapter:
         self._publication_materialization_operations[
             "global_track_metadata_materialization_count"
         ] += 1
+        self._publication_materialization_operations[
+            "track_quality_summary_request_count"
+        ] += 1
         if not record.current_state_covariance_limited:
             self._limit_record_covariance(record)
-        if self.reuse_track_classification_a95:
+        if precomputed_a95_m is not None:
+            a95_m = float(precomputed_a95_m)
+            if not np.isfinite(a95_m) or a95_m < 0.0:
+                raise ValueError("precomputed global-track A95 must be finite and nonnegative")
+            self._publication_materialization_operations[
+                "batched_a95_summary_reuse_count"
+            ] += 1
+            level = self._classify(record, a95_m=a95_m)
+        elif self.reuse_track_classification_a95:
+            self._publication_materialization_operations[
+                "per_track_a95_summary_call_count"
+            ] += 1
             a95_m = covariance_a95(record.current_state.covariance)
             level = self._classify(record, a95_m=a95_m)
         else:
+            self._publication_materialization_operations[
+                "per_track_a95_summary_call_count"
+            ] += 2
             level = self._classify(record)
             a95_m = covariance_a95(record.current_state.covariance)
         likelihood_sum = sum(record.identity_likelihood.values())

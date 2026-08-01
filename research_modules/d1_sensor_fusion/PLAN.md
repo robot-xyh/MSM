@@ -2857,3 +2857,44 @@ enforcement。
 
 `docs/AIRSIM_INTEGRATION_PLAN.md` 已检查。本项不改变 AirSim 观测适配器、settings、相机外参、
 episode/reset、topic 或运行时接口，因此无需修改该文档。
+
+## 34. GlobalTrack 批量质量摘要候选（2026-08-01）
+
+### 34.1 热点与单一身份
+
+1. 使用 seed 42000、2.2 s 的非正式 200v200 冻结回放重新剖析当前不可变共享审计路径。
+2. reference 的 `global_tracks/_to_global_track/covariance_a95` 累计为
+   `0.443068/0.290990/0.137480 s`；同轮 scan-input 墙钟为 `0.138621 s`。
+3. 只推进 `d1.publication.global_track_materialization.batched_a95_summary.v1`，不并行研究
+   scan-input，也不复用三个明确排除的历史候选。
+
+### 34.2 实现边界
+
+1. `batched_global_track_a95_summary=False` 保持默认 reference；候选必须显式开启，且要求
+   `reuse_track_classification_a95=True`。
+2. 候选只把同一发布帧的二维位置协方差特征值计算批量化。协方差限制仍先执行，A95 公式、
+   分级门限和输出浮点值不变。
+3. 状态、协方差、source support、identity likelihood、轨迹 metadata 和完整
+   `GlobalTrack` 仍逐条构造并与内部状态隔离。
+4. 诊断分别记录标量摘要次数、批量构建次数、矩阵数、特征值调用数和逐航迹复用数。
+
+### 34.3 模块门结果
+
+冻结输入 SHA-256 为
+`c6dcc69d58b0fc9a51e9cfcf2368b4faeb882d5a90991ffcdf1f7605bba55e53`，含 86 个扫描、
+2,051 条观测。7 对交替 fresh-process 全部完成：candidate 7/7 更快；模块墙钟中位数
+`0.228742 -> 0.190582 s`，改善 `16.6824%`；配对差 bootstrap 95% 区间
+`[-0.044637, -0.031457] s`。模块墙钟 P95/max 从 `0.229523/0.229629 s` 降至
+`0.194719/0.195816 s`。峰值 RSS 中位数 `165528 -> 165312 KiB`。
+
+7/7 pair 的逐扫描后验、协方差、NIS、门控编号、完整发布载荷、业务操作数和最终离线导出
+严格一致。每臂物化 11,188 条航迹；标量特征值摘要 11,188 次变为 56 次非空批量调用。
+
+### 34.4 后续状态
+
+1. D1 模块门通过，候选保持 default-off，不直接接入 main/scalable。
+2. main 若决定集成，必须另行运行 clean、同提交、多 seed 的核心墙钟、D2 消费和 RSS 门；
+   不得使用正式 seeds 1000--1019 做开发调参。
+3. 当前没有系统实时、AirSim、目标硬件、RMSE、NEES 或正式 R0 证据。
+4. `docs/AIRSIM_INTEGRATION_PLAN.md` 已检查；候选不改变 AirSim 输入、topic、外参、时钟或
+   episode 编排，因此无需修改。
