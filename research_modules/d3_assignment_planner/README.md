@@ -1,6 +1,37 @@
 # D3 Assignment Planner
 
-## 2026-07-30 A1 来源独立评价器 v2
+## 2026-07-31 A1 来源独立评价 v2 结果
+
+冻结的 v2 评价已按唯一输出身份执行一次。输入覆盖 `20000-20099` 共 100 个 seed、
+100 个 episode 和 292 个匿名规划帧，包含 5、20、50、100、200 五档规模及名义、交叉、
+编队分裂、机动、延迟噪声、通信退化、中心失效、二级失效和高威胁 M-to-N 场景。来源
+train/validation/test 标签只用于分组，帧数分别为 `178/57/57`；本次没有训练、选模、
+归一化重拟合或阈值调整。
+
+机器门结果为 `source_independent_evaluation_v2_gate_passed_not_admitted`：
+
+| 指标 | 实际结果 | 预注册门限 | 结论 |
+| --- | ---: | ---: | --- |
+| 正类安全换绑 | `13/110 = 11.82%` | `>=1` 且 `>=5%` | 通过 |
+| 正类教师完全匹配 | `8/110 = 7.27%` | `>=1` 且 `>=2%` | 通过 |
+| 负类 exact-R0 | `182/182 = 100%` | `>=99%` | 通过 |
+
+94 个安全投影拒绝帧的有效矩阵和绑定均逐项恢复 R0。重复资源、硬禁边违规、M-to-N
+原子性违规、版本违规、规则矩阵突变，以及模型直接输出 assignment、plan 或 runtime 的
+计数均为 0。27 帧因 `feature_ood` 标记为分布外；拒绝原因可在同一帧叠加，主要包括
+绑定变化上限 65 帧、规则成本差上限 53 帧、相对规则成本差上限 6 帧和分布外 27 帧。
+
+数据中在线真值字段数和生成阶段在线真值使用数均为 0；训练 seed 与正式保留 seed 重叠
+均为 0，正式 `1000-1019` 的读取数为 0。结果目录固定为
+`results/a1_source_independent_evaluation_v2_20260731/`，五个固定文件齐全，
+`SHA256SUMS` 全部通过。runtime、assist、authority、assignment、plan、control、
+physical、formal admission 和 production admission 等权限仍全部为 false。该结果只形成
+来源独立离线证据，不能解释为正式 R0、运行采用、物理效果或生产准入；下一步由 D6 独立
+复算哈希、计数和机器门。2026-07-31 D3 全量回归为
+`668 passed, 1 skipped, 1 warning`；跳过项是可选 OR-Tools，告警是既有 Matplotlib
+`Axes3D` 导入环境问题。
+
+## 2026-07-30 A1 来源独立评价器 v2（评价前历史状态）
 
 v1 官方命令已按冻结合同运行一次。预检通过后，逐帧读取在
 `source_scenario_scale_mismatch` 处失败关闭，进程退出码为 `1`，结果目录未创建。
@@ -32,7 +63,7 @@ SHA-256 为
 `evaluator_v2_ready_evaluation_not_run`；本阶段没有运行 v2 评价，也没有读取正式 seed
 `1000-1019`。
 
-## 2026-07-30 A1 来源独立只读评价器
+## 2026-07-30 A1 来源独立只读评价器（评价前历史状态）
 
 D3 已为冻结的 assignment-aware A1 开发候选建立第一阶段来源独立评价工具。固定合同位于
 `configs/a1_source_independent_evaluation_contract_v1.json`，只接受

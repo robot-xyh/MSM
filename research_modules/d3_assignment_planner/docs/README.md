@@ -1,5 +1,15 @@
 # D3 文档索引
 
+2026-07-31，A1 v2 来源独立评价已按唯一输出身份完成。输入为 `20000-20099` 共 100 个
+seed、100 个 episode 和 292 帧；正类安全换绑 `13/110=11.82%`、正类教师完全匹配
+`8/110=7.27%`、负类 exact-R0 `182/182=100%`，全部通过预注册机器门。在线真值使用、
+安全/版本违规和正式 seed 读取均为 0，五个固定结果文件的 `SHA256SUMS` 全部通过。状态
+为 `source_independent_evaluation_v2_gate_passed_not_admitted`，所有运行、分配、计划、
+控制、物理、正式和生产权限保持 false。D3 全量回归为
+`668 passed, 1 skipped, 1 warning`。算法与边界见 `MODULE_PRINCIPLES_CN.md` 和
+`ALGORITHM_AND_IMPLEMENTATION.md`，实际指标见 `EXPERIMENT_REPORT.md`，后续步骤见
+`../PLAN.md`。
+
 2026-07-30 完成 100-cell 同身份权威载荷专项。48 个重复身份组的执行投影均保持不变，
 但完整载荷摘要全部变化；200v200 seed1017 形成 37 次摘要错配和 37 次交叉绑定拒绝。
 D3 已增加权威发布判定合同，main 随后完成同身份去重和诊断分流。v4 开发态 100-cell
@@ -11,14 +21,14 @@ commit 下重跑。算法合同见
 
 2026-07-30，v1 来源独立评价在逐帧输入规模检查处失败关闭，未生成模型指标。D3 已新增
 v2 输入语义：配置场景目标数与在线匿名航迹数分离，资源数和全部帧内形状合同保持严格。
-v2 当前为 `evaluator_v2_ready_evaluation_not_run`，未运行评价，正式留出结果未读取。
+v2 当时为 `evaluator_v2_ready_evaluation_not_run`，尚未运行评价，正式留出结果未读取。
 具体语义见 `MODULE_PRINCIPLES_CN.md` 和 `ALGORITHM_AND_IMPLEMENTATION.md`，失败记录与
 软件验证见 `EXPERIMENT_REPORT.md`。
 
 2026-07-30 新增 assignment-aware A1 来源独立只读评价器。算法和预注册门见
 `ALGORITHM_AND_IMPLEMENTATION.md`，软件合同试验见 `EXPERIMENT_REPORT.md`，执行状态见
-`../PLAN.md`。当前为 evaluator ready / evaluation not run；新来源和正式 holdout 均未
-读取，所有运行与正式准入权限关闭。
+`../PLAN.md`。该段记录评价前的 evaluator ready / evaluation not run 状态；后续实际
+结果见本文顶部。正式 holdout 仍未读取，所有运行与正式准入权限关闭。
 
 D3 文档遵循 `research_modules/DOCUMENTATION_STANDARD.md`。推荐阅读顺序：
 
