@@ -1,5 +1,27 @@
 # 200 对 200 三维质点仿真实施计划
 
+## A3 动作角色补采（2026-08-01）
+
+1. [x] D5 owner 复核现有相机状态、规则策略和 corpus gate；生产策略无需增加强制标签
+   接口。两类相机 busy/unavailable 合法产生 `hold`，侦察相机保留计划但无可用投影时合法
+   产生 `search_sector`。D5 全量 `776 passed, 2 warnings`。
+2. [x] main 增加版本化 `balanced_action_role_v1` 采集配置。相机命令按实际角度进入
+   0.12-0.30 秒稳定期，侦察线索按 1.0 秒周期设置 0.45 秒暂失窗口；默认
+   `operational_v1` 保持原行为。
+3. [x] 将配置及全部参数写入 runtime profile 和 generation plan；schedule/CLI 配置冲突、
+   balanced 配置未显式启用侦察航迹线索时均在运行前失败关闭。
+4. [x] 使用开发 seed `21900-21909` 运行 10 个 5v5、3 秒 episode。1182 个规则样本中
+   三个缺失单元分别为 445、89 和 51，均覆盖 10 episode/10 seed，在线真值使用 0。该批
+   来自 dirty 工作树，只是可达性探针，不进入训练或准入。
+5. [x] 冻结 v2 schedule 候选，使用全新 seed `22000-22099`；与旧语料、开发探针和正式
+   保留 seed 均无重叠。main 定向回归 `159 passed, 1 warning`。
+6. [ ] 从 clean source commit 运行 v2 的 100 个完整 episode 并最终封装，不与旧 v1 语料
+   拼接，不复制、过采样、重加权或注入 fixture。
+7. [ ] 由 D5 重新执行严格文件、来源和训练结构门；只有 train/validation/test 所有要求单元
+   均达到门限后，才允许进入行为克隆准备，模型和在线权限仍需单独评审。
+8. [ ] 由 D6 独立复算 checksum、manifest、descriptor、在线流、clean source、whole-seed
+   split、匿名身份和 authority，随后同步 main GAP 与中文验收报告。
+
 ## A3 主动视觉来源域与独立审计（2026-07-31）
 
 1. [x] D5 固定五类来源域和对应证据等级。新非夹具制品必须显式声明来源；历史制品不能

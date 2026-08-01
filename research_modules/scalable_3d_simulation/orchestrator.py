@@ -18,6 +18,11 @@ from research_modules.d6_evaluation_metrics.d6_evaluation_metrics.strict_learnin
     build_learning_adoption_audit_input,
 )
 
+from .active_vision_collection import (
+    ACTIVE_VISION_OPERATIONAL_PROFILE_V1,
+    ActiveVisionCollectionTreatment,
+    resolve_active_vision_collection_treatment,
+)
 from .communication import DeterministicCommunicationNetwork, LinkProfile
 from .episode_bus import (
     EpisodeManifest,
@@ -243,6 +248,9 @@ class Scalable3DEpisodeRunner:
         self.communication.reset(seed=self.config.seed + 20_000)
         if self.module_stack is not None:
             self.module_stack.reset(self.config)
+        active_vision_collection_treatment = _active_vision_collection_treatment(
+            self.module_stack
+        )
         timing = _TimingAccumulator()
         pending: list[tuple[float, int, OnlineSensorBatch]] = []
         pending_camera_frames: list[tuple[float, int, CameraFrameEvent]] = []
@@ -580,6 +588,7 @@ class Scalable3DEpisodeRunner:
                         module_output.camera_commands,
                         snapshot=snapshot,
                         current_timestamp=current_time,
+                        treatment=active_vision_collection_treatment,
                     )
                     camera_ack_envelopes: list[VersionedEnvelope] = []
                     for ack in camera_acks:
@@ -1780,7 +1789,14 @@ def _refresh_camera_runtime_states(
             active_ids.add(camera_id)
             existing = states.get(camera_id)
             if existing is not None:
-                states[camera_id] = replace(existing, timestamp=float(timestamp))
+                busy_until = existing.action_in_progress_until
+                if busy_until is not None and busy_until <= float(timestamp) + 1.0e-9:
+                    busy_until = None
+                states[camera_id] = replace(
+                    existing,
+                    timestamp=float(timestamp),
+                    action_in_progress_until=busy_until,
+                )
                 continue
             position = np.asarray(platform_snapshot.position_ned[index], dtype=float)
             if platform_kind == "interceptor":
@@ -1824,7 +1840,11 @@ def _apply_camera_commands(
     *,
     snapshot: Any,
     current_timestamp: float,
+    treatment: ActiveVisionCollectionTreatment | None = None,
 ) -> tuple[dict[str, Any], ...]:
+    resolved_treatment = treatment or resolve_active_vision_collection_treatment(
+        ACTIVE_VISION_OPERATIONAL_PROFILE_V1
+    )
     acknowledgements: list[dict[str, Any]] = []
     for command in commands:
         state = states.get(command.camera_id)
@@ -1852,6 +1872,32 @@ def _apply_camera_commands(
                 reason = "degenerate_aim_point"
             else:
                 yaw_deg, pitch_deg = _angles_from_direction(direction)
+                settle_s = resolved_treatment.camera_settle_seconds(
+                    intent=command.intent,
+                    yaw_delta_deg=_wrapped_angle_delta_deg(yaw_deg, state.yaw_deg),
+                    pitch_delta_deg=pitch_deg - state.pitch_deg,
+                    fov_changed=(
+                        command.fov_mode != state.fov_mode
+                        or not np.isclose(
+                            command.horizontal_fov_deg,
+                            state.horizontal_fov_deg,
+                            rtol=0.0,
+                            atol=1.0e-9,
+                        )
+                    ),
+                )
+                prior_busy_until = state.action_in_progress_until
+                if command.intent == "hold":
+                    busy_until = (
+                        prior_busy_until
+                        if prior_busy_until is not None
+                        and prior_busy_until > current_timestamp + 1.0e-9
+                        else None
+                    )
+                elif settle_s > 0.0:
+                    busy_until = float(current_timestamp) + settle_s
+                else:
+                    busy_until = None
                 states[command.camera_id] = CameraRuntimeState(
                     camera_id=state.camera_id,
                     resource_id=state.resource_id,
@@ -1864,6 +1910,8 @@ def _apply_camera_commands(
                     last_plan_version=command.plan_version,
                     last_coalition_version=command.coalition_version,
                     last_communication_version=command.communication_version,
+                    slew_available=state.slew_available,
+                    action_in_progress_until=busy_until,
                 )
 
         acknowledgements.append(
@@ -1886,6 +1934,28 @@ def _apply_camera_commands(
             }
         )
     return tuple(acknowledgements)
+
+
+def _active_vision_collection_treatment(
+    module_stack: ScalableModuleStack | None,
+) -> ActiveVisionCollectionTreatment:
+    provider = getattr(module_stack, "active_vision_collection_treatment", None)
+    if provider is None:
+        return resolve_active_vision_collection_treatment(
+            ACTIVE_VISION_OPERATIONAL_PROFILE_V1
+        )
+    if not callable(provider):
+        raise TypeError("active-vision collection treatment provider must be callable")
+    treatment = provider()
+    if not isinstance(treatment, ActiveVisionCollectionTreatment):
+        raise TypeError(
+            "active-vision collection treatment provider returned an invalid value"
+        )
+    return treatment
+
+
+def _wrapped_angle_delta_deg(target_deg: float, current_deg: float) -> float:
+    return (float(target_deg) - float(current_deg) + 180.0) % 360.0 - 180.0
 
 
 def _assignment_plan_runtime_ack(

@@ -97,6 +97,8 @@ class CameraRuntimeState:
     last_plan_version: int = 0
     last_coalition_version: int = 0
     last_communication_version: int = 0
+    slew_available: bool = True
+    action_in_progress_until: float | None = None
 
     def __post_init__(self) -> None:
         for name in ("camera_id", "resource_id"):
@@ -132,6 +134,18 @@ class CameraRuntimeState:
             if value < 0:
                 raise ValueError(f"{name} must be non-negative")
             object.__setattr__(self, name, value)
+        if not isinstance(self.slew_available, bool):
+            raise TypeError("slew_available must be a boolean")
+        busy_until = self.action_in_progress_until
+        if busy_until is not None:
+            busy_until = float(busy_until)
+            if not np.isfinite(busy_until):
+                raise ValueError("action_in_progress_until must be finite")
+            if busy_until + 1.0e-9 < self.timestamp:
+                raise ValueError(
+                    "action_in_progress_until cannot precede the camera timestamp"
+                )
+        object.__setattr__(self, "action_in_progress_until", busy_until)
 
 
 @dataclass(frozen=True)

@@ -24,6 +24,12 @@ if str(ROOT) not in sys.path:
 from research_modules.scalable_3d_simulation.learning_export import (
     BatchLearningArtifactWriter,
 )
+from research_modules.scalable_3d_simulation.active_vision_collection import (
+    ACTIVE_VISION_BALANCED_ACTION_ROLE_PROFILE_V1,
+    ACTIVE_VISION_COLLECTION_PROFILES,
+    ACTIVE_VISION_OPERATIONAL_PROFILE_V1,
+    resolve_active_vision_collection_treatment,
+)
 from research_modules.scalable_3d_simulation.learning_runtime import (
     LearningRuntimeOptions,
     resolve_learning_runtime,
@@ -85,6 +91,14 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         ),
     )
     parser.add_argument(
+        "--d5-active-vision-collection-profile",
+        choices=tuple(sorted(ACTIVE_VISION_COLLECTION_PROFILES)),
+        help=(
+            "versioned truth-free camera/cue treatment; when a schedule declares "
+            "a profile the CLI must omit this option or match it"
+        ),
+    )
+    parser.add_argument(
         "--learning-components",
         nargs="+",
         choices=("d3", "d4", "d5_graph", "d5_active_vision"),
@@ -113,9 +127,34 @@ def main(argv: list[str] | None = None) -> int:
             args.schedule,
             default_duration_s=args.duration,
         )
+        schedule_collection_profile = _load_schedule_collection_profile(args.schedule)
     else:
         cells = _cartesian_cells(args.scenarios, args.scales, args.seeds, args.duration)
         schedule_reserved = ()
+        schedule_collection_profile = None
+    if (
+        args.d5_active_vision_collection_profile is not None
+        and schedule_collection_profile is not None
+        and args.d5_active_vision_collection_profile != schedule_collection_profile
+    ):
+        raise ValueError(
+            "CLI active-vision collection profile does not match the versioned schedule"
+        )
+    collection_profile = (
+        args.d5_active_vision_collection_profile
+        or schedule_collection_profile
+        or ACTIVE_VISION_OPERATIONAL_PROFILE_V1
+    )
+    collection_treatment = resolve_active_vision_collection_treatment(
+        collection_profile
+    )
+    if (
+        collection_profile == ACTIVE_VISION_BALANCED_ACTION_ROLE_PROFILE_V1
+        and not args.d5_recon_track_cues
+    ):
+        raise ValueError(
+            "balanced active-vision collection requires --d5-recon-track-cues"
+        )
     cli_reserved = (
         None
         if args.reserved_evaluation_seeds is None
@@ -157,6 +196,10 @@ def main(argv: list[str] | None = None) -> int:
         "reserved_evaluation_seeds": list(reserved),
         "learning_export_components": sorted(set(args.learning_components)),
         "d5_recon_track_cues_enabled": bool(args.d5_recon_track_cues),
+        "d5_active_vision_collection_profile": collection_profile,
+        "d5_active_vision_collection_treatment": dict(
+            collection_treatment.to_dict()
+        ),
         "d5_active_vision_split_preflight": {
             "test_fraction": D5_ACTIVE_VISION_TEST_FRACTION,
             "minimum_unseen_seed_count": D5_ACTIVE_VISION_MINIMUM_UNSEEN_SEEDS,
@@ -266,6 +309,7 @@ def main(argv: list[str] | None = None) -> int:
             stack_config=IntegratedStackConfig(
                 capture_learning_artifacts=True,
                 d5_recon_track_cues_enabled=args.d5_recon_track_cues,
+                d5_active_vision_collection_profile=collection_profile,
             ),
         )
         episode_started = time.perf_counter()
@@ -495,6 +539,19 @@ def _load_schedule_plan(
         raise ValueError("schedule reserved_evaluation_seeds must be a list")
     reserved = tuple(sorted(set(int(seed) for seed in raw_reserved)))
     return tuple(cells), reserved
+
+
+def _load_schedule_collection_profile(path: Path) -> str | None:
+    payload = json.loads(path.read_text(encoding="utf-8"))
+    if (
+        not isinstance(payload, Mapping)
+        or payload.get("schema_version") != GENERATION_PLAN_SCHEMA_VERSION
+    ):
+        raise ValueError("unsupported learning generation schedule schema")
+    raw_profile = payload.get("d5_active_vision_collection_profile")
+    if raw_profile is None:
+        return None
+    return resolve_active_vision_collection_treatment(str(raw_profile)).profile_id
 
 
 def _validate_generation_plan(

@@ -171,6 +171,11 @@ from research_modules.d7_proportional_guidance.d7_proportional_guidance import (
     TerminalVisualObservation3D,
 )
 
+from .active_vision_collection import (
+    ACTIVE_VISION_OPERATIONAL_PROFILE_V1,
+    ActiveVisionCollectionTreatment,
+    resolve_active_vision_collection_treatment,
+)
 from .models import CameraFrameEvent, OnlineSensorBatch, ScenarioConfig
 from .runtime_ports import (
     CameraObservationCommand,
@@ -345,6 +350,9 @@ class IntegratedStackConfig:
     d5_active_vision_observation_triggered: bool = True
     d5_active_vision_evidence_tail_s: float = 0.25
     d5_recon_track_cues_enabled: bool = False
+    d5_active_vision_collection_profile: str = (
+        ACTIVE_VISION_OPERATIONAL_PROFILE_V1
+    )
     d1_scan_max_lateness_s: float = 0.5
     d1_scan_max_buffer_residence_s: float = 5.0
     d1_scan_input_implementation: str = SCAN_INPUT_CANDIDATE_IMPLEMENTATION
@@ -443,6 +451,14 @@ class IntegratedStackConfig:
             self,
             "d5_active_vision_evidence_tail_s",
             evidence_tail,
+        )
+        collection_treatment = resolve_active_vision_collection_treatment(
+            self.d5_active_vision_collection_profile
+        )
+        object.__setattr__(
+            self,
+            "d5_active_vision_collection_profile",
+            collection_treatment.profile_id,
         )
         for name in (
             "d1_scan_max_lateness_s",
@@ -1017,6 +1033,7 @@ class IntegratedScalableModuleStack:
         self.latest_active_vision_snapshot: ActiveVisionSnapshotV1 | None = None
         self.latest_active_vision_decisions: tuple[Any, ...] = ()
         self.latest_active_vision_recon_cue_count = 0
+        self.latest_active_vision_recon_cue_suppressed_count = 0
         self._latest_terminal_by_pair: dict[tuple[str, str], tuple[dict[str, Any], Any]] = {}
         self._track_region_by_id: dict[str, str] = {}
         self._resource_index_by_id: dict[str, int] = {}
@@ -1222,6 +1239,9 @@ class IntegratedScalableModuleStack:
             "schema_version": "scalable3d-integrated-stack-runtime-profile-v1",
             "module_stack_schema_version": INTEGRATED_STACK_SCHEMA_VERSION,
             "configuration": asdict(self.stack_config),
+            "d5_active_vision_collection_treatment": dict(
+                self.active_vision_collection_treatment().to_dict()
+            ),
             "d1_scan_input_implementation": (
                 self.stack_config.d1_scan_input_implementation
             ),
@@ -1336,6 +1356,15 @@ class IntegratedScalableModuleStack:
         )
         profile["d1_scan_input_execution_config"] = organizer.execution_config()
         return profile
+
+    def active_vision_collection_treatment(
+        self,
+    ) -> ActiveVisionCollectionTreatment:
+        """Return the immutable main-owned camera/cue collection treatment."""
+
+        return resolve_active_vision_collection_treatment(
+            self.stack_config.d5_active_vision_collection_profile
+        )
 
     def reset(self, config: ScenarioConfig) -> None:
         self.config = config
@@ -1517,6 +1546,7 @@ class IntegratedScalableModuleStack:
         self.latest_active_vision_snapshot = None
         self.latest_active_vision_decisions = ()
         self.latest_active_vision_recon_cue_count = 0
+        self.latest_active_vision_recon_cue_suppressed_count = 0
         self._latest_terminal_by_pair.clear()
         self._track_region_by_id.clear()
         self._resource_index_by_id.clear()
@@ -5641,7 +5671,16 @@ class IntegratedScalableModuleStack:
         """
 
         if not self.stack_config.d5_recon_track_cues_enabled:
+            self.latest_active_vision_recon_cue_suppressed_count = 0
             return ()
+        treatment = self.active_vision_collection_treatment()
+        if treatment.recon_cue_suppressed(float(step_input.timestamp)):
+            self.latest_active_vision_recon_cue_suppressed_count = sum(
+                camera.platform_kind == "recon"
+                for camera in step_input.cameras
+            )
+            return ()
+        self.latest_active_vision_recon_cue_suppressed_count = 0
         target_ids = tuple(
             sorted(
                 {
@@ -5752,6 +5791,8 @@ class IntegratedScalableModuleStack:
             current_fov_mode=ActiveVisionFovMode(camera.fov_mode),
             wide_horizontal_fov_deg=float(wide_fov),
             zoom_horizontal_fov_deg=float(zoom_fov),
+            slew_available=camera.slew_available,
+            action_in_progress_until=camera.action_in_progress_until,
         )
 
     def _active_vision_projection(
@@ -10466,6 +10507,12 @@ class IntegratedScalableModuleStack:
                 "recon_track_cue_count": (
                     self.latest_active_vision_recon_cue_count
                 ),
+                "recon_track_cue_suppressed_count": (
+                    self.latest_active_vision_recon_cue_suppressed_count
+                ),
+                "collection_profile": (
+                    self.stack_config.d5_active_vision_collection_profile
+                ),
                 "effective_mode_counts": dict(sorted(mode_counts.items())),
                 "intent_counts": dict(sorted(intent_counts.items())),
                 "commands": [
@@ -10867,6 +10914,12 @@ class IntegratedScalableModuleStack:
             ),
             "d5_active_vision_recon_cue_count": (
                 self.latest_active_vision_recon_cue_count
+            ),
+            "d5_active_vision_recon_cue_suppressed_count": (
+                self.latest_active_vision_recon_cue_suppressed_count
+            ),
+            "d5_active_vision_collection_profile": (
+                self.stack_config.d5_active_vision_collection_profile
             ),
             "d5_active_vision_requested_mode": (
                 self.stack_config.d5_active_vision_mode

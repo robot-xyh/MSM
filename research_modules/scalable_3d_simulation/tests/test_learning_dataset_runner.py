@@ -18,6 +18,7 @@ from research_modules.scalable_3d_simulation.run_learning_dataset import (
     _directory_size_bytes,
     _generation_timing_summary,
     _load_schedule,
+    _load_schedule_collection_profile,
     _load_schedule_plan,
     _prepare_fresh_output,
     _validate_generation_plan,
@@ -37,6 +38,36 @@ def test_recon_track_cues_require_an_explicit_generation_flag() -> None:
 
     assert default_args.d5_recon_track_cues is False
     assert enabled_args.d5_recon_track_cues is True
+    assert default_args.d5_active_vision_collection_profile is None
+
+
+def test_schedule_declares_a_versioned_active_vision_collection_profile(
+    tmp_path: Path,
+) -> None:
+    path = tmp_path / "schedule.json"
+    path.write_text(
+        json.dumps(
+            {
+                "schema_version": GENERATION_PLAN_SCHEMA_VERSION,
+                "d5_active_vision_collection_profile": "balanced_action_role_v1",
+                "cells": [
+                    {
+                        "scenario": "nominal",
+                        "scale": 5,
+                        "seeds": [21_100],
+                    }
+                ],
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    assert _load_schedule_collection_profile(path) == "balanced_action_role_v1"
+    payload = json.loads(path.read_text(encoding="utf-8"))
+    payload["d5_active_vision_collection_profile"] = "unknown"
+    path.write_text(json.dumps(payload), encoding="utf-8")
+    with pytest.raises(ValueError, match="collection profile"):
+        _load_schedule_collection_profile(path)
 
 
 def test_schedule_expands_cells_and_rejects_duplicates(tmp_path) -> None:
@@ -266,6 +297,55 @@ def test_d5_a3_source_independent_schedule_is_disjoint_and_cell_complete() -> No
         reserved_evaluation_seeds=reserved,
         formal=False,
     )
+
+
+def test_d5_a3_balanced_action_role_schedule_uses_new_disjoint_seeds() -> None:
+    path = (
+        SCALABLE_ROOT
+        / "configs"
+        / "d5_a3_source_independent_point_mass_v2.json"
+    )
+    cells, reserved = _load_schedule_plan(path, default_duration_s=3.0)
+
+    assert len(cells) == 100
+    generation_seeds = {seed for _, _, seed, _ in cells}
+    assert generation_seeds == set(range(22000, 22100))
+    assert generation_seeds.isdisjoint(range(21000, 21100))
+    assert generation_seeds.isdisjoint(range(21900, 21910))
+    assert generation_seeds.isdisjoint(range(1000, 1020))
+    assert reserved == tuple(range(1000, 1020))
+    assert _load_schedule_collection_profile(path) == "balanced_action_role_v1"
+    _validate_generation_plan(
+        cells,
+        reserved_evaluation_seeds=reserved,
+        formal=False,
+    )
+
+
+def test_balanced_collection_requires_recon_cues_before_generation(
+    tmp_path: Path,
+) -> None:
+    output = tmp_path / "missing_recon_cues"
+    with pytest.raises(ValueError, match="requires --d5-recon-track-cues"):
+        run_learning_dataset_main(
+            [
+                "--output",
+                str(output),
+                "--scenarios",
+                "nominal",
+                "--scales",
+                "2",
+                "--seeds",
+                "21100",
+                "--duration",
+                "0.25",
+                "--minimum-free-gb",
+                "0",
+                "--allow-dirty",
+                "--d5-active-vision-collection-profile",
+                "balanced_action_role_v1",
+            ]
+        )
 
 
 def test_committed_capacity_probe_schedule_covers_each_scenario_once() -> None:

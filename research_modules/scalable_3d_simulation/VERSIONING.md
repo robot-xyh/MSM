@@ -164,6 +164,13 @@ SHA-256 `4d2056c8e66f335a8a8ebf6843840ac9c9a60899263349aad222676301f15f35`。本
 seed `21000-21099` 与正式保留 seed `1000-1019` 零重叠。来源审计通过不改变 D5 训练门；
 本批因 `hold` 和侦察 `search_sector` 覆盖缺失保持失败关闭。
 
+2026-08-01 的 A3 补采使用独立 schedule
+`d5_a3_source_independent_point_mass_v2.json` 和运行处理配置
+`balanced_action_role_v1`。处理配置将相机命令后的有界稳定期和侦察航迹线索暂失窗口写入
+runtime profile；动作仍由 D5 规则策略产生。候选生成 seed 为 `22000-22099`，与旧语料
+`21000-21099`、开发探针 `21900-21909` 和正式保留 `1000-1019` 均零重叠。开发探针不属于
+clean source evidence，不得与最终语料拼接或用于模型准入。
+
 `scalable3d-episode-bus-v1` 的 D1 航迹发布现允许两种兼容记录：`full_posterior` 携带完整
 `tracks`，`state_update` 只携带扫描摘要、观测谱系和 `current_track_count`。两类记录都保持
 `track_count == len(tracks)`；需要完整快照的 consumer 必须检查 `tracks_materialized`，不能

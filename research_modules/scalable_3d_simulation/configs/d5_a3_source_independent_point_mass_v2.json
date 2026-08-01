@@ -1,0 +1,481 @@
+{
+  "schema_version": "scalable3d-learning-generation-plan-v1",
+  "schedule_id": "d5-a3-source-independent-point-mass-v2",
+  "description": "Source-independent D5 A3 point-mass corpus with bounded camera settling and reconnaissance cue-loss intervals for runtime-reachable action-role coverage; no model fitting during generation.",
+  "d5_active_vision_collection_profile": "balanced_action_role_v1",
+  "execution_order": "round_robin_cells_v1",
+  "design": {
+    "purpose": "d5_a3_source_independent_balanced_action_role_corpus_no_fit",
+    "episode_count": 100,
+    "unique_generation_seed_count": 100,
+    "duration_s": 3,
+    "scenario_count": 9,
+    "scales": [
+      5,
+      20,
+      50,
+      100,
+      200
+    ],
+    "scenario_scale_cell_count": 45,
+    "minimum_episodes_per_cell": 2,
+    "extra_priority_cell_count": 10,
+    "seed_reuse_across_cells": false,
+    "prior_training_seed_overlap_count": 0,
+    "formal_holdout_seed_overlap_count": 0,
+    "expected_learning_components": [
+      "d5_active_vision"
+    ],
+    "d5_recon_track_cues_expected": true,
+    "d5_active_vision_collection_profile": "balanced_action_role_v1",
+    "runtime_treatment_semantics": {
+      "teacher_action_source": "d5_deterministic_policy_only",
+      "camera_busy_source": "bounded_post_command_settling",
+      "recon_search_source": "periodic_truth_free_cue_loss",
+      "sample_copying": false,
+      "oversampling": false,
+      "direct_label_injection": false
+    },
+    "expected_source_domain": "scalable_3d_point_mass_runtime",
+    "formal_evidence": false
+  },
+  "reserved_evaluation_seeds": [
+    1000,
+    1001,
+    1002,
+    1003,
+    1004,
+    1005,
+    1006,
+    1007,
+    1008,
+    1009,
+    1010,
+    1011,
+    1012,
+    1013,
+    1014,
+    1015,
+    1016,
+    1017,
+    1018,
+    1019
+  ],
+  "cells": [
+    {
+      "scenario": "nominal",
+      "scale": 5,
+      "seeds": [
+        22000,
+        22001,
+        22090
+      ],
+      "duration_s": 3
+    },
+    {
+      "scenario": "nominal",
+      "scale": 20,
+      "seeds": [
+        22002,
+        22003
+      ],
+      "duration_s": 3
+    },
+    {
+      "scenario": "nominal",
+      "scale": 50,
+      "seeds": [
+        22004,
+        22005
+      ],
+      "duration_s": 3
+    },
+    {
+      "scenario": "nominal",
+      "scale": 100,
+      "seeds": [
+        22006,
+        22007
+      ],
+      "duration_s": 3
+    },
+    {
+      "scenario": "nominal",
+      "scale": 200,
+      "seeds": [
+        22008,
+        22009,
+        22091
+      ],
+      "duration_s": 3
+    },
+    {
+      "scenario": "dense_crossing",
+      "scale": 5,
+      "seeds": [
+        22010,
+        22011
+      ],
+      "duration_s": 3
+    },
+    {
+      "scenario": "dense_crossing",
+      "scale": 20,
+      "seeds": [
+        22012,
+        22013,
+        22092
+      ],
+      "duration_s": 3
+    },
+    {
+      "scenario": "dense_crossing",
+      "scale": 50,
+      "seeds": [
+        22014,
+        22015
+      ],
+      "duration_s": 3
+    },
+    {
+      "scenario": "dense_crossing",
+      "scale": 100,
+      "seeds": [
+        22016,
+        22017
+      ],
+      "duration_s": 3
+    },
+    {
+      "scenario": "dense_crossing",
+      "scale": 200,
+      "seeds": [
+        22018,
+        22019
+      ],
+      "duration_s": 3
+    },
+    {
+      "scenario": "formation_split",
+      "scale": 5,
+      "seeds": [
+        22020,
+        22021
+      ],
+      "duration_s": 3
+    },
+    {
+      "scenario": "formation_split",
+      "scale": 20,
+      "seeds": [
+        22022,
+        22023
+      ],
+      "duration_s": 3
+    },
+    {
+      "scenario": "formation_split",
+      "scale": 50,
+      "seeds": [
+        22024,
+        22025,
+        22093
+      ],
+      "duration_s": 3
+    },
+    {
+      "scenario": "formation_split",
+      "scale": 100,
+      "seeds": [
+        22026,
+        22027
+      ],
+      "duration_s": 3
+    },
+    {
+      "scenario": "formation_split",
+      "scale": 200,
+      "seeds": [
+        22028,
+        22029
+      ],
+      "duration_s": 3
+    },
+    {
+      "scenario": "evasive_multilevel",
+      "scale": 5,
+      "seeds": [
+        22030,
+        22031
+      ],
+      "duration_s": 3
+    },
+    {
+      "scenario": "evasive_multilevel",
+      "scale": 20,
+      "seeds": [
+        22032,
+        22033
+      ],
+      "duration_s": 3
+    },
+    {
+      "scenario": "evasive_multilevel",
+      "scale": 50,
+      "seeds": [
+        22034,
+        22035
+      ],
+      "duration_s": 3
+    },
+    {
+      "scenario": "evasive_multilevel",
+      "scale": 100,
+      "seeds": [
+        22036,
+        22037,
+        22094
+      ],
+      "duration_s": 3
+    },
+    {
+      "scenario": "evasive_multilevel",
+      "scale": 200,
+      "seeds": [
+        22038,
+        22039
+      ],
+      "duration_s": 3
+    },
+    {
+      "scenario": "delayed_noisy",
+      "scale": 5,
+      "seeds": [
+        22040,
+        22041
+      ],
+      "duration_s": 3
+    },
+    {
+      "scenario": "delayed_noisy",
+      "scale": 20,
+      "seeds": [
+        22042,
+        22043
+      ],
+      "duration_s": 3
+    },
+    {
+      "scenario": "delayed_noisy",
+      "scale": 50,
+      "seeds": [
+        22044,
+        22045
+      ],
+      "duration_s": 3
+    },
+    {
+      "scenario": "delayed_noisy",
+      "scale": 100,
+      "seeds": [
+        22046,
+        22047
+      ],
+      "duration_s": 3
+    },
+    {
+      "scenario": "delayed_noisy",
+      "scale": 200,
+      "seeds": [
+        22048,
+        22049,
+        22095
+      ],
+      "duration_s": 3
+    },
+    {
+      "scenario": "communication_degraded",
+      "scale": 5,
+      "seeds": [
+        22050,
+        22051
+      ],
+      "duration_s": 3
+    },
+    {
+      "scenario": "communication_degraded",
+      "scale": 20,
+      "seeds": [
+        22052,
+        22053,
+        22096
+      ],
+      "duration_s": 3
+    },
+    {
+      "scenario": "communication_degraded",
+      "scale": 50,
+      "seeds": [
+        22054,
+        22055
+      ],
+      "duration_s": 3
+    },
+    {
+      "scenario": "communication_degraded",
+      "scale": 100,
+      "seeds": [
+        22056,
+        22057
+      ],
+      "duration_s": 3
+    },
+    {
+      "scenario": "communication_degraded",
+      "scale": 200,
+      "seeds": [
+        22058,
+        22059
+      ],
+      "duration_s": 3
+    },
+    {
+      "scenario": "center_failure",
+      "scale": 5,
+      "seeds": [
+        22060,
+        22061
+      ],
+      "duration_s": 3
+    },
+    {
+      "scenario": "center_failure",
+      "scale": 20,
+      "seeds": [
+        22062,
+        22063,
+        22097
+      ],
+      "duration_s": 3
+    },
+    {
+      "scenario": "center_failure",
+      "scale": 50,
+      "seeds": [
+        22064,
+        22065
+      ],
+      "duration_s": 3
+    },
+    {
+      "scenario": "center_failure",
+      "scale": 100,
+      "seeds": [
+        22066,
+        22067
+      ],
+      "duration_s": 3
+    },
+    {
+      "scenario": "center_failure",
+      "scale": 200,
+      "seeds": [
+        22068,
+        22069
+      ],
+      "duration_s": 3
+    },
+    {
+      "scenario": "secondary_failure",
+      "scale": 5,
+      "seeds": [
+        22070,
+        22071
+      ],
+      "duration_s": 3
+    },
+    {
+      "scenario": "secondary_failure",
+      "scale": 20,
+      "seeds": [
+        22072,
+        22073
+      ],
+      "duration_s": 3
+    },
+    {
+      "scenario": "secondary_failure",
+      "scale": 50,
+      "seeds": [
+        22074,
+        22075,
+        22098
+      ],
+      "duration_s": 3
+    },
+    {
+      "scenario": "secondary_failure",
+      "scale": 100,
+      "seeds": [
+        22076,
+        22077
+      ],
+      "duration_s": 3
+    },
+    {
+      "scenario": "secondary_failure",
+      "scale": 200,
+      "seeds": [
+        22078,
+        22079
+      ],
+      "duration_s": 3
+    },
+    {
+      "scenario": "high_threat_m_to_n",
+      "scale": 5,
+      "seeds": [
+        22080,
+        22081
+      ],
+      "duration_s": 3
+    },
+    {
+      "scenario": "high_threat_m_to_n",
+      "scale": 20,
+      "seeds": [
+        22082,
+        22083
+      ],
+      "duration_s": 3
+    },
+    {
+      "scenario": "high_threat_m_to_n",
+      "scale": 50,
+      "seeds": [
+        22084,
+        22085
+      ],
+      "duration_s": 3
+    },
+    {
+      "scenario": "high_threat_m_to_n",
+      "scale": 100,
+      "seeds": [
+        22086,
+        22087,
+        22099
+      ],
+      "duration_s": 3
+    },
+    {
+      "scenario": "high_threat_m_to_n",
+      "scale": 200,
+      "seeds": [
+        22088,
+        22089
+      ],
+      "duration_s": 3
+    }
+  ]
+}
