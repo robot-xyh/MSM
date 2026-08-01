@@ -13,11 +13,15 @@
 4. [x] D5、scalable 3D、D6 全量分别为 `769 passed, 2 warnings`、
    `445 passed, 1 warning`、`1360 passed, 1 warning`。现有 D6 证据为软件夹具，每个
    基础数据集包含 5 个 episode、seed `200-204`，不是独立质点运行语料。
-5. [ ] 使用新的非正式 seed 生成来源单一、非 fixture、clean source 的 A3 质点 corpus。
-   不得使用或读取正式 seed `1000-1019`，不得与历史 fixture 或旧来源不明数据拼接。
-6. [ ] 先运行 D5 仿真研究语料门，再由 D6 对 finalized root 独立只读复算；检查 split、
-   少数动作、侦察/拦截角色和匿名观测覆盖后，才决定是否训练新 A3 候选。
-7. [ ] A3 继续保持 shadow-only。实际运行确认、同键 R0、物理非退化及独立授权未闭合前，
+5. [x] 从 clean `4a8c117` 使用新非正式 seed `21000-21099` 生成来源单一、非 fixture 的
+   A3 质点 corpus。100/100 episode 覆盖 45 个场景-规模单元，正式 seed `1000-1019`
+   重叠和在线真值使用均为 0。
+6. [x] D5 仿真研究来源门通过；D6 对 finalized root 独立复算 302 个制品，12/12 检查
+   通过。训练门因 `hold` 和 `search_sector/recon` 缺失而失败关闭，没有启动训练。
+7. [ ] 使用新的非正式训练 seed 定向补采 `hold/interceptor`、`hold/recon` 和
+   `search_sector/recon`，每项至少覆盖 2 个 seed、2 个 episode 和 2 个样本；补采后重新
+   运行 D5 全样本门和 D6 独立来源审计。
+8. [ ] A3 继续保持 shadow-only。实际运行确认、同键 R0、物理非退化及独立授权未闭合前，
    不开放辅助、相机控制、分配、降级、导引或生产权限。
 
 ## 正式 R0 新批次（2026-07-31）

@@ -156,6 +156,14 @@ identity、split 和真值隔离证据，不调用 D5 高层 verdict。即使审
 模型准入、辅助、分配、降级、运行、生产、控制和 `global_track_id` 写权限。后续新 A3 corpus
 必须记录 clean producer 提交、来源域、配置摘要和独立 D6 审计版本。
 
+2026-07-31 的 A3 独立来源语料绑定 clean producer
+`4a8c1173179b4058d4aee38178e0fb40ecd222b3`、schedule SHA-256
+`9c45caac96879289b84608e9779ec913a9d8cd2040e20322cf8944ad06eb4e51`、数据集 manifest
+SHA-256 `bccbdad42a71b130720469bb4e99dd1dd99e29a9b33af036679b9d64b0fe35a4` 和训练集
+SHA-256 `4d2056c8e66f335a8a8ebf6843840ac9c9a60899263349aad222676301f15f35`。本批 100 个
+seed `21000-21099` 与正式保留 seed `1000-1019` 零重叠。来源审计通过不改变 D5 训练门；
+本批因 `hold` 和侦察 `search_sector` 覆盖缺失保持失败关闭。
+
 `scalable3d-episode-bus-v1` 的 D1 航迹发布现允许两种兼容记录：`full_posterior` 携带完整
 `tracks`，`state_update` 只携带扫描摘要、观测谱系和 `current_track_count`。两类记录都保持
 `track_count == len(tracks)`；需要完整快照的 consumer 必须检查 `tracks_materialized`，不能

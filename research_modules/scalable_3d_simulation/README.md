@@ -18,9 +18,18 @@ whole-seed 拆分和在线真值隔离。每个基础软件夹具包含 5 个 ep
 12 项测试分别构造来源域和篡改变体。专项为 `12 passed, 1 warning`，D6 全量为
 `1360 passed, 1 warning`。
 
-上述结果关闭来源域、main 导出接线和 D6 独立审计的软件 P1，不构成来源独立质点语料证据。
-当前尚未使用新的非正式 seed 生成 A3 corpus。AirSim/真实相机外部证明、模型准入、辅助、
-分配、降级、运行、生产、控制和 `global_track_id` 写权限全部保持 false。
+main 已从 clean `4a8c117` 使用新非正式 seed `21000-21099` 完成来源独立 A3 质点语料。
+100 个 episode 覆盖 9 类场景、5 档规模和 45 个场景-规模单元，最终得到 159487 个样本；
+正式保留 seed `1000-1019` 重叠为 0，在线真值使用和 checkpoint 恢复均为 0。D6 对 302 个
+制品执行独立低层审计，12/12 检查通过，状态为
+`simulation_research_integrity_confirmed`。
+
+D5 的仿真研究来源门通过，但训练覆盖门失败关闭。训练集 102610 个样本中没有 `hold`，
+侦察相机没有 `search_sector`；补采计划要求分别为 `hold/interceptor`、`hold/recon` 和
+`search_sector/recon` 使用至少 2 个新训练 seed。当前不训练或晋级 A3。AirSim/真实相机
+外部证明、模型准入、辅助、分配、降级、运行、生产、控制和 `global_track_id` 写权限全部
+保持 false。完整结果见
+[`docs/SCALABLE_3D_D5_A3_SOURCE_INDEPENDENT_CORPUS_20260731_CN.md`](docs/SCALABLE_3D_D5_A3_SOURCE_INDEPENDENT_CORPUS_20260731_CN.md)。
 
 ## 正式 R0 新批次分片 0-9（2026-07-31）
 
