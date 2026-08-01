@@ -53,8 +53,11 @@ from research_modules.d6_evaluation_metrics.d6_evaluation_metrics.regional_plann
 from research_modules.scalable_3d_simulation.communication import LinkProfile
 from research_modules.scalable_3d_simulation.models import ScenarioConfig
 from research_modules.scalable_3d_simulation.module_stack import (
+    D1_GLOBAL_TRACK_MATERIALIZATION_DEFAULT_IMPLEMENTATION,
     D1_PUBLICATION_EVIDENCE_SNAPSHOT_CANDIDATE_IMPLEMENTATION,
     D1_PUBLICATION_EVIDENCE_SNAPSHOT_REFERENCE_IMPLEMENTATION,
+    GLOBAL_TRACK_MATERIALIZATION_CANDIDATE_SELECTOR,
+    GLOBAL_TRACK_MATERIALIZATION_REFERENCE_SELECTOR,
     IntegratedScalableModuleStack,
     IntegratedStackConfig,
 )
@@ -1615,6 +1618,103 @@ def test_episode_cli_exposes_d1_publication_evidence_snapshot_selector() -> None
     )
     assert args.d1_publication_evidence_snapshot_implementation == (
         D1_PUBLICATION_EVIDENCE_SNAPSHOT_CANDIDATE_IMPLEMENTATION
+    )
+
+
+def test_d1_global_track_materialization_selector_is_versioned_and_default_off() -> None:
+    config = ScenarioConfig(
+        scenario_name="d1_global_track_materialization_selection",
+        scenario_version="d1-global-track-materialization-selection-v1",
+        target_count=3,
+        resource_count=3,
+        recon_count=1,
+        region_count=1,
+        duration_s=1.0,
+        seed=37,
+    )
+    default = IntegratedStackConfig()
+    assert default.d1_global_track_materialization_implementation == (
+        D1_GLOBAL_TRACK_MATERIALIZATION_DEFAULT_IMPLEMENTATION
+    )
+    assert default.d1_global_track_materialization_implementation == (
+        GLOBAL_TRACK_MATERIALIZATION_REFERENCE_SELECTOR
+    )
+
+    reference_stack = IntegratedScalableModuleStack(default)
+    candidate_stack = IntegratedScalableModuleStack(
+        IntegratedStackConfig(
+            d1_global_track_materialization_implementation=(
+                GLOBAL_TRACK_MATERIALIZATION_CANDIDATE_SELECTOR
+            )
+        )
+    )
+    reference_profile = reference_stack.runtime_manifest_profile_for_scenario(
+        config
+    )
+    candidate_profile = candidate_stack.runtime_manifest_profile_for_scenario(
+        config
+    )
+    assert reference_profile != candidate_profile
+    assert reference_profile[
+        "d1_global_track_materialization_execution_config"
+    ]["candidate_enabled"] is False
+    assert candidate_profile[
+        "d1_global_track_materialization_execution_config"
+    ]["candidate_enabled"] is True
+    assert reference_profile[
+        "d1_global_track_materialization_diagnostics"
+    ]["operation_counts"] == {}
+    assert candidate_profile[
+        "d1_global_track_materialization_diagnostics"
+    ]["operation_counts"] == {}
+
+    reference_result = run_episode(config, module_stack=reference_stack)
+    candidate_result = run_episode(config, module_stack=candidate_stack)
+    assert reference_result.manifest.runtime_profile_sha256 != (
+        candidate_result.manifest.runtime_profile_sha256
+    )
+    assert reference_result.summary[
+        "d1_global_track_materialization_implementation"
+    ] == GLOBAL_TRACK_MATERIALIZATION_REFERENCE_SELECTOR
+    assert candidate_result.summary[
+        "d1_global_track_materialization_implementation"
+    ] == GLOBAL_TRACK_MATERIALIZATION_CANDIDATE_SELECTOR
+    assert reference_result.summary[
+        "d1_global_track_materialization_diagnostics"
+    ]["batched_global_track_a95_summary"] is False
+    assert candidate_result.summary[
+        "d1_global_track_materialization_diagnostics"
+    ]["batched_global_track_a95_summary"] is True
+    assert candidate_result.summary[
+        "d1_global_track_materialization_diagnostics"
+    ]["operation_counts"]["batched_a95_summary_build_count"] > 0
+
+    with pytest.raises(
+        ValueError,
+        match="d1_global_track_materialization_implementation must be",
+    ):
+        IntegratedStackConfig(
+            d1_global_track_materialization_implementation="unsafe"
+        )
+
+
+def test_episode_cli_exposes_d1_global_track_materialization_selector() -> None:
+    episode_cli = importlib.import_module(
+        "research_modules.scalable_3d_simulation.run_episode"
+    )
+    default_args = episode_cli.parse_args(["--integrated-stack"])
+    assert default_args.d1_global_track_materialization_implementation == (
+        GLOBAL_TRACK_MATERIALIZATION_REFERENCE_SELECTOR
+    )
+    args = episode_cli.parse_args(
+        [
+            "--integrated-stack",
+            "--d1-global-track-materialization-implementation",
+            GLOBAL_TRACK_MATERIALIZATION_CANDIDATE_SELECTOR,
+        ]
+    )
+    assert args.d1_global_track_materialization_implementation == (
+        GLOBAL_TRACK_MATERIALIZATION_CANDIDATE_SELECTOR
     )
 
 

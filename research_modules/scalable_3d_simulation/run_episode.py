@@ -32,6 +32,7 @@ from research_modules.scalable_3d_simulation.module_stack import (
     ASSOCIATION_SPARSE_PREFILTER_REFERENCE_SELECTOR,
     D1_CV_MOTION_MODEL_CANDIDATE_IMPLEMENTATION,
     D1_CV_MOTION_MODEL_REFERENCE_IMPLEMENTATION,
+    D1_GLOBAL_TRACK_MATERIALIZATION_DEFAULT_IMPLEMENTATION,
     D1_OPAQUE_SOURCE_IDENTITY_CANDIDATE_IMPLEMENTATION,
     D1_OPAQUE_SOURCE_IDENTITY_REFERENCE_IMPLEMENTATION,
     D1_PUBLICATION_EVIDENCE_SNAPSHOT_CANDIDATE_IMPLEMENTATION,
@@ -42,6 +43,8 @@ from research_modules.scalable_3d_simulation.module_stack import (
     D1_STRUCTURED_NUMERICAL_JACOBIAN_CANDIDATE_IMPLEMENTATION,
     D1_STRUCTURED_NUMERICAL_JACOBIAN_REFERENCE_IMPLEMENTATION,
     IntegratedStackConfig,
+    GLOBAL_TRACK_MATERIALIZATION_CANDIDATE_SELECTOR,
+    GLOBAL_TRACK_MATERIALIZATION_REFERENCE_SELECTOR,
     ONLINE_BATCH_FRAME_CANDIDATE_IMPLEMENTATION,
     ONLINE_BATCH_FRAME_DEFAULT_IMPLEMENTATION,
     ONLINE_BATCH_FRAME_REFERENCE_IMPLEMENTATION,
@@ -283,6 +286,19 @@ def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
         ),
     )
     parser.add_argument(
+        "--d1-global-track-materialization-implementation",
+        choices=(
+            GLOBAL_TRACK_MATERIALIZATION_REFERENCE_SELECTOR,
+            GLOBAL_TRACK_MATERIALIZATION_CANDIDATE_SELECTOR,
+        ),
+        default=D1_GLOBAL_TRACK_MATERIALIZATION_DEFAULT_IMPLEMENTATION,
+        help=(
+            "select the D1 GlobalTrack A95 materialization path; the "
+            "batched candidate remains default-off pending integrated "
+            "same-input multiseed validation"
+        ),
+    )
+    parser.add_argument(
         "--online-truth-guard-implementation",
         choices=(
             ONLINE_TRUTH_GUARD_REFERENCE_IMPLEMENTATION,
@@ -394,6 +410,9 @@ def main() -> int:
                 ),
                 d1_publication_evidence_snapshot_implementation=(
                     args.d1_publication_evidence_snapshot_implementation
+                ),
+                d1_global_track_materialization_implementation=(
+                    args.d1_global_track_materialization_implementation
                 ),
             ),
         )

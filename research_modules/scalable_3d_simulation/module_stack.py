@@ -34,6 +34,11 @@ from research_modules.d1_sensor_fusion.src.d1_sensor_fusion import (
     DEFAULT_CV_MOTION_MODEL_CACHE_CAPACITY,
     ExperimentalCentroidEvidenceDisposition,
     ExperimentalCentroidPublicationState,
+    GLOBAL_TRACK_MATERIALIZATION_CANDIDATE_IMPLEMENTATION_ID,
+    GLOBAL_TRACK_MATERIALIZATION_CANDIDATE_SELECTOR,
+    GLOBAL_TRACK_MATERIALIZATION_DIAGNOSTICS_SCHEMA_VERSION,
+    GLOBAL_TRACK_MATERIALIZATION_REFERENCE_IMPLEMENTATION_ID,
+    GLOBAL_TRACK_MATERIALIZATION_REFERENCE_SELECTOR,
     MAX_CV_MOTION_MODEL_CACHE_CAPACITY,
     ONLINE_BATCH_FRAME_CANDIDATE_IMPLEMENTATION,
     ONLINE_BATCH_FRAME_DEFAULT_IMPLEMENTATION,
@@ -214,6 +219,9 @@ D1_PUBLICATION_EVIDENCE_SNAPSHOT_CANDIDATE_IMPLEMENTATION = (
 D1_PUBLICATION_EVIDENCE_SNAPSHOT_DEFAULT_IMPLEMENTATION = (
     D1_PUBLICATION_EVIDENCE_SNAPSHOT_REFERENCE_IMPLEMENTATION
 )
+D1_GLOBAL_TRACK_MATERIALIZATION_DEFAULT_IMPLEMENTATION = (
+    GLOBAL_TRACK_MATERIALIZATION_REFERENCE_SELECTOR
+)
 D1_PUBLICATION_EVIDENCE_SNAPSHOT_REFERENCE_IMPLEMENTATION_ID = (
     "main.d1_publication_evidence.full_consistency_snapshot.v1"
 )
@@ -385,6 +393,9 @@ class IntegratedStackConfig:
     )
     d1_publication_evidence_snapshot_implementation: str = (
         D1_PUBLICATION_EVIDENCE_SNAPSHOT_DEFAULT_IMPLEMENTATION
+    )
+    d1_global_track_materialization_implementation: str = (
+        D1_GLOBAL_TRACK_MATERIALIZATION_DEFAULT_IMPLEMENTATION
     )
     d2_claim_retention_s: float = 30.0
     d2_claim_max_lateness_s: float = 5.0
@@ -674,6 +685,22 @@ class IntegratedStackConfig:
             "d1_publication_evidence_snapshot_implementation",
             publication_evidence_snapshot_implementation,
         )
+        global_track_materialization_implementation = str(
+            self.d1_global_track_materialization_implementation
+        ).strip()
+        if global_track_materialization_implementation not in {
+            GLOBAL_TRACK_MATERIALIZATION_REFERENCE_SELECTOR,
+            GLOBAL_TRACK_MATERIALIZATION_CANDIDATE_SELECTOR,
+        }:
+            raise ValueError(
+                "d1_global_track_materialization_implementation must be "
+                "per_track_a95_summary_v1 or batched_a95_summary_v1"
+            )
+        object.__setattr__(
+            self,
+            "d1_global_track_materialization_implementation",
+            global_track_materialization_implementation,
+        )
         if (
             not np.isfinite(self.d2_claim_capacity_safety_factor)
             or self.d2_claim_capacity_safety_factor < 1.0
@@ -924,6 +951,48 @@ def _initial_d1_publication_evidence_snapshot_diagnostics(
             "fallback_not_above_candidate_selection": True,
             "all_required_records_available": True,
         },
+    }
+
+
+def _d1_global_track_materialization_execution_config(
+    config: IntegratedStackConfig,
+) -> dict[str, Any]:
+    selector = config.d1_global_track_materialization_implementation
+    candidate_enabled = (
+        selector == GLOBAL_TRACK_MATERIALIZATION_CANDIDATE_SELECTOR
+    )
+    return {
+        "schema_version": (
+            GLOBAL_TRACK_MATERIALIZATION_DIAGNOSTICS_SCHEMA_VERSION
+        ),
+        "selector": selector,
+        "implementation_id": (
+            GLOBAL_TRACK_MATERIALIZATION_CANDIDATE_IMPLEMENTATION_ID
+            if candidate_enabled
+            else GLOBAL_TRACK_MATERIALIZATION_REFERENCE_IMPLEMENTATION_ID
+        ),
+        "candidate_enabled": candidate_enabled,
+        "candidate_scope": "same_publication_frame_position_covariance_a95",
+        "default_enabled": False,
+        "truth_dependent_inputs_allowed": False,
+    }
+
+
+def _initial_d1_global_track_materialization_diagnostics(
+    config: IntegratedStackConfig,
+) -> dict[str, Any]:
+    execution = _d1_global_track_materialization_execution_config(config)
+    return {
+        "schema_version": (
+            GLOBAL_TRACK_MATERIALIZATION_DIAGNOSTICS_SCHEMA_VERSION
+        ),
+        "global_track_materialization_implementation_id": execution[
+            "implementation_id"
+        ],
+        "batched_global_track_a95_summary": execution[
+            "candidate_enabled"
+        ],
+        "operation_counts": {},
     }
 
 
@@ -1316,6 +1385,20 @@ class IntegratedScalableModuleStack:
                     self.stack_config
                 )
             ),
+            "d1_global_track_materialization_implementation": (
+                self.stack_config
+                .d1_global_track_materialization_implementation
+            ),
+            "d1_global_track_materialization_execution_config": (
+                _d1_global_track_materialization_execution_config(
+                    self.stack_config
+                )
+            ),
+            "d1_global_track_materialization_diagnostics": (
+                _initial_d1_global_track_materialization_diagnostics(
+                    self.stack_config
+                )
+            ),
             "d1_association_risk_shadow_classification_contract": {
                 "enabled": bool(
                     self.stack_config
@@ -1425,6 +1508,11 @@ class IntegratedScalableModuleStack:
             ),
             replay_prefix_summary=(
                 self.stack_config.d1_replay_prefix_summary_implementation
+            ),
+            batched_global_track_a95_summary=(
+                self.stack_config
+                .d1_global_track_materialization_implementation
+                == GLOBAL_TRACK_MATERIALIZATION_CANDIDATE_SELECTOR
             ),
         )
         self.d1_scan_input = ScanInputOrganizer(
@@ -2173,6 +2261,18 @@ class IntegratedScalableModuleStack:
             ),
             "d1_publication_evidence_snapshot_diagnostics": (
                 self._d1_publication_evidence_snapshot_diagnostics()
+            ),
+            "d1_global_track_materialization_implementation": (
+                self.stack_config
+                .d1_global_track_materialization_implementation
+            ),
+            "d1_global_track_materialization_execution_config": (
+                _d1_global_track_materialization_execution_config(
+                    self.stack_config
+                )
+            ),
+            "d1_global_track_materialization_diagnostics": (
+                self.d1.publication_materialization_diagnostics()
             ),
             "d1_scan_event_total_count": self._d1_scan_event_total_count,
             "d1_scan_event_retained_count": len(self._d1_scan_events),
@@ -10901,6 +11001,19 @@ class IntegratedScalableModuleStack:
             "d1_publication_evidence_snapshot_diagnostics": dict(
                 governance[
                     "d1_publication_evidence_snapshot_diagnostics"
+                ]
+            ),
+            "d1_global_track_materialization_implementation": governance[
+                "d1_global_track_materialization_implementation"
+            ],
+            "d1_global_track_materialization_execution_config": dict(
+                governance[
+                    "d1_global_track_materialization_execution_config"
+                ]
+            ),
+            "d1_global_track_materialization_diagnostics": dict(
+                governance[
+                    "d1_global_track_materialization_diagnostics"
                 ]
             ),
             "d2_publication_metadata_audit": dict(

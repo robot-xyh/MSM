@@ -1258,6 +1258,21 @@ class Scalable3DEpisodeRunner:
                     "d1_publication_evidence_snapshot_diagnostics"
                 )
             ),
+            "d1_global_track_materialization_implementation": (
+                observation_governance.get(
+                    "d1_global_track_materialization_implementation"
+                )
+            ),
+            "d1_global_track_materialization_execution_config": (
+                observation_governance.get(
+                    "d1_global_track_materialization_execution_config"
+                )
+            ),
+            "d1_global_track_materialization_diagnostics": (
+                observation_governance.get(
+                    "d1_global_track_materialization_diagnostics"
+                )
+            ),
             "d2_publication_metadata_audit": observation_governance.get(
                 "d2_publication_metadata_audit"
             ),
