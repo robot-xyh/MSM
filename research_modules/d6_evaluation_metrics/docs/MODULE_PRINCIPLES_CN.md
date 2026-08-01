@@ -1,5 +1,27 @@
 # D6 系统级离线评估模块原理
 
+## 主动视觉来源域的独立审计
+
+来源声明只能说明 producer 声称数据来自哪里，不能自行证明 AirSim 或真实相机采集。D6 将
+finalized 数据集视为不可信输入，从 `SHA256SUMS` 开始重建证据链。实际文件集合必须与摘要
+清单完全一致；manifest 中的 episode 必须与独立 descriptor 相同；descriptor 的在线文件
+摘要、来源身份和来源声明必须与 gzip 在线流 header 一致。任何一层缺失或错绑都失败关闭。
+
+来源域与证据等级采用固定一一映射。显式三维质点来源对应“仿真研究”；AirSim 和真实
+相机只对应“声明级”；显式 fixture 只对应“软件夹具”。只有三维质点来源、非 fixture、clean
+source identity、完整哈希、互斥 whole-seed split 和在线真值零使用同时成立，D6 才确认
+`simulation_research_integrity_confirmed`。该结果只确认软件制品和声明的一致性，不评价策略
+收益，也不证明物理环境来源。
+
+在线流允许携带中心拥有的 `global_track_id` 引用，但不允许 simulator truth、actor 或 object
+身份进入策略输入。D6 流式解析每条 JSON 记录，检查字段名和身份型值；离线标签与在线流保持
+物理分离。无论审计成功或失败，D6 均不授予外部来源证明、模型准入、assist、分配、降级、
+运行、生产、控制或 `global_track_id` 写权限。
+
+当前原理验证使用低层软件夹具。每个基础夹具数据集包含 5 个 episode、seed `200-204`；
+12 项测试分别构造来源域与篡改变体。它们不是 main exporter 生成的独立三维质点正式语料。
+下一阶段需要用新的非正式 seed 生成 producer corpus，再执行同一只读审计。
+
 ## 学习作用域的显式存储边界
 
 学习作用域审计同时面对候选变体和同键 R0。每个 scope 必须自行声明目录模式或归档模式，

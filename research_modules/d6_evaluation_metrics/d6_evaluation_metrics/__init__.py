@@ -611,6 +611,11 @@ from .d5_g1_post_assembly_audit import (
     render_d5_g1_post_assembly_audit_markdown,
     write_d5_g1_post_assembly_audit_report,
 )
+from .d5_active_vision_source_audit import (
+    D5_ACTIVE_VISION_SOURCE_AUDIT_SCHEMA_VERSION,
+    D5ActiveVisionSourceAuditError,
+    audit_d5_active_vision_source_dataset,
+)
 from .d3_a1_external_audit import (
     D3_A1_EXTERNAL_AUDIT_CONSUMER_SCHEMA_VERSION,
     D3_A1_EXTERNAL_AUDIT_FORMAL_PROFILE_VERSION,
@@ -1003,6 +1008,8 @@ __all__ = [
     "D5_G1_POST_ASSEMBLY_AUDIT_INPUT_SCHEMA_VERSION",
     "D5_G1_POST_ASSEMBLY_AUDIT_PROFILE_VERSION",
     "D5_G1_POST_ASSEMBLY_AUDIT_SCHEMA_VERSION",
+    "D5_ACTIVE_VISION_SOURCE_AUDIT_SCHEMA_VERSION",
+    "D5ActiveVisionSourceAuditError",
     "D5CleanGraphArtifact",
     "D5CleanGraphEvidenceError",
     "D5CleanGraphEvidenceInputs",
@@ -1077,6 +1084,7 @@ __all__ = [
     "evaluate_d5_crossview_calibration",
     "audit_d5_g1_external_evidence",
     "audit_d5_g1_post_assembly_bundle",
+    "audit_d5_active_vision_source_dataset",
     "audit_d5_paired_shadow_evidence",
     "build_truth_isolated_episode_record",
     "render_truth_isolated_markdown",

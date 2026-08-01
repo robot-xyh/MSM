@@ -1,5 +1,27 @@
 # D6 正式实验矩阵准入预检报告
 
+## D5 主动视觉来源域审计开发验证（2026-07-31）
+
+本次验证对象是 D6 独立来源域审计器。输入由 D6 测试层直接写入低层文件。每个基础夹具
+数据集包含 5 个 episode，seed 为 `200-204`；12 项测试分别构造来源域与篡改变体。测试没有
+调用 D5 的来源、数据集或语料高层 validator，也没有启动 AirSim、三维质点正式批次或控制
+流程。
+
+clean 三维质点正例得到 `simulation_research_integrity_confirmed`。AirSim 和真实相机完整声明
+均得到 `declaration_only`，外部来源证明保持 false。负例覆盖未重绑定在线文件篡改，以及在
+重写全部摘要后仍存在的错误证据等级、混合来源、dirty source identity、来源摘要错配、split
+hash 错配、旧缺来源、fixture 冲突和在线 `actor_id` 污染。上述负例均返回 `fail_closed`。
+
+专项结果为 `12 passed, 1 warning in 2.29s`；D6 全量结果为
+`1360 passed, 1 warning in 137.34s`。`py_compile` 通过。warning 是既有 Matplotlib
+`Axes3D` 导入环境提示，与本次审计无关。所有结果中的 AirSim 外部证明、真实相机证明、模型
+准入、assist、assignment、degradation、runtime、production、control 和
+`global_track_id` 写权限均为 false。
+
+当前结果仅证明软件夹具上的独立解析和失败关闭行为。尚无 main exporter 使用新非正式 seed
+生成的非 fixture 三维质点 corpus，因此不能报告独立三维质点语料完整率、模型收益、模型准入
+或运行权限。下一步由 main 生成该 corpus，D6 保持只读复核。
+
 ## 学习作用域归档审计开发验证（2026-07-31）
 
 本次验证对象为 `learning_scope_formal_audit` 的归档原生入口。第一类夹具由 D6 独立构造，

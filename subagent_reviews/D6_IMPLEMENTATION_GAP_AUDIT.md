@@ -1,5 +1,37 @@
 # D6 实现差距审计
 
+## 2026-07-31 D5 主动视觉来源域审计 P1 部分关闭
+
+### 已关闭范围
+
+D6 已具备独立、只读的 D5 主动视觉来源域审计器。它不采信 D5 高层 validator 的通过状态，
+直接复算 checksum inventory、文件摘要、manifest/descriptor/online header 绑定、来源域与
+证据等级映射、fixture 一致性、来源摘要、clean source identity、whole-seed split 和在线
+身份隔离。来源缺失、混合、dirty、哈希篡改、摘要重绑定篡改和在线 actor 身份重绑定均失败
+关闭。
+
+三维质点来源只有在全部 episode 显式为 `scalable_3d_point_mass_runtime`、
+`synthetic_fixture=false` 且 clean/hash/split/truth-free 全部闭合时，才得到
+`simulation_research_integrity_confirmed`。AirSim 和真实相机声明保持
+`declaration_only`。AirSim 外部证明、真实相机证明、模型准入、assist、assignment、
+degradation、runtime、production、control 和 `global_track_id` 写权限固定为 false。
+
+### 验证证据
+
+当前证据是 D6 自建低层软件夹具。每个基础夹具数据集包含 5 个 episode，seed
+`200-204`；12 项测试分别构造来源域与篡改变体。正例覆盖 clean 三维质点声明；有界正例
+覆盖 AirSim/真实相机 declaration-only；负例覆盖 checksum、
+来源等级、混合来源、dirty identity、来源摘要、split hash、旧缺来源、fixture 冲突和在线
+actor identity。专项测试为 `12 passed, 1 warning`，D6 全量为
+`1360 passed, 1 warning`。warning 是既有 Matplotlib `Axes3D` 环境提示。
+
+### 仍开放的 P1
+
+当前没有 main exporter 生成的独立三维质点 corpus，因此“真实 producer 合同兼容、独立
+批次来源完整、非夹具 episode 全量通过”仍未闭合。下一步必须使用新的非正式 seed 生成 corpus，
+不得复用正式 seed `1000-1019`；D6 对 finalized root 只读审计。该开放项不影响软件审计器
+本身的单元验收，但阻止把当前结果写成独立三维质点语料证据、模型准入证据或运行权限。
+
 ## 2026-07-31 学习作用域 archive 模式 P1 关闭
 
 ### 已关闭范围

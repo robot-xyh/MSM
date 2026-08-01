@@ -1,5 +1,33 @@
 # D6 Evaluation Metrics Plan
 
+## 2026-07-31 D5 主动视觉来源域独立审计
+
+### 已完成
+
+- [x] 新增 D6-owned 只读审计入口，不导入 D5 的 `active_vision_source`、
+  `active_vision_episode_dataset` 或 `active_vision_corpus_audit` 高层校验器。
+- [x] 独立复算 `SHA256SUMS` 和实际制品集合，核对 manifest、独立 descriptor、在线 gzip
+  header、配置文件与 episode 文件摘要绑定，并拒绝 symlink、可写 finalized 制品和审计中
+  发生变化的文件。
+- [x] 使用固定的一一映射复核五类来源域和证据等级，核对 fixture 一致性、来源摘要和 clean
+  source identity。旧缺来源、混合来源、dirty 来源和重绑定篡改均失败关闭。
+- [x] 独立复算 whole-seed split、`split_sha256` 和 `training_set_sha256`，要求 train、
+  validation、test 的 seed 集合互斥。
+- [x] 流式扫描全部在线 JSONL 记录，允许 center-owned `global_track_id` 引用，拒绝
+  truth、actor、object 身份字段和值；离线标签不回流在线判定。
+- [x] 固定关闭 AirSim/真实相机外部证明、模型准入、assist、assignment、degradation、
+  runtime、production、control 和 `global_track_id` 写权限。D6 不参与控制。
+- [x] 使用 D6 低层软件夹具完成 12 项专项测试。每个基础夹具数据集包含 5 个 episode、
+  seed `200-204`；12 项测试分别构造来源域与篡改变体。专项为
+  `12 passed, 1 warning`，D6 全量为 `1360 passed, 1 warning`。
+
+### 待完成
+
+- [ ] 由 main exporter 使用新的非正式 seed 生成显式
+  `scalable_3d_point_mass_runtime`、`synthetic_fixture=false` 的独立 corpus，再运行本审计器。
+- [ ] 记录该 corpus 的 episode 数、来源提交、配置摘要、split、在线身份审计和 D6 只读结果。
+  当前软件夹具不是独立三维质点正式语料，不能用于模型准入或运行权限判断。
+
 ## 2026-07-31 学习作用域归档原生审计
 
 ### 已完成

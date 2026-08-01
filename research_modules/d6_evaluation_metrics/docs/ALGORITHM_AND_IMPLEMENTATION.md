@@ -1,5 +1,40 @@
 # D6 系统级离线评估：算法原理与实施说明
 
+## D5 主动视觉来源域审计流程
+
+公开入口接收一个已 finalized 的数据集根目录，返回固定 schema 的只读审计结果。生产实现只
+使用 Python 标准库，不导入 D5 的来源、episode dataset 或 corpus audit 校验器。失败结果仍
+携带完整的权限关闭字段，避免 malformed input 绕过 no-authority 合同。
+
+审计按以下顺序执行：
+
+1. 拒绝根目录、子目录或文件 symlink，解析按路径排序的 `SHA256SUMS`，比较实际普通文件
+   集合，流式复算每个 SHA-256，并检查 finalized 制品只读及审计期间未变化；
+2. 解析有限 JSON manifest，核对当前 dataset/descriptor/record schema、storage contract、
+   source provenance contract 和 dataset config 摘要；
+3. 对每个 manifest episode 读取 `episodes/*.episode.json`，要求与嵌入 descriptor 完全相同，
+   再核对 online/offline/config 文件路径与摘要；
+4. 流式解压 `.online.jsonl.gz`，要求唯一首 header 和末 footer，核对 episode 身份、来源身份、
+   fixture、来源域、证据等级及 sample/snapshot/camera-feedback 计数；
+5. 递归检查在线 JSON。`global_track_id` 和 `target_global_track_id` 只作为 center-owned 引用被
+   接受，truth、actor、object、entity 和 AirSim 身份字段或身份型值被拒绝；
+6. 从 descriptor 独立重算五类来源域/证据等级计数和 clean source identity summary，要求所有
+   episode 来源相同。AirSim/真实相机即使完整也只输出 `declaration_only`；
+7. 按 split seed 对全部 seed 重排，复算 train/validation/test 分配、`split_sha256` 和
+   `training_set_sha256`，并显式检查三组 seed 互斥；
+8. 仅当统一来源为 `scalable_3d_point_mass_runtime` 且全部检查通过时输出
+   `simulation_research_integrity_confirmed`。其余有界来源按 declaration/fixture 报告，异常
+   输入返回首个稳定 blocker code 和 `fail_closed`。
+
+返回的 authority 固定关闭 AirSim 外部证明、真实相机证明、模型准入、assist、assignment、
+degradation、runtime、production、control 和 `global_track_id` write。该 API 不写输入目录，
+不生成控制消息，不参与 D5 或 main 的状态机。
+
+当前测试 fixture 由 D6 低层文件写入器构造。每个基础夹具数据集包含 5 个 episode、seed
+`200-204`；12 项测试分别构造来源域与篡改变体，覆盖三维质点正例、AirSim/真实相机声明级
+正例、未重绑定 checksum 篡改和多类全量重绑定篡改。这些 fixture 只验证审计算法，尚未
+验证 main exporter 产生的独立非 fixture corpus。
+
 ## 学习作用域归档原生流程
 
 `ScopeEvidenceArtifacts` 采用显式互斥输入。目录模式保留原有

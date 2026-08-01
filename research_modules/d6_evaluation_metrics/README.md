@@ -1,5 +1,27 @@
 # D6 Evaluation Metrics
 
+## 2026-07-31 D5 主动视觉来源域独立审计
+
+D6 新增只读来源域审计器，直接解析已 finalized 的 D5 主动视觉数据集。审计器自行复算
+`SHA256SUMS`、制品清单、manifest 与 episode descriptor、压缩在线流 header 的绑定，
+并复核来源域与证据等级映射、fixture 标志、来源摘要、clean source identity、训练/验证/
+测试 seed 互斥、拆分哈希和在线 truth/actor/object 身份隔离。生产实现不导入或调用 D5 的
+来源、数据集或语料高层校验器。
+
+只有全部 episode 显式声明为 `scalable_3d_point_mass_runtime`，且来源干净、哈希闭合、
+拆分互斥、在线流无真值身份时，结果才是
+`simulation_research_integrity_confirmed`。AirSim 和真实相机来源只能得到
+`declaration_only`；来源缺失、混合、dirty、摘要错绑或重绑定后的身份污染均失败关闭。
+
+当前验证只使用 D6 低层软件夹具。每个基础夹具数据集包含 5 个 episode，seed 为
+`200-204`；12 项测试分别构造来源域与篡改变体。这些夹具不是 main exporter 生成的独立
+三维质点正式语料，也不证明 AirSim 或真实相机来源。专项测试为
+`12 passed, 1 warning`，D6 全量为 `1360 passed, 1 warning`；warning 是既有 Matplotlib
+`Axes3D` 环境提示。AirSim 外部证明、真实相机证明、模型准入、assist、assignment、
+degradation、runtime、production、control 和 `global_track_id` 写权限全部固定为 false。
+下一步由 main exporter 使用新的非正式 seed 生成独立三维质点 corpus，再由本审计器只读
+复核；本轮没有生成该批次。
+
 ## 2026-07-31 学习作用域归档原生审计
 
 `learning_scope_formal_audit` 现支持显式目录模式和归档模式。learned scope 与每个 R0
