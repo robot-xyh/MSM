@@ -1,5 +1,13 @@
 # D3 文档索引
 
+2026-08-01，D3 完成冻结 A1 v2 的失败归因和 v3 开发来源需求冻结。test 正类教师完全
+匹配为 `0/25`；9 帧为明确 OOD 回退，16 帧为非 OOD 候选动作不匹配，投影单独阻断正确
+候选为 0。候选可达性、逐边模型排序和需求槽结构因 v2 字段不足保持 `unavailable`。
+v3 只请求 15 个 cell、300 个 episode 和 300 个全新 seed，当前 seed 列表为空，未生成、
+未训练、未写 bundle，全部权限 false。算法见 `ALGORITHM_AND_IMPLEMENTATION.md`，证据见
+`EXPERIMENT_REPORT.md`，版本化结果见
+`../results/a1_source_independent_v2_failure_attribution_v1_20260801/`。
+
 2026-07-31，A1 v2 来源独立评价已按唯一输出身份完成。输入为 `20000-20099` 共 100 个
 seed、100 个 episode 和 292 帧；正类安全换绑 `13/110=11.82%`、正类教师完全匹配
 `8/110=7.27%`、负类 exact-R0 `182/182=100%`，全部通过预注册机器门。在线真值使用、

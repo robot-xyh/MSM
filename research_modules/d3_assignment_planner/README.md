@@ -1,5 +1,41 @@
 # D3 Assignment Planner
 
+## 2026-08-01 A1 v2 失败归因与 v3 开发来源请求
+
+D3 已对冻结的来源独立评价 v2 做只读复载和失败归因。诊断器固定读取原结果目录、v2
+合同、冻结 development bundle、现有 D6 外部审计和 main 状态报告；它不调用模型、优化器、
+计划发布或运行接口。结果文件、合同和 bundle 摘要均与冻结值一致，逐帧 JSONL 与 21 列
+CSV 的 292 行逐行闭合。100 个 episode、292 帧、seed `20000-20099`、94 个拒绝帧
+exact-R0 和全部权限 false 均重新确认，正式 `1000-1019` 读取数仍为 0。
+
+test 正类教师完全匹配为 `0/25`。归因结果分为两层：9 帧由 `feature_ood` 明确触发规则
+回退；其余 16 帧在非 OOD 条件下已经出现候选动作与教师动作不一致。22 帧同时被安全投影
+拒绝，但投影前候选精确命中教师的帧数为 0，因此没有“投影单独阻断正确候选”的证据。
+可观测路径覆盖 `25/25`，严格根因可确认 `9/25`。v2 没有输出逐边候选集合、逐边残差排序
+和匿名需求槽映射，候选不可达、模型排序错误及动作槽结构归因继续标为 `unavailable`。
+
+新增 v3 development data request 和 seed exclusion registry。请求包含 15 个场景规模单元、
+300 个 episode、300 个待分配全新 seed，以及正类、负类、困难负类和 11 类动作变化需求。
+训练 `0-99`、正式 `1000-1019` 和已评价 `20000-20099` 明确禁止复用；main 分配 seed 前
+还必须合并全部 D3 已登记 seed，缺少规范注册表快照时失败关闭。当前
+`assigned_seed_values=[]`，生成、训练、选模、调阈值、runtime、assignment、plan、control、
+formal admission 和 production admission 均为 false。v2 继续 frozen/not admitted，未写
+新 bundle。
+
+诊断入口：
+
+```bash
+python3 research_modules/d3_assignment_planner/simulations/\
+run_a1_source_independent_failure_diagnostics.py \
+  --analyzed-at-utc <UTC_TIMESTAMP> \
+  --output <NEW_D3_OUTPUT_DIRECTORY>
+```
+
+版本化结果位于
+`results/a1_source_independent_v2_failure_attribution_v1_20260801/`。专项测试
+`9 passed`，D3 全量为 `677 passed, 1 skipped, 1 warning`。跳过项仍为可选 OR-Tools；
+告警仍是既有 Matplotlib `Axes3D` 导入环境问题。
+
 ## 2026-07-31 A1 来源独立评价 v2 结果
 
 冻结的 v2 评价已按唯一输出身份执行一次。输入覆盖 `20000-20099` 共 100 个 seed、
@@ -26,8 +62,8 @@ train/validation/test 标签只用于分组，帧数分别为 `178/57/57`；本�
 `results/a1_source_independent_evaluation_v2_20260731/`，五个固定文件齐全，
 `SHA256SUMS` 全部通过。runtime、assist、authority、assignment、plan、control、
 physical、formal admission 和 production admission 等权限仍全部为 false。该结果只形成
-来源独立离线证据，不能解释为正式 R0、运行采用、物理效果或生产准入；下一步由 D6 独立
-复算哈希、计数和机器门。2026-07-31 D3 全量回归为
+来源独立离线证据，不能解释为正式 R0、运行采用、物理效果或生产准入。D6 后续已完成
+独立复算，只确认离线完整性和预注册机器门，不授予任何权限。2026-07-31 D3 全量回归为
 `668 passed, 1 skipped, 1 warning`；跳过项是可选 OR-Tools，告警是既有 Matplotlib
 `Axes3D` 导入环境问题。
 

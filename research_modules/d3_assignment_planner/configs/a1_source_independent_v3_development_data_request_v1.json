@@ -1,0 +1,264 @@
+{
+  "schema_version": "d3_a1_source_independent_v3_development_data_request_v1",
+  "request_id": "d3-a1-source-independent-v3-development-data-request-20260801-v1",
+  "status": "request_frozen_generation_not_authorized",
+  "basis": {
+    "v2_result_identity": "d3-a1-source-independent-evaluation-result-v2",
+    "v2_result_directory": "results/a1_source_independent_evaluation_v2_20260731",
+    "v2_sha256sums_sha256": "f42170b252f61212c146364adc60d504c024e35bab3e3973d5140cdd1f56fa76",
+    "v2_aggregate_sha256": "9d44819c50fe7a7b4aa96f1ac99b665235a8e7e7fba0e84b3fbe6ef282a6e3b1",
+    "v2_contract_sha256": "f47ec9d095af11042c670b0e358e3e7285a166fa48e3df57829b14c1da8497e7",
+    "frozen_bundle_tree_sha256": "de7b627df9782d7d2577687f30d02d4faeeaf577ecc557c2b8d91dd6e7115dd9",
+    "d6_external_audit_sha256": "2aff8fb21105d4a3afe9855bf2719631aa4a310d7aad8d74d75a5e69fdb7bbe3",
+    "test_positive_teacher_exact_match": {
+      "numerator": 0,
+      "denominator": 25
+    }
+  },
+  "scope": {
+    "request_only": true,
+    "data_generated": false,
+    "model_trained": false,
+    "bundle_written": false,
+    "v2_model_or_threshold_changed": false,
+    "formal_holdout_read": false,
+    "v2_remains_frozen_and_not_admitted": true
+  },
+  "dataset_contract": {
+    "requested_source_kind": "scalable_3d_d3_a1_v3_development_source",
+    "requested_episode_count": 300,
+    "requested_unique_seed_count": 300,
+    "requested_cell_count": 15,
+    "identity_policy": "anonymous_ordinal_tokens_no_truth_actor_object_or_global_track_identity",
+    "split_policy": "whole_episode_seed_atomic_60_20_20",
+    "minimum_total_observable_frame_count": 2700,
+    "minimum_positive_frame_count": 900,
+    "minimum_negative_frame_count": 900,
+    "minimum_hard_negative_frame_count": 450
+  },
+  "collection_cells": [
+    {
+      "cell_id": "nominal-balanced-5t5r",
+      "scenario_family": "nominal_balanced",
+      "configured_target_count": 5,
+      "configured_resource_count": 5,
+      "requested_episode_count": 20,
+      "minimum_positive_frames": 60,
+      "minimum_negative_frames": 60,
+      "minimum_hard_negative_frames": 30,
+      "difficulty_focus": ["near_tie_keep", "small_safe_reassignment"]
+    },
+    {
+      "cell_id": "dense-crossing-20t20r",
+      "scenario_family": "dense_crossing",
+      "configured_target_count": 20,
+      "configured_resource_count": 20,
+      "requested_episode_count": 20,
+      "minimum_positive_frames": 60,
+      "minimum_negative_frames": 60,
+      "minimum_hard_negative_frames": 30,
+      "difficulty_focus": ["pair_swap", "cyclic_reassignment"]
+    },
+    {
+      "cell_id": "dense-crossing-50t50r",
+      "scenario_family": "dense_crossing",
+      "configured_target_count": 50,
+      "configured_resource_count": 50,
+      "requested_episode_count": 20,
+      "minimum_positive_frames": 60,
+      "minimum_negative_frames": 60,
+      "minimum_hard_negative_frames": 30,
+      "difficulty_focus": ["candidate_rank_crowding", "projection_boundary"]
+    },
+    {
+      "cell_id": "formation-split-50t50r",
+      "scenario_family": "formation_split",
+      "configured_target_count": 50,
+      "configured_resource_count": 50,
+      "requested_episode_count": 20,
+      "minimum_positive_frames": 60,
+      "minimum_negative_frames": 60,
+      "minimum_hard_negative_frames": 30,
+      "difficulty_focus": ["track_cardinality_change", "continuity_challenger"]
+    },
+    {
+      "cell_id": "evasive-multilevel-100t100r",
+      "scenario_family": "evasive_multilevel",
+      "configured_target_count": 100,
+      "configured_resource_count": 100,
+      "requested_episode_count": 20,
+      "minimum_positive_frames": 60,
+      "minimum_negative_frames": 60,
+      "minimum_hard_negative_frames": 30,
+      "difficulty_focus": ["legacy_v2_feature_ood", "large_binding_proposal"]
+    },
+    {
+      "cell_id": "delayed-noisy-200t200r",
+      "scenario_family": "delayed_noisy",
+      "configured_target_count": 200,
+      "configured_resource_count": 200,
+      "requested_episode_count": 20,
+      "minimum_positive_frames": 60,
+      "minimum_negative_frames": 60,
+      "minimum_hard_negative_frames": 30,
+      "difficulty_focus": ["legacy_v2_feature_ood", "dynamic_anonymous_cardinality"]
+    },
+    {
+      "cell_id": "communication-degraded-5t5r",
+      "scenario_family": "communication_degraded",
+      "configured_target_count": 5,
+      "configured_resource_count": 5,
+      "requested_episode_count": 20,
+      "minimum_positive_frames": 60,
+      "minimum_negative_frames": 60,
+      "minimum_hard_negative_frames": 30,
+      "difficulty_focus": ["stale_observation", "safe_keep_negative"]
+    },
+    {
+      "cell_id": "center-failure-20t20r",
+      "scenario_family": "center_failure",
+      "configured_target_count": 20,
+      "configured_resource_count": 20,
+      "requested_episode_count": 20,
+      "minimum_positive_frames": 60,
+      "minimum_negative_frames": 60,
+      "minimum_hard_negative_frames": 30,
+      "difficulty_focus": ["plan_owner_transition", "bounded_reassignment"]
+    },
+    {
+      "cell_id": "secondary-failure-50t50r",
+      "scenario_family": "secondary_failure",
+      "configured_target_count": 50,
+      "configured_resource_count": 50,
+      "requested_episode_count": 20,
+      "minimum_positive_frames": 60,
+      "minimum_negative_frames": 60,
+      "minimum_hard_negative_frames": 30,
+      "difficulty_focus": ["lease_transition", "fail_closed_negative"]
+    },
+    {
+      "cell_id": "high-threat-m-to-n-100t100r",
+      "scenario_family": "high_threat_m_to_n",
+      "configured_target_count": 100,
+      "configured_resource_count": 100,
+      "requested_episode_count": 20,
+      "minimum_positive_frames": 60,
+      "minimum_negative_frames": 60,
+      "minimum_hard_negative_frames": 30,
+      "difficulty_focus": ["demand_change", "coalition_atomicity"]
+    },
+    {
+      "cell_id": "high-threat-m-to-n-200t200r",
+      "scenario_family": "high_threat_m_to_n",
+      "configured_target_count": 200,
+      "configured_resource_count": 200,
+      "requested_episode_count": 20,
+      "minimum_positive_frames": 60,
+      "minimum_negative_frames": 60,
+      "minimum_hard_negative_frames": 30,
+      "difficulty_focus": ["legacy_v2_feature_ood", "coalition_rank_crowding"]
+    },
+    {
+      "cell_id": "resource-surplus-20t30r",
+      "scenario_family": "resource_surplus",
+      "configured_target_count": 20,
+      "configured_resource_count": 30,
+      "requested_episode_count": 20,
+      "minimum_positive_frames": 60,
+      "minimum_negative_frames": 60,
+      "minimum_hard_negative_frames": 30,
+      "difficulty_focus": ["multiple_near_equal_resources", "reserve_keep"]
+    },
+    {
+      "cell_id": "resource-shortage-30t20r",
+      "scenario_family": "resource_shortage",
+      "configured_target_count": 30,
+      "configured_resource_count": 20,
+      "requested_episode_count": 20,
+      "minimum_positive_frames": 60,
+      "minimum_negative_frames": 60,
+      "minimum_hard_negative_frames": 30,
+      "difficulty_focus": ["unassigned_tradeoff", "high_threat_coverage"]
+    },
+    {
+      "cell_id": "dynamic-add-drop-100t80r",
+      "scenario_family": "dynamic_add_drop",
+      "configured_target_count": 100,
+      "configured_resource_count": 80,
+      "requested_episode_count": 20,
+      "minimum_positive_frames": 60,
+      "minimum_negative_frames": 60,
+      "minimum_hard_negative_frames": 30,
+      "difficulty_focus": ["target_appearance", "target_loss", "resource_failure_recovery"]
+    },
+    {
+      "cell_id": "near-tie-hard-negative-50t50r",
+      "scenario_family": "near_tie_hard_negative",
+      "configured_target_count": 50,
+      "configured_resource_count": 50,
+      "requested_episode_count": 20,
+      "minimum_positive_frames": 60,
+      "minimum_negative_frames": 60,
+      "minimum_hard_negative_frames": 30,
+      "difficulty_focus": ["teacher_keep_with_small_margin", "unsafe_challenger"]
+    }
+  ],
+  "action_change_types": [
+    "keep_exact_r0",
+    "single_target_rebind_with_resource_release",
+    "two_target_pair_swap",
+    "multi_target_cycle",
+    "target_appearance_assignment",
+    "target_loss_release",
+    "resource_failure_reassignment",
+    "resource_recovery_reassignment",
+    "m_to_n_demand_increase",
+    "m_to_n_demand_decrease",
+    "primary_reserve_role_change"
+  ],
+  "hard_negative_types": [
+    "near_tie_but_teacher_keeps_r0",
+    "lower_learned_score_on_hard_forbidden_edge",
+    "incomplete_m_to_n_coalition",
+    "coverage_degrading_reassignment",
+    "rule_cost_difference_boundary_exceeded",
+    "binding_change_boundary_exceeded",
+    "stale_or_expired_plan_candidate",
+    "resource_capacity_conflict"
+  ],
+  "diagnostic_observability_requirements": [
+    "anonymous_candidate_edge_indices_or_content_sha256",
+    "teacher_edges_in_candidate_mask_count_and_boolean",
+    "per_edge_model_residual_rank_before_hungarian",
+    "anonymous_action_mask_shape_count_and_content_sha256",
+    "anonymous_target_demand_slot_vector_or_content_sha256",
+    "teacher_candidate_and_effective_selected_edges",
+    "pre_projection_and_post_projection_reason_codes",
+    "observed_anonymous_target_and_resource_counts",
+    "source_split_scenario_scale_seed_episode_frame_and_dual_timestamps",
+    "all_permissions_false_and_online_truth_use_zero"
+  ],
+  "seed_registry": {
+    "path": "configs/a1_source_independent_v3_seed_exclusion_registry_v1.json",
+    "allocation_status": "unassigned",
+    "assigned_seed_count": 0,
+    "generation_requires_new_main_owned_registry_snapshot": true
+  },
+  "permissions": {
+    "generation": false,
+    "training": false,
+    "optimizer": false,
+    "checkpoint_selection": false,
+    "normalization_refit": false,
+    "threshold_adjustment": false,
+    "runtime": false,
+    "assist": false,
+    "authority": false,
+    "assignment": false,
+    "plan": false,
+    "control": false,
+    "physical": false,
+    "formal_admission": false,
+    "production_admission": false
+  }
+}

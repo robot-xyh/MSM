@@ -1,5 +1,48 @@
 # D3 集中式资源-目标分配实验报告
 
+## A1 v2 失败归因（2026-08-01）
+
+本次试验没有运行模型或重新求解评价数据。输入固定为唯一 v2 结果目录、v2 合同、冻结
+development bundle、D6 外部审计和 main 状态报告。诊断器重算结果清单、逐文件 SHA-256、
+bundle 三摘要、逐帧计数和 CSV/JSONL 闭合关系。输入在分析前后摘要一致。
+
+| 复载项 | 结果 |
+| --- | ---: |
+| episode | 100 |
+| 帧 | 292 |
+| seed | 20000-20099 |
+| train/validation/test 帧 | 178/57/57 |
+| test 正类教师完全匹配 | 0/25 |
+| 投影拒绝 | 94 |
+| 拒绝后矩阵与绑定 exact-R0 | 94/94 |
+| 在线身份字段 | 0 |
+| 正式 seed 读取 | 0 |
+
+test 正类的排他可观测路径如下：
+
+| 路径 | 帧数 | 解释 |
+| --- | ---: | --- |
+| `feature_ood_rule_fallback` | 9 | 明确由分布外门触发规则回退 |
+| `candidate_selection_mismatch_non_ood` | 16 | 非 OOD，投影前候选已经不同于教师 |
+| 投影单独拒绝已精确匹配教师的候选 | 0 | 本批没有该类帧 |
+| 其他可观测路径 | 0 | 本批没有该类帧 |
+
+22/25 帧同时发生投影拒绝，且 22 帧均在投影前已经不匹配教师。安全投影解释了为什么有效
+动作恢复 R0，不能单独解释教师完全匹配为零。可观测路径分母为 25/25，严格根因可确认
+9/25。候选边列表、逐边模型排序和匿名需求槽映射没有进入 v2 逐帧输出，因此候选不可达、
+模型排序错误和动作槽/需求结构直接致因均为 `unavailable`。
+
+v3 development data request 固定 15 个 cell、300 个 episode 和 300 个待分配 seed，要求
+正类至少 900 帧、负类至少 900 帧、困难负类至少 450 帧。seed exclusion registry 排除
+训练 `0-99`、正式 `1000-1019`、已评价 `20000-20099`，并要求 main 分配前合并其他 D3
+登记值。当前没有 seed 分配，没有生成数据、训练模型、修改阈值或写 bundle。
+
+结果目录为
+`results/a1_source_independent_v2_failure_attribution_v1_20260801/`，包含聚合 JSON、逐帧
+JSONL/CSV、中文报告和 `SHA256SUMS`。聚合内容摘要为
+`34c91769240414534ae40b5d32998a3797841ce5dd91e1bb3f4c7fc3f80e5921`。专项测试
+`9 passed`；D3 全量 `677 passed, 1 skipped, 1 warning`。所有权限保持 false。
+
 ## 来源独立评价 v2 结果（2026-07-31）
 
 冻结 v2 评价在新目录中执行一次，命令模式为 `source_independent_evaluation`。输入来自
@@ -31,7 +74,8 @@ M-to-N 原子性、版本、规则矩阵突变，以及模型直接输出 assign
 结果状态为 `source_independent_evaluation_v2_gate_passed_not_admitted`。runtime、assist、
 authority、assignment、plan、control、physical、formal admission 和 production
 admission 等权限均为 false。该试验不是正式 R0，也没有证明运行采用、任务收益或物理
-非退化。下一步由 D6 对同一只读目录独立重算。2026-07-31 D3 全量测试为
+非退化。D6 后续已对同一只读目录独立重算并确认离线完整性和预注册机器门，但没有授予
+运行或正式权限。2026-07-31 D3 全量测试为
 `668 passed, 1 skipped, 1 warning`；语法检查和 scoped 差异格式检查通过。
 
 ## 来源独立评价 v1 失败与 v2 修正（2026-07-30，历史）

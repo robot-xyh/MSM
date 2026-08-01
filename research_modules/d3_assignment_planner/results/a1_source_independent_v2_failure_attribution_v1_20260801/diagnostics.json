@@ -1,0 +1,1946 @@
+{
+  "analysis_id": "d3-a1-v2-failure-attribution-v3-source-request-20260801-v1",
+  "analyzed_at_utc": "2026-08-01T18:45:42Z",
+  "conclusion": {
+    "formal_holdout_authorized": false,
+    "runtime_or_control_authority_granted": false,
+    "v2_admitted": false,
+    "v2_remains_frozen": true,
+    "v3_data_generation_authorized": false,
+    "v3_model_training_authorized": false
+  },
+  "content_sha256": "34c91769240414534ae40b5d32998a3797841ce5dd91e1bb3f4c7fc3f80e5921",
+  "csv_jsonl_closure": {
+    "fixed_column_count": 21,
+    "header_exact": true,
+    "jsonl_row_count": 292,
+    "matched_row_count": 292,
+    "mismatch_count": 0,
+    "row_count": 292
+  },
+  "epistemic_limits": {
+    "per_edge_model_ranking": {
+      "available": false,
+      "reason": "v2 per-frame output contains selected candidate bindings and the maximum correction only, not per-edge residuals or ranks"
+    },
+    "per_target_demand_slot_structure": {
+      "available": false,
+      "reason": "v2 per-frame output contains only demand-slot cardinality, not the anonymous demand vector or slot mapping"
+    },
+    "teacher_edge_candidate_reachability": {
+      "available": false,
+      "reason": "v2 per-frame output omits candidate_edge_indices and action-mask contents; D6 audited candidate safety but did not publish a teacher-edge reachability denominator"
+    }
+  },
+  "external_evidence": {
+    "d6_independent_audit": {
+      "audit_content_sha256": "d024b4fd9ef2e2b1136f5a2c9c9b7feeebd0a025a40b18984ed653d7698546f3",
+      "audit_file_sha256": "2aff8fb21105d4a3afe9855bf2719631aa4a310d7aad8d74d75a5e69fdb7bbe3",
+      "integrity_confirmed": true,
+      "physical_benefit_confirmed": false,
+      "preregistered_machine_gate_confirmed": true,
+      "runtime_or_formal_admission_granted": false,
+      "test_positive_teacher_exact_match": {
+        "denominator": 25,
+        "numerator": 0
+      }
+    },
+    "main_report": {
+      "d6_status_consistent": true,
+      "formal_seed_read_zero_recorded": true,
+      "report_is_read_only_context_not_independent_recomputation": true,
+      "report_sha256": "a573332af64a9a6a36b7f3e5385e4a15289af81e117c4ce7d559e40bf0f33ece",
+      "test_zero_of_25_recorded": true
+    }
+  },
+  "frozen_v2_confirmation": {
+    "all_permissions_false": true,
+    "episode_count": 100,
+    "fallback_exact_r0_count": 94,
+    "forbidden_identity_key_count": 0,
+    "formal_seed_read_count": 0,
+    "frame_count": 292,
+    "model_authority_output_count": 0,
+    "negative_frame_count": 182,
+    "positive_frame_count": 110,
+    "projection_rejection_count": 94,
+    "seed_maximum": 20099,
+    "seed_minimum": 20000,
+    "split_episode_counts": {
+      "test": 20,
+      "train": 60,
+      "validation": 20
+    },
+    "split_frame_counts": {
+      "test": 57,
+      "train": 178,
+      "validation": 57
+    },
+    "test_positive_teacher_exact_match_denominator": 25,
+    "test_positive_teacher_exact_match_numerator": 0,
+    "unique_seed_count": 100
+  },
+  "input_integrity": {
+    "bundle": {
+      "admitted": false,
+      "manifest_sha256": "ec9f93d668e1aa319f65fcda0d73adb0527f316a2d1880e93e88697b6468ad3d",
+      "stage": "development",
+      "state_dict_sha256": "c185823bd9a4cf5363d17854385aeb74c340c8ac384327281d224a1097eb8206",
+      "tree_sha256": "de7b627df9782d7d2577687f30d02d4faeeaf577ecc557c2b8d91dd6e7115dd9"
+    },
+    "contract_sha256": "f47ec9d095af11042c670b0e358e3e7285a166fa48e3df57829b14c1da8497e7",
+    "input_mutation_count": 0,
+    "input_mutations": [],
+    "input_snapshot_sha256": "ebc2dfe62010f60f2d89dfaccc9309a9585c2f7545cdfbfa3043e9f2f8572d40",
+    "result_file_sha256": {
+      "SHA256SUMS": "f42170b252f61212c146364adc60d504c024e35bab3e3973d5140cdd1f56fa76",
+      "SOURCE_INDEPENDENT_EVALUATION_CN.md": "4934c616ce91ac2f9462c5b8718187a7c7781e06b10bd848bdd24748f01b470a",
+      "aggregate.json": "9d44819c50fe7a7b4aa96f1ac99b665235a8e7e7fba0e84b3fbe6ef282a6e3b1",
+      "per_frame_evaluation.csv": "a84bda095cfcecd0d6b6c5649600dbdbbc91b5a4b82ca4166b272337834bf9c2",
+      "per_frame_evaluation.jsonl": "88377f35a874423af3fa55b9b183ec5b8a883f85f4929ff12a66f96d07a2076b"
+    }
+  },
+  "permissions": {
+    "assignment": false,
+    "assist": false,
+    "authority": false,
+    "checkpoint_selection": false,
+    "control": false,
+    "formal_admission": false,
+    "generation": false,
+    "normalization_refit": false,
+    "optimizer": false,
+    "physical": false,
+    "plan": false,
+    "production_admission": false,
+    "runtime": false,
+    "threshold_adjustment": false,
+    "training": false
+  },
+  "schema_version": "d3_a1_v2_failure_diagnostics_v1",
+  "scope": {
+    "assignment_output_count": 0,
+    "control_output_count": 0,
+    "formal_seed_read_count": 0,
+    "model_invocation_count": 0,
+    "model_weight_update_count": 0,
+    "new_bundle_write_count": 0,
+    "normalization_refit_count": 0,
+    "optimizer_step_count": 0,
+    "plan_output_count": 0,
+    "read_only_diagnosis": true,
+    "runtime_output_count": 0,
+    "threshold_adjustment_count": 0,
+    "training_count": 0
+  },
+  "status": "v2_failure_attributed_v3_development_source_requested_not_admitted",
+  "stratification": {
+    "anonymous_resource_count": {
+      "100": {
+        "candidate_exact_teacher_count": 20,
+        "effective_exact_teacher_count": 20,
+        "frame_count": 60,
+        "negative_frame_count": 20,
+        "observable_failure_pathway_counts": {
+          "candidate_selection_mismatch_non_ood": 30,
+          "feature_ood_rule_fallback": 10,
+          "negative_not_applicable": 20
+        },
+        "ood_frame_count": 10,
+        "positive_frame_count": 40,
+        "rejected_frame_count": 40
+      },
+      "20": {
+        "candidate_exact_teacher_count": 50,
+        "effective_exact_teacher_count": 50,
+        "frame_count": 60,
+        "negative_frame_count": 44,
+        "observable_failure_pathway_counts": {
+          "candidate_selection_mismatch_non_ood": 10,
+          "negative_not_applicable": 44,
+          "teacher_exact_match": 6
+        },
+        "ood_frame_count": 0,
+        "positive_frame_count": 16,
+        "rejected_frame_count": 4
+      },
+      "200": {
+        "candidate_exact_teacher_count": 20,
+        "effective_exact_teacher_count": 20,
+        "frame_count": 58,
+        "negative_frame_count": 20,
+        "observable_failure_pathway_counts": {
+          "candidate_selection_mismatch_non_ood": 23,
+          "feature_ood_rule_fallback": 15,
+          "negative_not_applicable": 20
+        },
+        "ood_frame_count": 15,
+        "positive_frame_count": 38,
+        "rejected_frame_count": 38
+      },
+      "5": {
+        "candidate_exact_teacher_count": 51,
+        "effective_exact_teacher_count": 51,
+        "frame_count": 54,
+        "negative_frame_count": 51,
+        "observable_failure_pathway_counts": {
+          "candidate_selection_mismatch_non_ood": 3,
+          "negative_not_applicable": 51
+        },
+        "ood_frame_count": 0,
+        "positive_frame_count": 3,
+        "rejected_frame_count": 0
+      },
+      "50": {
+        "candidate_exact_teacher_count": 48,
+        "effective_exact_teacher_count": 49,
+        "frame_count": 60,
+        "negative_frame_count": 47,
+        "observable_failure_pathway_counts": {
+          "candidate_selection_mismatch_non_ood": 9,
+          "feature_ood_rule_fallback": 2,
+          "negative_not_applicable": 47,
+          "teacher_exact_match": 2
+        },
+        "ood_frame_count": 2,
+        "positive_frame_count": 13,
+        "rejected_frame_count": 12
+      }
+    },
+    "anonymous_target_count": {
+      "100": {
+        "candidate_exact_teacher_count": 2,
+        "effective_exact_teacher_count": 2,
+        "frame_count": 30,
+        "negative_frame_count": 2,
+        "observable_failure_pathway_counts": {
+          "candidate_selection_mismatch_non_ood": 22,
+          "feature_ood_rule_fallback": 6,
+          "negative_not_applicable": 2
+        },
+        "ood_frame_count": 6,
+        "positive_frame_count": 28,
+        "rejected_frame_count": 28
+      },
+      "101": {
+        "candidate_exact_teacher_count": 0,
+        "effective_exact_teacher_count": 0,
+        "frame_count": 5,
+        "negative_frame_count": 0,
+        "observable_failure_pathway_counts": {
+          "candidate_selection_mismatch_non_ood": 1,
+          "feature_ood_rule_fallback": 4
+        },
+        "ood_frame_count": 4,
+        "positive_frame_count": 5,
+        "rejected_frame_count": 5
+      },
+      "102": {
+        "candidate_exact_teacher_count": 0,
+        "effective_exact_teacher_count": 0,
+        "frame_count": 1,
+        "negative_frame_count": 0,
+        "observable_failure_pathway_counts": {
+          "candidate_selection_mismatch_non_ood": 1
+        },
+        "ood_frame_count": 0,
+        "positive_frame_count": 1,
+        "rejected_frame_count": 1
+      },
+      "103": {
+        "candidate_exact_teacher_count": 0,
+        "effective_exact_teacher_count": 0,
+        "frame_count": 1,
+        "negative_frame_count": 0,
+        "observable_failure_pathway_counts": {
+          "candidate_selection_mismatch_non_ood": 1
+        },
+        "ood_frame_count": 0,
+        "positive_frame_count": 1,
+        "rejected_frame_count": 1
+      },
+      "176": {
+        "candidate_exact_teacher_count": 1,
+        "effective_exact_teacher_count": 1,
+        "frame_count": 1,
+        "negative_frame_count": 1,
+        "observable_failure_pathway_counts": {
+          "negative_not_applicable": 1
+        },
+        "ood_frame_count": 0,
+        "positive_frame_count": 0,
+        "rejected_frame_count": 0
+      },
+      "178": {
+        "candidate_exact_teacher_count": 2,
+        "effective_exact_teacher_count": 2,
+        "frame_count": 2,
+        "negative_frame_count": 2,
+        "observable_failure_pathway_counts": {
+          "negative_not_applicable": 2
+        },
+        "ood_frame_count": 0,
+        "positive_frame_count": 0,
+        "rejected_frame_count": 0
+      },
+      "179": {
+        "candidate_exact_teacher_count": 1,
+        "effective_exact_teacher_count": 1,
+        "frame_count": 2,
+        "negative_frame_count": 1,
+        "observable_failure_pathway_counts": {
+          "candidate_selection_mismatch_non_ood": 1,
+          "negative_not_applicable": 1
+        },
+        "ood_frame_count": 0,
+        "positive_frame_count": 1,
+        "rejected_frame_count": 1
+      },
+      "180": {
+        "candidate_exact_teacher_count": 0,
+        "effective_exact_teacher_count": 0,
+        "frame_count": 1,
+        "negative_frame_count": 0,
+        "observable_failure_pathway_counts": {
+          "candidate_selection_mismatch_non_ood": 1
+        },
+        "ood_frame_count": 0,
+        "positive_frame_count": 1,
+        "rejected_frame_count": 1
+      },
+      "181": {
+        "candidate_exact_teacher_count": 1,
+        "effective_exact_teacher_count": 1,
+        "frame_count": 1,
+        "negative_frame_count": 1,
+        "observable_failure_pathway_counts": {
+          "negative_not_applicable": 1
+        },
+        "ood_frame_count": 0,
+        "positive_frame_count": 0,
+        "rejected_frame_count": 0
+      },
+      "182": {
+        "candidate_exact_teacher_count": 2,
+        "effective_exact_teacher_count": 2,
+        "frame_count": 2,
+        "negative_frame_count": 2,
+        "observable_failure_pathway_counts": {
+          "negative_not_applicable": 2
+        },
+        "ood_frame_count": 0,
+        "positive_frame_count": 0,
+        "rejected_frame_count": 0
+      },
+      "183": {
+        "candidate_exact_teacher_count": 2,
+        "effective_exact_teacher_count": 2,
+        "frame_count": 4,
+        "negative_frame_count": 2,
+        "observable_failure_pathway_counts": {
+          "candidate_selection_mismatch_non_ood": 2,
+          "negative_not_applicable": 2
+        },
+        "ood_frame_count": 0,
+        "positive_frame_count": 2,
+        "rejected_frame_count": 2
+      },
+      "184": {
+        "candidate_exact_teacher_count": 1,
+        "effective_exact_teacher_count": 1,
+        "frame_count": 2,
+        "negative_frame_count": 1,
+        "observable_failure_pathway_counts": {
+          "candidate_selection_mismatch_non_ood": 1,
+          "negative_not_applicable": 1
+        },
+        "ood_frame_count": 0,
+        "positive_frame_count": 1,
+        "rejected_frame_count": 1
+      },
+      "185": {
+        "candidate_exact_teacher_count": 0,
+        "effective_exact_teacher_count": 0,
+        "frame_count": 1,
+        "negative_frame_count": 0,
+        "observable_failure_pathway_counts": {
+          "candidate_selection_mismatch_non_ood": 1
+        },
+        "ood_frame_count": 0,
+        "positive_frame_count": 1,
+        "rejected_frame_count": 1
+      },
+      "187": {
+        "candidate_exact_teacher_count": 0,
+        "effective_exact_teacher_count": 0,
+        "frame_count": 1,
+        "negative_frame_count": 0,
+        "observable_failure_pathway_counts": {
+          "candidate_selection_mismatch_non_ood": 1
+        },
+        "ood_frame_count": 0,
+        "positive_frame_count": 1,
+        "rejected_frame_count": 1
+      },
+      "189": {
+        "candidate_exact_teacher_count": 0,
+        "effective_exact_teacher_count": 0,
+        "frame_count": 1,
+        "negative_frame_count": 0,
+        "observable_failure_pathway_counts": {
+          "candidate_selection_mismatch_non_ood": 1
+        },
+        "ood_frame_count": 0,
+        "positive_frame_count": 1,
+        "rejected_frame_count": 1
+      },
+      "19": {
+        "candidate_exact_teacher_count": 11,
+        "effective_exact_teacher_count": 11,
+        "frame_count": 12,
+        "negative_frame_count": 11,
+        "observable_failure_pathway_counts": {
+          "candidate_selection_mismatch_non_ood": 1,
+          "negative_not_applicable": 11
+        },
+        "ood_frame_count": 0,
+        "positive_frame_count": 1,
+        "rejected_frame_count": 0
+      },
+      "191": {
+        "candidate_exact_teacher_count": 1,
+        "effective_exact_teacher_count": 1,
+        "frame_count": 1,
+        "negative_frame_count": 1,
+        "observable_failure_pathway_counts": {
+          "negative_not_applicable": 1
+        },
+        "ood_frame_count": 0,
+        "positive_frame_count": 0,
+        "rejected_frame_count": 0
+      },
+      "195": {
+        "candidate_exact_teacher_count": 2,
+        "effective_exact_teacher_count": 2,
+        "frame_count": 2,
+        "negative_frame_count": 2,
+        "observable_failure_pathway_counts": {
+          "negative_not_applicable": 2
+        },
+        "ood_frame_count": 0,
+        "positive_frame_count": 0,
+        "rejected_frame_count": 0
+      },
+      "196": {
+        "candidate_exact_teacher_count": 1,
+        "effective_exact_teacher_count": 1,
+        "frame_count": 1,
+        "negative_frame_count": 1,
+        "observable_failure_pathway_counts": {
+          "negative_not_applicable": 1
+        },
+        "ood_frame_count": 0,
+        "positive_frame_count": 0,
+        "rejected_frame_count": 0
+      },
+      "197": {
+        "candidate_exact_teacher_count": 2,
+        "effective_exact_teacher_count": 2,
+        "frame_count": 2,
+        "negative_frame_count": 2,
+        "observable_failure_pathway_counts": {
+          "negative_not_applicable": 2
+        },
+        "ood_frame_count": 0,
+        "positive_frame_count": 0,
+        "rejected_frame_count": 0
+      },
+      "198": {
+        "candidate_exact_teacher_count": 2,
+        "effective_exact_teacher_count": 2,
+        "frame_count": 2,
+        "negative_frame_count": 2,
+        "observable_failure_pathway_counts": {
+          "negative_not_applicable": 2
+        },
+        "ood_frame_count": 0,
+        "positive_frame_count": 0,
+        "rejected_frame_count": 0
+      },
+      "199": {
+        "candidate_exact_teacher_count": 2,
+        "effective_exact_teacher_count": 2,
+        "frame_count": 2,
+        "negative_frame_count": 2,
+        "observable_failure_pathway_counts": {
+          "negative_not_applicable": 2
+        },
+        "ood_frame_count": 0,
+        "positive_frame_count": 0,
+        "rejected_frame_count": 0
+      },
+      "20": {
+        "candidate_exact_teacher_count": 39,
+        "effective_exact_teacher_count": 39,
+        "frame_count": 48,
+        "negative_frame_count": 33,
+        "observable_failure_pathway_counts": {
+          "candidate_selection_mismatch_non_ood": 9,
+          "negative_not_applicable": 33,
+          "teacher_exact_match": 6
+        },
+        "ood_frame_count": 0,
+        "positive_frame_count": 15,
+        "rejected_frame_count": 4
+      },
+      "200": {
+        "candidate_exact_teacher_count": 0,
+        "effective_exact_teacher_count": 0,
+        "frame_count": 11,
+        "negative_frame_count": 0,
+        "observable_failure_pathway_counts": {
+          "candidate_selection_mismatch_non_ood": 2,
+          "feature_ood_rule_fallback": 9
+        },
+        "ood_frame_count": 9,
+        "positive_frame_count": 11,
+        "rejected_frame_count": 11
+      },
+      "201": {
+        "candidate_exact_teacher_count": 0,
+        "effective_exact_teacher_count": 0,
+        "frame_count": 4,
+        "negative_frame_count": 0,
+        "observable_failure_pathway_counts": {
+          "candidate_selection_mismatch_non_ood": 3,
+          "feature_ood_rule_fallback": 1
+        },
+        "ood_frame_count": 1,
+        "positive_frame_count": 4,
+        "rejected_frame_count": 4
+      },
+      "202": {
+        "candidate_exact_teacher_count": 0,
+        "effective_exact_teacher_count": 0,
+        "frame_count": 4,
+        "negative_frame_count": 0,
+        "observable_failure_pathway_counts": {
+          "candidate_selection_mismatch_non_ood": 2,
+          "feature_ood_rule_fallback": 2
+        },
+        "ood_frame_count": 2,
+        "positive_frame_count": 4,
+        "rejected_frame_count": 4
+      },
+      "203": {
+        "candidate_exact_teacher_count": 0,
+        "effective_exact_teacher_count": 0,
+        "frame_count": 6,
+        "negative_frame_count": 0,
+        "observable_failure_pathway_counts": {
+          "candidate_selection_mismatch_non_ood": 4,
+          "feature_ood_rule_fallback": 2
+        },
+        "ood_frame_count": 2,
+        "positive_frame_count": 6,
+        "rejected_frame_count": 6
+      },
+      "204": {
+        "candidate_exact_teacher_count": 0,
+        "effective_exact_teacher_count": 0,
+        "frame_count": 2,
+        "negative_frame_count": 0,
+        "observable_failure_pathway_counts": {
+          "candidate_selection_mismatch_non_ood": 2
+        },
+        "ood_frame_count": 0,
+        "positive_frame_count": 2,
+        "rejected_frame_count": 2
+      },
+      "205": {
+        "candidate_exact_teacher_count": 0,
+        "effective_exact_teacher_count": 0,
+        "frame_count": 1,
+        "negative_frame_count": 0,
+        "observable_failure_pathway_counts": {
+          "candidate_selection_mismatch_non_ood": 1
+        },
+        "ood_frame_count": 0,
+        "positive_frame_count": 1,
+        "rejected_frame_count": 1
+      },
+      "206": {
+        "candidate_exact_teacher_count": 0,
+        "effective_exact_teacher_count": 0,
+        "frame_count": 1,
+        "negative_frame_count": 0,
+        "observable_failure_pathway_counts": {
+          "candidate_selection_mismatch_non_ood": 1
+        },
+        "ood_frame_count": 0,
+        "positive_frame_count": 1,
+        "rejected_frame_count": 1
+      },
+      "207": {
+        "candidate_exact_teacher_count": 0,
+        "effective_exact_teacher_count": 0,
+        "frame_count": 1,
+        "negative_frame_count": 0,
+        "observable_failure_pathway_counts": {
+          "feature_ood_rule_fallback": 1
+        },
+        "ood_frame_count": 1,
+        "positive_frame_count": 1,
+        "rejected_frame_count": 1
+      },
+      "4": {
+        "candidate_exact_teacher_count": 2,
+        "effective_exact_teacher_count": 2,
+        "frame_count": 2,
+        "negative_frame_count": 2,
+        "observable_failure_pathway_counts": {
+          "negative_not_applicable": 2
+        },
+        "ood_frame_count": 0,
+        "positive_frame_count": 0,
+        "rejected_frame_count": 0
+      },
+      "48": {
+        "candidate_exact_teacher_count": 11,
+        "effective_exact_teacher_count": 11,
+        "frame_count": 11,
+        "negative_frame_count": 11,
+        "observable_failure_pathway_counts": {
+          "negative_not_applicable": 11
+        },
+        "ood_frame_count": 0,
+        "positive_frame_count": 0,
+        "rejected_frame_count": 0
+      },
+      "49": {
+        "candidate_exact_teacher_count": 16,
+        "effective_exact_teacher_count": 16,
+        "frame_count": 16,
+        "negative_frame_count": 16,
+        "observable_failure_pathway_counts": {
+          "negative_not_applicable": 16
+        },
+        "ood_frame_count": 0,
+        "positive_frame_count": 0,
+        "rejected_frame_count": 0
+      },
+      "5": {
+        "candidate_exact_teacher_count": 49,
+        "effective_exact_teacher_count": 49,
+        "frame_count": 52,
+        "negative_frame_count": 49,
+        "observable_failure_pathway_counts": {
+          "candidate_selection_mismatch_non_ood": 3,
+          "negative_not_applicable": 49
+        },
+        "ood_frame_count": 0,
+        "positive_frame_count": 3,
+        "rejected_frame_count": 0
+      },
+      "50": {
+        "candidate_exact_teacher_count": 20,
+        "effective_exact_teacher_count": 21,
+        "frame_count": 31,
+        "negative_frame_count": 20,
+        "observable_failure_pathway_counts": {
+          "candidate_selection_mismatch_non_ood": 8,
+          "feature_ood_rule_fallback": 2,
+          "negative_not_applicable": 20,
+          "teacher_exact_match": 1
+        },
+        "ood_frame_count": 2,
+        "positive_frame_count": 11,
+        "rejected_frame_count": 11
+      },
+      "51": {
+        "candidate_exact_teacher_count": 1,
+        "effective_exact_teacher_count": 1,
+        "frame_count": 2,
+        "negative_frame_count": 0,
+        "observable_failure_pathway_counts": {
+          "candidate_selection_mismatch_non_ood": 1,
+          "teacher_exact_match": 1
+        },
+        "ood_frame_count": 0,
+        "positive_frame_count": 2,
+        "rejected_frame_count": 1
+      },
+      "94": {
+        "candidate_exact_teacher_count": 1,
+        "effective_exact_teacher_count": 1,
+        "frame_count": 1,
+        "negative_frame_count": 1,
+        "observable_failure_pathway_counts": {
+          "negative_not_applicable": 1
+        },
+        "ood_frame_count": 0,
+        "positive_frame_count": 0,
+        "rejected_frame_count": 0
+      },
+      "96": {
+        "candidate_exact_teacher_count": 2,
+        "effective_exact_teacher_count": 2,
+        "frame_count": 2,
+        "negative_frame_count": 2,
+        "observable_failure_pathway_counts": {
+          "negative_not_applicable": 2
+        },
+        "ood_frame_count": 0,
+        "positive_frame_count": 0,
+        "rejected_frame_count": 0
+      },
+      "97": {
+        "candidate_exact_teacher_count": 6,
+        "effective_exact_teacher_count": 6,
+        "frame_count": 6,
+        "negative_frame_count": 6,
+        "observable_failure_pathway_counts": {
+          "negative_not_applicable": 6
+        },
+        "ood_frame_count": 0,
+        "positive_frame_count": 0,
+        "rejected_frame_count": 0
+      },
+      "98": {
+        "candidate_exact_teacher_count": 4,
+        "effective_exact_teacher_count": 4,
+        "frame_count": 5,
+        "negative_frame_count": 4,
+        "observable_failure_pathway_counts": {
+          "candidate_selection_mismatch_non_ood": 1,
+          "negative_not_applicable": 4
+        },
+        "ood_frame_count": 0,
+        "positive_frame_count": 1,
+        "rejected_frame_count": 1
+      },
+      "99": {
+        "candidate_exact_teacher_count": 5,
+        "effective_exact_teacher_count": 5,
+        "frame_count": 9,
+        "negative_frame_count": 5,
+        "observable_failure_pathway_counts": {
+          "candidate_selection_mismatch_non_ood": 4,
+          "negative_not_applicable": 5
+        },
+        "ood_frame_count": 0,
+        "positive_frame_count": 4,
+        "rejected_frame_count": 4
+      }
+    },
+    "candidate_availability": {
+      "proposal_available_teacher_edge_reachability_unavailable": {
+        "candidate_exact_teacher_count": 189,
+        "effective_exact_teacher_count": 190,
+        "frame_count": 292,
+        "negative_frame_count": 182,
+        "observable_failure_pathway_counts": {
+          "candidate_selection_mismatch_non_ood": 75,
+          "feature_ood_rule_fallback": 27,
+          "negative_not_applicable": 182,
+          "teacher_exact_match": 8
+        },
+        "ood_frame_count": 27,
+        "positive_frame_count": 110,
+        "rejected_frame_count": 94
+      }
+    },
+    "candidate_teacher_difference_count": {
+      "0": {
+        "candidate_exact_teacher_count": 189,
+        "effective_exact_teacher_count": 189,
+        "frame_count": 189,
+        "negative_frame_count": 181,
+        "observable_failure_pathway_counts": {
+          "negative_not_applicable": 181,
+          "teacher_exact_match": 8
+        },
+        "ood_frame_count": 0,
+        "positive_frame_count": 8,
+        "rejected_frame_count": 0
+      },
+      "102": {
+        "candidate_exact_teacher_count": 0,
+        "effective_exact_teacher_count": 0,
+        "frame_count": 1,
+        "negative_frame_count": 0,
+        "observable_failure_pathway_counts": {
+          "candidate_selection_mismatch_non_ood": 1
+        },
+        "ood_frame_count": 0,
+        "positive_frame_count": 1,
+        "rejected_frame_count": 1
+      },
+      "104": {
+        "candidate_exact_teacher_count": 0,
+        "effective_exact_teacher_count": 0,
+        "frame_count": 1,
+        "negative_frame_count": 0,
+        "observable_failure_pathway_counts": {
+          "candidate_selection_mismatch_non_ood": 1
+        },
+        "ood_frame_count": 0,
+        "positive_frame_count": 1,
+        "rejected_frame_count": 1
+      },
+      "106": {
+        "candidate_exact_teacher_count": 0,
+        "effective_exact_teacher_count": 0,
+        "frame_count": 2,
+        "negative_frame_count": 0,
+        "observable_failure_pathway_counts": {
+          "candidate_selection_mismatch_non_ood": 2
+        },
+        "ood_frame_count": 0,
+        "positive_frame_count": 2,
+        "rejected_frame_count": 2
+      },
+      "108": {
+        "candidate_exact_teacher_count": 0,
+        "effective_exact_teacher_count": 0,
+        "frame_count": 3,
+        "negative_frame_count": 0,
+        "observable_failure_pathway_counts": {
+          "candidate_selection_mismatch_non_ood": 3
+        },
+        "ood_frame_count": 0,
+        "positive_frame_count": 3,
+        "rejected_frame_count": 3
+      },
+      "110": {
+        "candidate_exact_teacher_count": 0,
+        "effective_exact_teacher_count": 0,
+        "frame_count": 1,
+        "negative_frame_count": 0,
+        "observable_failure_pathway_counts": {
+          "candidate_selection_mismatch_non_ood": 1
+        },
+        "ood_frame_count": 0,
+        "positive_frame_count": 1,
+        "rejected_frame_count": 1
+      },
+      "112": {
+        "candidate_exact_teacher_count": 0,
+        "effective_exact_teacher_count": 0,
+        "frame_count": 1,
+        "negative_frame_count": 0,
+        "observable_failure_pathway_counts": {
+          "candidate_selection_mismatch_non_ood": 1
+        },
+        "ood_frame_count": 0,
+        "positive_frame_count": 1,
+        "rejected_frame_count": 1
+      },
+      "116": {
+        "candidate_exact_teacher_count": 0,
+        "effective_exact_teacher_count": 0,
+        "frame_count": 1,
+        "negative_frame_count": 0,
+        "observable_failure_pathway_counts": {
+          "candidate_selection_mismatch_non_ood": 1
+        },
+        "ood_frame_count": 0,
+        "positive_frame_count": 1,
+        "rejected_frame_count": 1
+      },
+      "12": {
+        "candidate_exact_teacher_count": 0,
+        "effective_exact_teacher_count": 0,
+        "frame_count": 1,
+        "negative_frame_count": 0,
+        "observable_failure_pathway_counts": {
+          "candidate_selection_mismatch_non_ood": 1
+        },
+        "ood_frame_count": 0,
+        "positive_frame_count": 1,
+        "rejected_frame_count": 1
+      },
+      "124": {
+        "candidate_exact_teacher_count": 0,
+        "effective_exact_teacher_count": 0,
+        "frame_count": 1,
+        "negative_frame_count": 0,
+        "observable_failure_pathway_counts": {
+          "candidate_selection_mismatch_non_ood": 1
+        },
+        "ood_frame_count": 0,
+        "positive_frame_count": 1,
+        "rejected_frame_count": 1
+      },
+      "126": {
+        "candidate_exact_teacher_count": 0,
+        "effective_exact_teacher_count": 0,
+        "frame_count": 1,
+        "negative_frame_count": 0,
+        "observable_failure_pathway_counts": {
+          "candidate_selection_mismatch_non_ood": 1
+        },
+        "ood_frame_count": 0,
+        "positive_frame_count": 1,
+        "rejected_frame_count": 1
+      },
+      "130": {
+        "candidate_exact_teacher_count": 0,
+        "effective_exact_teacher_count": 0,
+        "frame_count": 2,
+        "negative_frame_count": 0,
+        "observable_failure_pathway_counts": {
+          "candidate_selection_mismatch_non_ood": 2
+        },
+        "ood_frame_count": 0,
+        "positive_frame_count": 2,
+        "rejected_frame_count": 2
+      },
+      "134": {
+        "candidate_exact_teacher_count": 0,
+        "effective_exact_teacher_count": 0,
+        "frame_count": 1,
+        "negative_frame_count": 0,
+        "observable_failure_pathway_counts": {
+          "candidate_selection_mismatch_non_ood": 1
+        },
+        "ood_frame_count": 0,
+        "positive_frame_count": 1,
+        "rejected_frame_count": 1
+      },
+      "136": {
+        "candidate_exact_teacher_count": 0,
+        "effective_exact_teacher_count": 0,
+        "frame_count": 2,
+        "negative_frame_count": 0,
+        "observable_failure_pathway_counts": {
+          "candidate_selection_mismatch_non_ood": 2
+        },
+        "ood_frame_count": 0,
+        "positive_frame_count": 2,
+        "rejected_frame_count": 2
+      },
+      "14": {
+        "candidate_exact_teacher_count": 0,
+        "effective_exact_teacher_count": 1,
+        "frame_count": 1,
+        "negative_frame_count": 1,
+        "observable_failure_pathway_counts": {
+          "negative_not_applicable": 1
+        },
+        "ood_frame_count": 0,
+        "positive_frame_count": 0,
+        "rejected_frame_count": 1
+      },
+      "146": {
+        "candidate_exact_teacher_count": 0,
+        "effective_exact_teacher_count": 0,
+        "frame_count": 1,
+        "negative_frame_count": 0,
+        "observable_failure_pathway_counts": {
+          "candidate_selection_mismatch_non_ood": 1
+        },
+        "ood_frame_count": 0,
+        "positive_frame_count": 1,
+        "rejected_frame_count": 1
+      },
+      "150": {
+        "candidate_exact_teacher_count": 0,
+        "effective_exact_teacher_count": 0,
+        "frame_count": 2,
+        "negative_frame_count": 0,
+        "observable_failure_pathway_counts": {
+          "candidate_selection_mismatch_non_ood": 2
+        },
+        "ood_frame_count": 0,
+        "positive_frame_count": 2,
+        "rejected_frame_count": 2
+      },
+      "16": {
+        "candidate_exact_teacher_count": 0,
+        "effective_exact_teacher_count": 0,
+        "frame_count": 2,
+        "negative_frame_count": 0,
+        "observable_failure_pathway_counts": {
+          "candidate_selection_mismatch_non_ood": 2
+        },
+        "ood_frame_count": 0,
+        "positive_frame_count": 2,
+        "rejected_frame_count": 2
+      },
+      "20": {
+        "candidate_exact_teacher_count": 0,
+        "effective_exact_teacher_count": 0,
+        "frame_count": 1,
+        "negative_frame_count": 0,
+        "observable_failure_pathway_counts": {
+          "candidate_selection_mismatch_non_ood": 1
+        },
+        "ood_frame_count": 0,
+        "positive_frame_count": 1,
+        "rejected_frame_count": 1
+      },
+      "212": {
+        "candidate_exact_teacher_count": 0,
+        "effective_exact_teacher_count": 0,
+        "frame_count": 1,
+        "negative_frame_count": 0,
+        "observable_failure_pathway_counts": {
+          "candidate_selection_mismatch_non_ood": 1
+        },
+        "ood_frame_count": 0,
+        "positive_frame_count": 1,
+        "rejected_frame_count": 1
+      },
+      "218": {
+        "candidate_exact_teacher_count": 0,
+        "effective_exact_teacher_count": 0,
+        "frame_count": 1,
+        "negative_frame_count": 0,
+        "observable_failure_pathway_counts": {
+          "candidate_selection_mismatch_non_ood": 1
+        },
+        "ood_frame_count": 0,
+        "positive_frame_count": 1,
+        "rejected_frame_count": 1
+      },
+      "222": {
+        "candidate_exact_teacher_count": 0,
+        "effective_exact_teacher_count": 0,
+        "frame_count": 1,
+        "negative_frame_count": 0,
+        "observable_failure_pathway_counts": {
+          "candidate_selection_mismatch_non_ood": 1
+        },
+        "ood_frame_count": 0,
+        "positive_frame_count": 1,
+        "rejected_frame_count": 1
+      },
+      "24": {
+        "candidate_exact_teacher_count": 0,
+        "effective_exact_teacher_count": 0,
+        "frame_count": 1,
+        "negative_frame_count": 0,
+        "observable_failure_pathway_counts": {
+          "candidate_selection_mismatch_non_ood": 1
+        },
+        "ood_frame_count": 0,
+        "positive_frame_count": 1,
+        "rejected_frame_count": 1
+      },
+      "244": {
+        "candidate_exact_teacher_count": 0,
+        "effective_exact_teacher_count": 0,
+        "frame_count": 1,
+        "negative_frame_count": 0,
+        "observable_failure_pathway_counts": {
+          "candidate_selection_mismatch_non_ood": 1
+        },
+        "ood_frame_count": 0,
+        "positive_frame_count": 1,
+        "rejected_frame_count": 1
+      },
+      "250": {
+        "candidate_exact_teacher_count": 0,
+        "effective_exact_teacher_count": 0,
+        "frame_count": 1,
+        "negative_frame_count": 0,
+        "observable_failure_pathway_counts": {
+          "candidate_selection_mismatch_non_ood": 1
+        },
+        "ood_frame_count": 0,
+        "positive_frame_count": 1,
+        "rejected_frame_count": 1
+      },
+      "258": {
+        "candidate_exact_teacher_count": 0,
+        "effective_exact_teacher_count": 0,
+        "frame_count": 2,
+        "negative_frame_count": 0,
+        "observable_failure_pathway_counts": {
+          "candidate_selection_mismatch_non_ood": 2
+        },
+        "ood_frame_count": 0,
+        "positive_frame_count": 2,
+        "rejected_frame_count": 2
+      },
+      "266": {
+        "candidate_exact_teacher_count": 0,
+        "effective_exact_teacher_count": 0,
+        "frame_count": 1,
+        "negative_frame_count": 0,
+        "observable_failure_pathway_counts": {
+          "candidate_selection_mismatch_non_ood": 1
+        },
+        "ood_frame_count": 0,
+        "positive_frame_count": 1,
+        "rejected_frame_count": 1
+      },
+      "272": {
+        "candidate_exact_teacher_count": 0,
+        "effective_exact_teacher_count": 0,
+        "frame_count": 1,
+        "negative_frame_count": 0,
+        "observable_failure_pathway_counts": {
+          "candidate_selection_mismatch_non_ood": 1
+        },
+        "ood_frame_count": 0,
+        "positive_frame_count": 1,
+        "rejected_frame_count": 1
+      },
+      "28": {
+        "candidate_exact_teacher_count": 0,
+        "effective_exact_teacher_count": 0,
+        "frame_count": 1,
+        "negative_frame_count": 0,
+        "observable_failure_pathway_counts": {
+          "candidate_selection_mismatch_non_ood": 1
+        },
+        "ood_frame_count": 0,
+        "positive_frame_count": 1,
+        "rejected_frame_count": 1
+      },
+      "280": {
+        "candidate_exact_teacher_count": 0,
+        "effective_exact_teacher_count": 0,
+        "frame_count": 1,
+        "negative_frame_count": 0,
+        "observable_failure_pathway_counts": {
+          "candidate_selection_mismatch_non_ood": 1
+        },
+        "ood_frame_count": 0,
+        "positive_frame_count": 1,
+        "rejected_frame_count": 1
+      },
+      "290": {
+        "candidate_exact_teacher_count": 0,
+        "effective_exact_teacher_count": 0,
+        "frame_count": 1,
+        "negative_frame_count": 0,
+        "observable_failure_pathway_counts": {
+          "candidate_selection_mismatch_non_ood": 1
+        },
+        "ood_frame_count": 0,
+        "positive_frame_count": 1,
+        "rejected_frame_count": 1
+      },
+      "30": {
+        "candidate_exact_teacher_count": 0,
+        "effective_exact_teacher_count": 0,
+        "frame_count": 2,
+        "negative_frame_count": 0,
+        "observable_failure_pathway_counts": {
+          "candidate_selection_mismatch_non_ood": 2
+        },
+        "ood_frame_count": 0,
+        "positive_frame_count": 2,
+        "rejected_frame_count": 2
+      },
+      "300": {
+        "candidate_exact_teacher_count": 0,
+        "effective_exact_teacher_count": 0,
+        "frame_count": 1,
+        "negative_frame_count": 0,
+        "observable_failure_pathway_counts": {
+          "candidate_selection_mismatch_non_ood": 1
+        },
+        "ood_frame_count": 0,
+        "positive_frame_count": 1,
+        "rejected_frame_count": 1
+      },
+      "306": {
+        "candidate_exact_teacher_count": 0,
+        "effective_exact_teacher_count": 0,
+        "frame_count": 1,
+        "negative_frame_count": 0,
+        "observable_failure_pathway_counts": {
+          "candidate_selection_mismatch_non_ood": 1
+        },
+        "ood_frame_count": 0,
+        "positive_frame_count": 1,
+        "rejected_frame_count": 1
+      },
+      "318": {
+        "candidate_exact_teacher_count": 0,
+        "effective_exact_teacher_count": 0,
+        "frame_count": 1,
+        "negative_frame_count": 0,
+        "observable_failure_pathway_counts": {
+          "candidate_selection_mismatch_non_ood": 1
+        },
+        "ood_frame_count": 0,
+        "positive_frame_count": 1,
+        "rejected_frame_count": 1
+      },
+      "32": {
+        "candidate_exact_teacher_count": 0,
+        "effective_exact_teacher_count": 0,
+        "frame_count": 1,
+        "negative_frame_count": 0,
+        "observable_failure_pathway_counts": {
+          "candidate_selection_mismatch_non_ood": 1
+        },
+        "ood_frame_count": 0,
+        "positive_frame_count": 1,
+        "rejected_frame_count": 1
+      },
+      "324": {
+        "candidate_exact_teacher_count": 0,
+        "effective_exact_teacher_count": 0,
+        "frame_count": 1,
+        "negative_frame_count": 0,
+        "observable_failure_pathway_counts": {
+          "candidate_selection_mismatch_non_ood": 1
+        },
+        "ood_frame_count": 0,
+        "positive_frame_count": 1,
+        "rejected_frame_count": 1
+      },
+      "38": {
+        "candidate_exact_teacher_count": 0,
+        "effective_exact_teacher_count": 0,
+        "frame_count": 1,
+        "negative_frame_count": 0,
+        "observable_failure_pathway_counts": {
+          "candidate_selection_mismatch_non_ood": 1
+        },
+        "ood_frame_count": 0,
+        "positive_frame_count": 1,
+        "rejected_frame_count": 1
+      },
+      "4": {
+        "candidate_exact_teacher_count": 0,
+        "effective_exact_teacher_count": 0,
+        "frame_count": 21,
+        "negative_frame_count": 0,
+        "observable_failure_pathway_counts": {
+          "candidate_selection_mismatch_non_ood": 10,
+          "feature_ood_rule_fallback": 11
+        },
+        "ood_frame_count": 11,
+        "positive_frame_count": 21,
+        "rejected_frame_count": 12
+      },
+      "42": {
+        "candidate_exact_teacher_count": 0,
+        "effective_exact_teacher_count": 0,
+        "frame_count": 1,
+        "negative_frame_count": 0,
+        "observable_failure_pathway_counts": {
+          "candidate_selection_mismatch_non_ood": 1
+        },
+        "ood_frame_count": 0,
+        "positive_frame_count": 1,
+        "rejected_frame_count": 1
+      },
+      "46": {
+        "candidate_exact_teacher_count": 0,
+        "effective_exact_teacher_count": 0,
+        "frame_count": 1,
+        "negative_frame_count": 0,
+        "observable_failure_pathway_counts": {
+          "candidate_selection_mismatch_non_ood": 1
+        },
+        "ood_frame_count": 0,
+        "positive_frame_count": 1,
+        "rejected_frame_count": 1
+      },
+      "48": {
+        "candidate_exact_teacher_count": 0,
+        "effective_exact_teacher_count": 0,
+        "frame_count": 1,
+        "negative_frame_count": 0,
+        "observable_failure_pathway_counts": {
+          "candidate_selection_mismatch_non_ood": 1
+        },
+        "ood_frame_count": 0,
+        "positive_frame_count": 1,
+        "rejected_frame_count": 1
+      },
+      "50": {
+        "candidate_exact_teacher_count": 0,
+        "effective_exact_teacher_count": 0,
+        "frame_count": 2,
+        "negative_frame_count": 0,
+        "observable_failure_pathway_counts": {
+          "candidate_selection_mismatch_non_ood": 2
+        },
+        "ood_frame_count": 0,
+        "positive_frame_count": 2,
+        "rejected_frame_count": 2
+      },
+      "54": {
+        "candidate_exact_teacher_count": 0,
+        "effective_exact_teacher_count": 0,
+        "frame_count": 3,
+        "negative_frame_count": 0,
+        "observable_failure_pathway_counts": {
+          "candidate_selection_mismatch_non_ood": 3
+        },
+        "ood_frame_count": 0,
+        "positive_frame_count": 3,
+        "rejected_frame_count": 3
+      },
+      "56": {
+        "candidate_exact_teacher_count": 0,
+        "effective_exact_teacher_count": 0,
+        "frame_count": 1,
+        "negative_frame_count": 0,
+        "observable_failure_pathway_counts": {
+          "candidate_selection_mismatch_non_ood": 1
+        },
+        "ood_frame_count": 0,
+        "positive_frame_count": 1,
+        "rejected_frame_count": 1
+      },
+      "6": {
+        "candidate_exact_teacher_count": 0,
+        "effective_exact_teacher_count": 0,
+        "frame_count": 9,
+        "negative_frame_count": 0,
+        "observable_failure_pathway_counts": {
+          "candidate_selection_mismatch_non_ood": 2,
+          "feature_ood_rule_fallback": 7
+        },
+        "ood_frame_count": 7,
+        "positive_frame_count": 9,
+        "rejected_frame_count": 9
+      },
+      "64": {
+        "candidate_exact_teacher_count": 0,
+        "effective_exact_teacher_count": 0,
+        "frame_count": 1,
+        "negative_frame_count": 0,
+        "observable_failure_pathway_counts": {
+          "candidate_selection_mismatch_non_ood": 1
+        },
+        "ood_frame_count": 0,
+        "positive_frame_count": 1,
+        "rejected_frame_count": 1
+      },
+      "8": {
+        "candidate_exact_teacher_count": 0,
+        "effective_exact_teacher_count": 0,
+        "frame_count": 10,
+        "negative_frame_count": 0,
+        "observable_failure_pathway_counts": {
+          "candidate_selection_mismatch_non_ood": 1,
+          "feature_ood_rule_fallback": 9
+        },
+        "ood_frame_count": 9,
+        "positive_frame_count": 10,
+        "rejected_frame_count": 10
+      },
+      "82": {
+        "candidate_exact_teacher_count": 0,
+        "effective_exact_teacher_count": 0,
+        "frame_count": 1,
+        "negative_frame_count": 0,
+        "observable_failure_pathway_counts": {
+          "candidate_selection_mismatch_non_ood": 1
+        },
+        "ood_frame_count": 0,
+        "positive_frame_count": 1,
+        "rejected_frame_count": 1
+      },
+      "84": {
+        "candidate_exact_teacher_count": 0,
+        "effective_exact_teacher_count": 0,
+        "frame_count": 3,
+        "negative_frame_count": 0,
+        "observable_failure_pathway_counts": {
+          "candidate_selection_mismatch_non_ood": 3
+        },
+        "ood_frame_count": 0,
+        "positive_frame_count": 3,
+        "rejected_frame_count": 3
+      },
+      "86": {
+        "candidate_exact_teacher_count": 0,
+        "effective_exact_teacher_count": 0,
+        "frame_count": 1,
+        "negative_frame_count": 0,
+        "observable_failure_pathway_counts": {
+          "candidate_selection_mismatch_non_ood": 1
+        },
+        "ood_frame_count": 0,
+        "positive_frame_count": 1,
+        "rejected_frame_count": 1
+      },
+      "96": {
+        "candidate_exact_teacher_count": 0,
+        "effective_exact_teacher_count": 0,
+        "frame_count": 1,
+        "negative_frame_count": 0,
+        "observable_failure_pathway_counts": {
+          "candidate_selection_mismatch_non_ood": 1
+        },
+        "ood_frame_count": 0,
+        "positive_frame_count": 1,
+        "rejected_frame_count": 1
+      },
+      "98": {
+        "candidate_exact_teacher_count": 0,
+        "effective_exact_teacher_count": 0,
+        "frame_count": 1,
+        "negative_frame_count": 0,
+        "observable_failure_pathway_counts": {
+          "candidate_selection_mismatch_non_ood": 1
+        },
+        "ood_frame_count": 0,
+        "positive_frame_count": 1,
+        "rejected_frame_count": 1
+      }
+    },
+    "cardinality_relation": {
+      "anonymous_targets_equal_resources": {
+        "candidate_exact_teacher_count": 110,
+        "effective_exact_teacher_count": 111,
+        "frame_count": 172,
+        "negative_frame_count": 104,
+        "observable_failure_pathway_counts": {
+          "candidate_selection_mismatch_non_ood": 44,
+          "feature_ood_rule_fallback": 17,
+          "negative_not_applicable": 104,
+          "teacher_exact_match": 7
+        },
+        "ood_frame_count": 17,
+        "positive_frame_count": 68,
+        "rejected_frame_count": 54
+      },
+      "anonymous_targets_greater_than_resources": {
+        "candidate_exact_teacher_count": 1,
+        "effective_exact_teacher_count": 1,
+        "frame_count": 28,
+        "negative_frame_count": 0,
+        "observable_failure_pathway_counts": {
+          "candidate_selection_mismatch_non_ood": 17,
+          "feature_ood_rule_fallback": 10,
+          "teacher_exact_match": 1
+        },
+        "ood_frame_count": 10,
+        "positive_frame_count": 28,
+        "rejected_frame_count": 27
+      },
+      "anonymous_targets_less_than_resources": {
+        "candidate_exact_teacher_count": 78,
+        "effective_exact_teacher_count": 78,
+        "frame_count": 92,
+        "negative_frame_count": 78,
+        "observable_failure_pathway_counts": {
+          "candidate_selection_mismatch_non_ood": 14,
+          "negative_not_applicable": 78
+        },
+        "ood_frame_count": 0,
+        "positive_frame_count": 14,
+        "rejected_frame_count": 13
+      }
+    },
+    "class_label": {
+      "negative": {
+        "candidate_exact_teacher_count": 181,
+        "effective_exact_teacher_count": 182,
+        "frame_count": 182,
+        "negative_frame_count": 182,
+        "observable_failure_pathway_counts": {
+          "negative_not_applicable": 182
+        },
+        "ood_frame_count": 0,
+        "positive_frame_count": 0,
+        "rejected_frame_count": 1
+      },
+      "positive": {
+        "candidate_exact_teacher_count": 8,
+        "effective_exact_teacher_count": 8,
+        "frame_count": 110,
+        "negative_frame_count": 0,
+        "observable_failure_pathway_counts": {
+          "candidate_selection_mismatch_non_ood": 75,
+          "feature_ood_rule_fallback": 27,
+          "teacher_exact_match": 8
+        },
+        "ood_frame_count": 27,
+        "positive_frame_count": 110,
+        "rejected_frame_count": 93
+      }
+    },
+    "configured_scale": {
+      "100t100r": {
+        "candidate_exact_teacher_count": 20,
+        "effective_exact_teacher_count": 20,
+        "frame_count": 60,
+        "negative_frame_count": 20,
+        "observable_failure_pathway_counts": {
+          "candidate_selection_mismatch_non_ood": 30,
+          "feature_ood_rule_fallback": 10,
+          "negative_not_applicable": 20
+        },
+        "ood_frame_count": 10,
+        "positive_frame_count": 40,
+        "rejected_frame_count": 40
+      },
+      "200t200r": {
+        "candidate_exact_teacher_count": 20,
+        "effective_exact_teacher_count": 20,
+        "frame_count": 58,
+        "negative_frame_count": 20,
+        "observable_failure_pathway_counts": {
+          "candidate_selection_mismatch_non_ood": 23,
+          "feature_ood_rule_fallback": 15,
+          "negative_not_applicable": 20
+        },
+        "ood_frame_count": 15,
+        "positive_frame_count": 38,
+        "rejected_frame_count": 38
+      },
+      "20t20r": {
+        "candidate_exact_teacher_count": 50,
+        "effective_exact_teacher_count": 50,
+        "frame_count": 60,
+        "negative_frame_count": 44,
+        "observable_failure_pathway_counts": {
+          "candidate_selection_mismatch_non_ood": 10,
+          "negative_not_applicable": 44,
+          "teacher_exact_match": 6
+        },
+        "ood_frame_count": 0,
+        "positive_frame_count": 16,
+        "rejected_frame_count": 4
+      },
+      "50t50r": {
+        "candidate_exact_teacher_count": 48,
+        "effective_exact_teacher_count": 49,
+        "frame_count": 60,
+        "negative_frame_count": 47,
+        "observable_failure_pathway_counts": {
+          "candidate_selection_mismatch_non_ood": 9,
+          "feature_ood_rule_fallback": 2,
+          "negative_not_applicable": 47,
+          "teacher_exact_match": 2
+        },
+        "ood_frame_count": 2,
+        "positive_frame_count": 13,
+        "rejected_frame_count": 12
+      },
+      "5t5r": {
+        "candidate_exact_teacher_count": 51,
+        "effective_exact_teacher_count": 51,
+        "frame_count": 54,
+        "negative_frame_count": 51,
+        "observable_failure_pathway_counts": {
+          "candidate_selection_mismatch_non_ood": 3,
+          "negative_not_applicable": 51
+        },
+        "ood_frame_count": 0,
+        "positive_frame_count": 3,
+        "rejected_frame_count": 0
+      }
+    },
+    "demand_slot_relation": {
+      "aggregate_slots_equal_targets_details_unavailable": {
+        "candidate_exact_teacher_count": 189,
+        "effective_exact_teacher_count": 190,
+        "frame_count": 292,
+        "negative_frame_count": 182,
+        "observable_failure_pathway_counts": {
+          "candidate_selection_mismatch_non_ood": 75,
+          "feature_ood_rule_fallback": 27,
+          "negative_not_applicable": 182,
+          "teacher_exact_match": 8
+        },
+        "ood_frame_count": 27,
+        "positive_frame_count": 110,
+        "rejected_frame_count": 94
+      }
+    },
+    "ood": {
+      "false": {
+        "candidate_exact_teacher_count": 189,
+        "effective_exact_teacher_count": 190,
+        "frame_count": 265,
+        "negative_frame_count": 182,
+        "observable_failure_pathway_counts": {
+          "candidate_selection_mismatch_non_ood": 75,
+          "negative_not_applicable": 182,
+          "teacher_exact_match": 8
+        },
+        "ood_frame_count": 0,
+        "positive_frame_count": 83,
+        "rejected_frame_count": 67
+      },
+      "true": {
+        "candidate_exact_teacher_count": 0,
+        "effective_exact_teacher_count": 0,
+        "frame_count": 27,
+        "negative_frame_count": 0,
+        "observable_failure_pathway_counts": {
+          "feature_ood_rule_fallback": 27
+        },
+        "ood_frame_count": 27,
+        "positive_frame_count": 27,
+        "rejected_frame_count": 27
+      }
+    },
+    "rejection_reason": {
+      "binding_change_limit_exceeded": {
+        "candidate_exact_teacher_count": 0,
+        "effective_exact_teacher_count": 1,
+        "frame_count": 65,
+        "negative_frame_count": 1,
+        "observable_failure_pathway_counts": {
+          "candidate_selection_mismatch_non_ood": 64,
+          "negative_not_applicable": 1
+        },
+        "ood_frame_count": 0,
+        "positive_frame_count": 64,
+        "rejected_frame_count": 65
+      },
+      "feature_ood": {
+        "candidate_exact_teacher_count": 0,
+        "effective_exact_teacher_count": 0,
+        "frame_count": 27,
+        "negative_frame_count": 0,
+        "observable_failure_pathway_counts": {
+          "feature_ood_rule_fallback": 27
+        },
+        "ood_frame_count": 27,
+        "positive_frame_count": 27,
+        "rejected_frame_count": 27
+      },
+      "none": {
+        "candidate_exact_teacher_count": 189,
+        "effective_exact_teacher_count": 189,
+        "frame_count": 198,
+        "negative_frame_count": 181,
+        "observable_failure_pathway_counts": {
+          "candidate_selection_mismatch_non_ood": 9,
+          "negative_not_applicable": 181,
+          "teacher_exact_match": 8
+        },
+        "ood_frame_count": 0,
+        "positive_frame_count": 17,
+        "rejected_frame_count": 0
+      },
+      "relative_rule_cost_difference_exceeded": {
+        "candidate_exact_teacher_count": 0,
+        "effective_exact_teacher_count": 0,
+        "frame_count": 6,
+        "negative_frame_count": 0,
+        "observable_failure_pathway_counts": {
+          "candidate_selection_mismatch_non_ood": 6
+        },
+        "ood_frame_count": 0,
+        "positive_frame_count": 6,
+        "rejected_frame_count": 6
+      },
+      "rule_cost_difference_exceeded": {
+        "candidate_exact_teacher_count": 0,
+        "effective_exact_teacher_count": 0,
+        "frame_count": 53,
+        "negative_frame_count": 0,
+        "observable_failure_pathway_counts": {
+          "candidate_selection_mismatch_non_ood": 53
+        },
+        "ood_frame_count": 0,
+        "positive_frame_count": 53,
+        "rejected_frame_count": 53
+      }
+    },
+    "scenario": {
+      "center_failure-20v20-v1": {
+        "candidate_exact_teacher_count": 27,
+        "effective_exact_teacher_count": 27,
+        "frame_count": 30,
+        "negative_frame_count": 25,
+        "observable_failure_pathway_counts": {
+          "candidate_selection_mismatch_non_ood": 3,
+          "negative_not_applicable": 25,
+          "teacher_exact_match": 2
+        },
+        "ood_frame_count": 0,
+        "positive_frame_count": 5,
+        "rejected_frame_count": 2
+      },
+      "communication_degraded-5v5-v1": {
+        "candidate_exact_teacher_count": 22,
+        "effective_exact_teacher_count": 22,
+        "frame_count": 24,
+        "negative_frame_count": 22,
+        "observable_failure_pathway_counts": {
+          "candidate_selection_mismatch_non_ood": 2,
+          "negative_not_applicable": 22
+        },
+        "ood_frame_count": 0,
+        "positive_frame_count": 2,
+        "rejected_frame_count": 0
+      },
+      "delayed_noisy-200v200-v1": {
+        "candidate_exact_teacher_count": 10,
+        "effective_exact_teacher_count": 10,
+        "frame_count": 28,
+        "negative_frame_count": 10,
+        "observable_failure_pathway_counts": {
+          "candidate_selection_mismatch_non_ood": 14,
+          "feature_ood_rule_fallback": 4,
+          "negative_not_applicable": 10
+        },
+        "ood_frame_count": 4,
+        "positive_frame_count": 18,
+        "rejected_frame_count": 18
+      },
+      "dense_crossing-20v20-v1": {
+        "candidate_exact_teacher_count": 23,
+        "effective_exact_teacher_count": 23,
+        "frame_count": 30,
+        "negative_frame_count": 19,
+        "observable_failure_pathway_counts": {
+          "candidate_selection_mismatch_non_ood": 7,
+          "negative_not_applicable": 19,
+          "teacher_exact_match": 4
+        },
+        "ood_frame_count": 0,
+        "positive_frame_count": 11,
+        "rejected_frame_count": 2
+      },
+      "evasive_multilevel-100v100-v1": {
+        "candidate_exact_teacher_count": 10,
+        "effective_exact_teacher_count": 10,
+        "frame_count": 30,
+        "negative_frame_count": 10,
+        "observable_failure_pathway_counts": {
+          "candidate_selection_mismatch_non_ood": 16,
+          "feature_ood_rule_fallback": 4,
+          "negative_not_applicable": 10
+        },
+        "ood_frame_count": 4,
+        "positive_frame_count": 20,
+        "rejected_frame_count": 20
+      },
+      "formation_split-50v50-v1": {
+        "candidate_exact_teacher_count": 18,
+        "effective_exact_teacher_count": 19,
+        "frame_count": 30,
+        "negative_frame_count": 17,
+        "observable_failure_pathway_counts": {
+          "candidate_selection_mismatch_non_ood": 9,
+          "feature_ood_rule_fallback": 2,
+          "negative_not_applicable": 17,
+          "teacher_exact_match": 2
+        },
+        "ood_frame_count": 2,
+        "positive_frame_count": 13,
+        "rejected_frame_count": 12
+      },
+      "high_threat_m_to_n-100v100-v1": {
+        "candidate_exact_teacher_count": 10,
+        "effective_exact_teacher_count": 10,
+        "frame_count": 30,
+        "negative_frame_count": 10,
+        "observable_failure_pathway_counts": {
+          "candidate_selection_mismatch_non_ood": 14,
+          "feature_ood_rule_fallback": 6,
+          "negative_not_applicable": 10
+        },
+        "ood_frame_count": 6,
+        "positive_frame_count": 20,
+        "rejected_frame_count": 20
+      },
+      "high_threat_m_to_n-200v200-v1": {
+        "candidate_exact_teacher_count": 10,
+        "effective_exact_teacher_count": 10,
+        "frame_count": 30,
+        "negative_frame_count": 10,
+        "observable_failure_pathway_counts": {
+          "candidate_selection_mismatch_non_ood": 9,
+          "feature_ood_rule_fallback": 11,
+          "negative_not_applicable": 10
+        },
+        "ood_frame_count": 11,
+        "positive_frame_count": 20,
+        "rejected_frame_count": 20
+      },
+      "nominal-5v5-v1": {
+        "candidate_exact_teacher_count": 29,
+        "effective_exact_teacher_count": 29,
+        "frame_count": 30,
+        "negative_frame_count": 29,
+        "observable_failure_pathway_counts": {
+          "candidate_selection_mismatch_non_ood": 1,
+          "negative_not_applicable": 29
+        },
+        "ood_frame_count": 0,
+        "positive_frame_count": 1,
+        "rejected_frame_count": 0
+      },
+      "secondary_failure-50v50-v1": {
+        "candidate_exact_teacher_count": 30,
+        "effective_exact_teacher_count": 30,
+        "frame_count": 30,
+        "negative_frame_count": 30,
+        "observable_failure_pathway_counts": {
+          "negative_not_applicable": 30
+        },
+        "ood_frame_count": 0,
+        "positive_frame_count": 0,
+        "rejected_frame_count": 0
+      }
+    },
+    "source_split": {
+      "test": {
+        "candidate_exact_teacher_count": 32,
+        "effective_exact_teacher_count": 32,
+        "frame_count": 57,
+        "negative_frame_count": 32,
+        "observable_failure_pathway_counts": {
+          "candidate_selection_mismatch_non_ood": 16,
+          "feature_ood_rule_fallback": 9,
+          "negative_not_applicable": 32
+        },
+        "ood_frame_count": 9,
+        "positive_frame_count": 25,
+        "rejected_frame_count": 22
+      },
+      "train": {
+        "candidate_exact_teacher_count": 117,
+        "effective_exact_teacher_count": 118,
+        "frame_count": 178,
+        "negative_frame_count": 113,
+        "observable_failure_pathway_counts": {
+          "candidate_selection_mismatch_non_ood": 46,
+          "feature_ood_rule_fallback": 14,
+          "negative_not_applicable": 113,
+          "teacher_exact_match": 5
+        },
+        "ood_frame_count": 14,
+        "positive_frame_count": 65,
+        "rejected_frame_count": 55
+      },
+      "validation": {
+        "candidate_exact_teacher_count": 40,
+        "effective_exact_teacher_count": 40,
+        "frame_count": 57,
+        "negative_frame_count": 37,
+        "observable_failure_pathway_counts": {
+          "candidate_selection_mismatch_non_ood": 13,
+          "feature_ood_rule_fallback": 4,
+          "negative_not_applicable": 37,
+          "teacher_exact_match": 3
+        },
+        "ood_frame_count": 4,
+        "positive_frame_count": 20,
+        "rejected_frame_count": 17
+      }
+    },
+    "teacher_binding_change_count": {
+      "0": {
+        "candidate_exact_teacher_count": 181,
+        "effective_exact_teacher_count": 182,
+        "frame_count": 182,
+        "negative_frame_count": 182,
+        "observable_failure_pathway_counts": {
+          "negative_not_applicable": 182
+        },
+        "ood_frame_count": 0,
+        "positive_frame_count": 0,
+        "rejected_frame_count": 1
+      },
+      "4": {
+        "candidate_exact_teacher_count": 5,
+        "effective_exact_teacher_count": 5,
+        "frame_count": 69,
+        "negative_frame_count": 0,
+        "observable_failure_pathway_counts": {
+          "candidate_selection_mismatch_non_ood": 53,
+          "feature_ood_rule_fallback": 11,
+          "teacher_exact_match": 5
+        },
+        "ood_frame_count": 11,
+        "positive_frame_count": 69,
+        "rejected_frame_count": 56
+      },
+      "6": {
+        "candidate_exact_teacher_count": 3,
+        "effective_exact_teacher_count": 3,
+        "frame_count": 23,
+        "negative_frame_count": 0,
+        "observable_failure_pathway_counts": {
+          "candidate_selection_mismatch_non_ood": 13,
+          "feature_ood_rule_fallback": 7,
+          "teacher_exact_match": 3
+        },
+        "ood_frame_count": 7,
+        "positive_frame_count": 23,
+        "rejected_frame_count": 19
+      },
+      "8": {
+        "candidate_exact_teacher_count": 0,
+        "effective_exact_teacher_count": 0,
+        "frame_count": 18,
+        "negative_frame_count": 0,
+        "observable_failure_pathway_counts": {
+          "candidate_selection_mismatch_non_ood": 9,
+          "feature_ood_rule_fallback": 9
+        },
+        "ood_frame_count": 9,
+        "positive_frame_count": 18,
+        "rejected_frame_count": 18
+      }
+    }
+  },
+  "test_positive_failure_attribution": {
+    "candidate_teacher_exact_match_numerator": 0,
+    "demand_structure_attribution_unavailable_count": 25,
+    "effective_teacher_exact_match_numerator": 0,
+    "exclusive_observable_pathway_counts": {
+      "candidate_selection_mismatch_non_ood": 16,
+      "feature_ood_rule_fallback": 9
+    },
+    "interpretation": {
+      "action_slot_or_demand_structure": "unavailable",
+      "candidate_unreachable": "unavailable",
+      "feature_ood": "confirmed_direct_fallback_path",
+      "model_ranking_error": "unavailable_at_per_edge_level",
+      "non_ood_candidate_mismatch": "candidate_result_mismatch_confirmed_internal_ranking_vs_topology_unavailable",
+      "other_observable_cause_count": 0,
+      "projection_rejection": "cooccurring_fail_closed_gate_not_sole_teacher_match_cause"
+    },
+    "observable_pathway_denominator": 25,
+    "per_edge_model_ranking_unavailable_count": 25,
+    "positive_denominator": 25,
+    "projection_after_candidate_mismatch_count": 22,
+    "projection_only_failure_count": 0,
+    "projection_rejection_cooccurrence_count": 22,
+    "strict_root_cause_denominator": 9,
+    "teacher_candidate_reachability_unavailable_count": 25
+  },
+  "v3_development_data_request": {
+    "action_change_type_count": 11,
+    "all_permissions_false": true,
+    "bundle_written": false,
+    "data_generated": false,
+    "generation_authorized": false,
+    "hard_negative_type_count": 8,
+    "minimum_hard_negative_frame_count": 450,
+    "minimum_negative_frame_count": 900,
+    "minimum_positive_frame_count": 900,
+    "model_trained": false,
+    "observability_requirement_count": 10,
+    "request_file_sha256": "6800fd622fbc7dd27a7411f3419fb92729b195bd8fc6880dcda4c5f8637043e2",
+    "request_id": "d3-a1-source-independent-v3-development-data-request-20260801-v1",
+    "requested_cell_count": 15,
+    "requested_episode_count": 300,
+    "requested_unique_seed_count": 300,
+    "seed_exclusion": {
+      "allocation_status": "unassigned",
+      "assigned_seed_count": 0,
+      "formal_seed_reuse_allowed": false,
+      "generation_authorized": false,
+      "known_forbidden_seed_count": 220,
+      "other_registered_d3_seed_reuse_allowed": false,
+      "training_seed_reuse_allowed": false,
+      "v2_evaluation_seed_reuse_allowed": false
+    },
+    "seed_registry_file_sha256": "e3fda5d9d8cf6d58692349b5884e91a928ad723e83e7d95d10cf6048ea7f7155",
+    "status": "request_frozen_generation_not_authorized"
+  }
+}

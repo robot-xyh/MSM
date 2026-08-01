@@ -1,0 +1,77 @@
+{
+  "schema_version": "d3_a1_source_independent_v3_seed_exclusion_registry_v1",
+  "registry_id": "d3-a1-v3-development-source-seed-request-20260801-v1",
+  "status": "exclusion_registry_frozen_seed_allocation_unassigned",
+  "known_forbidden_catalogs": [
+    {
+      "catalog_id": "scalable3d_training_v1",
+      "reason": "used_by_prior_d3_training_or_development",
+      "ranges": [
+        {
+          "start": 0,
+          "stop_inclusive": 99
+        }
+      ],
+      "seed_count": 100
+    },
+    {
+      "catalog_id": "scalable3d_formal_holdout_v1",
+      "reason": "formal_holdout_must_remain_unread",
+      "ranges": [
+        {
+          "start": 1000,
+          "stop_inclusive": 1019
+        }
+      ],
+      "seed_count": 20
+    },
+    {
+      "catalog_id": "d3_a1_source_independent_evaluation_v2",
+      "reason": "already_evaluated_and_used_for_failure_diagnosis",
+      "ranges": [
+        {
+          "start": 20000,
+          "stop_inclusive": 20099
+        }
+      ],
+      "seed_count": 100
+    }
+  ],
+  "known_forbidden_seed_count": 220,
+  "additional_d3_registry_policy": {
+    "canonical_registry_union_required_at_allocation": true,
+    "allocation_must_fail_if_registry_union_unavailable": true,
+    "overlap_with_any_registered_d3_seed_allowed": false,
+    "registry_snapshot_sha256_required": true
+  },
+  "requested_allocation": {
+    "requested_unique_seed_count": 300,
+    "assigned_seed_values": [],
+    "allocation_status": "unassigned",
+    "allocation_owner": "main",
+    "generation_authorized": false
+  },
+  "split_request": {
+    "unit": "whole_episode_grouped_by_numeric_seed",
+    "train_seed_count": 180,
+    "validation_seed_count": 60,
+    "test_seed_count": 60,
+    "seed_atomic_across_scenarios_scales_and_splits": true,
+    "cross_split_seed_overlap_allowed": false
+  },
+  "permissions": {
+    "generation": false,
+    "training": false,
+    "optimizer": false,
+    "checkpoint_selection": false,
+    "threshold_adjustment": false,
+    "runtime": false,
+    "assist": false,
+    "assignment": false,
+    "plan": false,
+    "control": false,
+    "physical": false,
+    "formal_admission": false,
+    "production_admission": false
+  }
+}

@@ -1,5 +1,39 @@
 # D3 集中式 Assignment Planner 计划
 
+## 2026-08-01 A1 v2 失败归因与 v3 来源请求
+
+状态：`v2_failure_attributed_v3_development_source_requested_not_admitted`。
+
+1. [x] 严格复载冻结 v2 的 `SHA256SUMS`、aggregate、逐帧 JSONL/CSV、合同和 bundle。
+   重新确认 100 个 episode、292 帧、seed `20000-20099`、test 教师完全匹配 `0/25`、
+   94 个拒绝帧 exact-R0、正式 seed 读取 0 和全部权限 false。
+2. [x] 消费既有 D6 外部审计和 main 状态报告作为只读上下文。D6 状态已由“待复核”纠正为
+   “离线完整性与预注册机器门已确认、仍未准入”；不扩大为运行、物理或正式证据。
+3. [x] 增加 D3-owned 只读诊断器、CLI 和测试。按 split、场景、配置规模、正负类、候选
+   availability、OOD、拒绝原因、匿名目标/资源数量、基数关系、需求槽总数和教师动作差异
+   分层，在线身份字段数为 0。
+4. [x] 对 test 的 25 个正类形成有界归因：9 帧为明确 OOD 回退，16 帧为非 OOD 候选动作
+   不匹配；22 帧投影拒绝均发生在候选已不匹配之后，投影单独阻断正确候选为 0。
+5. [x] 将逐边候选可达性、逐边模型排序和匿名需求槽结构归因为 `unavailable`。v2 工件不
+   含这些字段，不从候选计数或场景名称推断根因。
+6. [x] 冻结 v3 development data request 和 seed exclusion registry。请求 15 个 cell、
+   300 个 episode、300 个全新 seed、正负类各至少 900 帧和困难负类至少 450 帧；只请求，
+   不生成数据、不训练、不写 bundle。
+7. [x] 排除训练 `0-99`、正式 `1000-1019`、已评价 `20000-20099`。其他 D3 已登记 seed
+   由 main 在分配前提供规范 union snapshot；缺少快照或发生重叠时失败关闭。当前分配列表
+   为空，generation authority=false。
+8. [x] 生成逐帧 JSONL/CSV、聚合 JSON、中文报告和 `SHA256SUMS`。专项 `9 passed`；D3
+   全量 `677 passed, 1 skipped, 1 warning`。
+
+后续 P1 由 main 分配全新开发 seed 并生成满足请求的匿名来源。该来源形成前，不启动 v3
+训练；未来训练、检查点选择和新的来源独立评价必须分别预注册。v2 test 已用于本次诊断，
+不得再作为 v3 的独立 test。正式 `1000-1019` 继续禁止读取。A1 运行采用、版本化 ACK、
+物理窗口、同键 R0 非退化和 production admission 仍开放。
+
+`docs/AIRSIM_INTEGRATION_PLAN.md` 已检查。本项没有 AirSim DTO、settings、episode 或控制
+接口变化，因此不修改。`D3_M_TO_N_ASSIGNMENT_AND_SCHEDULING_REVIEW.md` 已检查；v3 请求
+增加 M-to-N 数据覆盖，但没有改变当前需求槽算法、联盟角色或执行权限，因而不修改该专项。
+
 ## 2026-07-31 A1 来源独立评价 v2 执行状态
 
 状态：`source_independent_evaluation_v2_gate_passed_not_admitted`。
@@ -16,12 +50,13 @@
    结果后调参。
 6. [x] D3 全量回归 `668 passed, 1 skipped, 1 warning`，评价入口及冻结相关模块
    `py_compile` 通过，scoped `git diff --check` 通过。
-7. [ ] D6 对结果目录进行独立只读复核，重算文件树、来源隔离、机器门、安全计数和权限。
-8. [ ] main 根据 D3 与 D6 双重证据另行决定是否预注册后续正式评价。当前不得启动
-   `1000-1019`，也不得授予运行、分配、计划、控制、物理或生产权限。
+7. [x] D6 已对结果目录完成独立只读复核，重算文件树、来源隔离、机器门、安全计数和
+   权限；结论仅为离线完整性与预注册机器门确认、未准入。
+8. [x] main 状态报告已保留 test `0/25` 泛化缺口；本轮转入 v3 开发来源请求，不启动
+   `1000-1019`，也不授予运行、分配、计划、控制、物理或生产权限。
 
-本次只关闭“v2 尚未执行”的 D3-owned P1。D6 独立复核、运行采用、版本化 ACK、完整物理
-窗口、同键 R0 非退化和 production admission 仍开放。
+本次关闭“v2 尚未执行”和“D6 尚未复核”两项状态缺口。test 子组泛化、运行采用、版本化
+ACK、完整物理窗口、同键 R0 非退化和 production admission 仍开放。
 
 ## 2026-07-30 A1 来源独立评价器 v2（评价前历史计划）
 

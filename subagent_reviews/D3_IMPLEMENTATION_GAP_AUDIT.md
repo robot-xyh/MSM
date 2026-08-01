@@ -1,5 +1,40 @@
 # D3 实现差距审计
 
+## 2026-08-01 A1 v2 失败归因与 v3 来源 GAP
+
+当前没有新增 P0。既有 D6 外部审计已完成，原“D6 尚未复核 v2”的状态缺口关闭。D6 只
+确认唯一 v2 目录的离线完整性、预注册总体机器门、安全计数和权限关闭；运行采用、物理
+收益及正式准入仍未证明。
+
+D3 严格复载 100 个 episode、292 帧、seed `20000-20099`、21 列 CSV 与 JSONL、合同、
+冻结 bundle 和校验清单。test 正类教师完全匹配为 `0/25`。9 帧明确由 `feature_ood`
+回退，16 帧为非 OOD 候选动作不匹配；22 帧投影拒绝均发生在候选已不匹配之后，投影单独
+阻断正确候选为 0。可观测路径覆盖 `25/25`，严格根因只确认 `9/25`。候选不可达、逐边
+排序错误和动作槽/需求结构归因因字段不足保持 `unavailable`。
+
+本轮关闭的 D3-owned P1：
+
+1. 冻结 v2 的只读失败诊断器、CLI、分层 JSONL/CSV 和 SHA 校验已实现；
+2. D6 已完成状态已同步，不再写成“待复核”；
+3. v3 development data request 和 seed exclusion registry 已版本化；
+4. 正负类、困难负类、动作变化类型和缺失可观测字段已形成明确请求；
+5. 训练 `0-99`、正式 `1000-1019`、已评价 `20000-20099` 禁止复用，其他登记 seed 在
+   main 分配前强制合并。
+
+仍开放的 P1：
+
+1. main 尚未提供所有 D3 注册表的规范 union snapshot，也未分配 300 个全新 seed；
+2. v3 请求的数据尚未生成，正类/负类/困难负类配额和候选可达性字段尚无实物验证；
+3. v3 模型训练、检查点选择和新的来源独立评价尚未预注册，当前不得启动；
+4. A1 运行采用、计划发布、版本化 ACK、完整物理窗口、同键 R0 非退化和 production
+   admission 仍未闭合；
+5. 正式 `1000-1019` 继续未读取，v2 test 已用于诊断，不能作为 v3 独立 test 复用。
+
+当前 `assigned_seed_values=[]`，generation、training、optimizer、threshold adjustment、
+runtime、assist、assignment、plan、control、physical、formal admission 和 production
+admission 均为 false。专项 `9 passed`，D3 全量
+`677 passed, 1 skipped, 1 warning`。
+
 ## 2026-07-31 A1 来源独立评价 v2 GAP 状态
 
 “v2 评价尚未执行”的 D3-owned P1 已关闭。唯一官方输出使用 100 个来源 seed
@@ -12,10 +47,10 @@
 规则矩阵突变以及模型直接输出 assignment/plan/runtime 的计数均为 0。机器门整体通过，
 结果状态是 `source_independent_evaluation_v2_gate_passed_not_admitted`。
 
-当前没有新增 P0。剩余 P1 分为两层：
+当前没有新增 P0。该日期后续状态已由 2026-08-01 条目更新：
 
-1. D6 尚未对该唯一结果目录独立重算文件哈希、来源隔离、逐帧/聚合计数、机器门、安全
-   计数和权限；D3 不能用自身校验替代 D6 审计。
+1. D6 已对该唯一结果目录独立重算文件哈希、来源隔离、逐帧/聚合计数、机器门、安全
+   计数和权限；结论为离线完整性确认、未准入。
 2. 来源独立机器门通过不等于正式或运行准入。正式保留集预注册与执行、production evidence
    assembler、模型运行采用、版本化 ACK、完整物理窗口、同键 R0 非退化和任务收益仍未
    完成。
@@ -23,7 +58,8 @@
 runtime、assist、authority、assignment、plan、control、physical、formal admission、
 production admission 等权限继续为 false。不得根据本次结果后调 bundle、归一化、教师、
 门限或安全投影；不得把该结果写成正式 R0 或生产准入。2026-07-31 D3 全量回归为
-`668 passed, 1 skipped, 1 warning`，语法与 scoped 差异格式检查通过。
+`668 passed, 1 skipped, 1 warning`，语法与 scoped 差异格式检查通过。该行保留当日历史
+测试基线，当前基线见本文顶部。
 
 ## 2026-07-30 v1 输入语义缺口与 v2 状态（评价前历史状态）
 
