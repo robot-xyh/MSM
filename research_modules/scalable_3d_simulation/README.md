@@ -1,5 +1,27 @@
 # Scalable 3D Simulation
 
+## A3 主动视觉来源域合同（2026-07-31）
+
+D5 在提交 `e16f3e0` 中将主动视觉来源固定为五类显式枚举：历史未分类、软件夹具、
+可扩展三维质点运行、AirSim 运行声明和真实相机运行声明。只有软件夹具可以携带
+`synthetic_fixture=true`；新写入的非夹具制品必须显式携带来源域。历史无来源制品保持
+保守分类，不能通过补字段升级证据等级。D5 全量回归为 `769 passed, 2 warnings`。
+
+main 在提交 `1fe66ff` 中把集成质点 episode 导出为
+`scalable_3d_point_mass_runtime`、`synthetic_fixture=false` 和
+`simulation_research`。该字段来自 D5 的统一证据等级映射，不在 main 中维护第二套定义。
+可扩展三维全量回归为 `445 passed, 1 warning`。
+
+D6 在提交 `4df42ab` 中实现不调用 D5 高层校验器的独立只读审计。它从
+`SHA256SUMS`、manifest、独立 descriptor 和 gzip 在线流重新核对来源、哈希、干净来源身份、
+whole-seed 拆分和在线真值隔离。每个基础软件夹具包含 5 个 episode、seed `200-204`；
+12 项测试分别构造来源域和篡改变体。专项为 `12 passed, 1 warning`，D6 全量为
+`1360 passed, 1 warning`。
+
+上述结果关闭来源域、main 导出接线和 D6 独立审计的软件 P1，不构成来源独立质点语料证据。
+当前尚未使用新的非正式 seed 生成 A3 corpus。AirSim/真实相机外部证明、模型准入、辅助、
+分配、降级、运行、生产、控制和 `global_track_id` 写权限全部保持 false。
+
 ## 正式 R0 新批次分片 0-9（2026-07-31）
 
 clean commit `80e55eb` 已冻结新的 5700 单元父清单和 900 单元 R0 作用域，execution

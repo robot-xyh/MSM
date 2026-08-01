@@ -4,6 +4,52 @@
 **审计目标**：列出共识算法与计划使用的开源代码哪些已经实现，哪些没有实现，为什么没有实现，以及缺少哪些条件。
 **边界**：本文只用于科研仿真、接口补齐和后续工程排期；不涉及真实硬件、实机处置、火控或绕过授权的自动动作。
 
+## 2026-07-31 A3 主动视觉来源域软件链闭合
+
+### 当前判断
+
+- 新增运行级 P0：无。
+- D5 来源域合同：已实现并完成全量回归。
+- main 三维质点导出接线：已实现并完成全量回归。
+- D6 独立来源审计：已实现并完成专项与全量回归。
+- 新的来源独立 A3 质点 corpus：尚未生成。
+- AirSim/真实相机证明、模型准入、辅助、分配、降级、运行、生产、控制和
+  `global_track_id` 写权限：全部关闭。
+
+### 已闭合
+
+1. D5 将来源固定为 `legacy_unspecified`、`synthetic_fixture`、
+   `scalable_3d_point_mass_runtime`、`airsim_runtime` 和 `real_camera_runtime`。只有
+   fixture 可以使用 `synthetic_fixture=true`，新非夹具制品必须显式声明来源。
+2. 历史无来源制品保持保守等级，不能通过后补声明晋级。三维质点最多支持仿真研究；
+   AirSim 和真实相机字段只是声明，不是外部证明。
+3. main 集成导出器明确写入三维质点来源、非 fixture 标志和 D5 统一映射的
+   `simulation_research` 等级。main 不维护第二套证据等级字符串。
+4. D6 不调用 D5 高层校验器，独立复算 checksum inventory、manifest、descriptor、gzip
+   header、来源摘要、干净来源身份、whole-seed split、训练集摘要和在线身份隔离。
+5. D5 全量 `769 passed, 2 warnings`；scalable 3D 全量 `445 passed, 1 warning`；
+   D6 专项 `12 passed, 1 warning`、全量 `1360 passed, 1 warning`。warning 为既有
+   Matplotlib/NVML 环境提示，不改变审计结论。
+
+### 开放 P1
+
+1. 当前 D6 验证由 12 项测试分别构造来源域和篡改变体，每个基础夹具数据集包含 5 个
+   episode、seed `200-204`。这只能证明软件解析和失败关闭，不能证明 main exporter 的新
+   非 fixture corpus 已经闭合。
+2. main 需使用新的非正式 seed 生成单一
+   `scalable_3d_point_mass_runtime` corpus。不得读取或生成正式 seed `1000-1019`，不得与
+   历史 fixture、来源不明或脏来源制品拼接。
+3. D5 仿真研究门与 D6 独立审计均通过后，还需检查少数动作、侦察/拦截角色、split 和匿名
+   观测覆盖。覆盖不足时不能训练或晋级 A3 候选。
+4. 来源完整性不等于模型效果。A3 仍需来源独立评价、实际运行确认、唯一同键 R0 和物理
+   非退化；此前所有运行权限保持 false。
+
+### 版本证据
+
+- D5 来源合同：`e16f3e0`
+- main 导出接线：`1fe66ff`
+- D6 独立审计：`4df42ab`
+
 ## 2026-07-31 D3 A1 来源独立评价闭合
 
 ### 当前判断

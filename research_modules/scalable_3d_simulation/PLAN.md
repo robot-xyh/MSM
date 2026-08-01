@@ -1,5 +1,25 @@
 # 200 对 200 三维质点仿真实施计划
 
+## A3 主动视觉来源域与独立审计（2026-07-31）
+
+1. [x] D5 固定五类来源域和对应证据等级。新非夹具制品必须显式声明来源；历史制品不能
+   通过补字段晋级，AirSim 和真实相机声明不能自证外部运行来源。
+2. [x] main 集成导出器将三维质点 episode 明确写成
+   `scalable_3d_point_mass_runtime`、`synthetic_fixture=false`，并从 D5 统一映射读取
+   `simulation_research` 等级。
+3. [x] D6 建立独立低层审计，不导入 D5 来源、dataset 或 corpus 高层校验器；重新核对
+   checksum、manifest/descriptor/header、来源汇总、clean identity、whole-seed split 和
+   在线身份隔离。
+4. [x] D5、scalable 3D、D6 全量分别为 `769 passed, 2 warnings`、
+   `445 passed, 1 warning`、`1360 passed, 1 warning`。现有 D6 证据为软件夹具，每个
+   基础数据集包含 5 个 episode、seed `200-204`，不是独立质点运行语料。
+5. [ ] 使用新的非正式 seed 生成来源单一、非 fixture、clean source 的 A3 质点 corpus。
+   不得使用或读取正式 seed `1000-1019`，不得与历史 fixture 或旧来源不明数据拼接。
+6. [ ] 先运行 D5 仿真研究语料门，再由 D6 对 finalized root 独立只读复算；检查 split、
+   少数动作、侦察/拦截角色和匿名观测覆盖后，才决定是否训练新 A3 候选。
+7. [ ] A3 继续保持 shadow-only。实际运行确认、同键 R0、物理非退化及独立授权未闭合前，
+   不开放辅助、相机控制、分配、降级、导引或生产权限。
+
 ## 正式 R0 新批次（2026-07-31）
 
 1. [x] 在 clean commit `80e55eb43bc4a5feeac9c9af0d718d461a46401f` 冻结

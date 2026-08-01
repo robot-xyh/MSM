@@ -45,6 +45,8 @@ main
 | 在线观测 | `scalable3d-observation-v1` | 观测字段、单位或时序语义改变 |
 | 离线真值 | `scalable3d-offline-truth-v1` | 标签结构或评分口径改变 |
 | 学习导出 | `scalable3d-learning-export-v2` | D3/D4/D5 训练制品布局或真值隔离规则改变；v2 增加 D5 主动视觉整 episode 在线记录与独立离线标签 |
+| D5 主动视觉来源声明 | `d5.active-vision-source-provenance.v1` | 来源域枚举、证据等级映射、fixture 一致性或历史制品保守解释改变 |
+| D6 主动视觉来源审计 | `d6.d5-active-vision-source-audit.v1` | checksum、来源绑定、whole-seed 拆分、在线身份隔离或固定权限边界改变 |
 | 学习生成计划 | `scalable3d-learning-generation-plan-v1` | 场景、规模、seed、正式预检或保留评估 seed 规则改变 |
 | 学习生成检查点 | `scalable3d-learning-generation-checkpoint-v2` | 暂停/恢复状态、累计调用计时、计划哈希或完成序号语义改变；v2 在每个完整 episode 后原子推进，并记录严格校验后的旧检查点滞后恢复 |
 | 训练 seed 注册表 | `scalable3d-training-seed-registry-v1` | 训练/保留评估 seed 身份、来源或隔离规则改变 |
@@ -131,7 +133,7 @@ main
 | D5 补充主动视觉全样本审计 | `d5.active-vision-supplemental-bc-full-sample-audit.v1` | 文件清单、逐样本特征、身份/版本、离线标签和权限门控语义改变 |
 | D5 模型 | `d5-crossview-gnn-v0.1.0` | 网络、特征、权重或训练集改变 |
 | D5 主动视觉 | `d5-active-vision-rule-v1` 或模型语义版本加指纹 | 特征、动作空间、权重或准入报告改变 |
-| D5 主动视觉数据 | `d5.active-vision-episode-dataset.v3` | split、episode、在线/离线标签、运行时 ACK 或哈希语义改变 |
+| D5 主动视觉数据 | `d5.active-vision-episode-dataset.v3` | split、episode、在线/离线标签、运行时 ACK、来源域或哈希语义改变 |
 | D5 主动视觉 bundle | `d5.active-vision-model-bundle.v5` | 模型、特征、数据集 schema、准备度证据绑定或权重改变 |
 | D5 规范种子视图 | `d5.canonical-seed-split-view.v1` | 消费者、源数据/注册表绑定、完整 episode 重分桶或内容哈希语义改变 |
 | D5 规范视图准备度 | `d5.canonical-seed-readiness.v1` | 数据准入门、证据可用性或失败关闭结论字段改变 |
@@ -142,6 +144,17 @@ main
 | 联盟状态 | `epoch + lease + version` | 所有权、成员或有效期改变 |
 
 兼容性新增字段可保留当前主版本。不兼容的字段删除、单位变化、坐标语义变化或行为变化必须升级主版本。模型和策略采用语义化版本号。
+
+主动视觉来源声明是被哈希绑定的 producer 声明，不是外部运行证明。新非夹具制品必须显式
+使用 `synthetic_fixture`、`scalable_3d_point_mass_runtime`、`airsim_runtime` 或
+`real_camera_runtime` 中与标志一致的来源；`legacy_unspecified` 只用于保守读取旧制品，不能
+由新 writer 主动声明。三维质点来源的最高声明范围是仿真研究。AirSim 和真实相机来源在没有
+独立外部证明时只能登记为 declaration-only。
+
+D6 来源审计从低层文件重新建立 checksum、manifest、descriptor、在线流 header、source
+identity、split 和真值隔离证据，不调用 D5 高层 verdict。即使审计完整通过，D6 仍固定关闭
+模型准入、辅助、分配、降级、运行、生产、控制和 `global_track_id` 写权限。后续新 A3 corpus
+必须记录 clean producer 提交、来源域、配置摘要和独立 D6 审计版本。
 
 `scalable3d-episode-bus-v1` 的 D1 航迹发布现允许两种兼容记录：`full_posterior` 携带完整
 `tracks`，`state_update` 只携带扫描摘要、观测谱系和 `current_track_count`。两类记录都保持
