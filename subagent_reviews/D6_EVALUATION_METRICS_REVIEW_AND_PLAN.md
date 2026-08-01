@@ -1,5 +1,31 @@
 # D6 系统评估指标综述及子方案
 
+## 2026-07-31 D5 A3 三维质点来源独立审计评审
+
+评审接受 D6-owned 低层审计结果。D6 未调用 D5 validator，直接从 finalized 数据集的
+`SHA256SUMS`、manifest、episode descriptor 和压缩在线流重建来源证据。生产提交为
+`4a8c1173179b4058d4aee38178e0fb40ecd222b3`，D6 审计器源码摘要为
+`955fc534c2c8c2a52a7cd9bd8921b561c31ca187978a961347edb3858b056a14`。
+
+受审范围为 seed `21000-21099`、45 个场景-规模单元、100 个 episode、159487 个样本和
+302 个摘要清单工件。来源 clean/dirty episode 为 100/0，train/validation/test episode 与
+seed 均为 60/20/20 且互斥，在线 truth/actor/object 标识为 0/0/0。12/12 检查通过，状态为
+`simulation_research_integrity_confirmed`，阻断码为空。该证据关闭 D6 对独立非夹具
+producer corpus 的来源完整性 P1。
+
+专项测试为 `12 passed, 1 warning in 2.68s`，D6 全量回归为
+`1360 passed, 1 warning in 176.00s`。唯一 warning 是既有 Matplotlib `Axes3D` 导入环境
+提示，不影响审计结论。
+
+评审不接受将该结果写成 AirSim 或真实相机来源证明，也不接受据此开放模型准入、assist、
+assignment、degradation、runtime、production、control 或 `global_track_id` 写权限。
+
+D6 已接收 D5 corpus gate 公共结果。严格数据集检查有效，研究来源门通过；训练结构门按
+13 项原因失败关闭，关键零覆盖为 `hold=0` 和 `search_sector + recon=0`。ACK 与匿名观测键
+均覆盖 159487/159487，物理匿名观测帧和离线 outcome 不可用。D6 只登记 D5 报告/JSON
+SHA-256，并与原快照核对数据集身份，没有重算 action-role gate。旧 D6 来源审计三件套作为
+时点证据保持不变；新回执只更新当前状态。全部权限继续为 false。
+
 ## 2026-07-31 学习作用域归档原生审计评审
 
 评审接受显式双模式设计。目录 scope 继续使用 execution plan 与 materialized merge；归档

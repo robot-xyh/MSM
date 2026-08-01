@@ -1,0 +1,113 @@
+{
+  "schema_version": "d6.d5-active-vision-source-audit-evidence.v1",
+  "audit_id": "d6-d5-a3-source-independent-point-mass-20260731",
+  "validation_date": "2026-07-31",
+  "auditor": {
+    "entry_point": "d6_evaluation_metrics.d5_active_vision_source_audit.audit_d5_active_vision_source_dataset",
+    "full_result_canonical_sha256": "d197d078e4f4f2a6f94ee982e05ff787ee3f88598058a6264b0a081c30c4f90c",
+    "read_only": true,
+    "source_sha256": "955fc534c2c8c2a52a7cd9bd8921b561c31ca187978a961347edb3858b056a14",
+    "uses_d5_validator": false
+  },
+  "dataset": {
+    "checksum_inventory_entry_count": 302,
+    "checksums_sha256": "19f41d1941134dcd11d3019bbc0e2cef7224860c80545ba4f37f348b499201be",
+    "clean_episode_count": 100,
+    "dataset_config_sha256": "3c05993d9b919e639993f1eb074a10bae6fe88d05267342933281e91c35624e7",
+    "dataset_manifest_sha256": "bccbdad42a71b130720469bb4e99dd1dd99e29a9b33af036679b9d64b0fe35a4",
+    "dirty_episode_count": 0,
+    "episode_count": 100,
+    "evidence_tier": "simulation_research",
+    "producer_git_commit": "4a8c1173179b4058d4aee38178e0fb40ecd222b3",
+    "root": "/home/linux/Documents/MSM/research_modules/scalable_3d_simulation/outputs/d5_a3_source_independent_point_mass_v1_20260731_4a8c117/learning_dataset/d5_active_vision",
+    "sample_count": 159487,
+    "scenario_scale_cell_count": 45,
+    "seed_range": {
+      "contiguous": true,
+      "count": 100,
+      "first": 21000,
+      "last": 21099
+    },
+    "source_config_sha256_count": 100,
+    "source_config_sha256_set_digest": "17c44c2d736f83f6fda9c9255d139353436c9651324912abe7d5e69b70e9da0f",
+    "source_domain": "scalable_3d_point_mass_runtime",
+    "source_domain_episode_count": 100,
+    "synthetic_fixture_episode_count": 0
+  },
+  "partitions": {
+    "seed_sets_mutually_exclusive": true,
+    "split_sha256": "aaad1f7d12f3d383e1d1a6d9160c534ad6a76c3281397cc421e893369cb761cd",
+    "test": {
+      "episode_count": 20,
+      "seed_count": 20
+    },
+    "train": {
+      "episode_count": 60,
+      "seed_count": 60
+    },
+    "training_set_sha256": "4d2056c8e66f335a8a8ebf6843840ac9c9a60899263349aad222676301f15f35",
+    "validation": {
+      "episode_count": 20,
+      "seed_count": 20
+    }
+  },
+  "online_identity_isolation": {
+    "actor_identifier_count": 0,
+    "object_identifier_count": 0,
+    "truth_identifier_count": 0
+  },
+  "checks": {
+    "artifact_hashes_complete": true,
+    "checksum_inventory_complete": true,
+    "descriptor_header_binding_complete": true,
+    "fixture_consistency_complete": true,
+    "immutable_artifacts_complete": true,
+    "manifest_descriptor_binding_complete": true,
+    "seed_split_disjoint_complete": true,
+    "source_domain_mapping_complete": true,
+    "source_domain_summary_complete": true,
+    "source_identity_clean_complete": true,
+    "split_hash_binding_complete": true,
+    "truth_free_online_payload_complete": true
+  },
+  "result": {
+    "blocker_codes": [],
+    "checks_passed": 12,
+    "checks_total": 12,
+    "external_runtime_attestation_validated": false,
+    "status": "simulation_research_integrity_confirmed"
+  },
+  "software_validation": {
+    "full_suite": {
+      "duration_seconds": 176.0,
+      "passed": 1360,
+      "warning_count": 1
+    },
+    "targeted_suite": {
+      "duration_seconds": 2.68,
+      "passed": 12,
+      "warning_count": 1
+    },
+    "warning_class": "existing_matplotlib_axes3d_import_environment"
+  },
+  "authority": {
+    "airsim_external_proof": false,
+    "assignment": false,
+    "assist": false,
+    "control": false,
+    "degradation": false,
+    "global_track_id_write": false,
+    "model_admission": false,
+    "production": false,
+    "real_camera_external_proof": false,
+    "runtime": false
+  },
+  "scope_boundary": {
+    "airsim_source_provenance_proven": false,
+    "d5_action_role_training_coverage_evaluated": false,
+    "d5_corpus_gate_result_pending": true,
+    "d6_control_participation": false,
+    "point_mass_simulation_source_integrity_confirmed": true,
+    "real_camera_source_provenance_proven": false
+  }
+}

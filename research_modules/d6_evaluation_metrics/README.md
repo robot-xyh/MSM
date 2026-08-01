@@ -2,7 +2,7 @@
 
 ## 2026-07-31 D5 主动视觉来源域独立审计
 
-D6 新增只读来源域审计器，直接解析已 finalized 的 D5 主动视觉数据集。审计器自行复算
+D6 已使用只读来源域审计器复核 finalized 的 D5 A3 独立三维质点数据集。审计器自行复算
 `SHA256SUMS`、制品清单、manifest 与 episode descriptor、压缩在线流 header 的绑定，
 并复核来源域与证据等级映射、fixture 标志、来源摘要、clean source identity、训练/验证/
 测试 seed 互斥、拆分哈希和在线 truth/actor/object 身份隔离。生产实现不导入或调用 D5 的
@@ -13,14 +13,23 @@ D6 新增只读来源域审计器，直接解析已 finalized 的 D5 主动视�
 `simulation_research_integrity_confirmed`。AirSim 和真实相机来源只能得到
 `declaration_only`；来源缺失、混合、dirty、摘要错绑或重绑定后的身份污染均失败关闭。
 
-当前验证只使用 D6 低层软件夹具。每个基础夹具数据集包含 5 个 episode，seed 为
-`200-204`；12 项测试分别构造来源域与篡改变体。这些夹具不是 main exporter 生成的独立
-三维质点正式语料，也不证明 AirSim 或真实相机来源。专项测试为
-`12 passed, 1 warning`，D6 全量为 `1360 passed, 1 warning`；warning 是既有 Matplotlib
-`Axes3D` 环境提示。AirSim 外部证明、真实相机证明、模型准入、assist、assignment、
-degradation、runtime、production、control 和 `global_track_id` 写权限全部固定为 false。
-下一步由 main exporter 使用新的非正式 seed 生成独立三维质点 corpus，再由本审计器只读
-复核；本轮没有生成该批次。
+本次受审数据由 clean commit `4a8c1173179b4058d4aee38178e0fb40ecd222b3`
+生成，覆盖 seed `21000-21099`、45 个场景-规模单元、100 个 episode 和 159487 个样本。
+302 个摘要清单工件全部闭合，来源 clean/dirty episode 为 100/0；train/validation/test
+episode 与 seed 均为 60/20/20 且互斥；在线 truth/actor/object 标识计数均为 0。12/12
+检查通过，状态为 `simulation_research_integrity_confirmed`。紧凑证据和中文结论位于
+`reports/D5_A3_SOURCE_INDEPENDENT_POINT_MASS_AUDIT_20260731/`。
+
+该结果关闭“main exporter 非夹具 corpus 与 D6 独立审计兼容”的来源完整性 P1。D6 随后
+接收 D5 corpus gate 公共结果：严格数据集检查为 `valid_detached_immutable_dataset`，研究
+来源门通过，训练结构门因 13 项覆盖原因失败关闭。训练集中 `hold=0`，
+`search_sector + recon=0`；行为克隆、近端策略优化和 assist 均未启动。D6 只绑定 D5 报告和
+JSON 并核对冻结数据集身份，不重新计算 D5 门。接收回执位于
+`reports/D5_A3_CORPUS_GATE_RECEIPT_20260801/`。
+
+D5 失败关闭结果不改变 D6 原来源完整性结论，也不证明 AirSim 或真实相机来源。模型准入、
+assist、assignment、degradation、runtime、production、control 和 `global_track_id` 写权限
+全部保持 false，D6 不参与控制。
 
 ## 2026-07-31 学习作用域归档原生审计
 

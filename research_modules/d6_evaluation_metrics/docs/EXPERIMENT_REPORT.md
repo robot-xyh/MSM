@@ -1,26 +1,36 @@
 # D6 正式实验矩阵准入预检报告
 
-## D5 主动视觉来源域审计开发验证（2026-07-31）
+## D5 A3 三维质点数据集来源审计（2026-07-31）
 
-本次验证对象是 D6 独立来源域审计器。输入由 D6 测试层直接写入低层文件。每个基础夹具
-数据集包含 5 个 episode，seed 为 `200-204`；12 项测试分别构造来源域与篡改变体。测试没有
-调用 D5 的来源、数据集或语料高层 validator，也没有启动 AirSim、三维质点正式批次或控制
-流程。
+本次验证对象是 main exporter 已完成最终封装的 D5 A3 独立来源三维质点数据集。生产提交为
+`4a8c1173179b4058d4aee38178e0fb40ecd222b3`。D6 直接读取数据集根目录并运行自身低层来源
+审计器，没有调用 D5 的来源、数据集或语料高层 validator，也没有启动控制流程或读取正式
+R0 seed。
 
-clean 三维质点正例得到 `simulation_research_integrity_confirmed`。AirSim 和真实相机完整声明
-均得到 `declaration_only`，外部来源证明保持 false。负例覆盖未重绑定在线文件篡改，以及在
-重写全部摘要后仍存在的错误证据等级、混合来源、dirty source identity、来源摘要错配、split
-hash 错配、旧缺来源、fixture 冲突和在线 `actor_id` 污染。上述负例均返回 `fail_closed`。
+数据集覆盖 seed `21000-21099`、45 个场景-规模单元、100 个 episode 和 159487 个样本。
+302 个摘要清单工件全部闭合；clean/dirty episode 为 100/0；train/validation/test episode
+与 seed 均为 60/20/20 且互斥；在线 truth/actor/object 标识计数为 0/0/0。12/12 检查通过，
+状态为 `simulation_research_integrity_confirmed`，阻断码为空。
 
-专项结果为 `12 passed, 1 warning in 2.29s`；D6 全量结果为
-`1360 passed, 1 warning in 137.34s`。`py_compile` 通过。warning 是既有 Matplotlib
-`Axes3D` 导入环境提示，与本次审计无关。所有结果中的 AirSim 外部证明、真实相机证明、模型
-准入、assist、assignment、degradation、runtime、production、control 和
-`global_track_id` 写权限均为 false。
+manifest SHA-256 为
+`bccbdad42a71b130720469bb4e99dd1dd99e29a9b33af036679b9d64b0fe35a4`，`SHA256SUMS`
+SHA-256 为 `19f41d1941134dcd11d3019bbc0e2cef7224860c80545ba4f37f348b499201be`。
+紧凑机器证据和中文报告保存在
+`reports/D5_A3_SOURCE_INDEPENDENT_POINT_MASS_AUDIT_20260731/`。
 
-当前结果仅证明软件夹具上的独立解析和失败关闭行为。尚无 main exporter 使用新非正式 seed
-生成的非 fixture 三维质点 corpus，因此不能报告独立三维质点语料完整率、模型收益、模型准入
-或运行权限。下一步由 main 生成该 corpus，D6 保持只读复核。
+验收口径要求 12/12 检查通过、阻断码为空且全部 authority 为 false，本批次满足该口径。
+专项测试为 `12 passed, 1 warning in 2.68s`，D6 全量回归为
+`1360 passed, 1 warning in 176.00s`。唯一 warning 是既有 Matplotlib `Axes3D` 导入环境
+提示，与来源审计无关。
+
+该结果确认质点仿真来源完整性。D6 后续接收的 D5 corpus gate 公共结果显示：严格数据集
+检查有效，研究来源门通过，训练结构门按 13 项原因失败关闭；训练集 `hold=0`，
+`search_sector + recon=0`。ACK 接受和匿名观测键覆盖均为 159487/159487，物理匿名观测帧
+与离线 outcome 不可用。D6 只绑定并交叉核对 D5 报告和 JSON，没有重新计算训练门。
+
+该接收结果不修改本节原来源审计证据。AirSim 和真实相机外部证明、模型准入、assist、
+assignment、degradation、runtime、production、control 和 `global_track_id` 写权限均为
+false，不能从来源完整性或 ACK 完整性推断模型可训练性、策略收益或物理效果。
 
 ## 学习作用域归档审计开发验证（2026-07-31）
 

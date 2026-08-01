@@ -20,13 +20,24 @@
 - [x] 使用 D6 低层软件夹具完成 12 项专项测试。每个基础夹具数据集包含 5 个 episode、
   seed `200-204`；12 项测试分别构造来源域与篡改变体。专项为
   `12 passed, 1 warning`，D6 全量为 `1360 passed, 1 warning`。
+- [x] 对 main exporter 在 clean commit `4a8c1173179b4058d4aee38178e0fb40ecd222b3`
+  生成的独立非 fixture corpus 运行相同只读审计。seed `21000-21099`、45 个场景-规模单元、
+  100 个 episode、159487 个样本和 302 个清单工件通过 12/12 检查。
+- [x] 确认 train/validation/test episode 与 seed 均为 60/20/20 且互斥，clean/dirty episode
+  为 100/0，在线 truth/actor/object 标识为 0/0/0；保存紧凑 JSON、中文结论和校验和。
 
-### 待完成
+### 结果接收与后续边界
 
-- [ ] 由 main exporter 使用新的非正式 seed 生成显式
-  `scalable_3d_point_mass_runtime`、`synthetic_fixture=false` 的独立 corpus，再运行本审计器。
-- [ ] 记录该 corpus 的 episode 数、来源提交、配置摘要、split、在线身份审计和 D6 只读结果。
-  当前软件夹具不是独立三维质点正式语料，不能用于模型准入或运行权限判断。
+- [x] 接收 D5 action/role/ACK/匿名观测 corpus gate 公共结果。严格数据集检查有效，研究来源
+  门通过，训练结构门按 13 项原因失败关闭；`hold=0`、`search_sector + recon=0`，ACK 和匿名
+  观测键均为 159487/159487，物理匿名观测帧与离线 outcome 不可用。
+- [x] 绑定 D5 报告与 JSON 的 SHA-256，并与 D6 快照交叉核对生产提交、episode、样本、
+  manifest、split 和训练集摘要。D6 未重算 D5 action-role gate，也未重扫来源数据集。
+- [ ] D5 后续完成三项版本化补采和新 corpus gate 前，训练、行为克隆、近端策略优化及辅助
+  准入继续失败关闭。该项由 D5 owner 执行，D6 只接收后续公共结果。
+- [ ] AirSim 和真实相机来源仍需独立外部证明与单独数据集审计。本批质点仿真证据不得外推。
+- [ ] 所有模型、辅助、分配、降级、运行和控制权限继续保持关闭；后续证据由对应正式门单独
+  验收。
 
 ## 2026-07-31 学习作用域归档原生审计
 

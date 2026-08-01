@@ -30,10 +30,25 @@
 degradation、runtime、production、control 和 `global_track_id` write。该 API 不写输入目录，
 不生成控制消息，不参与 D5 或 main 的状态机。
 
-当前测试 fixture 由 D6 低层文件写入器构造。每个基础夹具数据集包含 5 个 episode、seed
+测试 fixture 由 D6 低层文件写入器构造。每个基础夹具数据集包含 5 个 episode、seed
 `200-204`；12 项测试分别构造来源域与篡改变体，覆盖三维质点正例、AirSim/真实相机声明级
-正例、未重绑定 checksum 篡改和多类全量重绑定篡改。这些 fixture 只验证审计算法，尚未
-验证 main exporter 产生的独立非 fixture corpus。
+正例、未重绑定 checksum 篡改和多类全量重绑定篡改。
+
+2026-07-31 的 producer 兼容复核直接把 finalized 数据集根传入上述公开入口。输入来自
+clean commit `4a8c1173179b4058d4aee38178e0fb40ecd222b3`，包含 seed `21000-21099`、
+100 个 episode、159487 个样本和 302 个摘要清单工件。D6 获得 12/12 检查通过、
+`simulation_research_integrity_confirmed`，并将完整返回值的规范化摘要、manifest 摘要、
+`SHA256SUMS` 摘要、split 摘要和计数保存为紧凑证据。100 个逐 episode 配置摘要不在报告中
+展开，其集合由 dataset manifest 与 `SHA256SUMS` 摘要固定。
+
+来源审计算法不读取动作/角色覆盖结果，也不据此输出训练覆盖判定。该门属于 D5 corpus
+gate。D5 发布结果后，D6 使用独立回执登记两个公共文件的 SHA-256，解析机器 JSON，并将
+生产提交、episode/样本计数、manifest、split 和训练集摘要与原 D6 快照交叉核对。该回执不
+遍历数据集样本，不重算 13 项 action-role 失败原因，只记录原因数、有序清单摘要和关键零覆盖
+组合。
+
+D5 公共结果为研究来源门通过、训练结构门失败关闭。来源审计返回的全部 authority 继续为
+false，因此接收结果不会进入模型采用、分配、降级或控制链。
 
 ## 学习作用域归档原生流程
 

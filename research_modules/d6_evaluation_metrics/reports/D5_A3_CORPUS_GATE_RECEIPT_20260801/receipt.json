@@ -1,0 +1,75 @@
+{
+  "schema_version": "d6.d5-a3-corpus-gate-receipt.v1",
+  "receipt_id": "d6-d5-a3-corpus-gate-receipt-20260801",
+  "receipt_date": "2026-08-01",
+  "receipt_mode": "public_evidence_registration_and_cross_check_only",
+  "source_files": {
+    "d5_acceptance_json": {
+      "path": "research_modules/d5_terminal_association/results/a3_source_independent_corpus_acceptance_20260731.json",
+      "sha256": "b0f54a9bf72be26f2b084b67555ce7234b920bc28442fa06593585c88a21ca0c"
+    },
+    "d5_acceptance_report": {
+      "path": "research_modules/d5_terminal_association/reports/D5_A3_SOURCE_INDEPENDENT_CORPUS_ACCEPTANCE_20260731_CN.md",
+      "sha256": "7514468bac27635b8f40c98d0a6cfdcd706bef225724baf88c3b8a92a925bdc3"
+    }
+  },
+  "d6_source_audit_snapshot": {
+    "conclusion_changed": false,
+    "original_artifacts_modified": false,
+    "status": "simulation_research_integrity_confirmed"
+  },
+  "d5_public_result": {
+    "anonymous_observation": {
+      "duplicate_key_count": 0,
+      "key_present_count": 159487,
+      "offline_outcome_available": false,
+      "physical_frame_evidence_available": false,
+      "unique_key_count": 159487
+    },
+    "assist_started": false,
+    "behavior_cloning_started": false,
+    "composite_gate_passed": false,
+    "corpus_audit_sha256": "85db29f86d924a437259a478e2fb182c220d3469c8f8a0c4374820e61e6ef74e",
+    "failure_reason_count": 13,
+    "failure_reason_list_sha256": "4093421bf2606184c2b0dfb1cdb6ef923b731fea2b77c6c2bfd3b4254def5385",
+    "hold_training_sample_count": 0,
+    "ppo_started": false,
+    "research_source_gate_passed": true,
+    "runtime_ack": {
+      "accepted_count": 159487,
+      "present_count": 159487,
+      "rejected_count": 0
+    },
+    "search_sector_recon_training_sample_count": 0,
+    "strict_dataset_validation_status": "valid_detached_immutable_dataset",
+    "training_gate_status": "fail_closed_training_corpus"
+  },
+  "cross_checks": {
+    "dataset_episode_count_matches_d6_snapshot": true,
+    "dataset_manifest_sha256_matches_d6_snapshot": true,
+    "dataset_sample_count_matches_d6_snapshot": true,
+    "producer_git_commit_matches_d6_snapshot": true,
+    "split_sha256_matches_d6_snapshot": true,
+    "training_set_sha256_matches_d6_snapshot": true
+  },
+  "authority": {
+    "active_vision": false,
+    "assignment": false,
+    "assist": false,
+    "camera_command": false,
+    "control": false,
+    "degradation": false,
+    "global_track_id_write": false,
+    "model_admission": false,
+    "production": false,
+    "runtime": false
+  },
+  "scope_boundary": {
+    "d5_action_role_gate_recomputed_by_d6": false,
+    "d5_public_evidence_registered": true,
+    "d6_control_participation": false,
+    "source_dataset_rescanned_by_d6": false,
+    "training_or_runtime_authority_changed": false
+  },
+  "receipt_status": "d5_public_gate_result_received_fail_closed"
+}

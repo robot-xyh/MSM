@@ -1,6 +1,6 @@
 # D6 实现差距审计
 
-## 2026-07-31 D5 主动视觉来源域审计 P1 部分关闭
+## 2026-07-31 D5 主动视觉来源域审计 P1 关闭
 
 ### 已关闭范围
 
@@ -16,7 +16,7 @@ D6 已具备独立、只读的 D5 主动视觉来源域审计器。它不采信 
 `declaration_only`。AirSim 外部证明、真实相机证明、模型准入、assist、assignment、
 degradation、runtime、production、control 和 `global_track_id` 写权限固定为 false。
 
-### 验证证据
+### 软件验证证据
 
 当前证据是 D6 自建低层软件夹具。每个基础夹具数据集包含 5 个 episode，seed
 `200-204`；12 项测试分别构造来源域与篡改变体。正例覆盖 clean 三维质点声明；有界正例
@@ -25,12 +25,37 @@ degradation、runtime、production、control 和 `global_track_id` 写权限固�
 actor identity。专项测试为 `12 passed, 1 warning`，D6 全量为
 `1360 passed, 1 warning`。warning 是既有 Matplotlib `Axes3D` 环境提示。
 
-### 仍开放的 P1
+### 独立 producer 证据
 
-当前没有 main exporter 生成的独立三维质点 corpus，因此“真实 producer 合同兼容、独立
-批次来源完整、非夹具 episode 全量通过”仍未闭合。下一步必须使用新的非正式 seed 生成 corpus，
-不得复用正式 seed `1000-1019`；D6 对 finalized root 只读审计。该开放项不影响软件审计器
-本身的单元验收，但阻止把当前结果写成独立三维质点语料证据、模型准入证据或运行权限。
+main exporter 已由 clean commit `4a8c1173179b4058d4aee38178e0fb40ecd222b3` 使用非正式
+seed `21000-21099` 生成独立非 fixture corpus。D6 对 finalized root 重跑自身只读审计，
+100 个 episode、159487 个样本、45 个场景-规模单元和 302 个清单工件通过 12/12 检查。
+clean/dirty episode 为 100/0，三类 split episode 与 seed 均为 60/20/20 且互斥，在线
+truth/actor/object 标识均为 0。状态为 `simulation_research_integrity_confirmed`。
+
+“真实 producer 合同兼容、独立批次来源完整、非夹具 episode 全量通过”这一 D6 P1 已关闭。
+证据位于 `research_modules/d6_evaluation_metrics/reports/`
+`D5_A3_SOURCE_INDEPENDENT_POINT_MASS_AUDIT_20260731/`。
+
+### D5 gate 结果接收
+
+D6 已接收 D5 action/role/ACK/匿名观测 corpus gate 公共结果。D5 严格数据集检查返回
+`valid_detached_immutable_dataset`，研究来源门通过；训练结构门按 13 项原因失败关闭。
+训练集中 `hold=0`，`search_sector + recon=0`。ACK 接受数为 159487/159487，匿名观测键
+覆盖为 159487/159487 且重复为 0；物理匿名观测帧和离线 outcome 均不可用。
+
+D6 回执绑定 D5 报告 SHA-256 `7514468b...bdc3` 和 JSON SHA-256
+`b0f54a9b...a0c`，并核对生产提交、episode、样本、manifest、split 和训练集摘要与原 D6
+快照一致。D6 没有重新扫描数据集或重算 D5 action-role gate。旧来源审计三件套保持不变，
+其“D5 gate pending”仍是 2026-07-31 审计时点事实。
+
+### 剩余边界
+
+1. D5 仍需按三个版本化请求补采完整训练 episode，再重新执行 corpus gate。当前训练、行为
+   克隆、近端策略优化和辅助准入保持失败关闭。
+2. 本批次不证明 AirSim 或真实相机来源。两类来源仍需单独外部证明和数据集审计。
+3. 模型准入、辅助、分配、降级、运行、生产、控制和 `global_track_id` 写权限全部为 false。
+   D6 不参与控制。
 
 ## 2026-07-31 学习作用域 archive 模式 P1 关闭
 

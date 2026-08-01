@@ -18,9 +18,19 @@ source identity、完整哈希、互斥 whole-seed split 和在线真值零使�
 物理分离。无论审计成功或失败，D6 均不授予外部来源证明、模型准入、assist、分配、降级、
 运行、生产、控制或 `global_track_id` 写权限。
 
-当前原理验证使用低层软件夹具。每个基础夹具数据集包含 5 个 episode、seed `200-204`；
-12 项测试分别构造来源域与篡改变体。它们不是 main exporter 生成的独立三维质点正式语料。
-下一阶段需要用新的非正式 seed 生成 producer corpus，再执行同一只读审计。
+低层软件夹具继续验证失败关闭分支。2026-07-31，D6 又对 main exporter 由 clean commit
+`4a8c1173179b4058d4aee38178e0fb40ecd222b3` 生成的独立非 fixture corpus 执行同一只读
+审计。该数据覆盖 seed `21000-21099`、45 个场景-规模单元、100 个 episode 和 159487 个
+样本；302 个摘要清单工件及 60/20/20 的 train/validation/test whole-seed split 通过
+12/12 检查，在线 truth/actor/object 标识均为 0。
+
+这项证据确认三维质点仿真来源完整性，不确认主动视觉动作和角色训练覆盖。后者属于 D5
+corpus gate。D6 已接收 D5 的公共门控结果：研究来源门通过，训练结构门因 13 项原因失败
+关闭，关键缺口为 `hold=0` 和 `search_sector + recon=0`。D6 只核对公共 JSON 与原快照的
+数据集身份，不复算 D5 门。来源完整性结论与训练可用性结论保持分离。
+
+AirSim、真实相机、模型准入及控制权限不在来源审计或本次结果接收的证明范围内。D5 的失败
+关闭结果没有开放任何 authority。
 
 ## 学习作用域的显式存储边界
 
