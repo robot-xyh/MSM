@@ -8,13 +8,16 @@ episode 数据均未运行或读取。学习候选没有获得辅助、分配、
 权限。
 
 D1 将同一发布帧的二维位置协方差 95% 半径计算改为可选批量路径。7 对 fresh process
-的局部物化中位改善为 `16.682378%`，语义和业务操作数 7/7 一致；开关默认关闭，结果
-不代表完整系统达到实时。
+的局部物化中位改善为 `16.682378%`，语义和业务操作数 7/7 一致。D6 随后在 10 对
+200 对 200、2 秒完整 episode 上确认外生输入和 D1/D2 业务均为 `10/10` 等价；候选更快
+`6/10`，墙钟和 D1 包含式计时中位改善仅为 `1.045%` 和 `2.043%`，未达到描述性性能门。
+开关继续默认关闭，结果不代表完整系统达到实时。
 
 D3 确认 A1 v2 的 25 个 test 正类中有 9 帧因特征分布外回退，另 16 帧为非分布外
-候选动作不匹配。v3 只冻结 15 个场景规模单元、300 episode 的新来源请求，尚未分配
-seed。D4 确认 A2 v7 的 45 个失败中有 42 个正类未激活和 3 个负类虚假转移；v8 只冻结
-seed `28100-28423` 的 324 个 TRAIN 单元请求，没有生成数据或训练模型。
+候选动作不匹配。v3 已冻结 15 个场景规模单元、300 episode 和 seed `23000-23299`，
+每单元按 12/4/4 划分。D4 确认 A2 v7 的 45 个失败中有 42 个正类未激活和 3 个负类
+虚假转移；v8 已把 seed `28100-28423` 的 324 个 TRAIN 单元接入全局 allocation 和
+readiness。两项均未生成数据或训练模型。
 
 D5 在 100 episode、159502 样本上执行一次固定配置行为克隆。test 精确动作准确率为
 `0.959958`，但 `observe_target` 和 `search_sector` 召回均为 0，宏平均召回仅
@@ -22,6 +25,14 @@ D5 在 100 episode、159502 样本上执行一次固定配置行为克隆。test
 D6 随后从 33 个 cache 文件、bundle、weights 和冻结配置独立重建 40133 个 test 样本的
 前向结果，复算指标与 D5 在 `1e-6` 内一致，状态为
 `completed_fail_closed_quality_gate`。D6 全量回归为 `1384 passed, 1 warning`。
+
+A3 v3 已冻结 104 条逐 episode 采集配方，train/validation/future-held-out 使用互斥的
+`48/24/32` 个 episode 和 seed `24000-24103`。main 的跨模块预生成门已确认 D3、D4、D5
+计划 `3/3` 完整，但 producer adapter 为 `0/3`，状态为
+`blocked_by_producer_adapter_or_module_readiness`。执行命令为空，生成、训练及全部运行
+权限继续关闭。当前工作树另有未提交资料，干净来源门也保持关闭；后续必须从干净提交重跑
+预检。生产器缺口和顺序见
+[`docs/SCALABLE_3D_LEARNING_SOURCE_PREFLIGHT_20260801_CN.md`](docs/SCALABLE_3D_LEARNING_SOURCE_PREFLIGHT_20260801_CN.md)。
 当前完成度见
 [`docs/SCALABLE_3D_GOAL_COMPLETION_MATRIX_20260801_CN.md`](docs/SCALABLE_3D_GOAL_COMPLETION_MATRIX_20260801_CN.md)。
 
@@ -2655,6 +2666,16 @@ future-held-out 分别使用 `24000-24047`、`24048-24071` 和 `24072-24103`。�
 
 每项分配都绑定模块请求、协议或 schema 的仓库相对路径与 SHA-256。生成入口在检查精确
 seed 分配前，先验证来源文件未漂移、路径未越界且不是符号链接。登记表当前状态为
-`allocations_reserved_generation_not_started`；episode、样本和训练计数均为 0。D3、D4、
-D5 各自的 schedule/readiness 尚未全部绑定，因此本项不构成数据生成许可，更不开放
-学习模型的 shadow、assist、运行或控制权限。
+`allocations_reserved_generation_not_started`；episode、样本和训练计数均为 0。
+
+D3 已冻结 15-cell/300-episode 日程，D4 已把 108-cell、3 replicate 的 324 个 TRAIN seed
+接入 allocation readiness，D5 已展开 104 条 train/validation/future-held-out 逐 episode
+采集配方。三模块计划级 readiness 均通过。
+
+main 新增 `run_learning_source_preflight.py`，统一调用三个模块的只读校验器，并把模块计划
+完整性与生产器执行能力分开。2026-08-01 预检结果为：模块计划 `3/3` 完整，生产器适配
+`0/3` 完整，执行计划和生成授权均为 false。D3 仍缺逐 episode 场景及非等量目标/资源映射和
+A1 v3 writer；D4 仍缺区域拓扑、通信条件、转移正负样本和 v8 writer；D5 仍缺意图窗口、
+困难混淆 treatment 及生成时配额控制。因此当前不启动数据生成，也不开放 shadow、assist、
+运行或控制权限。完整状态见
+[学习来源预生成检查](docs/SCALABLE_3D_LEARNING_SOURCE_PREFLIGHT_20260801_CN.md)。

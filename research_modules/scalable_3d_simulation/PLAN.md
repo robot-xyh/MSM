@@ -3,23 +3,31 @@
 ## 2026-08-01 当前计划
 
 1. [x] D1 完成默认关闭的完整 `GlobalTrack` 物化批量质量摘要候选。7 对 fresh process
-   中候选全部更快，中位改善 `16.682378%`，bootstrap 95% 上界小于 0，逐扫描语义和
-   工作量 7/7 一致。该项只通过模块门，尚未接入 main 默认路径。
-2. [x] D3 完成 A1 v2 的 25/25 test 正类失败阶段归因。v3 数据请求固定 15 个场景规模
-   单元和 300 episode，seed、生成、训练和阈值权限均未分配。
-3. [x] D4 完成 A2 v7 的 45/45 失败阶段归因。v8 TRAIN 请求固定 324 个单元和 seed
-   `28100-28423`，尚未生成数据；validation/test 需在 actor 冻结后另选新来源。
+   局部测试全部更快；D6 进一步完成 10 对 200 对 200 完整 episode 配对，外生输入和
+   D1/D2 业务 `10/10` 等价。候选更快 `6/10`，墙钟和 D1 包含式计时中位改善
+   `1.045%/2.043%`，未过描述性性能门，继续 default-off。
+2. [x] D3 完成 A1 v2 的 25/25 test 正类失败阶段归因。v3 固定 15 个场景规模单元、
+   300 episode 和 seed `23000-23299`，每单元 train/validation/test 为 12/4/4；
+   readiness 为 `ready(plan_only)`。
+3. [x] D4 完成 A2 v7 的 45/45 失败阶段归因。v8 TRAIN 请求的 108 单元、3 次重复和
+   seed `28100-28423` 已绑定全局 allocation/readiness；尚未生成数据，validation/test
+   需在 actor 与 TRAIN 来源冻结后另选新来源。
 4. [x] D5 使用 accepted A3 v2 corpus 完成一次固定配置行为克隆。test 总体准确率
    `0.959958`，但两个少数动作召回为 0，宏召回和校准均未过门，候选失败关闭。
 5. [x] D6 独立低层复算 D5 的 33 个 cache 文件、bundle、weights、冻结配置和 40133 个
    test 样本；不调用 D5 evaluator、corpus gate、precheck 或模型类。逐动作、逐角色、
    校准和分布外指标在 `1e-6` 内一致，独立质量门失败关闭。专项 `18 passed`，D6 全量
    `1384 passed, 1 warning`。
-6. [ ] A1 v3、A2 v8 和 A3 下一模型版本只能使用新开发来源。禁止围绕已评价 test 调参后
-   复报原门；单模型未准入前不启动 C1/F1。
-7. [ ] D1 候选在同输入完整栈多 seed 验证后再决定是否默认接线。局部发布收益不能替代
+6. [x] D5 A3 v3 固定 104 条逐 episode 配方及 train/validation/future-held-out
+   `48/24/32` 个 episode，seed 为 `24000-24103`；future-held-out 访问继续失败关闭。
+7. [x] main 完成 D3/D4/D5 跨模块预生成门。模块计划 `3/3` 完整，producer adapter
+   `0/3` 完整，执行命令和生成授权为空。
+8. [ ] 分别实现 D3、D4、D5 producer adapter 和 writer，完成后由三个 owner 复核来源
+   合同与 readiness，再从干净提交重跑 main 预检。A1 v3、A2 v8 和 A3 v3 只能使用新
+   来源，禁止围绕已评价 test 调参。
+9. [ ] D1 候选在更大同输入完整栈多 seed 验证后再决定是否默认接线。局部发布收益不能替代
    100/200 规模实时性验收。
-8. [ ] 正式 R0 保持 `450/900`，等待存储和删除授权后再决定 shard 10-19；本轮不运行
+10. [ ] 正式 R0 保持 `450/900`，等待存储和删除授权后再决定 shard 10-19；本轮不运行
    正式 seed `1000-1019` 的 episode 数据。
 
 ## A3 动作角色补采（2026-08-01）
@@ -2028,10 +2036,19 @@ GAP、算法文档和系统总报告。
 
 ### 下一步
 
-1. [ ] D3 生成绑定全局 allocation、冻结 request/contract 和 15-cell/300-episode 的模块
-   registry 与 schedule，并使 readiness 返回 `ready`。
-2. [ ] D4 将全局 allocation 哈希接入现有 108-cell x 3 replicate 请求，保持 TRAIN-only；
+1. [x] D3 已生成绑定全局 allocation、冻结 request/contract 和 15-cell/300-episode 的模块
+   registry 与 schedule；readiness 返回 `ready(plan_only)`。
+2. [x] D4 已将全局 allocation 哈希接入现有 108-cell x 3 replicate 请求并保持 TRAIN-only；
    validation/test 继续未分配。
-3. [ ] D5 生成三个互斥 split 的 source schedule/manifest 计划，future-held-out 继续一次性
-   读取且不得用于训练、选模、校准或门限修改。
-4. [ ] 三个模块 readiness 全部通过后，main 才能创建执行计划；当前不得启动数据生成。
+3. [x] D5 已生成三个互斥 split 的 104 条逐 episode source schedule；future-held-out 继续
+   一次性读取且不得用于训练、选模、校准或门限修改。
+4. [x] main 已实现 D3/D4/D5 跨模块预生成门控，独立核对全局登记、来源哈希、模块 readiness
+   和 producer 能力。当前模块计划 `3/3` 完整，producer adapter `0/3` 完整。
+5. [ ] main 实现 D3 producer adapter：逐 episode 映射目标/资源数量、补齐五类未支持场景，
+   写出 A1 v3 在线帧、离线标签和 manifest。
+6. [ ] main 实现 D4 producer adapter：执行 8/16 区域拓扑、通信条件、正向转移和困难负样本，
+   写出 v8 训练合同要求的匿名在线/离线记录。
+7. [ ] main 实现 D5 producer adapter：执行相机角色、四段意图窗口和困难混淆 treatment，并在
+   生成时检查最低唯一样本配额。
+8. [ ] adapter 完成后由 D3/D4/D5 owner 分别复核并更新 readiness。main 只有在新预检返回
+   `ready_for_explicit_main_execution_authorization` 后才能创建非空执行命令；当前不得生成。

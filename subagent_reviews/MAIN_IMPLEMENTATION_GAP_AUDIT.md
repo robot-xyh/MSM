@@ -11,10 +11,10 @@
 - 新增运行级 P0：无。
 - 正式 R0：保持 `450/900`；shard 10-19 和正式 seed `1000-1019` 的 episode 数据
   本轮均未运行或读取。
-- D1 批量质量摘要：通过模块性能门，默认关闭，不构成系统实时闭合。
-- D3 A1 v2：完成失败阶段归因，继续 not admitted；v3 只有新来源请求。
-- D4 A2 v7：完成失败阶段归因，继续 failed closed；v8 只有 TRAIN 数据请求。
-- D5 A3 v2：完成一次固定配置行为克隆，模型质量门失败；所有学习和运行权限关闭。
+- D1 批量质量摘要：模块语义门通过；完整 episode 收益未过描述性性能门，默认关闭。
+- D3 A1 v2：完成失败阶段归因，继续 not admitted；v3 计划已绑定，producer 未完成。
+- D4 A2 v7：完成失败阶段归因，继续 failed closed；v8 TRAIN 计划已绑定，producer 未完成。
+- D5 A3 v2：固定配置行为克隆的模型质量门失败；v3 来源计划已绑定，producer 未完成。
 - D6 对 A3 v2 的独立低层模型审计：完成，结论为失败关闭。
 
 ### 已闭合
@@ -28,13 +28,15 @@
    教师完全匹配保持 `0/25`；9 帧由特征分布外回退确认，16 帧为非分布外候选动作不匹配。
    原制品缺逐边可达性、排序和需求槽，三类内部原因不伪造归因。94 个拒绝帧全部恢复
    exact R0。
-3. D3 v3 只冻结 15 个场景规模单元、300 episode 的来源请求。seed 尚未分配，生成、训练、
-   选模、阈值、运行和正式权限均为 0。
+3. D3 v3 已冻结 15 个场景规模单元、300 episode 和 seed `23000-23299`，每单元按
+   12/4/4 划分。readiness 为 `ready(plan_only)`；生成、训练、选模、阈值、运行和正式
+   权限均为 0。
 4. D4 严格复载 A2 v7 的 128 帧。45 个失败中，42 个正类没有 actor 激活，3 个负类
    形成错误边和虚假转移；阶段级归因 `45/45`，特征级归因因缺逐边特征而保持
    `0/45 available`。v7 权重、0.60 门和确定性投影不变。
-5. D4 v8 只冻结 seed `28100-28423` 的 324 个 TRAIN 单元请求。main 检查现有登记未见
-   冲突；没有生成 episode 或模型，validation/test 也未选择。
+5. D4 v8 的 108 个单元、3 次重复和 seed `28100-28423` 已绑定全局 allocation、模块
+   registry 和 readiness。324 个 TRAIN seed 与保护种子及其他分配无交集；没有生成
+   episode 或模型，validation/test 也未选择。
 6. D5 使用来源独立 A3 v2 语料的完整 train split 进行一次固定配置行为克隆。100 episode、
    159502 sample 的 train/validation/test 为 `95040/24329/40133`，没有 test 选模、
    超参数搜索、失败后重复训练或正式 seed 样本读取。
@@ -54,18 +56,26 @@
     动作零召回；全部 authority 和 `paired_shadow_allowed` 保持 false。审计输入为仓库
     相对路径，审计器源码 SHA-256 与 `SHA256SUMS` 均已绑定。专项 `18 passed`，D6
     全量 `1384 passed, 1 warning`。
+11. D5 A3 v3 已冻结 104 条逐 episode 配方，train/validation/future-held-out 为
+    `48/24/32` 个 episode，seed 为 `24000-24103`，三组互斥。未来留出仍受一次性访问门
+    约束，本轮没有读取 payload。
+12. main 跨模块预生成门已核对 658 个保护 seed、728 个新分配 seed 和全部来源 SHA-256。
+    D3/D4/D5 计划 `3/3` 完整，producer adapter `0/3` 完整；执行命令为空，所有权限为
+    false。当前工作树存在未提交资料，干净来源门也未通过；后续只能从干净提交生成。
+13. D6 对 D1 候选完成 10 对 200 对 200、2 秒 episode 配对。外生输入、D1/D2 业务和
+    操作合同均为 `10/10`；候选更快 `6/10`，墙钟与 D1 包含式计时中位改善仅
+    `1.045%/2.043%`，未达到描述性性能门。运行时总线时序等价 `0/10`，但未造成业务分歧。
 
 ### 开放 P1
 
-1. **A1 新来源。** v3 必须保存匿名候选边可达性、逐边模型排序、需求槽和投影前后原因。
-   seed 只能在 main 合并完整排除登记后分配，不得复用 v2 评价集调参。
-2. **A2 新来源。** v8 先生成 TRAIN，冻结 actor 后再选全新 validation/test。准入前必须
-   取得非零正动作泛化和零虚假转移；v7 永久保持失败关闭。
-3. **A3 新模型版本。** 下一次训练需预先冻结少数意图判别、损失和校准方法，并使用全新
-   development/evaluation seed。当前 test 不得用于反复选模；同键 R0、运行 ACK、物理
-   outcome、AirSim 和真实相机仍未形成。
-4. **完整栈性能。** D1 局部发布收益尚未在 5/20/50/100/200 多 seed 完整栈复核，也没有
-   关闭 100/200 规模非实时。
+1. **A1 producer。** main 尚不能执行逐 episode 非等量目标/资源规模、五类场景及 A1 v3
+   writer。生成后仍须保存匿名候选边可达性、逐边排序、需求槽和投影前后原因。
+2. **A2 producer。** main 尚不能执行 8/16 区域拓扑、通信、供需、正向转移和困难负样本
+   处理及 v8 writer。TRAIN 完成并冻结 actor 后，才可申请全新 validation/test。
+3. **A3 producer。** main 尚不能执行逐 episode 意图窗口、相机角色、困难混淆 treatment
+   和生成时配额控制。新来源通过后才可按冻结方法训练，当前 v2 test 不得用于调参。
+4. **完整栈性能。** D1 候选虽保持 10 对完整 episode 业务一致，但更快比例与收益未过门，
+   且总线时序存在漂移。需用更大独立批次分离纯物化计时和总线漂移来源。
 5. **正式矩阵。** R0 后 450 个单元、完整归档合并和 D6 后验仍受存储与删除授权边界限制。
    G1/A1/A2/A3 未分别获准前，C1/F1 不启动。
 
@@ -3370,11 +3380,33 @@ D6 独立只读审计确认 644 个当前多成员联盟目标闭合，100/100 �
 
 ### 仍开放 P1
 
-1. D3 的 15-cell/300-episode 模块 registry 与 schedule 尚未由 main 生成，readiness 仍不能
-   作为执行许可。
-2. D4 需要把全局 allocation/hash 接入 v8 TRAIN-only readiness；validation/test 仍应等待
-   新来源请求，不能从 TRAIN 划出。
-3. D5 需要按三个 allocation 建立 source schedule/manifest，并在训练前证明 split 覆盖、
-   整集互斥和 future-held-out 一次性访问门控。
-4. 三个模块就绪校验全部通过前，不启动 episode/sample 生成。R0 `450/900`、shards 0-9
-   和禁止运行 shards 10-19 的边界保持不变。
+1. D3 的 15-cell/300-episode registry 与 schedule 已完成，readiness 为 `ready(plan_only)`；
+   当前 P1 转为 main producer 缺逐 episode 目标/资源数量、五类场景映射及 A1 v3 writer。
+2. D4 的 allocation/hash 与 TRAIN-only readiness 已完成；main producer 仍不能执行 8/16 区域
+   拓扑、通信条件、正向转移、困难负样本和 v8 writer。validation/test 继续未分配。
+3. D5 的 104 条三 split 采集日程、配额重算和一次性 future-held-out 门已完成；main producer
+   仍不能执行意图窗口、相机角色和困难混淆 treatment，生成时配额控制尚不存在。
+4. main 跨模块预检已实现并实测：模块计划 `3/3` 完整，producer adapter `0/3` 完整，
+   `execution_plan_ready=false`、`execution_authorized=false`，执行命令为空。
+5. adapter 完成后必须由三个 module owner 分别复核，再由 main 重跑预检。R0 `450/900`、
+   shards 0-9 和禁止运行 shards 10-19 的边界保持不变。
+
+## 2026-08-01 学习来源跨模块预生成门
+
+main 新增只读聚合器，直接消费 D3 A1 v3、D4 A2 v8 和 D5 A3 v3 readiness。聚合器同时
+验证全局登记表的 658 个保护 seed、728 个新分配 seed、全部来源文件 SHA-256 和模块精确
+seed 集。它不读取 episode/sample payload，不生成数据，不训练，也不授予任何权限。
+
+当前结果为 `blocked_by_producer_adapter_or_module_readiness`。阻断来源已经从“模块没有计划”
+收敛为“main 生产器不能执行计划”：
+
+1. D3 生产器不识别 A1 v3 日程 schema，不能逐 episode 传入非等量目标/资源规模，且缺
+   `nominal_balanced`、`resource_shortage`、`resource_surplus`、`dynamic_add_drop` 和
+   `near_tie_hard_negative` 映射。
+2. D4 生产器不识别 v8 区域日程，不能按 8/16 区域拓扑、通信条件和正负转移 treatment
+   生成训练帧。
+3. D5 生产器只能按整次运行设置采集 profile，不能执行逐 episode 意图窗口、投影边界、
+   遮挡/陈旧投影、角色匹配和近似并列目标 treatment。
+
+当前没有新增运行级 P0。上述三项是来源生成前的 P1 阻断；在关闭前不得创建数据生成命令。
+producer 完成后还必须关闭干净工作树执行门，不能从含未提交改动的工作树启动生成。
