@@ -1,5 +1,16 @@
 # D4 M 对 N 分布式联盟形成与降级接管调研
 
+## 2026-08-01 A2 v8 全局种子绑定影响核对
+
+本轮新增内容只绑定区域资源 A2 v8 的 TRAIN seed 请求，没有改变 M 对 N 联盟状态机、
+成员 ACK、owner/version/epoch/lease、二级接管或完全分布式协商。v8 请求中的 1、2、3
+表示区域转移资源数覆盖，不能解释为多成员联盟已提交。readiness 也不授予 assignment、
+degradation、coalition、takeover 或 control 权限。
+
+因此本文件的 M 对 N 实现和开放缺口判定不变。新增证据仅证明 324 个 TRAIN seed 已与
+冻结 D4 请求机器绑定，未生成联盟 episode、未形成新模型、未增加 AirSim 或物理协同
+结果。后续 v8 数据即使通过审计，仍须单独经过现有原子联盟和完整 ACK 门。
+
 ## 2026-08-01 v7 失败归因与联盟边界
 
 v7 失败归因和 v8 数据请求只涉及区域间资源转移残差，不形成多成员联盟，不改变 required

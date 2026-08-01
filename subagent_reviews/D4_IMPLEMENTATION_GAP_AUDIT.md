@@ -1,5 +1,35 @@
 # D4 实现差距审计：分布式协同与降级接管
 
+## 2026-08-01 A2 v8 main allocation pre-generation 复核
+
+### 已关闭的 D4-owned 前置缺口
+
+1. **全局 allocation 已机器绑定。** 新 sidecar 固定 main registry ID、内容哈希和文件哈希，
+   并把 `d4-a2-v8-train` 的 owner/version/usage/operations、324 个 seed 及 source contract
+   绑定到既有 D4 request/module registry。全局 registry 自哈希、保护 seed 和 allocation
+   重叠由同一入口失败关闭校验。
+2. **D4 请求漂移已纳入统一 readiness。** 入口继续复用原 v8 严格 loader，验证 108×3、
+   8/9/12/16 区域调度哈希、空 validation/test、零生成/拟合计数和全 false 权限；原两份
+   冻结 JSON 没有改写。
+3. **准入语义已拆清。** 当前状态仅为
+   `generation_prerequisites_ready_no_data_generated`。它关闭“全局 seed 已保留但未与 D4
+   请求机器绑定”的缺口，不关闭数据、训练、模型、独立审计或运行准入缺口。
+
+### 保持开放的 P1
+
+1. main 尚未发布完整 324-entry generation schedule，也未生成 TRAIN episode、在线特征、
+   离线标签或 dataset manifest。生成前必须重新通过相同 binding validator。
+2. 新数据尚未经过 D4 内容、类别覆盖、在线/离线隔离和来源谱系审计；在此之前不能训练。
+3. v8 actor、checkpoint、模型选择、校准、注册、运行 preflight 和 D6 独立审计均未开始。
+4. validation/test 仍为空，后续必须从不与本 TRAIN allocation 重叠的新来源单独申请。
+
+### 验证与权限
+
+2026-08-01 新增专项 12/12、原 v8 与绑定联合 26/26、D4 全量 947/947 通过；仅有既有
+Matplotlib `Axes3D` 环境警告。未生成 episode/sample，未读取正式留出数据，未训练或
+注册模型，未运行 AirSim。当前无新增 P0；assignment、degradation、takeover、coalition、
+control、D3、D7、production、registration 和 runtime ACK 权限继续为 false。
+
 ## 2026-08-01 A2 v8 TRAIN-only 合同缺口状态
 
 ### 本轮关闭的 D4-owned 合同缺口

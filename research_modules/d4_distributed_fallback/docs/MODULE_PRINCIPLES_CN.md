@@ -1,5 +1,31 @@
 # 分布式协同与降级接管模块原理（模块编号 D4）
 
+## A2 v8 全局种子分配绑定原则（2026-08-01）
+
+### 两级合同
+
+D4 v8 原合同描述“需要什么 TRAIN 数据”，main 全局 registry 描述“哪些 seed 已保留给
+哪个候选”。新增 binding sidecar 将两级合同连接为一个可复现前置门。第一层校验全局
+registry 的自哈希、文件哈希、保护范围和所有 allocation 的互斥性，再要求
+`d4-a2-v8-train` 的 owner、候选版本、用途、操作和 324 个 seed 与冻结值完全相同。
+第二层复载 D4 request 和 module seed registry，核对两份文件 SHA-256、各自内容哈希和
+108×3 调度哈希。这样可以区分“全局已分配 seed”和“D4 数据结构已冻结”，其中任一层
+变化都会关闭生成前置门。
+
+### 准入边界
+
+`generation_prerequisites_ready=true` 只说明 main 后续可以按固定请求准备生成命令，不能
+推导为数据已存在。当前 episode、sample、训练、注册和运行连接计数均为 0，validation/
+test 分配为空。全局 registry 虽为该 allocation 声明未来可执行 dataset generation 和
+training，当前 readiness 只评估 `dataset_generation` 前置条件；它显式保持
+`training_ready=false`、`model_ready=false` 和 `runtime_admission_ready=false`。
+
+权限 DTO 继续强制 assist、authority、assignment、degradation、takeover、coalition、
+control、physical、D3、D7、production、registration 和 runtime ACK 全部为 false。
+新增验证层不进入在线仲裁，不改变确定性区域策略、owner/version/epoch/lease、联盟 ACK
+或失败关闭规则。2026-08-01 的 12 项专项和 947 项 D4 全量测试只证明合同可复现，不构成
+模型效果、AirSim 或物理接管证据。
+
 ## A2 v8 TRAIN-only 合同原则（2026-08-01）
 
 ### 在线特征与离线标签隔离

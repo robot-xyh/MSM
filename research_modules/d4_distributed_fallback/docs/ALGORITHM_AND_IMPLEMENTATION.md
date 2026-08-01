@@ -1,5 +1,40 @@
 # D4 分布式协同与降级接管算法及实施方案
 
+## A2 v8 main allocation pre-generation validator（2026-08-01）
+
+### 输入
+
+只读入口接收 repository root 和版本化 binding sidecar。sidecar 固定 main 全局 registry
+路径、registry ID、内容 SHA-256、物理文件 SHA-256，以及 D4 allocation 的 owner、候选
+版本、生命周期、用途、操作、seed 数、范围和 seed inventory SHA-256。它还固定 D4
+request、module seed registry 的路径、文件哈希、内容哈希和 schedule 内容哈希。原两份
+v8 冻结 JSON 未修改。
+
+### 校验顺序
+
+1. 复算 sidecar 自哈希并逐键对照 v1 常量，防止通过重写期望值接受漂移。
+2. 复算全局 registry 自哈希，检查正式留出保护、跨 protected set 和 allocation 重叠，
+   再严格对照 `d4-a2-v8-train` 元数据和完整 seed 序列 `28100-28423`。
+3. 对照全局 allocation 的 source contract，要求 request ID、module registry ID、文件路径
+   和文件 SHA-256 与 D4 sidecar 一致。
+4. 调用既有 v8 frozen loader，复验 108 cells x 3 replicates、四类定向拓扑、调度内容
+   SHA-256、TRAIN-only、空 validation/test、零生成/拟合计数和全 false 权限。
+5. 最后复算全局 registry、D4 request 和 module seed registry 的物理文件 SHA-256。任何
+   语义或字节漂移抛出稳定错误码，CLI 输出 `failed_closed` 并返回状态码 2。
+
+### 输出
+
+正例返回自哈希 readiness DTO，状态为
+`generation_prerequisites_ready_no_data_generated`。输出包含全局 registry 和 D4 三组哈希、
+精确 seed 库存、各校验完成标志、空 validation/test、零 episode/sample，以及
+`training_ready=false`、`model_ready=false`、`runtime_admission_ready=false`。该 DTO 不
+包含模型权重、策略动作或控制许可，也不能写入在线 assignment、degradation、coalition、
+takeover 或 D7 控制链。
+
+新增测试包含 1 个真实正例和 11 个失败关闭/边界用例。2026-08-01 结果为专项 12/12、
+原 v8 合同联合 26/26、D4 全量 947/947 通过；仅有既有 Matplotlib `Axes3D` 环境警告。
+本轮未生成数据、未训练、未注册、未运行 AirSim。
+
 ## A2 v8 TRAIN-only 合同实现（2026-08-01）
 
 ### DTO 与文件合同

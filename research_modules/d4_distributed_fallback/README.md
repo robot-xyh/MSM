@@ -1,5 +1,33 @@
 # D4 分布式协同与降级接管
 
+## 2026-08-01 A2 v8 main 全局种子分配绑定
+
+D4 已在既有 v8 TRAIN-only 请求外增加版本化 sidecar
+`configs/region_resource_v8_main_seed_allocation_binding_v1.json`。该文件将 main 全局登记表
+`scalable3d-learning-source-allocation-20260801-v1` 的内容哈希、文件哈希及
+`d4-a2-v8-train` 分配，严格绑定到 D4 冻结 request 和 module seed registry。绑定确认
+owner=`D4`、candidate=`d4-a2-v8`、usage=`train_only`、operation 为
+`dataset_generation/training`、seed 精确等于 `28100-28423`，并核对 108 cells x 3
+replicates、8/9/12/16 区域调度的内容哈希。全局登记表自哈希、保护种子和跨 allocation
+重叠规则也在同一只读入口中校验。
+
+运行以下命令只检查生成前置条件，不写出 episode、sample 或模型：
+
+```bash
+PYTHONPATH=research_modules/d4_distributed_fallback python3 \
+  research_modules/d4_distributed_fallback/scripts/validate_region_resource_v8_main_allocation.py
+```
+
+当前输出状态为 `generation_prerequisites_ready_no_data_generated`，readiness 内容 SHA-256
+为 `9103fa10...ef49f`。这只关闭“main 分配与 D4 冻结请求未机器绑定”的缺口，不表示
+训练、模型或运行准入。dataset generation 尚未执行，episode/sample 均为 0；validation/
+test 仍未分配；assignment、degradation、coalition、takeover、control、D3、D7、注册和
+runtime ACK 权限全部为 false。main 的 324-entry 实际生成 schedule 与数据制品仍不存在。
+
+2026-08-01 验证结果为新增专项 12/12、原 v8 与新绑定联合 26/26、D4 全量 947/947
+通过；唯一警告是既有 Matplotlib `Axes3D` 环境警告。本轮未生成数据、未训练、未读取
+正式留出数据，也未运行 AirSim。
+
 ## 2026-08-01 A2 v8 TRAIN-only 数据合同就绪
 
 D4 新增 `region_resource_v8_development_contract.py` 和只读命令

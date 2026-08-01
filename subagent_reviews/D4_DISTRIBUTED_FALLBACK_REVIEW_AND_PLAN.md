@@ -1,5 +1,19 @@
 # D4 分布式协同与降级接管综述及子方案
 
+## 2026-08-01 A2 v8 main seed allocation binding 复核
+
+D4 已新增只读 pre-generation gate，把 main 全局 registry 的固定身份、内容/文件 SHA-256
+和 `d4-a2-v8-train` allocation，绑定到冻结的 v8 request 与 module seed registry。验证器
+严格检查 allocation owner/version/usage/operations、`28100-28423` 精确库存、全局 seed
+互斥、source binding、108×3 定向拓扑调度、空 validation/test 和全 false 权限。旧或错
+registry、seed 缺失/重叠、schedule 漂移、非 TRAIN 分配或权限越界均失败关闭。
+
+当前结论限于生成前置条件：readiness 为
+`generation_prerequisites_ready_no_data_generated`，episode/sample 仍为 0，训练、模型和
+运行准入仍为 false。2026-08-01 专项 12/12、D4 全量 947/947 通过；没有新 AirSim 或
+物理接管证据。下一步由 main 发布完整 generation schedule 并生成全新 TRAIN 来源，D4
+只负责内容审计；通过数据审计前不进入训练。
+
 ## 2026-08-01 v7 失败归因与 v8 请求评审
 
 D4 接受本轮诊断为冻结 v7 失败结果的来源独立事后分层，不接受其作为 v7 调参依据或 v8

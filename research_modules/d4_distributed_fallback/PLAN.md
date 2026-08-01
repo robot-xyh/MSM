@@ -1,5 +1,34 @@
 # D4 分布式协同与降级接管计划
 
+## 2026-08-01 A2 v8 main allocation pre-generation 绑定
+
+### 本轮完成
+
+- [x] 新增固定自哈希 sidecar，将 main 全局 registry ID、内容 SHA-256、文件 SHA-256、
+  `d4-a2-v8-train` allocation 和 D4 两份冻结 v8 请求文件逐项绑定；未改写原
+  `v8_development_data_request.json` 或 `v8_development_seed_registry.json`。
+- [x] 只读验证全局 registry 自哈希、保护 seed、跨 allocation 重叠、owner、candidate
+  version、lifecycle、TRAIN-only usage、permitted operations、source bindings 和精确
+  `28100-28423` seed inventory。
+- [x] 复用冻结 v8 validator 核验 108 cells x 3 replicates、8/9/12/16 区域调度内容
+  SHA-256、空 validation/test、零生成/拟合计数及全 false 权限；任一漂移失败关闭。
+- [x] readiness 仅输出 `generation_prerequisites_ready_no_data_generated`。生成未执行，
+  TRAIN episode/sample 为 0，training/model/runtime admission 均为 false。
+- [x] 新增正负回归覆盖精确绑定、sidecar 篡改、旧 registry、registry 文件漂移、seed
+  缺失、跨 allocation 重叠、source binding 漂移、D4 schedule 漂移、validation/test
+  非空、权限越界和 D4 文件漂移。专项 12/12、D4 全量 947/947 通过。
+
+### 后续门
+
+- [ ] main 仍需依据冻结 324 项请求发布完整 generation schedule；本轮没有生成 episode、
+  online frame、offline label、dataset manifest 或任何训练制品。
+- [ ] 生成命令启动前必须重新运行本 binding validator；全局 registry、allocation 或 D4
+  请求任一哈希变化时，旧 sidecar 失效，不能通过改命令参数绕过。
+- [ ] 生成数据经 D4 内容审计前不得训练；训练完成也不自动获得模型、运行、assignment、
+  degradation、coalition、takeover、D3、D7 或 control 准入。
+- [ ] validation/test 继续未分配。未来必须从与本 TRAIN 分配不重叠的新来源单独申请，
+  不能从 `28100-28423` 重切分。
+
 ## 2026-08-01 A2 v8 TRAIN-only 合同推进
 
 ### 本轮完成

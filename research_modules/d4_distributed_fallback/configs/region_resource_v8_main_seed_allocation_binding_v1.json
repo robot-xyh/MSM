@@ -1,0 +1,85 @@
+{
+  "schema": "d4-region-resource-v8-main-seed-allocation-binding-v1",
+  "binding_id": "d4-a2-v8-main-seed-allocation-binding-20260801-v1",
+  "status": "frozen_generation_prerequisites_only",
+  "purpose": "Bind the frozen D4 A2 v8 TRAIN-only request to one exact main-owned global seed allocation without granting training, model, runtime, assignment, degradation, coalition, takeover, or control admission.",
+  "global_registry": {
+    "path": "research_modules/scalable_3d_simulation/configs/scalable_learning_global_seed_registry_v1.json",
+    "schema_version": "scalable3d-global-seed-registry-v1",
+    "policy_version": "scalable3d-seed-allocation-policy-v1",
+    "registry_id": "scalable3d-learning-source-allocation-20260801-v1",
+    "status": "allocations_reserved_generation_not_started",
+    "content_sha256": "89d99bf064a8c0e226eead5b675f05daf70ac2d4c6f6139322502da54ab0aea7",
+    "file_sha256": "1c9778e1cbfcd5679956ac2c1fc71a1e780207c4579abdc9b129d162a252c4b6"
+  },
+  "allocation": {
+    "allocation_id": "d4-a2-v8-train",
+    "owner": "D4",
+    "candidate_version": "d4-a2-v8",
+    "lifecycle": "reserved",
+    "usage_class": "train_only",
+    "split_policy": "fixed_108_cells_3_replicates_train_only_v1",
+    "permitted_operations": [
+      "dataset_generation",
+      "training"
+    ],
+    "readiness_operation": "dataset_generation",
+    "seed_count": 324,
+    "seed_range": [
+      28100,
+      28423
+    ],
+    "seed_inventory_sha256": "e1bf7b14943fee8e600a60731aee1788d36586d1e52a20da9406473ac3a4b621"
+  },
+  "d4_frozen_contract": {
+    "request_id": "d4-region-resource-v8-development-source-request-v1",
+    "request_path": "research_modules/d4_distributed_fallback/reports/D4_V7_FAILURE_ATTRIBUTION_V8_DATA_REQUEST_20260801/v8_development_data_request.json",
+    "request_content_sha256": "cfdb88649d70fd390204edcd891cb1826aa8aa85d2af706ebb2ed95bc46ee8aa",
+    "request_file_sha256": "daa42fd6a980923231e244d772b20dc8d7b76ee12e1d53b15009ff346de12d38",
+    "module_seed_registry_id": "d4-v8-development-train-source-request-v1",
+    "module_seed_registry_path": "research_modules/d4_distributed_fallback/reports/D4_V7_FAILURE_ATTRIBUTION_V8_DATA_REQUEST_20260801/v8_development_seed_registry.json",
+    "module_seed_registry_content_sha256": "16f8acd4457c0914a0ec9296724280fcccfe43f2667d87401464fb9a27c04550",
+    "module_seed_registry_file_sha256": "cd40390994a6216ebb6ab3415fd467762d6900c45ad7f6ebd7ee783a9bf77015",
+    "module_schedule_content_sha256": "8b736f2ad6272e90fcf366969b5206039e9616fb0e1197bdb3c615e2e107f890",
+    "cell_count": 108,
+    "replicates_per_cell": 3,
+    "topology_region_counts": [
+      8,
+      9,
+      12,
+      16
+    ],
+    "requested_split": "train",
+    "validation_seed_allocation": [],
+    "test_seed_allocation": []
+  },
+  "generation_claims": {
+    "generation_prerequisites_only": true,
+    "dataset_generation_executed": false,
+    "episode_generation_count": 0,
+    "sample_generation_count": 0,
+    "training_ready": false,
+    "training_count": 0,
+    "model_ready": false,
+    "model_registration_count": 0,
+    "runtime_admission_ready": false,
+    "runtime_connection_count": 0
+  },
+  "permissions": {
+    "schema": "d4-region-resource-v8-no-authority-permissions-v1",
+    "assist": false,
+    "authority": false,
+    "assignment": false,
+    "degradation": false,
+    "takeover": false,
+    "coalition": false,
+    "control": false,
+    "physical": false,
+    "d3": false,
+    "d7": false,
+    "production": false,
+    "registration": false,
+    "runtime_ack": false
+  },
+  "content_sha256": "60b42f2be28f3b389cae9a299045a3457e8b549d1525d5a7102c0a3e30533a20"
+}
