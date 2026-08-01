@@ -1,5 +1,31 @@
 # 三维规模化仿真版本管理
 
+## 2026-08-01 证据快照
+
+- 正式 R0 继续绑定生产提交 `80e55eb43bc4a5feeac9c9af0d718d461a46401f` 和
+  execution plan SHA-256
+  `b922ff5f95864345efa583da7256935694e5c675529989a659716522a0d7590e`，完成度
+  固定为 `450/900`。本轮不得用开发候选重签或替换该身份。
+- D1 批量质量摘要使用实现身份
+  `d1.publication.global_track_materialization.batched_a95_summary.v1`。它是默认关闭的
+  模块候选，不改变世界、总线、场景或正式 R0 版本。
+- D3 A1 v2 继续冻结为 not admitted。v3 目前只有数据请求版本，没有 seed、数据集、模型
+  或运行版本。
+- D4 A2 v7 继续冻结为 failed closed。v8 目前只有 TRAIN 数据请求和 seed registry，
+  没有 validation/test、模型或运行版本。
+- D5 A3 v2 配置使用
+  `d5.active-vision-bc-frozen-config.v1`，dataset manifest SHA-256 为
+  `9b80e47aed8f4c7a416694220d63d9156010911951cbbf271905ce5c0d6f31d4`，权重
+  SHA-256 为 `b984e3052556879b2acd51d108c862a7ecd9361b2a823733e220f1e1419ad01c`。
+  bundle 状态固定为 `development_shadow_only`，模型质量门失败；这些标识不得写入正式
+  episode 的 admitted/assist/control 字段。
+- D6 独立模型审计 schema 为 `d6.d5-a3-v2-bc-model-independent-audit.v1`，审计器实现
+  版本为 `1.1.0`，源码 SHA-256 为
+  `32e37e0b89ff79068bb776efc4845d128b7421d32f6bdc35edec8b98d59cafd0`。证据包状态
+  `completed_fail_closed_quality_gate` 只确认字节和指标可复现，不改变 D5 bundle 权限。
+- 2026-07-31 完成度矩阵保持历史快照；当前状态使用
+  `docs/SCALABLE_3D_GOAL_COMPLETION_MATRIX_20260801_CN.md`。
+
 ## 分支
 
 ```text

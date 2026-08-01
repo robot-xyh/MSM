@@ -1,5 +1,30 @@
 # Scalable 3D Simulation
 
+## 2026-08-01 阶段收口
+
+本轮新增 D1 发布性能候选、D3 A1 v2 失败归因、D4 A2 v7 失败归因和 D5 A3 v2
+行为克隆候选。正式 R0 保持 `450/900`，shard 10-19 和正式 seed `1000-1019` 的
+episode 数据均未运行或读取。学习候选没有获得辅助、分配、降级、相机命令、控制或生产
+权限。
+
+D1 将同一发布帧的二维位置协方差 95% 半径计算改为可选批量路径。7 对 fresh process
+的局部物化中位改善为 `16.682378%`，语义和业务操作数 7/7 一致；开关默认关闭，结果
+不代表完整系统达到实时。
+
+D3 确认 A1 v2 的 25 个 test 正类中有 9 帧因特征分布外回退，另 16 帧为非分布外
+候选动作不匹配。v3 只冻结 15 个场景规模单元、300 episode 的新来源请求，尚未分配
+seed。D4 确认 A2 v7 的 45 个失败中有 42 个正类未激活和 3 个负类虚假转移；v8 只冻结
+seed `28100-28423` 的 324 个 TRAIN 单元请求，没有生成数据或训练模型。
+
+D5 在 100 episode、159502 样本上执行一次固定配置行为克隆。test 精确动作准确率为
+`0.959958`，但 `observe_target` 和 `search_sector` 召回均为 0，宏平均召回仅
+`0.495507`，期望校准误差为 `0.368239`。模型质量门失败，A3/R0 paired shadow 不启动。
+D6 随后从 33 个 cache 文件、bundle、weights 和冻结配置独立重建 40133 个 test 样本的
+前向结果，复算指标与 D5 在 `1e-6` 内一致，状态为
+`completed_fail_closed_quality_gate`。D6 全量回归为 `1384 passed, 1 warning`。
+当前完成度见
+[`docs/SCALABLE_3D_GOAL_COMPLETION_MATRIX_20260801_CN.md`](docs/SCALABLE_3D_GOAL_COMPLETION_MATRIX_20260801_CN.md)。
+
 ## A3 动作角色补采处理（2026-08-01）
 
 main 新增显式 `balanced_action_role_v1` 主动视觉采集配置。默认

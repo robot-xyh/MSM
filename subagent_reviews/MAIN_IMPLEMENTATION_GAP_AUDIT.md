@@ -4,6 +4,86 @@
 **审计目标**：列出共识算法与计划使用的开源代码哪些已经实现，哪些没有实现，为什么没有实现，以及缺少哪些条件。
 **边界**：本文只用于科研仿真、接口补齐和后续工程排期；不涉及真实硬件、实机处置、火控或绕过授权的自动动作。
 
+## 2026-08-01 学习候选失败归因与模型质量收口
+
+### 当前判断
+
+- 新增运行级 P0：无。
+- 正式 R0：保持 `450/900`；shard 10-19 和正式 seed `1000-1019` 的 episode 数据
+  本轮均未运行或读取。
+- D1 批量质量摘要：通过模块性能门，默认关闭，不构成系统实时闭合。
+- D3 A1 v2：完成失败阶段归因，继续 not admitted；v3 只有新来源请求。
+- D4 A2 v7：完成失败阶段归因，继续 failed closed；v8 只有 TRAIN 数据请求。
+- D5 A3 v2：完成一次固定配置行为克隆，模型质量门失败；所有学习和运行权限关闭。
+- D6 对 A3 v2 的独立低层模型审计：完成，结论为失败关闭。
+
+### 已闭合
+
+1. D1 在不改融合数学、协方差限制、乱序量测、双时间戳和编号语义的条件下，增加默认关闭
+   的同帧批量 95% 误差半径计算。7 对 fresh process 的候选更快比例为 100%，模块墙钟
+   P50 从 `0.228742 s` 降至 `0.190582 s`，中位改善 `16.682378%`，bootstrap
+   95% 区间为 `[-0.044637, -0.031457] s`。逐扫描语义和工作量 7/7 一致；D1
+   全量 `518 passed, 1 warning`。
+2. D3 严格复载 A1 v2 的 100 episode、292 帧和 seed `20000-20099`。test 正类
+   教师完全匹配保持 `0/25`；9 帧由特征分布外回退确认，16 帧为非分布外候选动作不匹配。
+   原制品缺逐边可达性、排序和需求槽，三类内部原因不伪造归因。94 个拒绝帧全部恢复
+   exact R0。
+3. D3 v3 只冻结 15 个场景规模单元、300 episode 的来源请求。seed 尚未分配，生成、训练、
+   选模、阈值、运行和正式权限均为 0。
+4. D4 严格复载 A2 v7 的 128 帧。45 个失败中，42 个正类没有 actor 激活，3 个负类
+   形成错误边和虚假转移；阶段级归因 `45/45`，特征级归因因缺逐边特征而保持
+   `0/45 available`。v7 权重、0.60 门和确定性投影不变。
+5. D4 v8 只冻结 seed `28100-28423` 的 324 个 TRAIN 单元请求。main 检查现有登记未见
+   冲突；没有生成 episode 或模型，validation/test 也未选择。
+6. D5 使用来源独立 A3 v2 语料的完整 train split 进行一次固定配置行为克隆。100 episode、
+   159502 sample 的 train/validation/test 为 `95040/24329/40133`，没有 test 选模、
+   超参数搜索、失败后重复训练或正式 seed 样本读取。
+7. D5 test 精确动作准确率为 `0.959958`，但宏平均召回只有 `0.495507`，
+   `observe_target` 和 `search_sector` 召回均为 0；侦察相机精确动作准确率为
+   `0.656527`，期望校准误差为 `0.368239`。模型质量门因此失败，总体准确率不能覆盖
+   少数动作失效。
+8. D5 bundle 固定为 `development_shadow_only`。paired shadow、assist、PPO、assignment、
+   degradation、runtime、production、control、camera command 和
+   `global_track_id` write 均为 false。完整 cache、bundle 和权重只在 ignored 输出中，
+   普通 Git 提交只保存配置、摘要、哈希和报告。
+9. D6 没有调用 D5 evaluator、corpus gate、precheck 或模型类，独立核对 generation
+   元数据、33 个 cache 文件、bundle、weights、7 个 D5 源文件和 tracked 证据。审计器
+   按 state_dict 形状重建两层 tanh actor 前向，复算 40133 个 test 样本；全部指标与
+   D5 声明在 `1e-6` 内一致。
+10. D6 独立门结论为 `completed_fail_closed_quality_gate`。总体准确率没有覆盖两个少数
+    动作零召回；全部 authority 和 `paired_shadow_allowed` 保持 false。审计输入为仓库
+    相对路径，审计器源码 SHA-256 与 `SHA256SUMS` 均已绑定。专项 `18 passed`，D6
+    全量 `1384 passed, 1 warning`。
+
+### 开放 P1
+
+1. **A1 新来源。** v3 必须保存匿名候选边可达性、逐边模型排序、需求槽和投影前后原因。
+   seed 只能在 main 合并完整排除登记后分配，不得复用 v2 评价集调参。
+2. **A2 新来源。** v8 先生成 TRAIN，冻结 actor 后再选全新 validation/test。准入前必须
+   取得非零正动作泛化和零虚假转移；v7 永久保持失败关闭。
+3. **A3 新模型版本。** 下一次训练需预先冻结少数意图判别、损失和校准方法，并使用全新
+   development/evaluation seed。当前 test 不得用于反复选模；同键 R0、运行 ACK、物理
+   outcome、AirSim 和真实相机仍未形成。
+4. **完整栈性能。** D1 局部发布收益尚未在 5/20/50/100/200 多 seed 完整栈复核，也没有
+   关闭 100/200 规模非实时。
+5. **正式矩阵。** R0 后 450 个单元、完整归档合并和 D6 后验仍受存储与删除授权边界限制。
+   G1/A1/A2/A3 未分别获准前，C1/F1 不启动。
+
+### 证据
+
+- 当前完成度矩阵：
+  `research_modules/scalable_3d_simulation/docs/SCALABLE_3D_GOAL_COMPLETION_MATRIX_20260801_CN.md`
+- D1 报告：
+  `research_modules/d1_sensor_fusion/reports/D1_GLOBAL_TRACK_MATERIALIZATION_PERFORMANCE_20260801_CN.md`
+- D3 归因：
+  `research_modules/d3_assignment_planner/results/a1_source_independent_v2_failure_attribution_v1_20260801/`
+- D4 归因：
+  `research_modules/d4_distributed_fallback/reports/D4_V7_FAILURE_ATTRIBUTION_V8_DATA_REQUEST_20260801/`
+- D5 模型候选：
+  `research_modules/d5_terminal_association/reports/D5_A3_V2_ACTIVE_VISION_BC_DEVELOPMENT_CANDIDATE_20260801_CN.md`
+- D6 独立审计：
+  `research_modules/d6_evaluation_metrics/reports/D5_A3_V2_BC_MODEL_INDEPENDENT_AUDIT_20260801/`
+
 ## 2026-08-01 A3 v2 动作角色语料闭合
 
 ### 当前判断
