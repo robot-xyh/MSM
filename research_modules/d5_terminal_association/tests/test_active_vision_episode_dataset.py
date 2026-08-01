@@ -359,6 +359,26 @@ def test_relative_dataset_root_supports_staging_finalize_and_load(
     assert len(dataset.episodes) == len(records)
 
 
+def test_validate_cli_serializes_nested_immutable_audit_mappings(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    root = tmp_path / "cli-validate-dataset"
+    records = _stage_records(root, 5)
+    finalize_active_vision_episode_dataset(root, minimum_unseen_seed_count=1)
+
+    exit_code = episode_dataset_module.main(
+        ("validate", "--dataset-dir", str(root))
+    )
+
+    assert exit_code == 0
+    payload = json.loads(capsys.readouterr().out)
+    assert payload["status"] == "valid_detached_immutable_dataset"
+    assert payload["episode_count"] == len(records)
+    assert payload["availability"]["reward"]["status"] == "available"
+    assert payload["source_domain_summary"]["episode_count"] == len(records)
+
+
 def test_recorded_modes_cannot_bypass_rule_fallback() -> None:
     sample = _record(80, camera_count=1, track_count=2).samples[0]
     alternative = next(

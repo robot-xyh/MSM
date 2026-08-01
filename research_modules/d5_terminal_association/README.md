@@ -2,6 +2,30 @@
 
 科研模块，用于把末端相机视场中的本地视觉轨迹保守关联到中心分配的 `global_track_id`。模块可在统一三维 episode 中在线运行；训练标签和真值评分仍保持离线。D5 只输出视觉关联与相机观察意图，不修改、重写或重新分配任何全局轨迹 ID。
 
+## 2026-07-31 A3 独立来源语料验收
+
+独立 producer 已在 clean commit
+`4a8c1173179b4058d4aee38178e0fb40ecd222b3` 冻结 100 episode、100 seed、45 个场景规模
+单元的三维质点主动视觉语料。D5 于 2026-08-01 使用严格 lazy loader 和显式保留 seed
+1000-1019 完成复核。语料共 159,487 个样本，train/validation/test 为 60/20/20 episode 和
+102,610/23,458/33,419 样本；manifest SHA-256 为
+`bccbdad42a71b130720469bb4e99dd1dd99e29a9b33af036679b9d64b0fe35a4`。
+
+来源和完整性门单独通过，状态为 `point_mass_simulation_research_eligible`。训练结构门失败
+关闭：train 中 `hold=0`，`search_sector+recon=0`，共 13 个失败原因。补采计划包含
+`hold+interceptor`、`hold+recon`、`search_sector+recon` 三项，每项至少需要 2 个新训练
+seed、2 个完整 episode 和 2 个唯一样本。corpus audit SHA-256 为
+`85db29f86d924a437259a478e2fb182c220d3469c8f8a0c4374820e61e6ef74e`。
+
+全语料运行 ACK 为 159,487/159,487 accepted，匿名 observation key 为
+159,487/159,487 且无重复。dataset 未保存物理匿名观测帧和离线 outcome，这两项计数不构成
+外部运行结果或目标可见率证据。行为克隆、近端策略优化和 assist 均未启动，全部 authority
+保持 false。严格 `validate` CLI 的嵌套只读 mapping JSON 序列化缺陷已用递归 thaw 修复并增加
+回归测试。详细结果见
+[`reports/D5_A3_SOURCE_INDEPENDENT_CORPUS_ACCEPTANCE_20260731_CN.md`](reports/D5_A3_SOURCE_INDEPENDENT_CORPUS_ACCEPTANCE_20260731_CN.md)。
+本次 episode dataset 专项为 `19 passed in 3.55s`，D5 全量为
+`770 passed, 2 warnings in 102.24s`，零失败。
+
 ## 2026-07-31 A3 来源域与仿真研究门
 
 D5 主动视觉 episode 现使用封闭来源域：历史未说明、合成软件 fixture、三维质点运行、
@@ -20,8 +44,9 @@ fixture，其他旧制品只映射为 `legacy_unspecified`，两者均不能晋�
 
 2026-07-31 定向回归为 `43 passed in 7.83s`，D5 全量为
 `769 passed, 2 warnings in 104.87s`。两条警告来自既有 Matplotlib `Axes3D` 环境和 NVML
-初始化。本轮只关闭“来源域语义和仿真研究门”软件 P1；尚未生成独立质点来源语料，A3 模型
-未重训，也没有取得 AirSim、真实相机、production、runtime 或 control 权限。
+初始化。该次软件回归只关闭“来源域语义和仿真研究门”软件 P1；当时尚未生成独立质点来源
+语料。后续独立语料状态以上一节严格验收为准。A3 模型仍未重训，也没有取得 AirSim、真实
+相机、production、runtime 或 control 权限。
 
 ## 2026-07-28 A3 主动视觉训练语料治理
 

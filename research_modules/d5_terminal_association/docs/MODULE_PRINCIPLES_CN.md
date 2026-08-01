@@ -1,6 +1,24 @@
 # 第五研究模块末端视觉关联（Terminal Association, D5）原理
 
-**状态日期：2026-07-31**
+**状态日期：2026-08-01（验收语料冻结于 2026-07-31）**
+
+## 独立语料验收原则
+
+独立 producer 已冻结 100 episode、100 seed、45 个场景规模单元的三维质点主动视觉语料。
+D5 的验收按三层分开处理。第一层是文件、来源和完整性，要求严格 loader、哈希、只读属性、
+clean source、显式来源、split 和 truth-free 全部成立。第二层是训练结构覆盖，要求四类动作、
+两类相机角色及其组合达到样本、episode 和 seed 下限。第三层是模型、运行和控制权限，必须由
+后续独立证据单独授予。
+
+本批次第一层通过，第二层失败。159,487 个样本中，train 为 102,610；`hold=0`，高空侦察机
+`search_sector=0`。来源研究门为 `point_mass_simulation_research_eligible`，组合训练入口仍按
+13 个原因失败关闭。来源完整性不能替代动作覆盖，运行 ACK 也不能替代离线 outcome 或物理匿名
+观测帧。
+
+全语料 ACK 为 159,487/159,487 accepted，匿名 observation key 为 159,487/159,487 且无
+重复。后者只提供 truth-free join key。dataset 没有保存物理匿名观测帧，不据此计算目标可见率
+或关联收益。BC、PPO、assist 和全部 authority 保持关闭，中心 `global_track_id` 继续只读。
+本次 D5 全量回归为 `770 passed, 2 warnings in 102.24s`，零失败。
 
 ## 主动视觉来源域原则
 
@@ -20,9 +38,9 @@ identity、完整版本和哈希绑定、互斥 seed split、在线 truth-free �
 命令、分配、接管、runtime、production、control 和中心编号写权限均保持 false。
 
 2026-07-31 定向测试为 `43 passed in 7.83s`，D5 全量为
-`769 passed, 2 warnings in 104.87s`。本轮只关闭来源域语义与仿真研究门软件 P1。测试数据是
-临时合同 fixture，尚未形成独立质点来源语料；A3 没有重训，AirSim 和真实相机声明没有外部
-证明，任何 production/runtime/control 权限均未获得。
+`769 passed, 2 warnings in 104.87s`。该轮只关闭来源域语义与仿真研究门软件 P1，测试数据是
+临时合同 fixture。后续独立质点语料的来源/完整性已按上一节通过，但训练覆盖仍失败；A3 没有
+重训，AirSim 和真实相机声明没有外部证明，任何 production/runtime/control 权限均未获得。
 
 ## 主动视觉训练语料覆盖原则
 

@@ -1,5 +1,22 @@
 # D5 实现差距审计
 
+## 2026-07-31 A3 独立来源语料验收 GAP
+
+| 缺口 | 当前状态 | 证据与剩余边界 |
+| --- | --- | --- |
+| `validate` CLI 嵌套只读 mapping 序列化 | **D5-owned 缺口已关闭** | CLI 在输出前递归 thaw JSON mapping/list/tuple，不再只转换最外层。真实 finalized 小数据集回归可解析嵌套 availability 与 source summary。 |
+| 独立三维质点语料 | **生产与严格完整性验收已关闭** | 2026-07-31 clean commit `4a8c117...2b3` 生成 100 episode/100 seed/45 cells/159,487 sample。manifest SHA 为 `bccbdad4...35a4`，来源为 100/100 显式 point-mass，dirty 和 synthetic 均为 0。 |
+| 保留 seed 与 split | **本批次检查通过** | D5 显式传入 1000-1019；train/validation/test 及 reserved overlap 均为 0。当前证据是版本化调用参数，不是 manifest 内 canonical registry 正式绑定。 |
+| 来源和语料完整性研究门 | **本批次通过** | `point_mass_simulation_research_eligible`，九项合同检查全真，corpus integrity、truth-free、clean source 和哈希/split 完整。该结论只说明来源与完整性。 |
+| 动作与角色训练覆盖 | **P1 开放，失败关闭** | train=102,610 eligible，excluded 为空；但 `hold=0`、`search_sector+recon=0`，训练门有 13 个失败原因。补采计划固定三项，每项至少新增 2 seed/2 episode/2 sample。 |
+| ACK 与匿名观测结果谱系 | **P1 开放** | 159,487/159,487 ACK accepted，匿名 observation key 159,487/159,487 且唯一。物理匿名观测帧、outcome/reward/counterfactual/causal 均不可用，不能据此证明外部运行收益。 |
+| A3 训练、晋级和运行权限 | **保持关闭** | 未启动 BC/PPO/assist；formal candidate、相机、分配、降级、runtime、production、control 和 `global_track_id` 写权限全 false。 |
+
+本次 D5 复核日期为 2026-08-01，验收对象冻结日期为 2026-07-31。corpus audit SHA-256 为
+`85db29f86d924a437259a478e2fb182c220d3469c8f8a0c4374820e61e6ef74e`。来源门通过不能覆盖训练
+结构失败；组合入口已拒绝训练和晋级。episode dataset 专项为 `19 passed in 3.55s`，D5
+全量为 `770 passed, 2 warnings in 102.24s`，零失败。
+
 ## 2026-07-31 A3 来源域与仿真研究门 GAP
 
 | 缺口 | 当前状态 | 证据与剩余边界 |
@@ -9,7 +26,7 @@
 | 摘要与权限防篡改 | **关闭并保持回归** | 来源 envelope 字段、tier、domain 和 dataset source summary 均重新验证；即使同步重写文件校验和，摘要不一致仍拒绝。全部 authority 位保持 false。 |
 | 质点仿真研究门 | **D5-owned 软件 P1 已关闭** | 仅严格复载、显式全质点来源、clean source identity、哈希/split、truth-free 和语料完整数据可进入 `simulation_research` 开发评估；formal、runtime、production、control 等权限不随门通过。 |
 | AirSim/真实相机来源 | **P1 开放，声明不等于证明** | 来源域只提供 declaration-only 证据等级。当前没有外部 AirSim episode 证明、真实相机 provenance 审计或现实泛化结果。 |
-| 独立质点语料与 A3 模型 | **P1 开放，unavailable** | 本轮测试使用临时合同 fixture，尚未生成独立质点来源训练语料，A3 未重训，也没有新的未见 seed 或 A3/R0 收益证据。 |
+| 独立质点语料与 A3 模型 | **语料已生成；训练与模型 P1 开放** | 独立 point-mass 语料已完成来源/完整性验收，但因 `hold` 和 `search_sector+recon` 覆盖缺失而禁止训练。A3 未重训，仍无新的未见 seed 或 A3/R0 收益证据。 |
 
 验证日期为 2026-07-31。来源域、episode dataset 和 corpus audit 定向测试为
 `43 passed in 7.83s`；D5 全量为 `769 passed, 2 warnings in 104.87s`。警告来自既有

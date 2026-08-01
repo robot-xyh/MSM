@@ -1,5 +1,26 @@
 # D5 终端视觉配准与身份认证计划
 
+## 2026-07-31 A3 独立来源语料验收
+
+- [x] 独立 clean producer 冻结 100 episode、100 seed、45 个场景规模单元、159,487 样本；
+  生产提交为 `4a8c1173179b4058d4aee38178e0fb40ecd222b3`。
+- [x] 修复严格 `validate` CLI 对嵌套 `mappingproxy` 的 JSON 序列化失败。修复递归处理通用
+  JSON mapping/list/tuple，并以真实 finalized 小数据集增加 CLI 回归。
+- [x] 严格复载 manifest、逐文件校验和、只读属性、来源 envelope 和 split；manifest
+  SHA-256 为 `bccbdad42a71b130720469bb4e99dd1dd99e29a9b33af036679b9d64b0fe35a4`。
+- [x] 显式传入保留 seed 1000-1019，确认 train/validation/test 零交叉；该证据来源为
+  `explicit_development_argument`，不冒充 canonical registry 正式绑定。
+- [x] 来源/完整性研究门通过，九项合同检查全真；全部 claim limit 和 authority 仍为 false。
+- [x] 训练结构门按 13 个原因失败关闭。train 中 `hold=0`、`search_sector+recon=0`；未启动
+  行为克隆、近端策略优化、assist 或模型晋级。
+- [x] 保存机器可读摘要和中文验收报告，区分匿名 observation key 覆盖与物理匿名观测帧证据。
+- [x] episode dataset 专项 `19 passed in 3.55s`；D5 全量
+  `770 passed, 2 warnings in 102.24s`；`git diff --check` 通过。
+- [ ] 按 `AV-CORPUS-001..003` 采集 `hold+interceptor`、`hold+recon`、
+  `search_sector+recon` 完整新 episode。每项至少 2 个新训练 seed、2 episode、2 sample。
+- [ ] 补采后重新运行严格 dataset/corpus/source gate。训练结构门通过前不得生成训练 cache、
+  权重或 paired-shadow 候选。
+
 ## 2026-07-31 A3 来源域与仿真研究门
 
 - [x] 冻结五类来源域及证据等级：`legacy_unspecified`、`synthetic_fixture`、三维质点
@@ -14,8 +35,9 @@
   版本/哈希、seed split、truth-free 和 corpus integrity 完整，并固定全部权限为 false。
 - [x] 2026-07-31 定向测试 `43 passed in 7.83s`；D5 全量测试
   `769 passed, 2 warnings in 104.87s`。警告为既有 Matplotlib `Axes3D` 与 NVML 环境问题。
-- [ ] 由独立 producer 生成并冻结真实三维质点来源语料，再做未见 seed 评估。当前单元测试
-  fixture 不构成该语料。
+- [x] 由独立 producer 生成并冻结三维质点来源语料。2026-07-31 批次为 100 episode、
+  100 seed、45 个场景规模单元；来源/完整性通过，训练结构覆盖未通过。
+- [ ] 在训练覆盖补齐后执行独立未见 seed 模型评估。当前语料不能进入训练。
 - [ ] 在独立语料上重训和评估 A3。AirSim/真实相机外部证明形成前，production、runtime、
   assist、相机命令、分配、接管和 control 权限继续关闭。
 

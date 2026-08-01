@@ -4026,7 +4026,7 @@ def _freeze_json(value: Any) -> Any:
 def _thaw_json(value: Any) -> Any:
     if isinstance(value, Mapping):
         return {str(key): _thaw_json(item) for key, item in value.items()}
-    if isinstance(value, tuple):
+    if isinstance(value, (list, tuple)):
         return [_thaw_json(item) for item in value]
     return value
 
@@ -4263,7 +4263,8 @@ def main(argv: Sequence[str] | None = None) -> int:
             )
         )
         return 0
-    print(json.dumps(dict(audit_active_vision_episode_dataset(args.dataset_dir)), sort_keys=True))
+    audit = audit_active_vision_episode_dataset(args.dataset_dir)
+    print(json.dumps(_thaw_json(audit), allow_nan=False, sort_keys=True))
     return 0
 
 

@@ -1,6 +1,28 @@
 # D5 终端视觉配准与身份认证算法原理与实施文档
 
-**状态日期：2026-07-31**
+**状态日期：2026-08-01（验收语料冻结于 2026-07-31）**
+
+## 独立 A3 语料验收实现
+
+严格验收先调用 `load_active_vision_episode_dataset_lazy()`。loader 逐文件验证 SHA-256、gzip
+流、header/footer、样本引用、离线 sidecar、descriptor、manifest、只读权限和来源摘要，内存中
+最多保留一个 episode。`validate` CLI 原先只对审计对象最外层调用 `dict()`，嵌套
+`MappingProxyType` 在 `json.dumps()` 中触发 `TypeError`。当前输出路径复用递归 `_thaw_json()`，
+统一把 mapping 转为普通字典、list/tuple 转为列表，并启用 `allow_nan=False`。修复不依赖 A3
+字段或具体数据集。
+
+严格 loader 通过后，`audit_active_vision_training_corpus()` 接收显式保留 seed 1000-1019。
+审计重算 train/validation/test 的 episode 和样本，训练覆盖只取 train。来源研究门与训练结构门
+分别保留：前者验证 100/100 显式 point-mass 来源、clean identity、哈希、split、truth-free 和
+corpus integrity；后者检查动作、角色及动作角色组合。`require_active_vision_simulation_research_corpus_ready()`
+先要求训练结构通过，因此本批次即使来源门通过，组合调用仍失败关闭。
+
+2026-07-31 语料含 100 episode、100 seed、45 cells、159,487 sample。manifest 和 corpus audit
+SHA-256 分别为 `bccbdad42a71b130720469bb4e99dd1dd99e29a9b33af036679b9d64b0fe35a4`
+和 `85db29f86d924a437259a478e2fb182c220d3469c8f8a0c4374820e61e6ef74e`。train 中
+`hold=0`、`search_sector+recon=0`，三项补采请求各要求至少 2 个新 seed、2 episode、2 sample。
+验收过程没有调用训练、模型 bundle、assist 或相机执行入口。episode dataset 专项为
+`19 passed in 3.55s`，D5 全量为 `770 passed, 2 warnings in 102.24s`。
 
 ## 主动视觉来源合同
 
@@ -20,8 +42,9 @@ truth-free 及 corpus integrity 完整。输出的 claim limits 和 authority �
 AirSim/真实相机声明不能通过该质点门，也不能获得现实、production、runtime 或 control 权限。
 
 2026-07-31 定向回归覆盖五类来源、旧制品读取、新写拒绝和三类篡改，共
-`43 passed in 7.83s`；D5 全量为 `769 passed, 2 warnings in 104.87s`。当前只完成软件合同，
-没有生成独立 point-mass 语料，没有重训 A3，也没有形成 AirSim 或真实相机外部证据。
+`43 passed in 7.83s`；D5 全量为 `769 passed, 2 warnings in 104.87s`。该轮只完成软件合同。
+后续独立 point-mass 语料已按上一节完成来源/完整性验收，但训练覆盖未通过；A3 未重训，也
+没有形成 AirSim 或真实相机外部证据。
 
 ## 主动视觉训练语料审计与补采规划
 

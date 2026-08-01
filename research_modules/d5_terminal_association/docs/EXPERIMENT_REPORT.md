@@ -1,5 +1,30 @@
 # D5 末端视觉配准与身份认证实验报告
 
+## 2026-07-31 A3 独立来源语料验收
+
+D5 于 2026-08-01 对 2026-07-31 冻结的独立三维质点语料完成严格复核。语料生产提交为
+`4a8c1173179b4058d4aee38178e0fb40ecd222b3`，含 100 episode、100 seed、45 个场景规模
+单元和 159,487 个样本。严格 CLI 返回 `valid_detached_immutable_dataset`；manifest SHA-256
+为 `bccbdad42a71b130720469bb4e99dd1dd99e29a9b33af036679b9d64b0fe35a4`。
+
+train/validation/test 为 60/20/20 episode 和 102,610/23,458/33,419 样本。显式保留 seed
+1000-1019 与全部 split 零交叉。100/100 episode 为显式 point-mass 来源，dirty 和 synthetic
+均为 0。来源/完整性研究门九项检查全部通过，状态为
+`point_mass_simulation_research_eligible`。
+
+训练结构门失败关闭。train 中 `hold=0`，`search_sector+recon=0`；13 个失败原因对应总体
+`hold` 和三个动作角色组合的样本、episode、seed 缺口。补采 planner 输出三项请求：
+`hold+interceptor`、`hold+recon`、`search_sector+recon`，每项至少 2 个新训练 seed、
+2 个完整 episode 和 2 个唯一样本。corpus audit SHA-256 为
+`85db29f86d924a437259a478e2fb182c220d3469c8f8a0c4374820e61e6ef74e`。
+
+159,487 个样本均有 accepted ACK 和唯一匿名 observation key。离线 outcome、reward、
+counterfactual、causal label 以及物理匿名观测帧不可用，因此本轮不能评价主动视觉收益、目标
+可见率或外部运行结果。未启动 BC、PPO、assist 或模型晋级，全部 authority 保持 false。
+episode dataset 专项为 `19 passed in 3.55s`，D5 全量为
+`770 passed, 2 warnings in 102.24s`。完整计数见
+`reports/D5_A3_SOURCE_INDEPENDENT_CORPUS_ACCEPTANCE_20260731_CN.md` 和对应 JSON。
+
 ## 2026-07-31 主动视觉来源域合同
 
 本轮验证来源声明、旧制品读取和仿真研究门的软件行为。定向测试覆盖五类来源域及证据等级、

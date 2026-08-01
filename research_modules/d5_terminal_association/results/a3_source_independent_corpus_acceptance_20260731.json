@@ -1,0 +1,212 @@
+{
+  "schema_version": "d5.a3-source-independent-corpus-acceptance.v1",
+  "corpus_freeze_date": "2026-07-31",
+  "d5_acceptance_date": "2026-08-01",
+  "dataset": {
+    "reference": "scalable_3d_simulation/outputs/d5_a3_source_independent_point_mass_v1_20260731_4a8c117/learning_dataset/d5_active_vision",
+    "producer_git_commit": "4a8c1173179b4058d4aee38178e0fb40ecd222b3",
+    "producer_dirty_episode_count": 0,
+    "episode_count": 100,
+    "seed_count": 100,
+    "seed_minimum": 21000,
+    "seed_maximum": 21099,
+    "scenario_scale_cell_count": 45,
+    "sample_count": 159487,
+    "split_episode_counts": {
+      "train": 60,
+      "validation": 20,
+      "test": 20
+    },
+    "split_sample_counts": {
+      "train": 102610,
+      "validation": 23458,
+      "test": 33419
+    },
+    "manifest_sha256": "bccbdad42a71b130720469bb4e99dd1dd99e29a9b33af036679b9d64b0fe35a4",
+    "dataset_config_sha256": "3c05993d9b919e639993f1eb074a10bae6fe88d05267342933281e91c35624e7",
+    "split_sha256": "aaad1f7d12f3d383e1d1a6d9160c534ad6a76c3281397cc421e893369cb761cd",
+    "training_set_sha256": "4d2056c8e66f335a8a8ebf6843840ac9c9a60899263349aad222676301f15f35"
+  },
+  "strict_dataset_validation": {
+    "status": "valid_detached_immutable_dataset",
+    "cli_exit_code": 0,
+    "streaming_episode_loading": true,
+    "source_domain": "scalable_3d_point_mass_runtime",
+    "evidence_tier": "simulation_research",
+    "explicit_source_domain_episode_count": 100,
+    "synthetic_fixture_episode_count": 0,
+    "source_provenance_contract_present": true
+  },
+  "reserved_evaluation_seed_check": {
+    "values": [
+      1000,
+      1001,
+      1002,
+      1003,
+      1004,
+      1005,
+      1006,
+      1007,
+      1008,
+      1009,
+      1010,
+      1011,
+      1012,
+      1013,
+      1014,
+      1015,
+      1016,
+      1017,
+      1018,
+      1019
+    ],
+    "training_overlap": [],
+    "all_split_overlap": [],
+    "evidence_source": "explicit_development_argument",
+    "formal_registry_binding": false
+  },
+  "training_corpus_audit": {
+    "content_sha256": "85db29f86d924a437259a478e2fb182c220d3469c8f8a0c4374820e61e6ef74e",
+    "status": "fail_closed_training_corpus",
+    "development_training_allowed": false,
+    "eligible_sample_counts": {
+      "train": 102610,
+      "validation": 23458,
+      "test": 33419
+    },
+    "excluded_sample_reason_counts": {},
+    "train_intent_sample_counts": {
+      "hold": 0,
+      "observe_target": 1795,
+      "reacquire": 98094,
+      "search_sector": 2721
+    },
+    "train_role_sample_counts": {
+      "interceptor": 98395,
+      "recon": 4215
+    },
+    "train_intent_role_sample_counts": {
+      "hold": {
+        "interceptor": 0,
+        "recon": 0
+      },
+      "observe_target": {
+        "interceptor": 1727,
+        "recon": 68
+      },
+      "reacquire": {
+        "interceptor": 93947,
+        "recon": 4147
+      },
+      "search_sector": {
+        "interceptor": 2721,
+        "recon": 0
+      }
+    },
+    "failure_reason_count": 13,
+    "failure_reasons": [
+      "hold_demonstration_missing",
+      "intent_camera_role:hold:interceptor:episode_coverage_below_minimum",
+      "intent_camera_role:hold:interceptor:sample_coverage_below_minimum",
+      "intent_camera_role:hold:interceptor:seed_coverage_below_minimum",
+      "intent_camera_role:hold:recon:episode_coverage_below_minimum",
+      "intent_camera_role:hold:recon:sample_coverage_below_minimum",
+      "intent_camera_role:hold:recon:seed_coverage_below_minimum",
+      "intent_camera_role:search_sector:recon:episode_coverage_below_minimum",
+      "intent_camera_role:search_sector:recon:sample_coverage_below_minimum",
+      "intent_camera_role:search_sector:recon:seed_coverage_below_minimum",
+      "intent_episode_coverage_below_minimum:hold",
+      "intent_sample_coverage_below_minimum:hold",
+      "intent_seed_coverage_below_minimum:hold"
+    ]
+  },
+  "collection_plan": {
+    "status": "collection_or_remediation_required",
+    "requests": [
+      {
+        "request_id": "AV-CORPUS-001",
+        "scenario_version": "center_failure-200v200-v1",
+        "action_intent": "hold",
+        "camera_role": "interceptor",
+        "minimum_additional_unique_samples": 2,
+        "minimum_additional_unique_episodes": 2,
+        "minimum_additional_new_training_seeds": 2
+      },
+      {
+        "request_id": "AV-CORPUS-002",
+        "scenario_version": "center_failure-200v200-v1",
+        "action_intent": "hold",
+        "camera_role": "recon",
+        "minimum_additional_unique_samples": 2,
+        "minimum_additional_unique_episodes": 2,
+        "minimum_additional_new_training_seeds": 2
+      },
+      {
+        "request_id": "AV-CORPUS-003",
+        "scenario_version": "center_failure-200v200-v1",
+        "action_intent": "search_sector",
+        "camera_role": "recon",
+        "minimum_additional_unique_samples": 2,
+        "minimum_additional_unique_episodes": 2,
+        "minimum_additional_new_training_seeds": 2
+      }
+    ]
+  },
+  "source_integrity_gate": {
+    "status": "point_mass_simulation_research_eligible",
+    "simulation_research_development_evaluation_eligible": true,
+    "contract_checks_all_true": true,
+    "failure_reasons": [],
+    "claim_limits_all_false": true
+  },
+  "composite_training_and_source_gate": {
+    "passed": false,
+    "reason": "training_coverage_failed_before_simulation_research_training_entry"
+  },
+  "full_corpus_runtime_ack": {
+    "present_count": 159487,
+    "accepted_count": 159487,
+    "rejected_count": 0,
+    "coverage_fraction": 1.0,
+    "outcome_lineage_available": false,
+    "note": "ACK records alone do not establish externally audited applied-action outcomes"
+  },
+  "full_corpus_anonymous_observation": {
+    "observation_key_present_count": 159487,
+    "unique_observation_key_count": 159487,
+    "duplicate_observation_key_count": 0,
+    "key_coverage_fraction": 1.0,
+    "physical_anonymous_observation_frame_evidence_available": false,
+    "offline_outcome_available": false
+  },
+  "authority": {
+    "formal_candidate_available": false,
+    "assist_admitted": false,
+    "active_vision_authority_granted": false,
+    "camera_command_authority_granted": false,
+    "assignment_authority_granted": false,
+    "degradation_authority_granted": false,
+    "runtime_authority_granted": false,
+    "production_authority_granted": false,
+    "control_authority_granted": false,
+    "global_track_id_write_authority_granted": false
+  },
+  "decision": {
+    "behavior_cloning_started": false,
+    "ppo_started": false,
+    "assist_started": false,
+    "promotion_allowed": false,
+    "global_track_id_created_or_rewritten": false,
+    "next_action": "collect_new_complete_training_episodes_for_the_three_versioned_requests"
+  },
+  "software_validation": {
+    "validate_cli_regression": "1 passed",
+    "episode_dataset_suite": "19 passed in 3.55s",
+    "d5_full_suite": "770 passed, 2 warnings in 102.24s",
+    "git_diff_check_passed": true,
+    "warnings": [
+      "existing Matplotlib Axes3D import warning",
+      "existing NVML initialization warning"
+    ]
+  }
+}
