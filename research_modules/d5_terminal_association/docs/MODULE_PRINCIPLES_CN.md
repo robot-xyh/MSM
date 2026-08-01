@@ -1,6 +1,28 @@
 # 第五研究模块末端视觉关联（Terminal Association, D5）原理
 
-**状态日期：2026-07-28**
+**状态日期：2026-07-31**
+
+## 主动视觉来源域原则
+
+D5 将主动视觉数据来源限定为历史未说明、合成软件 fixture、三维质点运行、AirSim 运行和
+真实相机运行五类。来源域描述制品由何种 producer 生成，证据等级描述仅凭该声明最多可以
+支持的研究范围。AirSim 与真实相机来源因此分别停留在 declaration-only，不能据此推断外部
+运行经过审计、现实泛化成立或生产可用。
+
+来源域和旧 `synthetic_fixture` 标志采用一致性约束。只有合成 fixture 域允许该标志为真；
+质点、AirSim、真实相机与真值标志同时出现时失败关闭。新非合成制品必须显式说明来源。旧
+制品没有 provenance envelope 时不猜测 producer：标志为真只映射为软件 fixture，标志为假
+只映射为 `legacy_unspecified`。旧路径不能获得仿真研究、AirSim 或真实相机证据等级。
+
+质点仿真研究门要求严格数据集 loader、每个 episode 显式声明质点来源、clean Git/config
+identity、完整版本和哈希绑定、互斥 seed split、在线 truth-free 以及完整语料审计。全部条件
+满足时只允许 simulation-research development evaluation。formal candidate、主动视觉、相机
+命令、分配、接管、runtime、production、control 和中心编号写权限均保持 false。
+
+2026-07-31 定向测试为 `43 passed in 7.83s`，D5 全量为
+`769 passed, 2 warnings in 104.87s`。本轮只关闭来源域语义与仿真研究门软件 P1。测试数据是
+临时合同 fixture，尚未形成独立质点来源语料；A3 没有重训，AirSim 和真实相机声明没有外部
+证明，任何 production/runtime/control 权限均未获得。
 
 ## 主动视觉训练语料覆盖原则
 

@@ -1,5 +1,22 @@
 # D5 末端视觉配准与身份认证实验报告
 
+## 2026-07-31 主动视觉来源域合同
+
+本轮验证来源声明、旧制品读取和仿真研究门的软件行为。定向测试覆盖五类来源域及证据等级、
+point-mass 与 fixture 标志冲突、新非合成制品缺来源、旧 fixture/legacy 保守读取、未知来源、
+tier/字段篡改、重写校验和后的来源摘要篡改，以及 point-mass、AirSim、真实相机三类权限上限。
+
+定向结果为 `43 passed in 7.83s`。D5 全量结果为
+`769 passed, 2 warnings in 104.87s`，无测试失败。两条警告来自既有 Matplotlib `Axes3D` 多版本
+环境和 NVML 初始化，与来源合同无关。测试确认 clean、显式 point-mass 合同最多通过
+simulation-research development evaluation；全部 authority 和 runtime/production/control
+claim 均为 false。AirSim 与真实相机只得到 declaration-only 等级。
+
+测试中的 episode 是临时软件合同 fixture，不是独立 producer 生成的 point-mass 训练语料，
+也不是 AirSim 或真实相机实验数据。本轮没有重训 A3，没有得到新的未见 seed、A3/R0 收益、
+现实泛化或物理结果。当前只关闭“来源域语义和仿真研究门”软件 P1，模型准入和运行权限继续
+保持开放缺口。
+
 ## 2026-07-28 主动视觉训练语料门
 
 ### 目的

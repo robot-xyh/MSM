@@ -1,5 +1,21 @@
 # D5 实现差距审计
 
+## 2026-07-31 A3 来源域与仿真研究门 GAP
+
+| 缺口 | 当前状态 | 证据与剩余边界 |
+| --- | --- | --- |
+| 来源域语义 | **D5-owned 软件 P1 已关闭** | 五类来源域与证据等级已冻结。只有合成 fixture 允许 `synthetic_fixture=true`；质点、AirSim、真实相机冲突声明、未知域和 evidence tier 篡改均拒绝。 |
+| 新写与旧读边界 | **D5-owned 软件 P1 已关闭** | 新在线 header、descriptor 和 manifest 强制显式 provenance；新非合成制品缺来源时拒绝。旧缺失 provenance 制品只保守映射为软件 fixture 或 `legacy_unspecified`，不能晋级。 |
+| 摘要与权限防篡改 | **关闭并保持回归** | 来源 envelope 字段、tier、domain 和 dataset source summary 均重新验证；即使同步重写文件校验和，摘要不一致仍拒绝。全部 authority 位保持 false。 |
+| 质点仿真研究门 | **D5-owned 软件 P1 已关闭** | 仅严格复载、显式全质点来源、clean source identity、哈希/split、truth-free 和语料完整数据可进入 `simulation_research` 开发评估；formal、runtime、production、control 等权限不随门通过。 |
+| AirSim/真实相机来源 | **P1 开放，声明不等于证明** | 来源域只提供 declaration-only 证据等级。当前没有外部 AirSim episode 证明、真实相机 provenance 审计或现实泛化结果。 |
+| 独立质点语料与 A3 模型 | **P1 开放，unavailable** | 本轮测试使用临时合同 fixture，尚未生成独立质点来源训练语料，A3 未重训，也没有新的未见 seed 或 A3/R0 收益证据。 |
+
+验证日期为 2026-07-31。来源域、episode dataset 和 corpus audit 定向测试为
+`43 passed in 7.83s`；D5 全量为 `769 passed, 2 warnings in 104.87s`。警告来自既有
+Matplotlib `Axes3D` 环境和 NVML 初始化。本轮没有取得 AirSim、真实相机、production、
+runtime、assist、相机命令、分配、接管或 control 权限，也没有改写 `global_track_id`。
+
 ## 2026-07-28 A3 训练语料覆盖 GAP
 
 | 缺口 | 当前状态 | 证据与剩余边界 |

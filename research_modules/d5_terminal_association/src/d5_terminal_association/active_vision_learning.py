@@ -31,6 +31,11 @@ from .active_vision_contracts import (
     ActiveVisionSnapshotV1,
     enumerate_safe_action_candidates,
 )
+from .active_vision_source import (
+    ActiveVisionSourceDomain,
+    effective_source_domain,
+    normalize_declared_source_domain,
+)
 
 
 ACTIVE_VISION_DATASET_SCHEMA_VERSION = "d5.active-vision-dataset.v2"
@@ -105,6 +110,7 @@ class ActiveVisionResearchEpisode:
     episode_id: str
     transitions: tuple[ActiveVisionTransition, ...]
     synthetic_fixture: bool = False
+    source_domain: ActiveVisionSourceDomain | str | None = None
 
     def __post_init__(self) -> None:
         scenario = str(self.scenario_version).strip()
@@ -114,14 +120,28 @@ class ActiveVisionResearchEpisode:
         transitions = tuple(self.transitions)
         if not transitions:
             raise ValueError("active-vision episode must contain transitions")
+        if type(self.synthetic_fixture) is not bool:
+            raise ValueError("synthetic_fixture must be boolean")
+        source_domain = normalize_declared_source_domain(
+            self.source_domain,
+            synthetic_fixture=self.synthetic_fixture,
+        )
         object.__setattr__(self, "scenario_version", scenario)
         object.__setattr__(self, "seed", int(self.seed))
         object.__setattr__(self, "episode_id", episode_id)
         object.__setattr__(self, "transitions", transitions)
+        object.__setattr__(self, "source_domain", source_domain)
 
     @property
     def group_key(self) -> tuple[str, int]:
         return (self.scenario_version, self.seed)
+
+    @property
+    def effective_source_domain(self) -> ActiveVisionSourceDomain:
+        return effective_source_domain(
+            self.source_domain,
+            synthetic_fixture=self.synthetic_fixture,
+        )
 
 
 @dataclass(frozen=True)

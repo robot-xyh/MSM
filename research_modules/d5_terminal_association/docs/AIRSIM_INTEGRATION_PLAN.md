@@ -1,5 +1,18 @@
 # AirSim 离线集成计划
 
+## 2026-07-31 来源声明边界
+
+后续 AirSim episode writer 应为每个新主动视觉 episode 显式声明 `airsim_runtime` 来源，并保证
+`synthetic_fixture=false`。该声明只说明 producer 类型，不证明 AirSim 已实际运行，也不证明
+相机配置、外参、检测链、运行 ACK 或物理结果有效。上述证据仍需 main/D6 使用独立 episode
+日志、配置摘要、双时间戳、校验和和离线 truth sidecar 审计。
+
+旧 AirSim 相关制品若没有来源 provenance，只能读取为 `legacy_unspecified`，不能自动提升为
+AirSim 证据。AirSim 来源声明也不能授予 A3 assist、相机命令、分配、接管、runtime、production
+或 control 权限。2026-07-31 来源域定向测试为 `43 passed in 7.83s`，D5 全量为
+`769 passed, 2 warnings in 104.87s`；本轮没有启动 AirSim，没有生成 AirSim 来源语料，也没有
+改变 settings、相机或 actor 配置。
+
 ## 2026-07-27 A3 运行证据接线
 
 D5 已提供 A3 采用证据 DTO、组装器和严格验证器。main 已在 scalable 3D 开发 runtime 完成

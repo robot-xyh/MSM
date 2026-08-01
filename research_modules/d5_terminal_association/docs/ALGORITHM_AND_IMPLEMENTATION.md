@@ -1,6 +1,27 @@
 # D5 终端视觉配准与身份认证算法原理与实施文档
 
-**状态日期：2026-07-28**
+**状态日期：2026-07-31**
+
+## 主动视觉来源合同
+
+`active_vision_source.py` 定义五类封闭来源域和一一对应的 evidence tier。写入前先检查
+`synthetic_fixture` 一致性，再生成包含 schema、source domain 和 evidence tier 的 provenance
+envelope。point-mass、AirSim 和真实相机来源均不得携带 `synthetic_fixture=true`。新非合成
+记录没有来源时，writer 在创建文件前返回稳定错误，不产生半成品。
+
+episode writer 将同一 provenance 写入在线流 header 和 episode descriptor；dataset manifest
+保存来源合同与按来源域、证据等级统计的摘要。loader 重新计算 envelope 和摘要。未知来源、
+tier 不匹配、额外字段以及摘要篡改均失败关闭。新写路径要求 envelope 必须存在，旧读路径只在
+envelope 缺失时启用，并根据旧 fixture 标志映射到软件 fixture 或 `legacy_unspecified`。
+
+`active_vision_corpus_audit.py` 在既有结构训练门之外增加质点仿真研究门。门控条件为严格 loader、
+全量显式 point-mass 来源、clean source identity、版本和 SHA-256 完整、seed split 完整、在线
+truth-free 及 corpus integrity 完整。输出的 claim limits 和 authority 字段全部固定为 false。
+AirSim/真实相机声明不能通过该质点门，也不能获得现实、production、runtime 或 control 权限。
+
+2026-07-31 定向回归覆盖五类来源、旧制品读取、新写拒绝和三类篡改，共
+`43 passed in 7.83s`；D5 全量为 `769 passed, 2 warnings in 104.87s`。当前只完成软件合同，
+没有生成独立 point-mass 语料，没有重训 A3，也没有形成 AirSim 或真实相机外部证据。
 
 ## 主动视觉训练语料审计与补采规划
 

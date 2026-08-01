@@ -1,5 +1,26 @@
 # D5 终端视觉配准与身份认证计划
 
+## 2026-07-31 A3 来源域与仿真研究门
+
+- [x] 冻结五类来源域及证据等级：`legacy_unspecified`、`synthetic_fixture`、三维质点
+  runtime、AirSim runtime 和真实相机 runtime。AirSim/真实相机等级只表示来源声明。
+- [x] 强制 `synthetic_fixture=true` 仅能与合成 fixture 域同时出现；质点、AirSim、真实相机
+  冲突声明和未知域均失败关闭。
+- [x] 新写在线 header、episode descriptor 和 dataset manifest 必须携带显式 provenance。
+  新非合成制品缺少来源时拒绝写入。
+- [x] 保留专用旧读路径。缺 provenance 且 fixture 标志为真时只映射到软件 fixture；其余旧
+  制品只映射到 `legacy_unspecified`，不能静默提升证据等级。
+- [x] 增加质点仿真研究门。该门要求严格 loader、全量显式质点来源、clean source identity、
+  版本/哈希、seed split、truth-free 和 corpus integrity 完整，并固定全部权限为 false。
+- [x] 2026-07-31 定向测试 `43 passed in 7.83s`；D5 全量测试
+  `769 passed, 2 warnings in 104.87s`。警告为既有 Matplotlib `Axes3D` 与 NVML 环境问题。
+- [ ] 由独立 producer 生成并冻结真实三维质点来源语料，再做未见 seed 评估。当前单元测试
+  fixture 不构成该语料。
+- [ ] 在独立语料上重训和评估 A3。AirSim/真实相机外部证明形成前，production、runtime、
+  assist、相机命令、分配、接管和 control 权限继续关闭。
+
+本节只关闭“来源域语义和仿真研究门”软件 P1，不改变后续模型与运行准入计划。
+
 ## 2026-07-28 A3 主动视觉训练语料覆盖
 
 - [x] 新增公共 corpus audit/planner，按动作意图、拦截机/高空侦察机角色、场景、seed、

@@ -51,6 +51,17 @@ from .active_vision_learning import (
     ActiveVisionResearchEpisode,
     ActiveVisionTransition,
 )
+from .active_vision_source import (
+    ACTIVE_VISION_SOURCE_PROVENANCE_SCHEMA_VERSION,
+    ActiveVisionSourceDomain,
+    ActiveVisionSourceValidationError,
+    effective_source_domain,
+    evidence_tier_for_source_domain,
+    normalize_declared_source_domain,
+    optional_source_provenance_payload,
+    source_domain_for_new_artifact,
+    source_domain_from_optional_provenance,
+)
 
 
 ACTIVE_VISION_EPISODE_DATASET_SCHEMA_VERSION = "d5.active-vision-episode-dataset.v3"
@@ -65,6 +76,17 @@ ACTIVE_VISION_SOURCE_IDENTITY_SCHEMA_VERSION = "d5.active-vision-source-identity
 ACTIVE_VISION_DATASET_CONFIG_SCHEMA_VERSION = "d5.active-vision-dataset-config.v1"
 ACTIVE_VISION_ONLINE_STORAGE_LAYOUT = "deduplicated-reference-stream-jsonl-gzip-v1"
 ACTIVE_VISION_GZIP_COMPRESSLEVEL = 6
+
+_SOURCE_PROVENANCE_CONTRACT = {
+    "schema_version": ACTIVE_VISION_SOURCE_PROVENANCE_SCHEMA_VERSION,
+    "new_artifacts_require_explicit_provenance": True,
+    "legacy_missing_policy": (
+        "fixture_flag_true_maps_to_synthetic_fixture_else_legacy_unspecified"
+    ),
+    "legacy_evidence_upgrade_allowed": False,
+    "synthetic_fixture_true_domain": ActiveVisionSourceDomain.SYNTHETIC_FIXTURE.value,
+    "source_declaration_is_external_runtime_attestation": False,
+}
 
 _SHA256_PATTERN = re.compile(r"[0-9a-f]{64}")
 _GIT_COMMIT_PATTERN = re.compile(r"(?:[0-9a-f]{40}|[0-9a-f]{64})")
@@ -87,6 +109,7 @@ class _OnlineEpisodeAudit:
     episode_id: str
     source_identity: ActiveVisionSourceIdentityV1
     synthetic_fixture: bool
+    source_domain: ActiveVisionSourceDomain | None
     sample_keys: Mapping[str, str]
     sample_count: int
     unique_snapshot_count: int
@@ -379,6 +402,7 @@ class ActiveVisionEpisodeRecordV2:
     source_identity: ActiveVisionSourceIdentityV1
     samples: tuple[ActiveVisionEpisodeSampleV2, ...]
     synthetic_fixture: bool = False
+    source_domain: ActiveVisionSourceDomain | str | None = None
     schema_version: str = ACTIVE_VISION_EPISODE_RECORD_SCHEMA_VERSION
 
     def __post_init__(self) -> None:
@@ -433,11 +457,19 @@ class ActiveVisionEpisodeRecordV2:
         object.__setattr__(self, "seed", int(self.seed))
         object.__setattr__(self, "episode_id", episode)
         object.__setattr__(self, "samples", samples)
-        object.__setattr__(
-            self,
+        synthetic_fixture = _input_bool(
+            self.synthetic_fixture,
             "synthetic_fixture",
-            _input_bool(self.synthetic_fixture, "synthetic_fixture"),
         )
+        try:
+            source_domain = normalize_declared_source_domain(
+                self.source_domain,
+                synthetic_fixture=synthetic_fixture,
+            )
+        except ActiveVisionSourceValidationError as exc:
+            raise ValueError(str(exc)) from exc
+        object.__setattr__(self, "synthetic_fixture", synthetic_fixture)
+        object.__setattr__(self, "source_domain", source_domain)
         assert_truth_free_active_vision_payload(self)
 
     @property
@@ -447,6 +479,13 @@ class ActiveVisionEpisodeRecordV2:
     @property
     def episode_uid(self) -> str:
         return _episode_uid(self.scenario_version, self.seed, self.episode_id)
+
+    @property
+    def effective_source_domain(self) -> ActiveVisionSourceDomain:
+        return effective_source_domain(
+            self.source_domain,
+            synthetic_fixture=self.synthetic_fixture,
+        )
 
 
 # Source compatibility aliases. They construct v2 contracts and do not read v1 files.
@@ -695,6 +734,10 @@ def stage_active_vision_episode_record(
 
     if not isinstance(record, ActiveVisionEpisodeRecordV1):
         raise TypeError("record must be ActiveVisionEpisodeRecordV1")
+    _source_domain_for_new_write(
+        record.source_domain,
+        synthetic_fixture=record.synthetic_fixture,
+    )
     root = Path(dataset_dir).resolve()
     _ensure_not_finalized(root)
     root.mkdir(parents=True, exist_ok=True)
@@ -729,6 +772,13 @@ def stage_active_vision_episode_record(
         "availability": None,
         "split": None,
     }
+    source_provenance = optional_source_provenance_payload(
+        online_audit.source_domain,
+        synthetic_fixture=online_audit.synthetic_fixture,
+    )
+    if source_provenance is None:  # pragma: no cover - new-write guard above.
+        raise RuntimeError("new active-vision descriptor lacks source provenance")
+    descriptor["source_provenance"] = source_provenance
     _write_json_atomic(root / descriptor_relative, descriptor)
     return MappingProxyType(descriptor)
 
@@ -747,7 +797,11 @@ def stage_active_vision_offline_labels(
     if not descriptor_path.is_file():
         raise FileNotFoundError(f"staged active-vision episode is missing: {uid}")
     descriptor = _read_json(descriptor_path)
-    _validate_descriptor(descriptor, finalized=False)
+    _validate_descriptor(
+        descriptor,
+        finalized=False,
+        source_provenance_required=True,
+    )
     if descriptor["episode_uid"] != uid:
         raise ActiveVisionDatasetValidationError(
             "episode_identity_mismatch", "descriptor episode UID does not match its filename"
@@ -779,6 +833,14 @@ def stage_active_vision_offline_labels(
         online_audit.synthetic_fixture,
         descriptor["synthetic_fixture"],
         "fixture_flag_mismatch",
+    )
+    _expect_equal(
+        _optional_source_provenance_to_payload(
+            online_audit.source_domain,
+            synthetic_fixture=online_audit.synthetic_fixture,
+        ),
+        descriptor.get("source_provenance"),
+        "source_provenance_mismatch",
     )
     _expect_equal(
         online_audit.sample_count,
@@ -863,7 +925,11 @@ def finalize_active_vision_episode_dataset(
     config_sha = _file_digest_once(config_path, digest_evidence)
     episode_evidence: dict[str, _StagedEpisodeAudit] = {}
     for descriptor in descriptors:
-        _validate_descriptor(descriptor, finalized=False)
+        _validate_descriptor(
+            descriptor,
+            finalized=False,
+            source_provenance_required=True,
+        )
         if descriptor["offline_file"] is None:
             raise ActiveVisionDatasetValidationError(
                 "offline_labels_missing",
@@ -937,6 +1003,8 @@ def finalize_active_vision_episode_dataset(
         "split_sha256": sha256_json(split_payload),
         "training_set_sha256": _training_set_sha256(finalized_descriptors),
         "source_identity_summary": _source_identity_summary(finalized_descriptors),
+        "source_provenance_contract": dict(_SOURCE_PROVENANCE_CONTRACT),
+        "source_domain_summary": _source_domain_summary(finalized_descriptors),
         "availability": _dataset_availability(finalized_descriptors),
         "episodes": finalized_descriptors,
     }
@@ -1002,6 +1070,17 @@ def audit_active_vision_episode_record(path: str | Path) -> Mapping[str, Any]:
             "episode_id": audit.episode_id,
             "source_identity": _source_identity_to_payload(audit.source_identity),
             "synthetic_fixture": audit.synthetic_fixture,
+            "source_domain": _effective_source_domain_value(
+                audit.source_domain,
+                synthetic_fixture=audit.synthetic_fixture,
+            ),
+            "source_domain_explicit": audit.source_domain is not None,
+            "evidence_tier": evidence_tier_for_source_domain(
+                effective_source_domain(
+                    audit.source_domain,
+                    synthetic_fixture=audit.synthetic_fixture,
+                )
+            ).value,
             "sample_count": audit.sample_count,
             "unique_snapshot_count": audit.unique_snapshot_count,
             "unique_camera_feedback_count": audit.unique_camera_feedback_count,
@@ -1080,7 +1159,20 @@ def _load_active_vision_episode_dataset_lazy(
         "availability",
         "episodes",
     }
-    _expect_fields(manifest, expected_manifest_fields, "manifest_fields_mismatch")
+    source_manifest_fields = {
+        "source_provenance_contract",
+        "source_domain_summary",
+    }
+    manifest_fields = frozenset(manifest)
+    if manifest_fields not in {
+        frozenset(expected_manifest_fields),
+        frozenset(expected_manifest_fields | source_manifest_fields),
+    }:
+        raise ActiveVisionDatasetValidationError(
+            "manifest_fields_mismatch",
+            "active-vision dataset manifest fields mismatch",
+        )
+    source_contract_present = source_manifest_fields <= set(manifest_fields)
     _expect_equal(
         manifest["schema_version"],
         ACTIVE_VISION_EPISODE_DATASET_SCHEMA_VERSION,
@@ -1192,7 +1284,11 @@ def _load_active_vision_episode_dataset_lazy(
             raise ActiveVisionDatasetValidationError(
                 "descriptor_invalid", "episode descriptor is not an object"
             )
-        _validate_descriptor(descriptor, finalized=True)
+        _validate_descriptor(
+            descriptor,
+            finalized=True,
+            source_provenance_required=source_contract_present,
+        )
         uid = str(descriptor["episode_uid"])
         if uid in seen_uids:
             raise ActiveVisionDatasetValidationError(
@@ -1237,6 +1333,17 @@ def _load_active_vision_episode_dataset_lazy(
         manifest["source_identity_summary"],
         "source_identity_summary_mismatch",
     )
+    if source_contract_present:
+        _expect_equal(
+            manifest["source_provenance_contract"],
+            _SOURCE_PROVENANCE_CONTRACT,
+            "source_provenance_contract_mismatch",
+        )
+        _expect_equal(
+            _source_domain_summary(raw_episodes),
+            manifest["source_domain_summary"],
+            "source_domain_summary_mismatch",
+        )
     _expect_equal(
         _dataset_availability(raw_episodes),
         manifest["availability"],
@@ -1291,6 +1398,12 @@ def audit_active_vision_episode_dataset(dataset_dir: str | Path) -> Mapping[str,
             "sample_count": sample_count,
             "split_episode_counts": split_counts,
             "availability": dataset.manifest["availability"],
+            "source_domain_summary": _source_domain_summary(
+                dataset.episode_descriptors
+            ),
+            "source_provenance_contract_present": bool(
+                "source_provenance_contract" in dataset.manifest
+            ),
             "episode_loading": "streaming_one_episode_at_a_time",
             "status": "valid_detached_immutable_dataset",
         }
@@ -1301,6 +1414,10 @@ def _write_episode_record_stream_atomic(
     path: Path,
     record: ActiveVisionEpisodeRecordV1,
 ) -> _OnlineEpisodeAudit:
+    write_source_domain = _source_domain_for_new_write(
+        record.source_domain,
+        synthetic_fixture=record.synthetic_fixture,
+    )
     snapshot_key_by_identity: dict[int, str] = {}
     snapshot_objects: dict[str, _PreparedStreamObject] = {}
     samples_by_snapshot: dict[
@@ -1352,6 +1469,13 @@ def _write_episode_record_stream_atomic(
         "source_identity": _source_identity_to_payload(record.source_identity),
         "synthetic_fixture": record.synthetic_fixture,
     }
+    source_provenance = optional_source_provenance_payload(
+        write_source_domain,
+        synthetic_fixture=record.synthetic_fixture,
+    )
+    if source_provenance is None:  # pragma: no cover - explicit domain above.
+        raise RuntimeError("new active-vision stream lacks source provenance")
+    header["source_provenance"] = source_provenance
     footer = {
         "record_type": "footer",
         "schema_version": record.schema_version,
@@ -1409,6 +1533,7 @@ def _write_episode_record_stream_atomic(
         episode_id=record.episode_id,
         source_identity=record.source_identity,
         synthetic_fixture=record.synthetic_fixture,
+        source_domain=write_source_domain,
         sample_keys={sample.sample_key: sample.observation_key for sample in record.samples},
         sample_count=len(record.samples),
         unique_snapshot_count=len(snapshot_objects),
@@ -1518,9 +1643,7 @@ def _read_episode_record_stream(
                             "online_stream_header_invalid",
                             "online record stream must contain exactly one leading header",
                         )
-                    _expect_fields(
-                        row,
-                        {
+                    expected_header_fields = {
                             "record_type",
                             "schema_version",
                             "sample_schema_version",
@@ -1531,9 +1654,15 @@ def _read_episode_record_stream(
                             "episode_id",
                             "source_identity",
                             "synthetic_fixture",
-                        },
-                        "online_stream_header_fields_mismatch",
-                    )
+                    }
+                    if frozenset(row) not in {
+                        frozenset(expected_header_fields),
+                        frozenset(expected_header_fields | {"source_provenance"}),
+                    }:
+                        raise ActiveVisionDatasetValidationError(
+                            "online_stream_header_fields_mismatch",
+                            "online record stream header fields mismatch",
+                        )
                     _expect_equal(
                         row["schema_version"],
                         ACTIVE_VISION_EPISODE_RECORD_SCHEMA_VERSION,
@@ -1558,7 +1687,14 @@ def _read_episode_record_stream(
                         "episode_uid_mismatch",
                     )
                     _source_identity_from_payload(_mapping(row["source_identity"]))
-                    _strict_bool(row["synthetic_fixture"], "synthetic_fixture")
+                    synthetic_fixture = _strict_bool(
+                        row["synthetic_fixture"],
+                        "synthetic_fixture",
+                    )
+                    _source_domain_from_payload(
+                        row.get("source_provenance"),
+                        synthetic_fixture=synthetic_fixture,
+                    )
                     header = row
                     phase = "feedback"
                     continue
@@ -1792,13 +1928,22 @@ def _read_episode_record_stream(
     _validate_stream_record_order(sample_audit_by_sequence, snapshot_track_state)
 
     source_identity = _source_identity_from_payload(_mapping(header["source_identity"]))
+    synthetic_fixture = _strict_bool(
+        header["synthetic_fixture"],
+        "synthetic_fixture",
+    )
+    source_domain, _ = _source_domain_from_payload(
+        header.get("source_provenance"),
+        synthetic_fixture=synthetic_fixture,
+    )
     audit = _OnlineEpisodeAudit(
         episode_uid=str(header["episode_uid"]),
         scenario_version=str(header["scenario_version"]),
         seed=int(header["seed"]),
         episode_id=str(header["episode_id"]),
         source_identity=source_identity,
-        synthetic_fixture=_strict_bool(header["synthetic_fixture"], "synthetic_fixture"),
+        synthetic_fixture=synthetic_fixture,
+        source_domain=(source_domain if "source_provenance" in header else None),
         sample_keys=sample_keys,
         sample_count=len(ordered_indices),
         unique_snapshot_count=len(snapshot_keys),
@@ -1814,6 +1959,7 @@ def _read_episode_record_stream(
         source_identity=source_identity,
         samples=tuple(samples_by_sequence),
         synthetic_fixture=audit.synthetic_fixture,
+        source_domain=audit.source_domain,
         schema_version=str(header["schema_version"]),
     )
     _expect_equal(record.episode_uid, audit.episode_uid, "episode_uid_mismatch")
@@ -2205,6 +2351,67 @@ def _source_identity_to_payload(value: ActiveVisionSourceIdentityV1) -> dict[str
         "git_dirty": value.git_dirty,
         "config_sha256": value.config_sha256,
     }
+
+
+def _optional_source_provenance_to_payload(
+    source_domain: ActiveVisionSourceDomain | str | None,
+    *,
+    synthetic_fixture: bool,
+) -> dict[str, str] | None:
+    try:
+        return optional_source_provenance_payload(
+            source_domain,
+            synthetic_fixture=synthetic_fixture,
+        )
+    except ActiveVisionSourceValidationError as exc:
+        raise ActiveVisionDatasetValidationError(exc.code, str(exc)) from exc
+
+
+def _source_domain_for_new_write(
+    source_domain: ActiveVisionSourceDomain | str | None,
+    *,
+    synthetic_fixture: bool,
+) -> ActiveVisionSourceDomain:
+    try:
+        return source_domain_for_new_artifact(
+            source_domain,
+            synthetic_fixture=synthetic_fixture,
+        )
+    except ActiveVisionSourceValidationError as exc:
+        raise ActiveVisionDatasetValidationError(exc.code, str(exc)) from exc
+
+
+def _source_domain_from_payload(
+    payload: Any,
+    *,
+    synthetic_fixture: bool,
+) -> tuple[ActiveVisionSourceDomain, bool]:
+    if payload is not None and not isinstance(payload, Mapping):
+        raise ActiveVisionDatasetValidationError(
+            "source_provenance_fields_mismatch",
+            "active-vision source provenance must be a JSON object",
+        )
+    try:
+        return source_domain_from_optional_provenance(
+            payload,
+            synthetic_fixture=synthetic_fixture,
+        )
+    except ActiveVisionSourceValidationError as exc:
+        raise ActiveVisionDatasetValidationError(exc.code, str(exc)) from exc
+
+
+def _effective_source_domain_value(
+    source_domain: ActiveVisionSourceDomain | str | None,
+    *,
+    synthetic_fixture: bool,
+) -> str:
+    try:
+        return effective_source_domain(
+            source_domain,
+            synthetic_fixture=synthetic_fixture,
+        ).value
+    except ActiveVisionSourceValidationError as exc:
+        raise ActiveVisionDatasetValidationError(exc.code, str(exc)) from exc
 
 
 def _source_identity_from_payload(payload: Mapping[str, Any]) -> ActiveVisionSourceIdentityV1:
@@ -2931,6 +3138,14 @@ def _validate_online_audit_against_descriptor(
         "source_identity_mismatch",
     )
     _expect_equal(audit.synthetic_fixture, descriptor["synthetic_fixture"], "fixture_flag_mismatch")
+    _expect_equal(
+        _optional_source_provenance_to_payload(
+            audit.source_domain,
+            synthetic_fixture=audit.synthetic_fixture,
+        ),
+        descriptor.get("source_provenance"),
+        "source_provenance_mismatch",
+    )
     _expect_equal(audit.sample_count, int(descriptor["sample_count"]), "sample_count_mismatch")
     _expect_equal(
         audit.unique_snapshot_count,
@@ -2967,6 +3182,14 @@ def _validate_materialized_record_against_descriptor(
         "source_identity_mismatch",
     )
     _expect_equal(record.synthetic_fixture, descriptor["synthetic_fixture"], "fixture_flag_mismatch")
+    _expect_equal(
+        _optional_source_provenance_to_payload(
+            record.source_domain,
+            synthetic_fixture=record.synthetic_fixture,
+        ),
+        descriptor.get("source_provenance"),
+        "source_provenance_mismatch",
+    )
     _expect_equal(len(record.samples), int(descriptor["sample_count"]), "sample_count_mismatch")
     _expect_equal(
         len({id(sample.snapshot) for sample in record.samples}),
@@ -3060,10 +3283,13 @@ def _load_offline_labels_for_join(
     return labels
 
 
-def _validate_descriptor(descriptor: Mapping[str, Any], *, finalized: bool) -> None:
-    _expect_fields(
-        descriptor,
-        {
+def _validate_descriptor(
+    descriptor: Mapping[str, Any],
+    *,
+    finalized: bool,
+    source_provenance_required: bool,
+) -> None:
+    expected_fields = {
             "schema_version",
             "episode_uid",
             "scenario_version",
@@ -3082,9 +3308,19 @@ def _validate_descriptor(descriptor: Mapping[str, Any], *, finalized: bool) -> N
             "sample_count",
             "availability",
             "split",
-        },
-        "descriptor_fields_mismatch",
+    }
+    expected_with_source = frozenset(expected_fields | {"source_provenance"})
+    expected_without_source = frozenset(expected_fields)
+    expected_descriptor_fields = (
+        expected_with_source
+        if source_provenance_required
+        else expected_without_source
     )
+    if frozenset(descriptor) != expected_descriptor_fields:
+        raise ActiveVisionDatasetValidationError(
+            "descriptor_fields_mismatch",
+            "active-vision episode descriptor fields mismatch",
+        )
     _expect_equal(
         descriptor["schema_version"],
         ACTIVE_VISION_EPISODE_DESCRIPTOR_SCHEMA_VERSION,
@@ -3095,7 +3331,14 @@ def _validate_descriptor(descriptor: Mapping[str, Any], *, finalized: bool) -> N
     expected_uid = _episode_uid(scenario, int(descriptor["seed"]), episode_id)
     _expect_equal(descriptor["episode_uid"], expected_uid, "descriptor_episode_uid_mismatch")
     _source_identity_from_payload(_mapping(descriptor["source_identity"]))
-    _strict_bool(descriptor["synthetic_fixture"], "synthetic_fixture")
+    synthetic_fixture = _strict_bool(
+        descriptor["synthetic_fixture"],
+        "synthetic_fixture",
+    )
+    _source_domain_from_payload(
+        descriptor.get("source_provenance"),
+        synthetic_fixture=synthetic_fixture,
+    )
     _sha256(descriptor["dataset_config_sha256"], "dataset_config_sha256")
     _sha256(descriptor["online_sha256"], "online_sha256")
     _expect_equal(
@@ -3274,6 +3517,40 @@ def _source_identity_summary(descriptors: Sequence[Mapping[str, Any]]) -> dict[s
     }
 
 
+def _source_domain_summary(
+    descriptors: Sequence[Mapping[str, Any]],
+) -> dict[str, Any]:
+    domain_counts = {domain.value: 0 for domain in ActiveVisionSourceDomain}
+    tier_counts = {
+        tier.value: 0
+        for tier in sorted(
+            set(evidence_tier_for_source_domain(domain) for domain in ActiveVisionSourceDomain),
+            key=lambda item: item.value,
+        )
+    }
+    explicit_count = 0
+    for descriptor in descriptors:
+        synthetic_fixture = _strict_bool(
+            descriptor["synthetic_fixture"],
+            "synthetic_fixture",
+        )
+        domain, explicit = _source_domain_from_payload(
+            descriptor.get("source_provenance"),
+            synthetic_fixture=synthetic_fixture,
+        )
+        domain_counts[domain.value] += 1
+        tier_counts[evidence_tier_for_source_domain(domain).value] += 1
+        explicit_count += int(explicit)
+    return {
+        "episode_count": len(descriptors),
+        "episode_count_by_source_domain": domain_counts,
+        "episode_count_by_evidence_tier": tier_counts,
+        "explicit_source_domain_episode_count": explicit_count,
+        "legacy_inferred_episode_count": len(descriptors) - explicit_count,
+        "external_runtime_attestation_validated": False,
+    }
+
+
 def _availability_summary(labels: Sequence[ActiveVisionOfflineLabelV1]) -> dict[str, Any]:
     count = len(labels)
     values = {
@@ -3380,6 +3657,7 @@ def _behavior_cloning_episode_from_record(
         episode_id=record.episode_id,
         transitions=transitions,
         synthetic_fixture=record.synthetic_fixture,
+        source_domain=record.source_domain,
     )
 
 
@@ -3408,6 +3686,7 @@ def _ppo_episode(item: LoadedActiveVisionEpisode) -> ActiveVisionResearchEpisode
         episode_id=item.record.episode_id,
         transitions=tuple(transitions),
         synthetic_fixture=item.record.synthetic_fixture,
+        source_domain=item.record.source_domain,
     )
 
 

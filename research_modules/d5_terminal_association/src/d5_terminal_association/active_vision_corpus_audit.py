@@ -13,6 +13,7 @@ from collections import Counter, defaultdict
 from dataclasses import asdict, dataclass
 import hashlib
 import json
+import re
 from typing import Any, Iterable, Mapping, Sequence
 
 import numpy as np
@@ -22,6 +23,14 @@ from .active_vision_contracts import (
     assert_truth_free_active_vision_payload,
 )
 from .active_vision_learning import active_vision_candidate_batch
+from .active_vision_source import (
+    ACTIVE_VISION_SOURCE_PROVENANCE_SCHEMA_VERSION,
+    ActiveVisionSourceDomain,
+    ActiveVisionSourceValidationError,
+    effective_source_domain,
+    evidence_tier_for_source_domain,
+    source_domain_from_optional_provenance,
+)
 
 
 ACTIVE_VISION_CORPUS_AUDIT_SCHEMA_VERSION = "d5.active-vision-corpus-audit.v1"
@@ -29,13 +38,16 @@ ACTIVE_VISION_CORPUS_POLICY_VERSION = "d5.active-vision-corpus-policy.v1"
 ACTIVE_VISION_COLLECTION_PLAN_SCHEMA_VERSION = (
     "d5.active-vision-corpus-collection-plan.v1"
 )
+ACTIVE_VISION_RESEARCH_EVIDENCE_GATE_SCHEMA_VERSION = (
+    "d5.active-vision-research-evidence-gate.v1"
+)
 
 _SPLITS = ("train", "validation", "test")
 _SPLIT_ORDER = {name: index for index, name in enumerate(_SPLITS)}
 _INTENTS = tuple(item.value for item in ActiveVisionIntent)
 _CAMERA_ROLES = ("interceptor", "recon")
 _FALLBACK_SCENARIO = "active-vision-coverage-supplement-v1"
-_AUTHORITY_FALSE = {
+_LEGACY_AUTHORITY_FALSE = {
     "formal_candidate_available": False,
     "assist_admitted": False,
     "active_vision_authority_granted": False,
@@ -44,6 +56,14 @@ _AUTHORITY_FALSE = {
     "control_authority_granted": False,
     "global_track_id_write_authority_granted": False,
 }
+_AUTHORITY_FALSE = {
+    **_LEGACY_AUTHORITY_FALSE,
+    "degradation_authority_granted": False,
+    "runtime_authority_granted": False,
+    "production_authority_granted": False,
+}
+_SHA256_PATTERN = re.compile(r"^[0-9a-f]{64}$")
+_GIT_COMMIT_PATTERN = re.compile(r"^(?:[0-9a-f]{40}|[0-9a-f]{64})$")
 
 
 @dataclass(frozen=True)
@@ -169,6 +189,13 @@ def audit_active_vision_training_corpus(
     }
     descriptor_duplicate_keys: list[str] = []
     seen_descriptor_identity: set[tuple[str, int, str]] = set()
+    descriptor_source_domains: dict[
+        tuple[str, int, str], ActiveVisionSourceDomain
+    ] = {}
+    descriptor_source_explicit: dict[tuple[str, int, str], bool] = {}
+    source_domain_count_by_split: dict[str, Counter[str]] = {
+        split: Counter() for split in _SPLITS
+    }
     for descriptor in descriptors:
         try:
             if not isinstance(descriptor, Mapping):
@@ -180,6 +207,16 @@ def audit_active_vision_training_corpus(
             seed = _seed(descriptor["seed"], "descriptor.seed")
             episode_id = _key(descriptor["episode_id"], "episode_id")
             identity = (scenario, seed, episode_id)
+            synthetic_fixture = descriptor.get("synthetic_fixture")
+            if type(synthetic_fixture) is not bool:
+                raise ValueError("descriptor synthetic_fixture is invalid")
+            source_payload = descriptor.get("source_provenance")
+            if source_payload is not None and not isinstance(source_payload, Mapping):
+                raise ValueError("descriptor source provenance is invalid")
+            source_domain, source_explicit = source_domain_from_optional_provenance(
+                source_payload,
+                synthetic_fixture=synthetic_fixture,
+            )
         except (KeyError, TypeError, ValueError):
             integrity_reasons.add("episode_descriptor_invalid")
             continue
@@ -190,6 +227,9 @@ def audit_active_vision_training_corpus(
         descriptor_keys_by_split[split].add(identity)
         descriptor_seeds_by_split[split].add(seed)
         descriptor_scenarios_by_split[split].add(scenario)
+        descriptor_source_domains[identity] = source_domain
+        descriptor_source_explicit[identity] = source_explicit
+        source_domain_count_by_split[split][source_domain.value] += 1
 
     if descriptor_duplicate_keys:
         integrity_reasons.add("duplicate_episode_descriptor")
@@ -349,6 +389,25 @@ def audit_active_vision_training_corpus(
                         "synthetic_fixture_flag_invalid"
                     ] += len(transitions)
                     continue
+                try:
+                    materialized_source_domain = effective_source_domain(
+                        getattr(episode, "source_domain", None),
+                        synthetic_fixture=synthetic,
+                    )
+                except ActiveVisionSourceValidationError:
+                    integrity_reasons.add("materialized_source_domain_invalid")
+                    excluded_sample_reasons[
+                        "materialized_source_domain_invalid"
+                    ] += len(transitions)
+                    continue
+                if materialized_source_domain is not descriptor_source_domains.get(
+                    identity
+                ):
+                    integrity_reasons.add("materialized_source_domain_mismatch")
+                    excluded_sample_reasons[
+                        "materialized_source_domain_mismatch"
+                    ] += len(transitions)
+                    continue
                 if split == "train":
                     unique_training_episode_keys.add(episode_key)
                     if synthetic:
@@ -476,6 +535,15 @@ def audit_active_vision_training_corpus(
         failure_reasons=all_failure_reasons,
     )
     development_ready = not all_failure_reasons
+    research_evidence_gate = _research_evidence_gate(
+        dataset,
+        descriptors=descriptors,
+        source_domain_count_by_split=source_domain_count_by_split,
+        explicit_source_domain_count=sum(descriptor_source_explicit.values()),
+        integrity_reasons=integrity_reasons,
+        contaminated_seed_values=contaminated_seed_values,
+        materialized_episode_count=len(seen_materialized_episode_keys),
+    )
     report: dict[str, Any] = {
         "schema_version": ACTIVE_VISION_CORPUS_AUDIT_SCHEMA_VERSION,
         "policy": asdict(cfg),
@@ -536,6 +604,7 @@ def audit_active_vision_training_corpus(
             "warnings": sorted(warnings),
             "structural_gate_is_not_statistical_admission": True,
         },
+        "research_evidence_gate": research_evidence_gate,
         "collection_plan": plan,
         "evidence_availability": {
             "formal_candidate": {
@@ -579,7 +648,7 @@ def validate_active_vision_corpus_audit(value: Mapping[str, Any]) -> None:
             "active-vision training corpus audit hash mismatch"
         )
     authority = value.get("authority")
-    if authority != _AUTHORITY_FALSE:
+    if authority not in (_LEGACY_AUTHORITY_FALSE, _AUTHORITY_FALSE):
         raise ActiveVisionCorpusCoverageError(
             "active-vision corpus audit attempted a permission escalation"
         )
@@ -660,6 +729,19 @@ def validate_active_vision_corpus_audit(value: Mapping[str, Any]) -> None:
             "a passing active-vision corpus audit cannot request more coverage"
         )
 
+    research_gate = value.get("research_evidence_gate")
+    if research_gate is None:
+        if authority != _LEGACY_AUTHORITY_FALSE:
+            raise ActiveVisionCorpusCoverageError(
+                "legacy active-vision corpus audit authority fields mismatch"
+            )
+    else:
+        if authority != _AUTHORITY_FALSE:
+            raise ActiveVisionCorpusCoverageError(
+                "active-vision corpus research gate authority fields mismatch"
+            )
+        _validate_research_evidence_gate(research_gate)
+
 
 def require_active_vision_training_corpus_ready(
     cache_manifest: Mapping[str, Any],
@@ -683,6 +765,320 @@ def require_active_vision_training_corpus_ready(
             "active-vision training corpus failed closed: " + reasons
         )
     return report
+
+
+def require_active_vision_simulation_research_corpus_ready(
+    cache_manifest: Mapping[str, Any],
+) -> Mapping[str, Any]:
+    """Require the stricter point-mass simulation research evidence gate."""
+
+    report = require_active_vision_training_corpus_ready(cache_manifest)
+    gate = report.get("research_evidence_gate")
+    if not isinstance(gate, Mapping):
+        raise ActiveVisionCorpusCoverageError(
+            "active-vision source evidence unavailable; legacy corpus is research-ineligible"
+        )
+    _validate_research_evidence_gate(gate)
+    if gate["simulation_research_development_evaluation_eligible"] is not True:
+        reasons = ",".join(gate["failure_reasons"])
+        raise ActiveVisionCorpusCoverageError(
+            "active-vision point-mass research evidence failed closed: " + reasons
+        )
+    return report
+
+
+def _research_evidence_gate(
+    dataset: Any,
+    *,
+    descriptors: Sequence[Mapping[str, Any]],
+    source_domain_count_by_split: Mapping[str, Counter[str]],
+    explicit_source_domain_count: int,
+    integrity_reasons: set[str],
+    contaminated_seed_values: Sequence[int],
+    materialized_episode_count: int,
+) -> dict[str, Any]:
+    from .active_vision_episode_dataset import (
+        LazyActiveVisionEpisodeDataset,
+        LoadedActiveVisionEpisodeDataset,
+    )
+
+    manifest = getattr(dataset, "manifest", {})
+    manifest = manifest if isinstance(manifest, Mapping) else {}
+    strict_loader_used = isinstance(
+        dataset,
+        (LazyActiveVisionEpisodeDataset, LoadedActiveVisionEpisodeDataset),
+    )
+    domain_values = tuple(domain.value for domain in ActiveVisionSourceDomain)
+    counts_by_split = {
+        split: {
+            domain: int(source_domain_count_by_split[split].get(domain, 0))
+            for domain in domain_values
+        }
+        for split in _SPLITS
+    }
+    total_by_domain = {
+        domain: sum(counts_by_split[split][domain] for split in _SPLITS)
+        for domain in domain_values
+    }
+    episode_count = len(descriptors)
+    exclusively_point_mass = (
+        total_by_domain[
+            ActiveVisionSourceDomain.SCALABLE_3D_POINT_MASS_RUNTIME.value
+        ]
+        == episode_count
+        and episode_count > 0
+    )
+    explicit_complete = explicit_source_domain_count == episode_count
+
+    source_identity_complete = True
+    dirty_episode_count = 0
+    for descriptor in descriptors:
+        identity = descriptor.get("source_identity")
+        if not isinstance(identity, Mapping) or set(identity) != {
+            "schema_version",
+            "git_commit",
+            "git_dirty",
+            "config_sha256",
+        }:
+            source_identity_complete = False
+            continue
+        git_dirty = identity.get("git_dirty")
+        if type(git_dirty) is not bool:
+            source_identity_complete = False
+        else:
+            dirty_episode_count += int(git_dirty)
+        if _GIT_COMMIT_PATTERN.fullmatch(str(identity.get("git_commit", ""))) is None:
+            source_identity_complete = False
+        if _SHA256_PATTERN.fullmatch(str(identity.get("config_sha256", ""))) is None:
+            source_identity_complete = False
+
+    source_contract = manifest.get("source_provenance_contract")
+    source_summary = manifest.get("source_domain_summary")
+    version_hash_complete = bool(
+        strict_loader_used
+        and _SHA256_PATTERN.fullmatch(str(getattr(dataset, "manifest_sha256", "")))
+        and _SHA256_PATTERN.fullmatch(str(manifest.get("split_sha256", "")))
+        and _SHA256_PATTERN.fullmatch(str(manifest.get("training_set_sha256", "")))
+        and _SHA256_PATTERN.fullmatch(str(manifest.get("dataset_config_sha256", "")))
+        and isinstance(source_contract, Mapping)
+        and source_contract.get("schema_version")
+        == ACTIVE_VISION_SOURCE_PROVENANCE_SCHEMA_VERSION
+        and source_contract.get("new_artifacts_require_explicit_provenance")
+        is True
+        and source_contract.get("legacy_evidence_upgrade_allowed") is False
+        and source_contract.get("synthetic_fixture_true_domain")
+        == ActiveVisionSourceDomain.SYNTHETIC_FIXTURE.value
+        and source_contract.get("source_declaration_is_external_runtime_attestation")
+        is False
+        and isinstance(source_summary, Mapping)
+    )
+    split_complete = bool(
+        not contaminated_seed_values
+        and all(
+            any(str(item.get("split")) == split for item in descriptors)
+            for split in _SPLITS
+        )
+        and isinstance(manifest.get("split_policy"), Mapping)
+        and manifest["split_policy"].get("sample_or_transition_level_random_split")
+        is False
+    )
+    truth_free_complete = bool(
+        strict_loader_used
+        and manifest.get("storage_contract", {}).get("online_truth_free") is True
+        and "training_corpus_truth_identity_forbidden" not in integrity_reasons
+    )
+    corpus_integrity_complete = bool(
+        not integrity_reasons and materialized_episode_count == episode_count
+    )
+
+    reasons: list[str] = []
+    if not strict_loader_used:
+        reasons.append("strict_dataset_loader_evidence_unavailable")
+    if not explicit_complete:
+        reasons.append("source_domain_not_explicit_for_all_episodes")
+    if not exclusively_point_mass:
+        reasons.append("source_domain_not_exclusively_point_mass_runtime")
+    if not source_identity_complete:
+        reasons.append("source_identity_incomplete")
+    if dirty_episode_count:
+        reasons.append("source_worktree_dirty")
+    if not version_hash_complete:
+        reasons.append("dataset_version_hash_binding_incomplete")
+    if not split_complete:
+        reasons.append("seed_split_incomplete")
+    if not truth_free_complete:
+        reasons.append("truth_free_contract_incomplete")
+    if not corpus_integrity_complete:
+        reasons.append("corpus_integrity_incomplete")
+    reasons = sorted(set(reasons))
+    eligible = not reasons
+    return {
+        "schema_version": ACTIVE_VISION_RESEARCH_EVIDENCE_GATE_SCHEMA_VERSION,
+        "status": (
+            "point_mass_simulation_research_eligible"
+            if eligible
+            else "fail_closed_source_evidence"
+        ),
+        "simulation_research_development_evaluation_eligible": eligible,
+        "failure_reasons": reasons,
+        "source_inventory": {
+            "episode_count": episode_count,
+            "episode_count_by_split_and_source_domain": counts_by_split,
+            "episode_count_by_source_domain": total_by_domain,
+            "explicit_source_domain_episode_count": explicit_source_domain_count,
+            "legacy_inferred_episode_count": episode_count
+            - explicit_source_domain_count,
+        },
+        "contract_checks": {
+            "strict_dataset_loader_used": strict_loader_used,
+            "source_domain_explicit_complete": explicit_complete,
+            "source_domain_exclusively_point_mass_runtime": exclusively_point_mass,
+            "source_identity_complete": source_identity_complete,
+            "source_worktree_clean": dirty_episode_count == 0,
+            "version_hash_binding_complete": version_hash_complete,
+            "seed_split_complete": split_complete,
+            "truth_free_online_payload": truth_free_complete,
+            "corpus_integrity_complete": corpus_integrity_complete,
+        },
+        "claim_limits": {
+            "airsim_runtime_evidence_validated": False,
+            "real_camera_runtime_evidence_validated": False,
+            "real_camera_generalization_validated": False,
+            "production_evidence_validated": False,
+            "runtime_or_control_permission_granted": False,
+        },
+    }
+
+
+def _validate_research_evidence_gate(value: Any) -> None:
+    if not isinstance(value, Mapping) or set(value) != {
+        "schema_version",
+        "status",
+        "simulation_research_development_evaluation_eligible",
+        "failure_reasons",
+        "source_inventory",
+        "contract_checks",
+        "claim_limits",
+    }:
+        raise ActiveVisionCorpusCoverageError(
+            "active-vision research evidence gate fields mismatch"
+        )
+    if value.get("schema_version") != ACTIVE_VISION_RESEARCH_EVIDENCE_GATE_SCHEMA_VERSION:
+        raise ActiveVisionCorpusCoverageError(
+            "active-vision research evidence gate schema mismatch"
+        )
+    inventory = value.get("source_inventory")
+    if not isinstance(inventory, Mapping):
+        raise ActiveVisionCorpusCoverageError(
+            "active-vision research source inventory is unavailable"
+        )
+    expected_domains = {domain.value for domain in ActiveVisionSourceDomain}
+    totals = inventory.get("episode_count_by_source_domain")
+    by_split = inventory.get("episode_count_by_split_and_source_domain")
+    if (
+        not isinstance(totals, Mapping)
+        or set(totals) != expected_domains
+        or not isinstance(by_split, Mapping)
+        or set(by_split) != set(_SPLITS)
+    ):
+        raise ActiveVisionCorpusCoverageError(
+            "active-vision research source-domain inventory is invalid"
+        )
+    for split in _SPLITS:
+        if not isinstance(by_split[split], Mapping) or set(by_split[split]) != expected_domains:
+            raise ActiveVisionCorpusCoverageError(
+                "active-vision research split source-domain inventory is invalid"
+            )
+    episode_count = inventory.get("episode_count")
+    explicit_count = inventory.get("explicit_source_domain_episode_count")
+    legacy_count = inventory.get("legacy_inferred_episode_count")
+    numeric_values = [episode_count, explicit_count, legacy_count, *totals.values()]
+    numeric_values.extend(
+        value for split in _SPLITS for value in by_split[split].values()
+    )
+    if any(type(item) is not int or item < 0 for item in numeric_values):
+        raise ActiveVisionCorpusCoverageError(
+            "active-vision research source-domain counts are invalid"
+        )
+    if (
+        sum(totals.values()) != episode_count
+        or explicit_count + legacy_count != episode_count
+        or any(
+            totals[domain]
+            != sum(by_split[split][domain] for split in _SPLITS)
+            for domain in expected_domains
+        )
+    ):
+        raise ActiveVisionCorpusCoverageError(
+            "active-vision research source-domain counts are inconsistent"
+        )
+    checks = value.get("contract_checks")
+    expected_check_fields = {
+        "strict_dataset_loader_used",
+        "source_domain_explicit_complete",
+        "source_domain_exclusively_point_mass_runtime",
+        "source_identity_complete",
+        "source_worktree_clean",
+        "version_hash_binding_complete",
+        "seed_split_complete",
+        "truth_free_online_payload",
+        "corpus_integrity_complete",
+    }
+    if (
+        not isinstance(checks, Mapping)
+        or set(checks) != expected_check_fields
+        or any(type(checks[name]) is not bool for name in expected_check_fields)
+    ):
+        raise ActiveVisionCorpusCoverageError(
+            "active-vision research evidence checks are invalid"
+        )
+    claim_limits = value.get("claim_limits")
+    expected_claim_fields = {
+        "airsim_runtime_evidence_validated",
+        "real_camera_runtime_evidence_validated",
+        "real_camera_generalization_validated",
+        "production_evidence_validated",
+        "runtime_or_control_permission_granted",
+    }
+    if (
+        not isinstance(claim_limits, Mapping)
+        or set(claim_limits) != expected_claim_fields
+        or any(claim_limits[name] is not False for name in expected_claim_fields)
+    ):
+        raise ActiveVisionCorpusCoverageError(
+            "active-vision research evidence attempted an unsupported claim"
+        )
+    eligible = value.get("simulation_research_development_evaluation_eligible")
+    reasons = value.get("failure_reasons")
+    if type(eligible) is not bool or not isinstance(reasons, list):
+        raise ActiveVisionCorpusCoverageError(
+            "active-vision research evidence decision is invalid"
+        )
+    if reasons != sorted(set(reasons)) or any(
+        not isinstance(reason, str) or not reason for reason in reasons
+    ):
+        raise ActiveVisionCorpusCoverageError(
+            "active-vision research evidence reasons are not canonical"
+        )
+    point_mass_count = totals[
+        ActiveVisionSourceDomain.SCALABLE_3D_POINT_MASS_RUNTIME.value
+    ]
+    expected_eligible = bool(
+        episode_count > 0
+        and point_mass_count == episode_count
+        and explicit_count == episode_count
+        and all(checks.values())
+        and not reasons
+    )
+    expected_status = (
+        "point_mass_simulation_research_eligible"
+        if expected_eligible
+        else "fail_closed_source_evidence"
+    )
+    if eligible != expected_eligible or value.get("status") != expected_status:
+        raise ActiveVisionCorpusCoverageError(
+            "active-vision research evidence gate is internally inconsistent"
+        )
 
 
 def _validate_training_sample(
@@ -1210,10 +1606,12 @@ __all__ = [
     "ACTIVE_VISION_COLLECTION_PLAN_SCHEMA_VERSION",
     "ACTIVE_VISION_CORPUS_AUDIT_SCHEMA_VERSION",
     "ACTIVE_VISION_CORPUS_POLICY_VERSION",
+    "ACTIVE_VISION_RESEARCH_EVIDENCE_GATE_SCHEMA_VERSION",
     "ActiveVisionCorpusCoverageError",
     "ActiveVisionCorpusCoveragePolicy",
     "active_vision_camera_role",
     "audit_active_vision_training_corpus",
     "require_active_vision_training_corpus_ready",
+    "require_active_vision_simulation_research_corpus_ready",
     "validate_active_vision_corpus_audit",
 ]

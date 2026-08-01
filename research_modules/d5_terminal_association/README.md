@@ -2,6 +2,27 @@
 
 科研模块，用于把末端相机视场中的本地视觉轨迹保守关联到中心分配的 `global_track_id`。模块可在统一三维 episode 中在线运行；训练标签和真值评分仍保持离线。D5 只输出视觉关联与相机观察意图，不修改、重写或重新分配任何全局轨迹 ID。
 
+## 2026-07-31 A3 来源域与仿真研究门
+
+D5 主动视觉 episode 现使用封闭来源域：历史未说明、合成软件 fixture、三维质点运行、
+AirSim 运行和真实相机运行。每个显式来源对应固定证据等级。只有合成 fixture 域允许
+`synthetic_fixture=true`；质点、AirSim 或真实相机来源与该标志同时出现时直接拒绝。
+
+新写 episode 的在线 header、descriptor 和 dataset manifest 必须携带显式
+`source_provenance`。旧制品缺少该 envelope 时走专用保守读路径：旧 fixture 只映射为软件
+fixture，其他旧制品只映射为 `legacy_unspecified`，两者均不能晋级为质点、AirSim 或真实相机
+证据。新非合成制品若没有来源声明，在持久化前失败关闭。
+
+严格复载、显式质点来源、clean source identity、完整哈希和 seed split、在线 truth-free 及
+语料完整性同时满足时，语料最多通过 `simulation_research` 开发评估门。该门不授予模型候选、
+主动视觉、相机命令、分配、接管、运行、生产或控制权限。AirSim 和真实相机来源只形成声明，
+声明本身不是外部运行证明。
+
+2026-07-31 定向回归为 `43 passed in 7.83s`，D5 全量为
+`769 passed, 2 warnings in 104.87s`。两条警告来自既有 Matplotlib `Axes3D` 环境和 NVML
+初始化。本轮只关闭“来源域语义和仿真研究门”软件 P1；尚未生成独立质点来源语料，A3 模型
+未重训，也没有取得 AirSim、真实相机、production、runtime 或 control 权限。
+
 ## 2026-07-28 A3 主动视觉训练语料治理
 
 D5 新增公共训练语料审计与补采规划模块
