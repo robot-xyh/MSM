@@ -2358,3 +2358,33 @@ helper 的安全顺序是 `prepare/continue`、`publish_plan()`、planner 级绑
 `28 passed`；全量收集 669 项，结果为 `668 passed, 1 skipped`。唯一跳过项是未安装的
 可选 OR-Tools；既有 Matplotlib `Axes3D` 警告不影响结果。本 API 不选择 authority、不
 签发或续租，也不改变 Hungarian、需求槽或迟滞。
+
+## 2026-08-01 A1 v3 数据合同与生成前门控
+
+`a1_v3_data_contract.py` 已实现版本化在线帧 DTO、离线 D6 审计标签、main-owned seed
+registry、generation schedule、dataset manifest 和只读 loader。在线帧严格记录匿名候选
+边、teacher mask 可达性、逐边 residual rank、action mask 摘要、匿名需求槽、teacher/
+candidate/effective edges、投影前后原因、双时间戳、动态规模和全 false 权限；任何
+truth/actor/object/global identity 字段均失败关闭。离线标签单独落盘，且学习路径创建或
+改写 `global_track_id` 的计数必须为 0。
+
+audit loader 继续返回完整 `A1V3OnlineFrame` 与 `A1V3OfflineLabel`，供 D6 复核 teacher
+可达性、candidate/effective selection 和投影原因。training loader 不再返回 online frame；
+`A1V3TrainingFeatures.to_model_input_dict()` 只包含 observed scale、匿名 candidate graph、
+action-mask shape 和匿名 demand slots。teacher edges/mask 与 frame class 仅由独立
+`A1V3TrainingTarget` 暴露；effective selection、projection、residual rank、source/seed、
+truth/identity 及完整 payload hash 均不进入模型特征。offline 文件即使重算文件 SHA，逐帧
+`online_payload_sha256` 不一致仍失败关闭。
+
+生成前入口为：
+
+```bash
+python3 research_modules/d3_assignment_planner/simulations/validate_a1_v3_data_contract.py \
+  readiness --registry <main-registry.json> --schedule <main-schedule.json>
+```
+
+门控要求 15 cells、300 个 whole-seed episode、180/60/60 seed 切分、最低
+2700/900/900/450 个可观测/正类/负类/困难负类帧，并校验排除 union、Git/dirty/config
+及文件 SHA-256、episode/frame 唯一性。当前 main registry 和 schedule 均未提供；不带
+二者运行时状态为 `request_only`、退出码 2。合同已实现，但 seed 未分配、数据未生成、
+模型未训练，v2 bundle 与阈值未修改，全部运行和准入权限仍为 false。

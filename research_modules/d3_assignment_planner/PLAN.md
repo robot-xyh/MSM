@@ -2627,3 +2627,33 @@ main 的安全顺序是 `plan()`、`bind_published_authority_generation()`、外
 
 `docs/AIRSIM_INTEGRATION_PLAN.md`、`docs/EXPERIMENT_REPORT.md` 和 M-to-N 专项已检查。
 本项不改变 AirSim DTO/settings/episode、实验样本或多成员调度，因此不修改这些文件。
+
+## 68. A1 v3 数据生成合同（2026-08-01）
+
+### 已完成
+
+1. [x] 冻结 request/exclusion 不改写，新增独立版本化 online frame、offline label、main
+   seed registry、schedule、manifest 和 readiness report schema。
+2. [x] 在线 payload 严格拒绝 truth/actor/object/global identity，验证双时间戳、匿名边、
+   mask/rank/demand、投影原因、动态规模和全 false 权限。
+3. [x] whole-seed 60/20/20 固定为 180/60/60；seed 与所有冻结/规范 union 排除集合重叠、
+   split 重叠、episode/frame 重复均失败关闭。
+4. [x] readiness CLI 仅在 main registry 与 15-cell/300-episode schedule 完整绑定时返回
+   `ready`；当前缺少 registry 时返回 `request_only`，不伪造生成就绪。
+5. [x] 只读 audit loader 复核 manifest、Git/dirty/config/SHA-256 和在线/离线一一绑定；
+   training loader 只暴露严格 allowlist 的 `A1V3TrainingFeatures`，teacher/class 通过独立
+   `A1V3TrainingTarget` 提供，不再暴露完整 online/audit frame。
+6. [x] 新增 15 项专项正负测试，覆盖特征键标签隔离和重算文件 SHA 后的逐帧 binding
+   篡改拒绝；不读取正式 seed `1000-1019` 或 v2 test 样本，不训练、
+   不写 bundle、不改阈值。
+7. [x] 检查模块原则、算法、AirSim 集成和实验报告；原则/算法按接口变化最小更新，AirSim
+   与实验没有新接线或证据，保持不变。
+
+### main 待完成
+
+1. [ ] 提供所有 D3 已登记 seed 的规范 union snapshot，并分配 300 个全新且唯一的 seed。
+2. [ ] 生成绑定 request/contract/registry/config SHA-256 的 15-cell schedule；D3 readiness
+   返回 `ready` 前不得启动生成。
+3. [ ] 后续按 schedule 生成 300 个 episode 和满足最低配额的数据集，再交 D3 loader 与
+   D6 低层审计；当前 `data_generated=false`。
+4. [ ] 训练、选模、归一化重拟合、阈值调整、正式评价和任何运行/生产准入均不在本批范围。

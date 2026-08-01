@@ -12,6 +12,20 @@ D3 严格复载 100 个 episode、292 帧、seed `20000-20099`、21 列 CSV 与 
 阻断正确候选为 0。可观测路径覆盖 `25/25`，严格根因只确认 `9/25`。候选不可达、逐边
 排序错误和动作槽/需求结构归因因字段不足保持 `unavailable`。
 
+本批进一步关闭“v3 仅有文字请求、main 无机器可生成合同、D3 无严格加载入口”的
+D3-owned P1 工具缺口。已新增版本化 online/offline DTO、main seed registry、15-cell/
+300-episode schedule、manifest、readiness CLI 和只读 audit/training loader。专项合成
+夹具验证 whole-seed 180/60/60、最低 2700/900/900/450 帧门槛、匿名边/mask/rank/demand、
+双时间戳、身份隔离、全 false 权限、SHA-256 和唯一键；14 项测试通过。该夹具只验证合同，
+不是 development 数据生成证据。
+
+main 复核指出原 `A1V3TrainingSample.online_frame` 仍暴露 teacher/effective 等监督和评估
+诊断；匿名化不能消除标签泄漏。该接口风险现已失败关闭：training sample 改为独立
+`features/target` DTO，特征 allowlist 不含 teacher/selected/effective/classification/
+truth/global-ID，也不含可被模型记忆的完整 payload hash；audit loader 保留原完整诊断。
+负例在重算 offline 文件 SHA 并更新 manifest 后篡改逐帧 binding，loader 仍以
+`offline_online_payload_sha256_mismatch` 拒绝。更新后专项 `15 passed`，未生成数据或训练。
+
 本轮关闭的 D3-owned P1：
 
 1. 冻结 v2 的只读失败诊断器、CLI、分层 JSONL/CSV 和 SHA 校验已实现；
@@ -19,12 +33,17 @@ D3 严格复载 100 个 episode、292 帧、seed `20000-20099`、21 列 CSV 与 
 3. v3 development data request 和 seed exclusion registry 已版本化；
 4. 正负类、困难负类、动作变化类型和缺失可观测字段已形成明确请求；
 5. 训练 `0-99`、正式 `1000-1019`、已评价 `20000-20099` 禁止复用，其他登记 seed 在
-   main 分配前强制合并。
+   main 分配前强制合并；
+6. v3 在线帧、离线标签、registry/schedule/manifest 严格 validator 与只读 loader 已实现；
+7. readiness 在缺少 main registry 时固定为 `request_only`，部分或错误输入为
+   `fail_closed`，只有完整 15-cell/300-episode 合同才返回 `ready`；
+8. trainer-facing feature/target 已物理分型，完整 audit frame 不再由 training loader 暴露。
 
 仍开放的 P1：
 
 1. main 尚未提供所有 D3 注册表的规范 union snapshot，也未分配 300 个全新 seed；
-2. v3 请求的数据尚未生成，正类/负类/困难负类配额和候选可达性字段尚无实物验证；
+2. v3 请求的数据尚未生成；当前 15-cell/300-episode/2700-frame 仅为专项合同夹具，正类/
+   负类/困难负类配额和候选可达性尚无 main-generated 实物验证；
 3. v3 模型训练、检查点选择和新的来源独立评价尚未预注册，当前不得启动；
 4. A1 运行采用、计划发布、版本化 ACK、完整物理窗口、同键 R0 非退化和 production
    admission 仍未闭合；
@@ -32,8 +51,9 @@ D3 严格复载 100 个 episode、292 帧、seed `20000-20099`、21 列 CSV 与 
 
 当前 `assigned_seed_values=[]`，generation、training、optimizer、threshold adjustment、
 runtime、assist、assignment、plan、control、physical、formal admission 和 production
-admission 均为 false。专项 `9 passed`，D3 全量
-`677 passed, 1 skipped, 1 warning`。
+admission 均为 false。既有失败归因专项 `9 passed`；本批 v3 合同专项 `14 passed`。
+本批 D3 全量为 `691 passed, 1 skipped, 1 warning`；skip 为可选 OR-Tools，warning 为既有
+Matplotlib `Axes3D` 环境提示。
 
 ## 2026-07-31 A1 来源独立评价 v2 GAP 状态
 

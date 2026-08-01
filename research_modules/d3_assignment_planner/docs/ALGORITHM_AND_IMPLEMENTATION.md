@@ -4502,3 +4502,18 @@ P_auth = planner.bind_published_authority_generation(P_published, epoch, lease)
 默认不绑定、planner 后置绑定重基、过期 lease 不续期和执行变化后新身份不继承。身份
 专项 `28 passed`；D3 全量 669 项为 `668 passed, 1 skipped`。剩余限制是 epoch/lease
 策略和续租协议仍由 main/authority owner 明确提供，本 API 不创建这些决策。
+
+## 76. A1 v3 Trainer-facing 标签隔离（2026-08-01）
+
+`load_a1_v3_audit_dataset()` 保持完整 `A1V3OnlineFrame` 和 `A1V3OfflineLabel`。
+`load_a1_v3_training_dataset()` 改为返回 `split + features + target`，不再把 online frame
+放入 sample。feature schema `d3_a1_source_independent_v3_training_features_v1` 的模型
+输入键仅为 `schema_version`、`observed_scale`、`candidate_graph` 和
+`anonymous_target_demand_slots`；source/timestamp/seed、teacher/selected/effective、
+projection、residual rank、classification、truth/identity 和完整 payload hash 全部排除。
+teacher edges/mask 与 frame class 只进入独立
+`d3_a1_source_independent_v3_training_target_v1`，effective selection 只留在 audit frame。
+
+training loader 仍先执行完整 audit 校验。负例篡改逐帧 `online_payload_sha256` 后同步重算
+offline 文件 SHA 和 manifest，仍以 `offline_online_payload_sha256_mismatch` 失败关闭。
+2026-08-01 专项 `15 passed`；未分配 seed、生成数据、训练或形成 AirSim/实验结果。

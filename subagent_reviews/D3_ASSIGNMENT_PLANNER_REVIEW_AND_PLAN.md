@@ -2015,3 +2015,12 @@ authority、secondary takeover 和 secondary continuation。fence/secondary 不�
 2026-07-31 身份专项 `28 passed`；D3 全量收集 669 项，结果为
 `668 passed, 1 skipped`。唯一 skip 是可选 OR-Tools，既有 Matplotlib 警告不影响结果。
 AirSim 集成、实验报告和 M-to-N 专项已检查；本项没有对应 DTO、样本或调度变化，不修改。
+
+## 71. A1 v3 trainer 标签隔离复核（2026-08-01）
+
+main 指出的风险成立：原 training sample 暴露完整匿名 online frame，teacher/effective 等
+字段仍可造成标签泄漏。D3 已改为严格 allowlist feature DTO 与独立 target DTO；完整
+online/offline 诊断只由 audit loader 返回。特征键递归检查不含 teacher/selected/effective/
+classification/truth/global-ID，target 不携带 effective 或离线身份标签。重算外层文件 SHA
+不能绕过逐帧 online/offline binding。专项 `15 passed`。本项未生成数据、训练或分配
+seed；AirSim 和实验报告无新证据，保持不变。

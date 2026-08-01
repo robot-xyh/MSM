@@ -1,0 +1,107 @@
+{
+  "schema_version": "d3_a1_source_independent_v3_data_contract_v1",
+  "contract_id": "d3-a1-source-independent-v3-data-contract-20260801-v1",
+  "status": "implemented_contract_data_not_generated",
+  "frozen_request": {
+    "path": "configs/a1_source_independent_v3_development_data_request_v1.json",
+    "schema_version": "d3_a1_source_independent_v3_development_data_request_v1",
+    "file_sha256": "6800fd622fbc7dd27a7411f3419fb92729b195bd8fc6880dcda4c5f8637043e2"
+  },
+  "frozen_seed_exclusion_registry": {
+    "path": "configs/a1_source_independent_v3_seed_exclusion_registry_v1.json",
+    "schema_version": "d3_a1_source_independent_v3_seed_exclusion_registry_v1",
+    "file_sha256": "e3fda5d9d8cf6d58692349b5884e91a928ad723e83e7d95d10cf6048ea7f7155"
+  },
+  "schema_versions": {
+    "online_frame": "d3_a1_source_independent_v3_online_frame_v1",
+    "offline_label": "d3_a1_source_independent_v3_offline_label_v1",
+    "training_features": "d3_a1_source_independent_v3_training_features_v1",
+    "training_target": "d3_a1_source_independent_v3_training_target_v1",
+    "main_seed_registry": "d3_a1_source_independent_v3_main_seed_registry_v1",
+    "generation_schedule": "d3_a1_source_independent_v3_generation_schedule_v1",
+    "dataset_manifest": "d3_a1_source_independent_v3_dataset_manifest_v1",
+    "split_policy": "d3_a1_source_independent_v3_whole_seed_60_20_20_v1",
+    "readiness_report": "d3_a1_source_independent_v3_readiness_report_v1"
+  },
+  "artifact_filenames": {
+    "manifest": "dataset_manifest.json",
+    "online_frames": "online_frames.jsonl",
+    "offline_labels": "offline_labels.jsonl"
+  },
+  "diagnostic_observability_requirements": [
+    "anonymous_candidate_edge_indices_or_content_sha256",
+    "teacher_edges_in_candidate_mask_count_and_boolean",
+    "per_edge_model_residual_rank_before_hungarian",
+    "anonymous_action_mask_shape_count_and_content_sha256",
+    "anonymous_target_demand_slot_vector_or_content_sha256",
+    "teacher_candidate_and_effective_selected_edges",
+    "pre_projection_and_post_projection_reason_codes",
+    "observed_anonymous_target_and_resource_counts",
+    "source_split_scenario_scale_seed_episode_frame_and_dual_timestamps",
+    "all_permissions_false_and_online_truth_use_zero"
+  ],
+  "online_identity_contract": {
+    "representation": "anonymous_ordinal_indices_only",
+    "truth_actor_object_or_global_identity_allowed": false,
+    "online_truth_use_count": 0,
+    "global_track_id_owner": "center",
+    "learning_path_global_track_id_create_allowed": false,
+    "learning_path_global_track_id_rewrite_allowed": false
+  },
+  "trainer_interface": {
+    "feature_schema_version": "d3_a1_source_independent_v3_training_features_v1",
+    "target_schema_version": "d3_a1_source_independent_v3_training_target_v1",
+    "model_input_top_level_keys": [
+      "schema_version",
+      "observed_scale",
+      "candidate_graph",
+      "anonymous_target_demand_slots"
+    ],
+    "full_online_frame_exposed_by_training_loader": false,
+    "audit_diagnostic_fields_allowed_as_model_input": false,
+    "offline_identity_fields_exposed_by_training_loader": false,
+    "online_offline_hash_binding_required": true
+  },
+  "split_contract": {
+    "unit": "whole_seed_one_episode_atomic",
+    "ratios_percent": {
+      "train": 60,
+      "validation": 20,
+      "test": 20
+    },
+    "seed_counts": {
+      "train": 180,
+      "validation": 60,
+      "test": 60
+    },
+    "cross_split_seed_overlap_allowed": false
+  },
+  "readiness_gate": {
+    "required_cell_count": 15,
+    "required_episode_count": 300,
+    "required_unique_seed_count": 300,
+    "minimum_total_observable_frame_count": 2700,
+    "minimum_positive_frame_count": 900,
+    "minimum_negative_frame_count": 900,
+    "minimum_hard_negative_frame_count": 450,
+    "missing_main_registry_status": "request_only",
+    "invalid_or_incomplete_status": "fail_closed"
+  },
+  "permissions": {
+    "generation": false,
+    "training": false,
+    "optimizer": false,
+    "checkpoint_selection": false,
+    "normalization_refit": false,
+    "threshold_adjustment": false,
+    "runtime": false,
+    "assist": false,
+    "authority": false,
+    "assignment": false,
+    "plan": false,
+    "control": false,
+    "physical": false,
+    "formal_admission": false,
+    "production_admission": false
+  }
+}

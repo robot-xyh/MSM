@@ -2130,3 +2130,13 @@ planner 不符合该原则。本规则不改变 Hungarian、迟滞、版本递�
 secondary helper 清除四键并以新 `secondary_*` 约束后置绑定；regional 路径仅可从当前
 grant/successor 重建 regional max/min 摘要。helper 输出须先登记 `publish_plan()`，再
 执行 planner 级绑定，最后进入外部发布与 D4/D7 消费。
+
+## A1 v3 训练特征最小权限原则（2026-08-01）
+
+匿名化只消除实体身份，不会自动消除监督标签。`teacher_edges`、teacher mask 结果、
+candidate/effective selection、frame class、投影原因和 residual rank 即使使用 ordinal
+edge，仍不能作为模型输入。A1 v3 强制分为三层：audit loader 保留完整 online/offline
+诊断；`A1V3TrainingFeatures` 只提供 observed scale、匿名候选图、action-mask shape 和
+匿名 demand slots；`A1V3TrainingTarget` 单独提供 teacher 与分类目标。training sample
+不持有完整 online frame，也不把 source/seed、身份字段或完整 payload hash 放入特征。
+文件 SHA 与逐帧 `online_payload_sha256` 必须同时通过，重算外层文件 SHA 不能绕过绑定。
