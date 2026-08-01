@@ -24,6 +24,10 @@ if str(ROOT) not in sys.path:
 from research_modules.scalable_3d_simulation.learning_export import (
     BatchLearningArtifactWriter,
 )
+from research_modules.scalable_3d_simulation.global_seed_registry import (
+    load_global_seed_registry,
+    validate_seed_request,
+)
 from research_modules.scalable_3d_simulation.active_vision_collection import (
     ACTIVE_VISION_BALANCED_ACTION_ROLE_PROFILE_V1,
     ACTIVE_VISION_COLLECTION_PROFILES,
@@ -63,6 +67,15 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument("--config", type=Path, default=DEFAULT_CONFIG)
     parser.add_argument("--output", type=Path, required=True)
     parser.add_argument("--schedule", type=Path)
+    parser.add_argument(
+        "--global-seed-registry",
+        type=Path,
+        help="versioned main-owned seed registry for a newly allocated corpus",
+    )
+    parser.add_argument(
+        "--seed-allocation-id",
+        help="exact allocation in --global-seed-registry used by this generation run",
+    )
     parser.add_argument("--scales", type=int, nargs="+", default=[5, 20, 50, 100, 200])
     parser.add_argument("--seeds", type=int, nargs="+", default=[1, 2, 3])
     parser.add_argument(
@@ -120,6 +133,10 @@ def main(argv: list[str] | None = None) -> int:
         raise ValueError("--minimum-free-gb must be non-negative")
     if args.max_episodes_per_run is not None and args.max_episodes_per_run < 1:
         raise ValueError("--max-episodes-per-run must be positive")
+    if (args.global_seed_registry is None) != (args.seed_allocation_id is None):
+        raise ValueError(
+            "--global-seed-registry and --seed-allocation-id must be provided together"
+        )
     output = args.output.resolve()
     base = ScenarioConfig.from_dict(json.loads(args.config.read_text(encoding="utf-8")))
     if args.schedule is not None:
@@ -183,6 +200,19 @@ def main(argv: list[str] | None = None) -> int:
     git_commit = _git_output(["rev-parse", "HEAD"])
     schedule_sha256 = None if args.schedule is None else _sha256_file(args.schedule)
     generation_seeds = tuple(sorted({seed for _, _, seed, _ in cells}))
+    global_seed_allocation = None
+    if args.global_seed_registry is not None:
+        global_registry = load_global_seed_registry(args.global_seed_registry)
+        global_seed_allocation = validate_seed_request(
+            global_registry,
+            allocation_id=args.seed_allocation_id,
+            seeds=generation_seeds,
+            operation="dataset_generation",
+            require_exact_allocation=True,
+        )
+        global_seed_allocation["registry_path"] = str(
+            args.global_seed_registry.resolve()
+        )
     plan = {
         "schema_version": GENERATION_PLAN_SCHEMA_VERSION,
         "formal": bool(args.formal),
@@ -194,6 +224,7 @@ def main(argv: list[str] | None = None) -> int:
         "cell_count": len(cells),
         "generation_seed_count": len(generation_seeds),
         "reserved_evaluation_seeds": list(reserved),
+        "global_seed_allocation": global_seed_allocation,
         "learning_export_components": sorted(set(args.learning_components)),
         "d5_recon_track_cues_enabled": bool(args.d5_recon_track_cues),
         "d5_active_vision_collection_profile": collection_profile,
@@ -223,6 +254,7 @@ def main(argv: list[str] | None = None) -> int:
         git_commit=git_commit,
         repository_dirty=repository_dirty,
         schedule_sha256=schedule_sha256,
+        global_seed_allocation=global_seed_allocation,
     )
     progress_path = output / "episode_progress.jsonl"
     if args.resume:
@@ -641,6 +673,7 @@ def _build_training_seed_registry(
     git_commit: str,
     repository_dirty: bool,
     schedule_sha256: str | None,
+    global_seed_allocation: Mapping[str, Any] | None = None,
 ) -> dict[str, Any]:
     training = tuple(sorted(set(int(seed) for seed in training_seeds)))
     reserved = tuple(sorted(set(int(seed) for seed in reserved_evaluation_seeds)))
@@ -656,6 +689,11 @@ def _build_training_seed_registry(
         "git_commit": str(git_commit),
         "repository_dirty": bool(repository_dirty),
         "schedule_sha256": schedule_sha256,
+        "global_seed_allocation": (
+            None
+            if global_seed_allocation is None
+            else dict(global_seed_allocation)
+        ),
         "training_seed_count": len(training),
         "training_seeds": list(training),
         "reserved_evaluation_seed_count": len(reserved),

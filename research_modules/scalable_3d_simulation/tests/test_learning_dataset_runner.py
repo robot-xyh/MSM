@@ -41,6 +41,22 @@ def test_recon_track_cues_require_an_explicit_generation_flag() -> None:
     assert default_args.d5_active_vision_collection_profile is None
 
 
+def test_global_seed_registry_arguments_are_explicit_and_paired() -> None:
+    default_args = learning_runner.parse_args(["--output", "/tmp/unused"])
+    assert default_args.global_seed_registry is None
+    assert default_args.seed_allocation_id is None
+
+    with pytest.raises(ValueError, match="must be provided together"):
+        run_learning_dataset_main(
+            [
+                "--output",
+                "/tmp/unused",
+                "--global-seed-registry",
+                "/tmp/registry.json",
+            ]
+        )
+
+
 def test_schedule_declares_a_versioned_active_vision_collection_profile(
     tmp_path: Path,
 ) -> None:
