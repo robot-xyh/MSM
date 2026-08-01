@@ -75,6 +75,11 @@ def test_episode_exports_separate_d3_d4_d5_learning_artifacts(tmp_path) -> None:
     assert summary["d5_active_vision"]["runtime_ack_count"] == summary[
         "d5_active_vision"
     ]["sample_count"]
+    assert summary["d5_active_vision"]["source_domain"] == (
+        "scalable_3d_point_mass_runtime"
+    )
+    assert summary["d5_active_vision"]["evidence_tier"] == "simulation_research"
+    assert summary["d5_active_vision"]["external_runtime_attestation_validated"] is False
     assert (export_root / "d3_assignment" / "staging_frames.jsonl").is_file()
     assert (export_root / "d4_region_frames.jsonl").is_file()
     graph_files = tuple((export_root / "d5_tracklet_graph" / "graphs").glob("*.npz"))
@@ -89,6 +94,14 @@ def test_episode_exports_separate_d3_d4_d5_learning_artifacts(tmp_path) -> None:
     with gzip.open(active_online, mode="rt", encoding="utf-8") as stream:
         active_online_rows = [json.loads(line) for line in stream]
     assert "truth_entity_id" not in json.dumps(active_online_rows)
+    active_header = active_online_rows[0]
+    assert active_header["record_type"] == "header"
+    assert active_header["synthetic_fixture"] is False
+    assert active_header["source_provenance"] == {
+        "schema_version": "d5.active-vision-source-provenance.v1",
+        "source_domain": "scalable_3d_point_mass_runtime",
+        "evidence_tier": "simulation_research",
+    }
     active_samples = [
         row for row in active_online_rows if row.get("record_type") == "sample"
     ]

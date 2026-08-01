@@ -838,8 +838,10 @@ def _write_d5_active_vision_episode(
     from research_modules.d5_terminal_association.src.d5_terminal_association import (
         ActiveVisionEpisodeRecordV1,
         ActiveVisionRuntimeAckV1,
+        ActiveVisionSourceDomain,
         ActiveVisionSourceIdentityV1,
         active_vision_sample_from_decision,
+        evidence_tier_for_source_domain,
         stage_active_vision_episode_record,
         stage_active_vision_offline_labels,
         unavailable_active_vision_offline_labels,
@@ -926,7 +928,8 @@ def _write_d5_active_vision_episode(
             config_sha256=manifest.config_sha256,
         ),
         samples=tuple(samples),
-        synthetic_fixture=True,
+        synthetic_fixture=False,
+        source_domain=ActiveVisionSourceDomain.SCALABLE_3D_POINT_MASS_RUNTIME,
     )
     descriptor = stage_active_vision_episode_record(
         root,
@@ -969,6 +972,11 @@ def _write_d5_active_vision_episode(
         "runtime_ack_count": joined_ack_count,
         "runtime_ack_accepted_count": accepted_ack_count,
         "runtime_ack_rejected_count": rejected_ack_count,
+        "source_domain": ActiveVisionSourceDomain.SCALABLE_3D_POINT_MASS_RUNTIME.value,
+        "evidence_tier": evidence_tier_for_source_domain(
+            ActiveVisionSourceDomain.SCALABLE_3D_POINT_MASS_RUNTIME
+        ).value,
+        "external_runtime_attestation_validated": False,
         "dataset_finalized": False,
         "dataset_finalization_reason": "requires_multi_seed_offline_join",
     }
