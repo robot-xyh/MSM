@@ -1,5 +1,49 @@
 # D4 实现差距审计：分布式协同与降级接管
 
+## 2026-08-01 v7 失败归因与 v8 开发来源冻结
+
+### 已关闭的 D4-owned 诊断缺口
+
+1. 已建立固定哈希、只读、失败关闭的 v7 事后诊断器和 CLI。artifact manifest、input
+   integrity、JSONL/CSV、summary、observable overlap、候选 manifest、source binding、
+   training audit 和 bundle manifest 均纳入复载；输入和候选前后树摘要一致。
+2. 128 条 JSONL/CSV 传输值对账为 128/128。正式 holdout、truth/actor/object identity、
+   拟合、checkpoint、调门、校准、注册、准入和运行接线使用数均为 0。
+3. 分层覆盖 train/validation/test、规则正负类、区域数量与已观测边、供需可用性、索引
+   方向、资源数、actor 激活、raw/projected change、投影、不变量、错误边和虚假转移。
+4. validation/test 精确正动作确认 0/9、0/9。train 三次实际变化全部是规则负类错误边
+   和虚假转移。45 个失败帧阶段级归因 45/45；特征级归因因供需、完整拓扑和图特征缺失
+   保持 0/45 unavailable。
+5. D6 已完成 128 帧低层独立重算，D4/D6 JSONL 字节一致。D4 文档中的“D6 复核待完成”
+   已改为实际完成状态，但不把完整性和复现结论扩大为候选能力通过。
+6. v8 development data request 和 seed registry 已版本化冻结。324 个请求 seed
+   `28100-28423` 只属于 TRAIN，覆盖安全正反向转移、困难无转移负类、8+ 区域拓扑、
+   不同供需和通信状态。三个重复明确覆盖 1、2、3 个正类转移资源和同数量的困难负类
+   候选资源；本轮未生成数据。
+
+### 保持开放的 P1
+
+1. **v8 TRAIN 来源尚未生成。** 当前只冻结请求。main 后续生成器需要输出逐区域供需、
+   完整有向拓扑、逐边通信与完整安全过程字段，并由 D4 做新来源内容和类别覆盖审计。
+2. **特征级根因仍不可用。** 当前阶段归因已闭合，但 0/45 特征分母不能支持模型结构、
+   类别不平衡或通信退化的因果判断。不得据此直接选择 v8 网络或损失。
+3. **v8 候选尚未构建。** 只有全新 TRAIN 来源验收后才能另立候选；现有 v7 evaluation、
+   validation/test 和旧 seed 不得用于拟合、调门或校准。
+4. **新 validation/test 与准入仍后置。** v8 actor 冻结后需要另一批全新来源，形成非零且
+   充分的精确正动作，并保持虚假转移、投影拒绝、不变量失败和 R0 节点偏差为 0。其后
+   才能研究置信校准、正式 holdout、runtime preflight、D3/D7 或物理结果。
+
+### 权限与优先级
+
+当前无新增 D4-owned P0。v7 保持 `failed_closed`、unregistered、shadow-only、
+admission closed 和 rule fallback required。v8 数据生成、训练、注册和运行时均未开始。
+固定 0.60 门、投影、owner/version/epoch/lease、联盟和 fail-closed 规则未放宽。全部
+assist、authority、assignment、degradation、takeover、coalition、control、physical、
+D3、D7 和 production 权限为 false。
+
+2026-08-01 验收为新增专项 8/8、D4 全量 921/921 通过；全量仅有既有 Matplotlib
+`Axes3D` 环境警告。
+
 ## 2026-07-31 区域建议发布双层合同缺口
 
 - **发现依据。** clean commit `49e43ea` 的 6-cell 高威胁 smoke 中，100v100 和

@@ -1,0 +1,307 @@
+{
+  "actor_activation": {
+    "activation_event_count": 10,
+    "active_rule_negative_frame_count": 10,
+    "active_rule_positive_frame_count": 0,
+    "frame_bins": {
+      "activation_with_transfer_change": 3,
+      "activation_without_transfer_change": 7,
+      "no_activation": 118
+    },
+    "status": "available"
+  },
+  "attribution_denominators": {
+    "behavior_failure_frame_count": 45,
+    "feature_level_causal_attribution_available_count": 0,
+    "feature_level_causal_attribution_unavailable_count": 45,
+    "pipeline_stage_attribution_available_count": 45,
+    "pipeline_stage_attribution_unavailable_count": 0
+  },
+  "by_rule_class": {
+    "negative": {
+      "actor_activation_event_count": 10,
+      "actor_activation_frame_count": 10,
+      "exact_positive_action_count": 0,
+      "exact_positive_action_denominator": 0,
+      "exact_positive_action_rate": null,
+      "false_transfer_count": 3,
+      "invariant_failure_frame_count": 0,
+      "negative_exact_r0_count": 83,
+      "projected_transfer_change_frame_count": 3,
+      "projection_rejection_frame_count": 0,
+      "raw_transfer_change_frame_count": 3,
+      "rule_negative_count": 86,
+      "rule_positive_count": 0,
+      "sample_count": 86,
+      "wrong_edge_count": 3
+    },
+    "positive": {
+      "actor_activation_event_count": 0,
+      "actor_activation_frame_count": 0,
+      "exact_positive_action_count": 0,
+      "exact_positive_action_denominator": 42,
+      "exact_positive_action_rate": 0.0,
+      "false_transfer_count": 0,
+      "invariant_failure_frame_count": 0,
+      "negative_exact_r0_count": 0,
+      "projected_transfer_change_frame_count": 0,
+      "projection_rejection_frame_count": 0,
+      "raw_transfer_change_frame_count": 0,
+      "rule_negative_count": 0,
+      "rule_positive_count": 42,
+      "sample_count": 42,
+      "wrong_edge_count": 0
+    }
+  },
+  "by_split": {
+    "test": {
+      "actor_activation_event_count": 0,
+      "actor_activation_frame_count": 0,
+      "exact_positive_action_count": 0,
+      "exact_positive_action_denominator": 9,
+      "exact_positive_action_rate": 0.0,
+      "false_transfer_count": 0,
+      "invariant_failure_frame_count": 0,
+      "negative_exact_r0_count": 9,
+      "projected_transfer_change_frame_count": 0,
+      "projection_rejection_frame_count": 0,
+      "raw_transfer_change_frame_count": 0,
+      "rule_negative_count": 9,
+      "rule_positive_count": 9,
+      "sample_count": 18,
+      "wrong_edge_count": 0
+    },
+    "train": {
+      "actor_activation_event_count": 10,
+      "actor_activation_frame_count": 10,
+      "exact_positive_action_count": 0,
+      "exact_positive_action_denominator": 24,
+      "exact_positive_action_rate": 0.0,
+      "false_transfer_count": 3,
+      "invariant_failure_frame_count": 0,
+      "negative_exact_r0_count": 63,
+      "projected_transfer_change_frame_count": 3,
+      "projection_rejection_frame_count": 0,
+      "raw_transfer_change_frame_count": 3,
+      "rule_negative_count": 66,
+      "rule_positive_count": 24,
+      "sample_count": 90,
+      "wrong_edge_count": 3
+    },
+    "validation": {
+      "actor_activation_event_count": 0,
+      "actor_activation_frame_count": 0,
+      "exact_positive_action_count": 0,
+      "exact_positive_action_denominator": 9,
+      "exact_positive_action_rate": 0.0,
+      "false_transfer_count": 0,
+      "invariant_failure_frame_count": 0,
+      "negative_exact_r0_count": 11,
+      "projected_transfer_change_frame_count": 0,
+      "projection_rejection_frame_count": 0,
+      "raw_transfer_change_frame_count": 0,
+      "rule_negative_count": 11,
+      "rule_positive_count": 9,
+      "sample_count": 20,
+      "wrong_edge_count": 0
+    }
+  },
+  "content_sha256": "30ccb877b9b8c07e7f80443f541bf54026ff89181c3c1dd6d6ae99b02b4d7d42",
+  "d6_review_status": {
+    "capability_disposition": "failed_closed",
+    "d4_d6_jsonl_byte_match": true,
+    "recomputed_frame_count": 128,
+    "scope_limit": "integrity_and_failure_reproduction_not_capability_admission",
+    "status": "completed_independent_read_only_recompute",
+    "used_as_diagnostic_input": false
+  },
+  "feature_level_root_cause": {
+    "available_failure_frame_count": 0,
+    "missing_observables": [
+      "per_region_supply",
+      "per_region_demand",
+      "supply_demand_gap",
+      "full_directed_topology",
+      "node_features",
+      "edge_features",
+      "communication_state_per_edge"
+    ],
+    "observable_key_sha256_is_not_reversible": true,
+    "status": "unavailable",
+    "unavailable_failure_frame_count": 45
+  },
+  "input_scope": {
+    "episode_count": 64,
+    "formal_seed_payload_read_count": 0,
+    "frame_count": 128,
+    "region_count": 8,
+    "scenario_scale": "M16N24",
+    "source_independent_evaluation_only": true,
+    "splits": {
+      "test": 18,
+      "train": 90,
+      "validation": 20
+    },
+    "truth_actor_object_identity_read_count": 0
+  },
+  "invariants": {
+    "failed": 0,
+    "passed": 128,
+    "reason_inventory": {},
+    "status": "available"
+  },
+  "observable_overlap": {
+    "complete_training_source_independence_claim_allowed": false,
+    "frozen_v4_external_exact_overlap_count": 0,
+    "frozen_v4_overlap_free": true,
+    "full_v7_training_source_overlap_status": "unavailable_source_b_payload_not_supplied_to_evaluator"
+  },
+  "permissions": {
+    "assignment": false,
+    "assist": false,
+    "authority": false,
+    "coalition": false,
+    "control": false,
+    "d3": false,
+    "d7": false,
+    "degradation": false,
+    "physical": false,
+    "production": false,
+    "registration": false,
+    "runtime_ack": false,
+    "takeover": false
+  },
+  "projection_rejection": {
+    "not_rejected": 128,
+    "reason_inventory": {},
+    "rejected": 0,
+    "status": "available"
+  },
+  "proximate_failure_attribution": {
+    "negative_wrong_edge_survived_projection": 3,
+    "positive_target_actor_activation_absent": 42,
+    "unattributed_pipeline_stage_failure": 0
+  },
+  "raw_projected_change": {
+    "frame_matrix": {
+      "raw_0_projected_0": 125,
+      "raw_1_projected_1": 3
+    },
+    "projected_change_count": 3,
+    "raw_change_count": 3,
+    "status": "available"
+  },
+  "region_topology": {
+    "full_adjacency_status": "unavailable_not_exported",
+    "observed_actor_change_directed_edges": [
+      {
+        "frame_count": 2,
+        "resource_count": 1,
+        "source_region_id": "region-003",
+        "target_region_id": "region-002"
+      },
+      {
+        "frame_count": 1,
+        "resource_count": 1,
+        "source_region_id": "region-006",
+        "target_region_id": "region-007"
+      }
+    ],
+    "observed_target_directed_edges": [
+      {
+        "frame_count": 18,
+        "resource_count": 1,
+        "source_region_id": "region-000",
+        "target_region_id": "region-001"
+      },
+      {
+        "frame_count": 7,
+        "resource_count": 1,
+        "source_region_id": "region-001",
+        "target_region_id": "region-000"
+      },
+      {
+        "frame_count": 7,
+        "resource_count": 1,
+        "source_region_id": "region-002",
+        "target_region_id": "region-001"
+      },
+      {
+        "frame_count": 5,
+        "resource_count": 1,
+        "source_region_id": "region-003",
+        "target_region_id": "region-002"
+      },
+      {
+        "frame_count": 5,
+        "resource_count": 1,
+        "source_region_id": "region-004",
+        "target_region_id": "region-003"
+      }
+    ],
+    "physical_edge_orientation_status": "unavailable",
+    "region_count_frame_distribution": {
+      "8": 128
+    },
+    "status": "partially_available",
+    "topology_family_status": "unavailable_not_exported"
+  },
+  "report_date": "2026-08-01",
+  "resource_quantity": {
+    "actor_projected_transfer_resource_count_frames": {
+      "0": 125,
+      "1": 3
+    },
+    "actor_raw_transfer_resource_count_frames": {
+      "0": 125,
+      "1": 3
+    },
+    "status": "available",
+    "target_transfer_resource_count_frames": {
+      "0": 86,
+      "1": 42
+    },
+    "wrong_quantity_count": 0
+  },
+  "schema": "d4-region-resource-v7-source-independent-failure-attribution-v1",
+  "supply_demand_gap": {
+    "available_frame_count": 0,
+    "inference_from_region_id_or_rule_label_allowed": false,
+    "reason": "node_supply_demand_observables_not_exported_in_frozen_records",
+    "status": "unavailable",
+    "total_frame_count": 128
+  },
+  "transfer_direction": {
+    "actor_change_direction_counts": {
+      "decreasing_region_index": 2,
+      "increasing_region_index": 1
+    },
+    "physical_forward_reverse_status": "unavailable",
+    "reason": "region_numeric_order_is_not_a_physical_direction",
+    "status": "available_by_region_index_only",
+    "target_direction_counts": {
+      "decreasing_region_index": 24,
+      "increasing_region_index": 18
+    }
+  },
+  "v7_history": {
+    "candidate_mutated": false,
+    "evaluation_disposition": "failed_closed",
+    "generalization_admission_supported": false,
+    "minimum_confidence_gate": 0.6,
+    "minimum_confidence_gate_applied_to_v7": false,
+    "minimum_confidence_gate_changed": false,
+    "minimum_confidence_gate_status": "preserved_but_unavailable_without_calibrator",
+    "rule_fallback_required": true,
+    "threshold_or_weight_changed": false
+  },
+  "wrong_edge_and_false_transfer": {
+    "all_false_transfers_are_train_rule_negative_wrong_edges": true,
+    "false_transfer_count": 3,
+    "false_transfer_frame_count": 3,
+    "wrong_direction_count": 0,
+    "wrong_edge_count": 3,
+    "wrong_edge_frame_count": 3,
+    "wrong_quantity_count": 0
+  }
+}

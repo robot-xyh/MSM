@@ -1,0 +1,174 @@
+{
+  "checkpoint_count": 0,
+  "content_sha256": "cfdb88649d70fd390204edcd891cb1826aa8aa85d2af706ebb2ed95bc46ee8aa",
+  "data_generation_count": 0,
+  "forbidden_online_fields": [
+    "actor_id",
+    "actor_name",
+    "detection_truth_id",
+    "ground_truth_id",
+    "object_id",
+    "object_name",
+    "sim_object_id",
+    "sim_object_name",
+    "target_truth_id",
+    "truth_id",
+    "truth_track_id"
+  ],
+  "future_acceptance_request": {
+    "false_transfer_count_required": 0,
+    "feature_level_failure_stratification_required": true,
+    "invariant_failure_count_required": 0,
+    "projection_rejection_count_required": 0,
+    "r0_node_action_tuple_deviation_count_required": 0,
+    "validation_test_nonzero_exact_positive_action_required": true,
+    "validation_test_nonzero_transfer_change_required": true
+  },
+  "future_candidate_rules": {
+    "coalition_checks_required": true,
+    "current_v7_validation_test_tuning_allowed": false,
+    "deterministic_projection_required": true,
+    "fail_closed_required": true,
+    "minimum_confidence_gate": 0.6,
+    "minimum_confidence_gate_may_be_lowered": false,
+    "owner_version_epoch_lease_checks_required": true,
+    "test_fit_tune_or_calibration_allowed": false,
+    "train_only_fit": true,
+    "validation_checkpoint_selection_only": true
+  },
+  "model_registration_count": 0,
+  "permissions": {
+    "assignment": false,
+    "assist": false,
+    "authority": false,
+    "coalition": false,
+    "control": false,
+    "d3": false,
+    "d7": false,
+    "degradation": false,
+    "physical": false,
+    "production": false,
+    "registration": false,
+    "runtime_ack": false,
+    "takeover": false
+  },
+  "purpose": "new_train_only_source_for_cross_source_directed_transfer_learning",
+  "report_date": "2026-08-01",
+  "request_id": "d4-region-resource-v8-development-source-request-v1",
+  "required_coverage": {
+    "communication_conditions": [
+      "nominal",
+      "bounded_delay_and_loss",
+      "partition_then_recovery"
+    ],
+    "hard_negative_candidate_resource_counts": [
+      1,
+      2,
+      3
+    ],
+    "hard_negative_requirements": [
+      "high_transfer_score_but_no_safe_executable_transfer",
+      "wrong_direction_candidate",
+      "wrong_edge_candidate",
+      "insufficient_source_surplus",
+      "stale_owner_version_epoch_or_lease",
+      "communication_partition_or_expired_evidence"
+    ],
+    "minimum_region_count": 8,
+    "negative_label_rule": "same_snapshot_r0_exact_no_transfer_after_all_safety_constraints",
+    "positive_label_rule": "same_snapshot_r0_and_deterministic_projector_safe_transfer",
+    "positive_transfer_resource_counts": [
+      1,
+      2,
+      3
+    ],
+    "requested_cell_count": 108,
+    "requested_replicates_per_cell": 3,
+    "source_kind": "new_point_mass_train_source",
+    "supply_demand_conditions": [
+      "source_surplus_target_deficit",
+      "balanced_boundary",
+      "global_shortage_with_local_candidate_edge"
+    ],
+    "topology_families": [
+      "directed_ring_8",
+      "directed_grid_3x3",
+      "directed_ring_12",
+      "directed_mesh_16"
+    ],
+    "transfer_classes": [
+      "safe_forward_transfer",
+      "safe_reverse_transfer",
+      "hard_no_transfer_negative"
+    ]
+  },
+  "required_online_observables": [
+    "measurement_timestamp",
+    "arrival_timestamp",
+    "region_count",
+    "directed_edge_index",
+    "region_supply_available",
+    "region_supply_committed",
+    "region_demand_required",
+    "region_demand_weighted",
+    "supply_demand_gap",
+    "communication_latency_s",
+    "communication_loss_rate",
+    "communication_partition_state",
+    "owner_id",
+    "owner_layer",
+    "plan_id",
+    "plan_version",
+    "epoch",
+    "lease_expires_at_s",
+    "r0_action_tuple",
+    "raw_actor_activation",
+    "raw_actor_transfer",
+    "projected_transfer",
+    "projection_rejection_reasons",
+    "invariant_failure_reasons"
+  ],
+  "runtime_connection_count": 0,
+  "schema": "d4-region-resource-v8-development-data-request-v1",
+  "seed_registry": {
+    "content_sha256": "16f8acd4457c0914a0ec9296724280fcccfe43f2667d87401464fb9a27c04550",
+    "registry_id": "d4-v8-development-train-source-request-v1",
+    "requested_seed_count": 324,
+    "schedule_content_sha256": "8b736f2ad6272e90fcf366969b5206039e9616fb0e1197bdb3c615e2e107f890",
+    "schema": "d4-region-resource-v8-development-seed-request-registry-v1"
+  },
+  "source_isolation": {
+    "additional_rejected_ranges": [
+      "0-99",
+      "5200-5215"
+    ],
+    "explicitly_rejected_ranges": [
+      "5216-5279",
+      "4016-4079",
+      "3000-3039",
+      "4000-4079",
+      "1000-1019"
+    ],
+    "observable_overlap_audit_required": true,
+    "reuse_existing_evaluation_source": false,
+    "reuse_existing_training_source": false,
+    "reuse_formal_holdout": false,
+    "source_lineage_and_sha256_required": true
+  },
+  "status": "frozen_request_not_generated",
+  "training_count": 0,
+  "truth_policy": {
+    "global_track_id_creation_or_rewrite_allowed": false,
+    "offline_label_identity_allowed": true,
+    "offline_labels_must_be_separate_from_online_payload": true,
+    "online_truth_identity_allowed": false
+  },
+  "v7_source_evidence": {
+    "historical_disposition": "failed_closed",
+    "reuse_for_v8_fit_or_tuning_allowed": false,
+    "test_exact_positive_action": "0/9",
+    "train_actual_change_count": 3,
+    "train_actual_change_disposition": "all_rule_negative_wrong_edge_false_transfer",
+    "validation_exact_positive_action": "0/9"
+  }
+}

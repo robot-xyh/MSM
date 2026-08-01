@@ -1,5 +1,14 @@
 # D4 文档索引
 
+2026-08-01 新增 v7 来源独立失败归因和 v8 development data request。冻结 128 帧的
+validation/test 精确正动作均为 0/9，train 三个实际变化全部是负类错误边和虚假转移。
+45 个失败帧的流水线阶段归因覆盖 45/45；逐区域供需、完整拓扑和图特征未导出，特征级
+根因保持 0/45 unavailable。D6 已完成低层独立重算，结果与 D4 一致但不支持候选准入。
+v8 仅冻结全新 TRAIN seed `28100-28423` 的 324 项请求，不生成数据、不训练、不注册、
+不接运行时；三个重复显式覆盖 1、2、3 个正类转移资源和同数量的困难负类候选资源。
+详细证据见
+`../reports/D4_V7_FAILURE_ATTRIBUTION_V8_DATA_REQUEST_20260801/REPORT_CN.md`。
+
 2026-07-31 新增区域资源建议发布与规划采用双层门。D6 的 clean 6-cell 冒烟在 4 个
 重规划 episode 发现 v2 发布后仍输出 v1 建议，clean formal 因而为 2/6。D4 现分别
 输出 `generation_publishable` 与 `planning_consumable`：前者只核对 current snapshot、

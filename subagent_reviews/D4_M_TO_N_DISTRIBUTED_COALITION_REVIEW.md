@@ -1,5 +1,17 @@
 # D4 M 对 N 分布式联盟形成与降级接管调研
 
+## 2026-08-01 v7 失败归因与联盟边界
+
+v7 失败归因和 v8 数据请求只涉及区域间资源转移残差，不形成多成员联盟，不改变 required
+member、reserve、ACK、原子 commit、二级接管或完全分布式状态机。v7 三次实际变化均为
+规则负类虚假转移，不能作为联盟增员、补位或重构证据。
+
+v8 registry 当前只请求 TRAIN 数据，没有生成区域建议、D3 successor、成员 ACK 或控制
+许可。请求中的 1、2、3 个资源表示区域转移数量覆盖，不代表多成员联盟已形成。后续即使
+v8 通过行为门，其输出仍须经过现有 owner/version/epoch/lease、联盟完整 ACK 和
+fail-closed 门。当前 assignment、coalition、takeover、D3、D7 和 control 权限均为
+false；本轮没有新增 M 对 N 能力或 AirSim 证据。
+
 ## 2026-07-31 高威胁建议发布双层保护
 
 高威胁 M 对 N clean smoke 的多成员联盟最终闭合，但 4 个 100/200 规模重规划 episode

@@ -1,5 +1,70 @@
 # D4 分布式协同与降级接管算法及实施方案
 
+## v7 只读失败诊断与 v8 请求冻结（2026-08-01）
+
+### 输入复载
+
+`region_resource_v7_failure_attribution.py` 只接受两个固定输入根：冻结 v7 来源独立评价
+目录和冻结 v7 候选目录。首先计算两棵树的 SHA-256，再验证 artifact manifest 的文件
+摘要和内容摘要。随后复载 `input_integrity.json`、逐帧 JSONL/CSV、评价 summary、
+observable overlap、候选 manifest、source binding、training audit 和 bundle manifest。
+JSONL 与 CSV 不要求字段顺序相同；评价器写出时 JSONL 按键排序，CSV 保留构造顺序。
+诊断器要求字段集合一致，并按每行每个单元的原始序列化值逐项比较。冻结文件本身还需通过
+固定文件摘要，因此顺序变化、值变化和字段缺失都会失败关闭。
+
+诊断前后重新计算候选树和评价树。输出路径不能位于任一输入内，也不能成为输入祖先。
+诊断不导入模型推理类，不读取原始 source tree，不执行训练、checkpoint 选择、阈值拟合、
+置信校准、注册、准入或运行时 ACK。记录递归检查禁止的 truth、actor 和 object identity
+字段，并拒绝正式 holdout seed。
+
+### 分层算法
+
+对每条记录先按 `split` 和规则正负类分组，再计算以下统计：
+
+1. 区域拓扑记录 action tuple 的区域数，并汇总目标转移与候选实际变化的已观测有向边。
+   冻结记录没有完整 adjacency，拓扑族和物理方向标为 unavailable。
+2. 供需差要求逐区域 supply、committed、demand 和 gap。字段未导出时可用分母为 0，
+   不从规则标签、reserve ratio 或区域编号反推。
+3. 转移方向只记录区域索引增加或减少，明确该标签不是物理正向/反向。资源数量分别统计
+   目标、原始 actor 和投影后转移资源数。
+4. actor 激活分为未激活、激活但无实际变化、激活并形成变化。raw/projected 形成四格
+   变化矩阵，单独统计投影拒绝、不变量失败、错误方向、错误数量、错误边和虚假转移。
+5. 行为失败帧以 `failure_reasons` 的非空并集为分母。正类未激活和负类错误边通过投影
+   提供阶段级归因；缺少图特征时不输出特征级根因。
+
+固定结果为 128 帧、45 个行为失败帧。正类未激活 42，负类错误边通过投影 3，阶段级
+归因 45/45。供需、完整拓扑和图特征未导出，特征级根因 0/45 unavailable。validation
+和 test 精确正动作均为 0/9；train 三个实际变化全部是规则负类虚假转移。
+
+### v8 registry
+
+`v8_development_seed_registry.json` 是请求清单，不是数据集 manifest。它按四类拓扑、三类
+供需、三类通信、三类目标动作和三个重复构造 324 个 TRAIN 请求，seed 为
+`28100-28423`。三个重复映射为 1、2、3 个转移资源：安全正负方向类要求对应数量形成
+转移，困难负类记录相同数量的候选资源但要求投影后无转移。每个 seed 只绑定一个请求
+单元。registry 同时展开禁止范围并验证交集为空；validation/test 列表保持为空，待
+actor 和请求冻结后另选全新来源。
+
+`v8_development_data_request.json` 冻结字段、标签和后续门。正标签由同快照 R0 与确定性
+投影产生的安全转移定义；负标签要求同快照在全部安全约束后精确保持无转移。数据生成器
+需要对请求动作类进行拒绝采样或场景构造，但不得把 actor 输出作为教师标签。在线载荷不
+含真值身份，离线标签单独保存并通过内容摘要绑定。
+
+后续候选仍采用 TRAIN 拟合、VALIDATION 选 checkpoint、TEST 只读评价。当前 v7
+validation/test 不得参与 v7 或 v8 调门。固定 0.60 门、确定性投影、owner/version/
+epoch/lease、联盟和失败关闭规则不可降低。v8 未生成、未训练、未注册，所有权限为 false。
+
+### 输出
+
+命令行输出到版本化目录
+`reports/D4_V7_FAILURE_ATTRIBUTION_V8_DATA_REQUEST_20260801/`，包含输入复载审计、
+失败归因 JSON、v8 request、seed registry、中文报告、artifact manifest 和
+`SHA256SUMS`。写出先在同级临时目录完成，全部文件落盘后再原子替换目标目录；输入目录
+始终只读。
+
+2026-08-01 验收为专项 8/8、D4 全量 921/921 通过。全量仅有既有 Matplotlib
+`Axes3D` 环境警告。
+
 ## 2026-07-31 区域建议发布与采用保护
 
 ### 接口

@@ -1,5 +1,54 @@
 # D4 分布式协同与降级接管
 
+## 2026-08-01 v7 失败归因与 v8 开发来源请求
+
+D4 新增只读诊断器
+`region_resource_v7_failure_attribution.py` 和命令行入口
+`scripts/run_region_resource_v7_failure_attribution.py`。输入只接受冻结目录
+`d4_v7_source_independent_external_evaluation_20260730` 与固定 v7 candidate root。
+诊断器复载 artifact manifest、input integrity、JSONL/CSV、外部评价汇总、在线可观测
+键重合审计、候选 manifest、source binding、training audit 和 bundle manifest，并按
+固定文件摘要、内容摘要、树摘要和跨格式逐单元值对账失败关闭。它不执行模型前向、不读取
+原始仿真树、不拟合、不调门、不校准、不注册，也不连接运行总线。
+
+冻结 128 帧全部可复载，JSONL/CSV 对账为 128/128，候选和评价树前后不变。规则正类
+共 42 帧，精确正动作 0/42；validation/test 分别为 0/9、0/9。train 的 10 个激活帧
+全部属于规则负类，其中 7 帧没有形成转移变化，3 帧形成实际变化；三次变化均为错误边和
+虚假转移。投影拒绝、不变量失败、错误方向和错误数量均为 0。v7 历史处置保持
+`failed_closed`，确定性 R0 继续是唯一可执行路径。
+
+行为失败帧共 45 个。流水线阶段归因覆盖 45/45：42 个正类帧没有 actor 激活，3 个负类
+帧激活错误边且通过投影。冻结记录没有逐区域供需、完整有向邻接图、节点特征、边特征和
+逐边通信状态，因此特征级因果归因为 0/45，状态保持 `unavailable`。区域拓扑只能确认
+128 帧均为 8 区域并统计已出现的有向边；区域数字增减不能解释为物理正向或反向。冻结
+v4 与外部数据的可观测键精确重合为 0，但训练来源 B 的完整特征载荷未提供，不能扩大为
+全部训练来源特征独立结论。
+
+D6 已完成 128 帧低层独立重算，没有调用 D4 v7 高层评价器。D4/D6 JSONL 字节摘要、
+失败计数和安全计数一致。该证据确认评价可复现，不支持候选准入或能力通过。
+
+本轮同时冻结 v8 development data request 和 seed registry，只提出数据需求，不生成
+episode。请求使用全新 TRAIN seed `28100-28423`，共 324 个；覆盖 8、9、12、16 区域
+四类有向拓扑，三类供需状态、三类通信状态以及安全正向转移、安全反向转移、困难无转移
+负类。三个重复分别请求 1、2、3 个安全转移资源；困难负类分别携带 1、2、3 个候选资源，
+但安全投影后必须保持无转移。validation/test 要在 v8 actor 与本请求冻结后从另一全新
+来源分配，不允许从 TRAIN 或旧评价重切分。
+
+registry 显式拒绝既有训练、评价和正式留出范围，至少包括 `5216-5279`、
+`4016-4079`、`3000-3039`、`4000-4079`、`1000-1019`，并额外拒绝冻结 v4 的
+`0-99` 与 v7 pilot 的 `5200-5215`。新数据需导出双时间戳、逐区域供需、完整有向边、
+通信时延/丢包/分区、owner/version/epoch/lease、R0、原始 actor、投影和不变量字段；
+在线载荷禁止 truth、actor 或 object identity。
+
+v7 权重、阈值、固定 0.60 门、投影、owner/version/epoch/lease、联盟和 fail-closed
+规则均未修改。v8 数据生成、训练、checkpoint、注册和运行时接线计数均为 0。assist、
+authority、assignment、degradation、takeover、coalition、control、physical、D3、
+D7、production、registration 和 runtime ACK 权限全部为 false。版本化证据位于
+`reports/D4_V7_FAILURE_ATTRIBUTION_V8_DATA_REQUEST_20260801/`。
+
+2026-08-01 验收结果为新增专项 8/8、D4 全量 921/921 通过；全量只有既有 Matplotlib
+`Axes3D` 环境警告。该结果验证诊断与原模块回归，不提供 v8 数据或策略能力证据。
+
 ## 2026-07-31 区域建议发布与规划采用双层门
 
 D6 对 clean commit `49e43ea` 的 6-cell 高威胁冒烟审计发现，4 个 100/200 规模重规划
@@ -220,7 +269,7 @@ checkpoint 为 epoch 137，训练在 epoch 182 提前停止，当前结果通过
 置信校准器，不应用 0.60 置信门；assist、assignment、degradation、takeover、
 coalition、control、physical、D3 和 D7 权限全部为 false。专项 19/19、D4 全量
 882/882 通过。该句记录候选构建阶段状态；seed 5216-5279 的来源独立评价已由上一节
-完成并失败关闭，D6 独立复核尚未完成。
+完成并失败关闭。D6 后续已完成 128 帧低层独立重算，结果与 D4 一致，仍不支持准入。
 
 两次构建逐文件无差异。模型、训练审计、候选 manifest 和候选树内容 SHA-256 分别为
 `bec99032bc176854f7ba265977ed35bf828d415be4bc260c9b6703a95d70082d`、

@@ -1,0 +1,34 @@
+{
+  "artifact_files": {
+    "REPORT_CN.md": "510ae11f711955d6020319413642f7017c4da6d0aa9ffe3371cae5cacff6ecf2",
+    "source_reload_audit.json": "7d2860f38830f0d9c832f782aee07252dfd292b8dfcdf5c6bc718959d745a187",
+    "v7_failure_attribution.json": "53de0ec31709cccba7b553d8adf474c11087cebe1527ef5caeb6db9313f9d24d",
+    "v8_development_data_request.json": "daa42fd6a980923231e244d772b20dc8d7b76ee12e1d53b15009ff346de12d38",
+    "v8_development_seed_registry.json": "cd40390994a6216ebb6ab3415fd467762d6900c45ad7f6ebd7ee783a9bf77015"
+  },
+  "content_sha256": "50e28bc3401236e844099696fd8c7a7c19b379a4c5df42d558e839a38cad0b6e",
+  "permissions": {
+    "assignment": false,
+    "assist": false,
+    "authority": false,
+    "coalition": false,
+    "control": false,
+    "d3": false,
+    "d7": false,
+    "degradation": false,
+    "physical": false,
+    "production": false,
+    "registration": false,
+    "runtime_ack": false,
+    "takeover": false
+  },
+  "report_date": "2026-08-01",
+  "runtime_connection_count": 0,
+  "schema": "d4-region-resource-v7-v8-diagnostic-artifact-manifest-v1",
+  "source_candidate_tree_sha256": "7bd5419f9d071d6c801f72415a8eb36ac0e36d259187e94229959f5f21d1a667",
+  "source_evaluation_tree_sha256": "02b5b70656cb6fcf762ff3ad956281e765a63f262849e1f6ae86f1ea72624df1",
+  "v7_historical_disposition": "failed_closed",
+  "v8_data_generation_count": 0,
+  "v8_registration_count": 0,
+  "v8_training_count": 0
+}

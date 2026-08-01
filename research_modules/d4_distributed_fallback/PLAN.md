@@ -1,5 +1,41 @@
 # D4 分布式协同与降级接管计划
 
+## 2026-08-01 v7 失败归因与 v8 开发来源冻结计划
+
+### 本轮完成
+
+- [x] 只读复载固定 v7 外部评价目录的 artifact manifest、input integrity、JSONL、CSV、
+  summary 和 observable overlap，并逐文件核对冻结 SHA-256。
+- [x] 只读复载固定 v7 候选 manifest、source binding、training audit、bundle manifest
+  与状态文件摘要；候选树和评价树前后保持不变。
+- [x] 对 128 帧按 train/validation/test、规则正负类、区域数量和已观测边、转移方向、
+  资源数、actor 激活、raw/projected change、投影拒绝、不变量、错误边和虚假转移分层。
+- [x] 固定 validation/test 精确正动作 `0/9`、`0/9`；固定 train 三个实际变化全部为
+  负类错误边和虚假转移。45 个失败帧的阶段归因为 45/45，特征级根因为 0/45
+  `unavailable`。
+- [x] 同步 D6 已完成低层独立重算的实际状态。D4/D6 逐帧结果一致只证明复现，不改变
+  `failed_closed`、规则回退和零权限处置。
+- [x] 冻结 v8 development data request 与 seed registry。请求全新 TRAIN seed
+  `28100-28423`，324 个请求单元，不生成 episode，不训练或注册模型。
+- [x] 显式拒绝复用 `5216-5279`、`4016-4079`、`3000-3039`、`4000-4079`、
+  `1000-1019`，并拒绝 `0-99` 与 `5200-5215`。请求覆盖 8+ 区域、安全正反向转移、
+  困难无转移负类、不同供需和通信条件；三个重复显式覆盖 1、2、3 个安全转移资源，
+  困难负类覆盖 1、2、3 个候选资源且投影后无转移。
+- [x] 保持 v7 bundle、权重、阈值、0.60 门、确定性投影、owner/version/epoch/lease、
+  联盟与 fail-closed 规则不变；全部运行与生产权限为 false。
+- [x] 新增专项 8/8、D4 全量 921/921 通过；仅有既有 Matplotlib `Axes3D` 环境警告。
+
+### 后续门
+
+1. main 只能依据本请求另行生成全新 TRAIN 来源。生成器必须输出逐区域供需、完整有向
+   拓扑和逐边通信状态，使当前 0/45 特征级归因转为可计算；本任务没有生成数据。
+2. D4 另立 v8 候选时只允许 TRAIN 拟合，VALIDATION 只选 checkpoint，TEST 不得拟合、
+   调门或校准。现有 v7 validation/test 和全部旧 seed 不得用于反向修改 v7 或 v8。
+3. v8 actor 冻结后再请求另一批全新 validation/test。两划分须出现非零且充分的精确
+   正动作，同时保持虚假转移、投影拒绝、不变量失败和 R0 节点元组偏差为 0。
+4. 达到行为门后才能单独设计置信校准和来源独立评价；固定 0.60 门不得降低。正式
+   holdout、runtime preflight、D3/D7、联盟、AirSim 和物理评价继续后置。
+
 ## 2026-07-31 区域建议发布双层合同收口计划
 
 ### D4 已完成
@@ -204,8 +240,8 @@ commit 和固定导出谱系独立。
 
 1. 不使用本次 train/validation/test 反向修改 v7，不建立置信校准器，也不运行正式
    holdout、runtime preflight、D3 successor、D7 或物理收益试验。
-2. 由 main 和 D6 独立复核本评价的逐帧 records、内容摘要、负类误激活和零正类激活。
-   D6 复核完成前，来源独立评价只记为 D4 owner 结果。
+2. main 和 D6 已独立复核本评价的逐帧 records、内容摘要、负类误激活和零正类激活。
+   D6 低层重算与 D4 一致；该复核只确认可复现，评价仍保持失败关闭。
 3. 若继续学习路线，另立 v8 研究计划。训练数据必须使用新的 TRAIN 来源，重点增加
    正转移可观测覆盖、相近负帧和反向边；本次评价数据不得用于 checkpoint、阈值或
    confidence calibration。
@@ -252,8 +288,8 @@ unregistered、development/shadow only、admission closed 和 rule fallback requ
 ### 开发阶段原定下一门
 
 以下 1-3 项的 D4-owned 部分已由页首来源独立评价收口计划执行。评价结果为
-validation/test 正类均未激活并失败关闭；D6 独立复核仍待 main 调度，第 4 项置信
-校准条件未成立。
+validation/test 正类均未激活并失败关闭；D6 独立复核已经完成且结果一致，第 4 项置信
+校准条件仍未成立。
 
 1. 冻结最终 v7 actor、训练审计、来源绑定和双构建摘要，不再根据当前开发数据调网络、
    帧门或 checkpoint。

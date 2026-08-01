@@ -1,5 +1,42 @@
 # D4 分布式协同与降级接管综述及子方案
 
+## 2026-08-01 v7 失败归因与 v8 请求评审
+
+D4 接受本轮诊断为冻结 v7 失败结果的来源独立事后分层，不接受其作为 v7 调参依据或 v8
+模型设计结论。固定评价树和候选树均通过内容摘要与前后树摘要检查；JSONL/CSV 128/128
+一致。诊断没有执行 v7 actor，不读取正式 seed 或在线 truth/actor/object identity，不
+改变候选、权重、阈值、0.60 门、注册或运行状态。
+
+评审确认 validation/test 精确正动作分别为 0/9、0/9。train 的 10 个 actor 激活帧
+均为规则负类；7 个没有形成转移变化，3 个形成错误边和虚假转移。投影拒绝、不变量失败、
+错误方向和错误数量均为 0。45 个失败帧的阶段归因为 42 个正类未激活和 3 个负类错误边
+通过投影，覆盖 45/45。
+
+特征级原因保持 unavailable。原评价记录没有逐区域供需、完整邻接图、节点/边特征和逐边
+通信状态，不能判断未激活由输入覆盖、表示能力、训练平衡或通信条件造成。区域编号仅用于
+稳定键，不能当作物理正反向。冻结 v4 与外部键零重合仍只覆盖来源 A；来源 B 完整特征未
+提供，评审不扩大全训练来源独立结论。
+
+D6 的 128 帧低层独立重算已经完成。D4/D6 逐帧文件字节一致，说明评价可复现；v7 仍因
+0/42 精确正动作和三次负类虚假转移失败关闭。此前文档中的 D6 待复核状态不再有效。
+
+评审接受 v8 数据请求冻结。registry 使用全新 TRAIN seed `28100-28423`，324 个请求，
+覆盖 8、9、12、16 区域拓扑、不同供需和通信、安全正向、安全反向与困难无转移负类。
+三个重复分别冻结 1、2、3 个正类转移资源和同数量的困难负类候选资源。它不是数据集，
+也没有生成 episode。旧训练、评价和正式 seed 均显式拒绝，validation/test 留空并后续
+从另一全新来源分配。
+
+下一步先由 main 按请求生成 TRAIN 来源，再由 D4 只读审计内容、在线真值隔离、类别和
+拓扑覆盖。通过后才能另立 v8 候选。v8 冻结后再请求独立 validation/test；达到非零且
+充分的正动作并保持零虚假转移和零安全回归前，不建立置信校准、不读取正式 holdout、
+不开放 D3/D7、联盟、控制或物理权限。
+
+本次不改变 AirSim、中心/二级/完全分布式接管和 M 对 N 联盟接口。assist、authority、
+assignment、degradation、takeover、coalition、control、physical、D3、D7、production、
+registration 和 runtime ACK 权限全部为 false。
+
+新增专项 8/8、D4 全量 921/921 通过。全量仅有既有 Matplotlib `Axes3D` 环境警告。
+
 ## 2026-07-31 区域建议发布双层合同评审
 
 D6 clean smoke 证明最终 D3-D4 计划和联盟可以闭合，同时暴露建议发布时序缺口：4 个
@@ -151,8 +188,8 @@ exact 正动作 0/24，负类 exact R0 63/66，3 次变化均为虚假转移。v
 v7 继续 unregistered、development/shadow only、admission closed 和 rule fallback
 required。没有置信校准器；assist、authority、assignment、degradation、takeover、
 coalition、control、physical、D3、D7 和生产确认权限全部为 false。D4 评价专项
-21/21、全量 903/903 和语法检查通过。下一步是 main/D6 对现有制品做独立复核，不允许
-用本批数据反向修改 v7 或建立校准器。
+21/21、全量 903/903 和语法检查通过。D6 后续已完成低层独立重算，结果与 D4 一致；
+不允许用本批数据反向修改 v7 或建立校准器。
 
 本次没有改变 AirSim 和 M 对 N 联盟接口。`AIRSIM_INTEGRATION_PLAN.md` 与
 `D4_M_TO_N_DISTRIBUTED_COALITION_REVIEW.md` 已检查，无需修改。
@@ -184,7 +221,8 @@ fail-closed 复核进一步要求 raw activation 和相对 R0 的实际 transfer
 评审接受该结果关闭“节点动作与 transfer 脱节”和“新域验证全激活”两个开发缺口。
 不接受来源独立泛化结论。M16N24 TRAIN 正动作仅命中 1/24，VALIDATION 2/9 又参与
 checkpoint 选择，证据等级仍是开发验收。原定的冻结 v7 和 5216-5279 只读评价已由
-页首评审收口，结果为失败关闭；D6 复核仍未完成。D4 不再根据开发或评价数据修改本候选。
+页首评审收口，结果为失败关闭；D6 低层独立复核已完成且不改变处置。D4 不再根据开发或
+评价数据修改本候选。
 
 v7 没有置信校准器，固定 0.60 门未应用。候选保持 unregistered、
 development/shadow only、admission closed 和 rule fallback required。assist、
