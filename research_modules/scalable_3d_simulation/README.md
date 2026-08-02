@@ -28,10 +28,10 @@ D6 随后从 33 个 cache 文件、bundle、weights 和冻结配置独立重建 
 
 A3 v3 已冻结 104 条逐 episode 采集配方，train/validation/future-held-out 使用互斥的
 `48/24/32` 个 episode 和 seed `24000-24103`。main 的跨模块预生成门已确认 D3、D4、D5
-计划 `3/3` 完整，但 producer adapter 为 `0/3`，状态为
-`blocked_by_producer_adapter_or_module_readiness`。执行命令为空，生成、训练及全部运行
-权限继续关闭。当前工作树另有未提交资料，干净来源门也保持关闭；后续必须从干净提交重跑
-预检。生产器缺口和顺序见
+计划和 producer adapter 均为 `3/3` 完整。clean `f0819e0` 预检状态为
+`blocked_by_source_generation_request`，适配器与预检专项为 `9 passed`。执行命令为空，
+生成、训练及全部运行权限继续关闭；后续必须由 main 单独审查三个来源生成请求。生产器状态
+和顺序见
 [`docs/SCALABLE_3D_LEARNING_SOURCE_PREFLIGHT_20260801_CN.md`](docs/SCALABLE_3D_LEARNING_SOURCE_PREFLIGHT_20260801_CN.md)。
 当前完成度见
 [`docs/SCALABLE_3D_GOAL_COMPLETION_MATRIX_20260801_CN.md`](docs/SCALABLE_3D_GOAL_COMPLETION_MATRIX_20260801_CN.md)。

@@ -21,10 +21,11 @@
 6. [x] D5 A3 v3 固定 104 条逐 episode 配方及 train/validation/future-held-out
    `48/24/32` 个 episode，seed 为 `24000-24103`；future-held-out 访问继续失败关闭。
 7. [x] main 完成 D3/D4/D5 跨模块预生成门。模块计划 `3/3` 完整，producer adapter
-   `0/3` 完整，执行命令和生成授权为空。
-8. [ ] 分别实现 D3、D4、D5 producer adapter 和 writer，完成后由三个 owner 复核来源
-   合同与 readiness，再从干净提交重跑 main 预检。A1 v3、A2 v8 和 A3 v3 只能使用新
-   来源，禁止围绕已评价 test 调参。
+   `3/3` 完整；clean `f0819e0` 预检状态为 `blocked_by_source_generation_request`，执行
+   命令和生成授权为空。
+8. [x] D3、D4、D5 producer adapter 和严格 writer 已实现并由三个 owner 复核来源合同与
+   readiness。clean 专项 `9 passed`，在线真值使用为 0；A1 v3、A2 v8 和 A3 v3 仍只能
+   使用新来源，禁止围绕已评价 test 调参。
 9. [ ] D1 候选在更大同输入完整栈多 seed 验证后再决定是否默认接线。局部发布收益不能替代
    100/200 规模实时性验收。
 10. [ ] 正式 R0 保持 `450/900`，等待存储和删除授权后再决定 shard 10-19；本轮不运行
