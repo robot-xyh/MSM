@@ -1,5 +1,58 @@
 # D4 分布式协同与降级接管综述及子方案
 
+## 2026-08-02 frozen-hash repair 评审
+
+评审接受 main treatment 文件的 D3 匿名事件扩展，但不以“D4 类未主动修改”替代回归。
+D4 两个 treatment 代码段逐字比较无变化，324/324 冻结 cell、972 帧和 108/108 去重复组合
+重新通过。真实 producer 在同一 staging 上完成 sequence 0、暂停、恢复和 sequence 1；
+seed `28100/28101` 各 3 帧，资源数 1/2，在线真值使用为 0，安全权属门未退化。
+
+request 内容/文件 SHA-256 现为 `1d53de5c...a10c1`、`18b59505...f1e2`。readiness 只开放
+`source_generation_request`，未开放正式生成执行、数据集发布、训练、降级、联盟、运行或
+控制。评审结论限于软件来源可行性；正式 324 episode、D6 独立来源审计和后续模型链仍保持
+开放。AirSim 与 M 对 N 合同未变化，相应计划无需修改。D4 全量回归为
+`1013 passed, 1 warning in 130.68s`。
+统一 preflight 中 D4 三项 readiness 均通过，当前只由脏工作树阻断 main 执行计划。
+
+## 2026-08-01 A2 v8 来源可生成性收口评审
+
+评审确认 `sequence=1` 阻塞来自来源合同与确定性投影器的资源预算口径不一致，不是
+pause/resume、运行证据缺失或安全门过严。修复后，转移硬预算统一为可用资源减已承诺资源和
+备用下限；供需差继续保留为在线特征。lease、version、epoch、联盟 ACK、故障围栏、通信、
+容量和机动门均未降低。
+
+冻结请求的内存 viability 为 324/324 episode、972 帧、108/108 去重复组合，失败数和在线
+真值使用数均为 0。真实 scalable producer 只连续验证 `sequence=0/1`，各 3 帧；不得把该
+两项诊断前缀解释为正式 324 episode 数据集。request 内容/文件 SHA-256 分别为
+`1d53de5c...a10c1`、`18b59505...f1e2`。generation execution、训练、准入、降级、接管、
+联盟、运行、物理和控制权限保持关闭。
+
+AirSim 集成计划已检查。本次只改变离线来源校验和生成前审计，不改变 AirSim 消息、节点、
+episode 编排或适配器，因此 `reports/AIRSIM_INTEGRATION_PLAN.md` 无需修改。D4 收尾全量
+回归为 `1013 passed, 1 warning`，全目录 Python 语法编译通过。
+
+## 2026-08-01 A2 v8 TRAIN 生成请求就绪评审
+
+评审接受新的 generation-request readiness artifact。它与既有 frozen request 和 seed
+registry 分离，逐项绑定 request、schedule/registry、main allocation binding、global seed
+registry 及 writer resume 实现的仓库相对路径和 SHA-256。D4 validator 成功输出稳定的
+`source_generation_request_path`、`source_generation_request_sha256` 和
+`source_generation_request_ready=true`；324 seed、TRAIN split、8/9/12/16 区域、空
+validation/test 或任一引用发生漂移时均失败关闭。
+
+writer 原 tempfile staging 没有跨进程恢复能力，本轮已补齐自哈希 resume sidecar、进程锁
+和显式恢复入口。恢复不信任目录名或 sidecar 声明，而是重新加载 frozen contract 和每对
+online/offline 文件，核对连续顺序、精确 seed、完整库存、文件摘要、clean-source metadata
+及零权限。受控 324 项链路在第 17 项后由新实例恢复并完成严格 finalize；损坏、缺文件、
+错序及 seed/hash/source/permission 漂移负例均关闭。
+
+评审结论仅为“D4 TRAIN 来源生成请求可由 main 统一预检机器消费”。唯一 true 权限是
+`source_generation_request`；`main_execution_authorization=false`，实际 generation、训练、
+validation/test selection、shadow、assist、degradation、takeover、coalition、runtime、
+physical 和 control 均未批准。正式 episode/sample 仍为 0。main 统一预检和真实 producer
+前缀已经接线，完整实际生成授权仍属于后续 main-owned 门。定向 `60 passed`，D4 全量
+`1004 passed, 1 warning`。
+
 ## 2026-08-01 A2 v8 实际运行证据构造评审
 
 D4 已完成 writer 前一层的真实证据适配接口。新构造器不接受“按 recipe 直接合成在线
@@ -9,15 +62,17 @@ D4 已完成 writer 前一层的真实证据适配接口。新构造器不接受
 
 拓扑索引按快照 region tuple 固定。真实 `RegionResourceEdge` 根据 `bidirectional` 展开，
 展开结果必须等于冻结规范有向边库存。该规则明确关闭 ring 只有一个方向仍被接受的风险。
-供需余量使用实际资源、承诺量、确定性备用下限和规则加权需求；通信证据使用实际边状态与
-端点时延/丢包，权属证据使用 owner/plan/version/epoch/lease/ACK/fault fence。正类要求
+供需差使用实际资源、承诺量、确定性备用下限和规则加权需求；转移硬预算只扣除承诺量与
+备用下限。通信证据使用实际边状态与端点时延/丢包，权属证据使用
+owner/plan/version/epoch/lease/ACK/fault fence。正类要求
 实际安全转移及精确资源数，困难负类要求候选真实存在、投影为空且拒绝原因能由这些 DTO
 重建。身份和离线标签进入在线来源会失败关闭。
 
 专项 9/9 和 D4 全量 964/964 通过，含 writer 单 episode strict round-trip。评审结论为
-“D4 writer 与实际证据构造器已具备，main recipe adapter 未完成”。本轮没有修改 D4 运行
-算法，没有生成 324 个真实 episode，也没有授予 assignment、degradation、coalition、
-takeover、D3、D7 或 control 权限。AirSim 接口和既有实验结论未变化。
+“D4 writer 与实际证据构造器已具备”。main recipe adapter 后续已完成
+`sequence=0/1` 真实 producer 前缀；本轮没有生成正式 324 episode，也没有授予
+assignment、degradation、coalition、takeover、D3、D7 或 control 权限。AirSim 接口和
+既有实验结论未变化。
 
 ## 2026-08-01 A2 v8 TRAIN writer 评审
 
@@ -34,8 +89,8 @@ seed/episode 映射逐项等于冻结 registry。评审负例确认，来源场�
 受控合同夹具，不能作为训练来源、AirSim 结果或 runtime treatment 证据。writer 存在也
 不能把 readiness 改为 producer complete。
 
-main 后续需单独实现 scalable 3D recipe adapter，并使用真实 clean source 逐项调用本接口。
-真实来源完成后，D4 先审计类别/拓扑/通信/供需覆盖和真值隔离，D6 再做独立来源检查。
+main 已单独实现 scalable 3D recipe adapter 并完成前两项真实 clean-source 调用。其余
+322 项正式来源完成后，D4 先审计类别/拓扑/通信/供需覆盖和真值隔离，D6 再做独立来源检查。
 通过前，训练、validation/test、注册、D3/D7 和所有执行权限继续关闭。专项 8/8、D4 全量
 955/955 通过；唯一警告为既有 Matplotlib `Axes3D` 环境问题。
 

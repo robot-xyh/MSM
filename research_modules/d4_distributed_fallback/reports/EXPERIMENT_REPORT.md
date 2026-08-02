@@ -1,5 +1,96 @@
 # D4 分布式降级与接管实验报告
 
+## 2026-08-02 frozen-hash repair 验证
+
+main treatment 文件加入 D3 匿名事件处理后，D4 preflight 以
+`main_treatment_implementation_file_sha256_mismatch` 失败关闭。代码段审计确认 D4 region
+graph 和 supply/demand treatment 未变化。本轮验收要求 324/324 冻结 cell 通过，并要求
+真实 producer 连续完成 sequence 0 和 1；任一失败均不得更新请求哈希。
+
+| 验证项 | 验收阈值 | 结果 |
+| --- | ---: | ---: |
+| 冻结 episode viability | 324/324 | 324/324 |
+| 审计帧与去重复组合 | 972 帧、108/108 | 972 帧、108/108 |
+| 失败数/在线真值使用 | 0/0 | 0/0 |
+| suspend/resume 前缀 | sequence 0/1 均成功 | 2/2，各 3 帧 |
+| 请求资源数 | seed 28100/28101 为 1/2 | 每帧 1/2 |
+| 权限 | 仅请求权限开放 | 通过 |
+| D4 全量回归 | 无失败 | 1013 passed，1 warning |
+
+sequence 0/1 的 plan version 和 epoch 均保持 1，端点最小 lease 余量分别为 1.81 秒和
+1.71 秒；联盟确认完整，owner 有效，故障围栏未触发。诊断临时目录在检查后删除，正式
+episode/sample 仍为 0。当前 main treatment、请求内容和请求文件 SHA-256 依次为
+`8e77b53dc1f9a5558d4b2f73e10c03f36aa292a298c76c6182169070c5e5ae19`、
+`1d53de5ca23b2de7b06aab6a0be719ffc78c8c977bcc408775e372ad677a10c1`、
+`18b595057197dda06b8b2a1ec2a357f1f4d652d2512752be83db2f1e979df1e2`。这组结果是软件
+来源可行性证据，不是正式生成、模型训练、AirSim 降级或物理协同结果。
+全量回归耗时 130.68 秒；唯一告警为既有 Matplotlib `Axes3D` 环境问题。
+统一 preflight 复核显示 D4 计划、producer adapter 和 source request 均已就绪，D4 blocker
+为空。当前全局状态为 `blocked_by_dirty_generation_worktree`，没有生成命令或执行授权。
+
+## 2026-08-01 A2 v8 来源可生成性与真实前缀
+
+### 现象与根因
+
+真实 producer 的 `sequence=1` 对应 seed `28101`、8 区域有向环、源区富余/目标区短缺、
+名义通信、安全正向转移和资源数 2。`0.75/1.0/2.0 s` 三个帧均已形成运行证据，随后在
+builder 中被 `v8_r0_transfer_insufficient_source_surplus` 拒绝，main 最终报告
+`d4_no_qualifying_runtime_frames`。
+
+旧来源合同把需求从受保护资源预算中再次扣除，与确定性投影器不一致。修正后的硬预算为
+“可用资源－已承诺资源－备用下限”。供需差仍用于场景分类和在线特征，其他安全门未改变。
+
+### 结果
+
+| 验证项 | 结果 | 证据边界 |
+| --- | ---: | --- |
+| 冻结 episode 内存审计 | 324/324 | 不写数据文件 |
+| 审计帧 | 972 | 规则、投影、builder、DTO 往返 |
+| 完整/去重复组合 | 324/324、108/108 | 覆盖全部冻结条件 |
+| 审计失败 | 0 | 任一失败都会阻断 readiness |
+| 在线真值使用 | 0 | 不使用 truth ID |
+| 真实 producer 连续前缀 | sequence 0/1 | 各 3 帧，共 2 个诊断 episode |
+
+真实前缀复用了同一 writer staging，并完成暂停和恢复。它只证明前两个冻结项可以连续经过
+main producer、D4 builder 和 writer。其余 322 项没有进行正式 producer 写出；正式
+episode/sample 计数仍为 0，generation execution 和后续权限均为 false。
+
+请求规范内容 SHA-256 为
+`1d53de5ca23b2de7b06aab6a0be719ffc78c8c977bcc408775e372ad677a10c1`，请求文件
+SHA-256 为 `18b595057197dda06b8b2a1ec2a357f1f4d652d2512752be83db2f1e979df1e2`。
+
+### 收尾回归
+
+D4 全量测试结果为 `1013 passed, 1 warning`，耗时 `112.25 s`。唯一警告为当前 Python
+环境中的 Matplotlib `Axes3D` 导入问题。D4 全目录 Python 语法编译通过。
+
+## 2026-08-01 v8 TRAIN 生成请求与 resume 合同验证
+
+### 验证对象
+
+本轮没有运行真实来源生成、AirSim、训练或策略评价。验证对象是 generation-request
+readiness artifact、D4 pre-generation validator 和 `V8TrainDatasetWriter` 的跨进程恢复
+合同。artifact 绑定 TRAIN seed `28100-28423`、8/9/12/16 区域 schedule，以及 request、
+module registry、main allocation binding、global registry 和 writer 文件 SHA-256。
+
+### 结果
+
+readiness 正例输出 `source_generation_request_ready=true`，并提供仓库相对 path 与 artifact
+文件 SHA-256。seed、region、split、validation/test allocation、任一引用哈希或 permission
+不符时均失败关闭。唯一 true 权限是 source generation request；main execution、实际
+generation、training、shadow、assist、degradation、takeover、coalition、runtime、physical
+和 control 均为 false。
+
+受控 writer 夹具覆盖完整 324 episode。前 17 项 stage 后释放原 writer 锁，新 writer 从
+自哈希 sidecar 重载并验证顺序、seed、clean-source、文件库存和在线/离线 SHA-256，随后完成
+剩余 307 项及严格 finalize。文件损坏、文件缺失、sidecar 哈希漂移、错序、seed 漂移、
+clean-source 漂移和权限越界负例全部被拒绝。
+
+定向 readiness/writer 为 `60 passed`；D4 全量为 `1004 passed, 1 warning`，唯一警告是既有
+Matplotlib `Axes3D` 环境问题。真实 generation episode/sample 仍为 0，validation/test 仍未
+分配，生成命令和 main execution authorization 均不存在。本结果证明请求与恢复合同可复现，
+不证明来源数据、模型质量、运行非退化或物理效果。
+
 ## 2026-08-01 v7 失败归因与 v8 开发来源请求
 
 ### 结论

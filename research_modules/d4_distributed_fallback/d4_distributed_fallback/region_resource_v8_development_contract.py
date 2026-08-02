@@ -2649,7 +2649,18 @@ def _validate_safe_transfers(
             outgoing.get(source.region_index, 0) + transfer.resource_count
         )
     for source_index, resource_count in outgoing.items():
-        if resource_count > region_by_index[source_index].supply_demand_gap:
+        source = region_by_index[source_index]
+        # The frozen source must validate the same protected-resource budget as
+        # DeterministicResourceProjector. Regional demand remains an online
+        # optimization feature; committed and reserved resources are the hard
+        # transfer fence enforced by the runtime projector.
+        protected_budget = max(
+            0,
+            source.supply_available
+            - source.supply_committed
+            - source.supply_reserved,
+        )
+        if resource_count > protected_budget:
             raise ValueError(f"v8_{context}_transfer_insufficient_source_surplus")
 
 

@@ -1,5 +1,23 @@
 # D4 M 对 N 分布式联盟形成与降级接管调研
 
+## 2026-08-01 A2 v8 来源可生成性与联盟边界
+
+资源预算口径修正和 324-cell viability 只作用于区域资源 TRAIN 来源。真实 producer 的
+`sequence=0/1` 诊断前缀不创建联盟成员、ACK、owner lease、D3 计划或控制许可，也不改变
+M 对 N 原子提交状态机。转移资源数 1/2/3 仍是区域动作覆盖，不是联盟成员数量。
+
+正式 dataset episode/sample 仍为 0。联盟、降级、接管、assignment、runtime 和 control
+权限保持 false；本文件原有 M 对 N 实现结论与开放缺口不变。D4 全量回归
+`1013 passed, 1 warning`，未发现联盟状态机回归。
+
+## 2026-08-01 A2 v8 生成请求权限边界
+
+新增 readiness 只把 `source_generation_request` 置为 true；实际 dataset generation、
+degradation、takeover、coalition、assignment、runtime 和 control 权限继续为 false。writer
+的断点续跑只恢复 TRAIN 文件 staging，不恢复或创建联盟状态、成员 ACK、owner lease、D3
+计划或控制许可。正式 dataset episode 仍为 0；另有 `sequence=0/1` 两个诊断性 producer
+前缀，不构成联盟 episode。因此本文件的 M 对 N 实现结论和开放缺口不变。
+
 ## 2026-08-01 A2 v8 全局种子绑定影响核对
 
 本轮新增内容只绑定区域资源 A2 v8 的 TRAIN seed 请求，没有改变 M 对 N 联盟状态机、

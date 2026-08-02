@@ -1,5 +1,90 @@
 # D4 分布式协同与降级接管
 
+## 2026-08-02 main treatment 冻结哈希修复
+
+main 对 `episode_treatments.py` 增加了 D3 匿名 roster 和稳定观测窗口合同，D4 的
+`D4RegionGraphTreatment`、`D4SupplyDemandTreatment` 代码段及对外行为未改变。D4 对当前
+文件重新执行 324-cell viability，结果为 324/324 episode、972 帧和 108/108 去重复组合
+通过，失败数与在线真值使用数均为 0。`sequence=0` 和 `sequence=1` 又通过两次真实
+producer 调用的暂停/恢复检查；seed `28100/28101` 分别保持每帧转移资源数 1/2，两个
+episode 各 3 帧，lease、plan version、epoch、联盟确认和故障围栏继续由严格 DTO 校验。
+
+当前 main treatment 文件 SHA-256 为
+`8e77b53dc1f9a5558d4b2f73e10c03f36aa292a298c76c6182169070c5e5ae19`。重绑定后的请求内容
+SHA-256 为 `1d53de5ca23b2de7b06aab6a0be719ffc78c8c977bcc408775e372ad677a10c1`，请求文件
+SHA-256 为 `18b595057197dda06b8b2a1ec2a357f1f4d652d2512752be83db2f1e979df1e2`。readiness
+恢复为 `source_generation_request_ready=true`，但只有 `source_generation_request`
+权限为 true；正式生成执行、数据集发布、训练、运行、降级、联盟和控制仍为 false。上述
+结果属于软件来源可行性证据，不是正式 324 episode 数据集、模型训练或运行效果证据。
+2026-08-02 readiness 定向回归为 `49 passed`，D4 全量为
+`1013 passed, 1 warning in 130.68s`；唯一告警为既有 Matplotlib `Axes3D` 环境问题。
+统一只读 preflight 中 D4 的计划、producer adapter 和请求均为 ready，D4 blocker 为空；
+全局仅因当前工作树未提交而保持 `execution_plan_ready=false`。
+
+## 2026-08-01 A2 v8 来源可生成性收口
+
+真实 scalable runtime producer 的第二个冻结 episode 曾在三个有效区域帧上稳定触发
+`v8_r0_transfer_insufficient_source_surplus`。对应条件为 `sequence=1`、seed `28101`、
+`directed_ring_8`、`source_surplus_target_deficit`、`nominal`、
+`safe_forward_transfer` 和转移资源数 2。三个帧在约 `0.75/1.0/2.0 s` 均已形成运行证据，
+拒绝发生在 `V8RuntimeEpisodeEvidenceBuilder.stage_frame()`，上层最终汇总为
+`d4_no_qualifying_runtime_frames`。
+
+根因是 v8 来源合同把区域需求再次作为转移硬围栏，而权威
+`DeterministicResourceProjector` 的受保护资源预算为“可用资源－已承诺资源－确定性备用
+下限”。现已统一按该预算校验转移。区域供需差仍保留为在线特征和冻结场景覆盖条件，不再
+从硬转移预算中重复扣除。lease、plan version、epoch、联盟 ACK、故障围栏、通信边、容量和
+机动门控均未放宽。
+
+生成请求门现在执行全部冻结单元的低成本内存审计。结果为 324/324 episode、972 帧、
+324/324 完整组合和 108/108 去重复组合可生成，失败数与在线真值使用数均为 0。真实 producer
+使用同一 writer staging 连续完成 `sequence=0` 和 `sequence=1`，各 3 帧，累计 2 个诊断性
+episode；这不是正式 324 episode 数据集。正式 generation、训练、validation/test、shadow、
+assist、降级、接管、联盟、运行和控制权限仍为 false。
+
+当前 generation request 规范内容 SHA-256 为
+`1d53de5ca23b2de7b06aab6a0be719ffc78c8c977bcc408775e372ad677a10c1`，文件 SHA-256 为
+`18b595057197dda06b8b2a1ec2a357f1f4d652d2512752be83db2f1e979df1e2`。任一绑定 producer
+字节、冻结请求、registry 或审计结果漂移都会使 readiness 失败关闭。收尾全量回归为
+`1013 passed, 1 warning`，全目录 Python 语法编译通过；警告为既有 Matplotlib `Axes3D`
+环境问题。
+
+## 2026-08-01 A2 v8 TRAIN 新来源生成请求就绪
+
+D4 新增独立版本化 artifact
+`configs/region_resource_v8_train_source_generation_request_readiness_v1.json`。它不改写既有
+frozen request、module seed registry 或 main allocation binding，而是用路径、内容摘要和
+物理文件摘要绑定以下输入：冻结 request、内含 324 项 schedule 的 module registry、main
+allocation binding、main global seed registry，以及支持断点续跑的 writer 实现。artifact
+文件 SHA-256 为 `18b59505...f1e2`，规范内容 SHA-256 为 `1d53de5c...a10c1`。
+
+`validate_v8_main_allocation_pre_generation_readiness()` 现在只有在 TRAIN split、完整 seed
+`28100-28423`、区域集合 `8/9/12/16`、空 validation/test、全部引用哈希和 generation-request
+only 权限精确匹配时，才输出以下稳定字段：
+
+- `source_generation_request_path`：仓库相对 artifact 路径；
+- `source_generation_request_sha256`：artifact 物理文件 SHA-256；
+- `source_generation_request_ready=true`。
+
+唯一为 true 的请求权限是 `source_generation_request`。`main_execution_authorization` 和
+`dataset_generation_execution` 均为 false；training、validation/test selection、shadow、
+assist、assignment、degradation、takeover、coalition、runtime、physical、control、注册和
+生产权限也全部为 false。因此 request ready 只表示 D4 的机器可验证请求已具备，不等于 main
+获准执行生成，更不等于数据、模型或运行准入就绪。
+
+writer 审计确认旧 tempfile staging 不能跨进程恢复。本轮加入自哈希
+`d4-region-resource-v8-train-writer-resume-state-v1` sidecar、非阻塞进程锁、逐 episode
+原子 checkpoint、`suspend_for_resume()` 和 `resume_from_contract_files()`。恢复时重新复载
+冻结合同及 clean-source metadata，要求 schedule index 连续、seed 顺序精确、暂存文件清单
+无缺口/额外项、在线/离线文件 SHA-256 一致，并逐 episode 通过严格 loader；损坏、缺文件、
+错序、seed/source/权限漂移均失败关闭。受控完整 324 项测试在第 17 项后由新 writer 实例恢复
+并成功 finalize，但没有生成正式来源 episode。另有真实 producer 的诊断性连续前缀
+`sequence=0/1`，不计入正式数据集。
+
+2026-08-01 定向 readiness/writer 为 `60 passed`，D4 全量为 `1004 passed, 1 warning`。
+当前正式 episode/sample、训练、checkpoint、模型和 runtime connection 计数仍为 0；main
+已能读取稳定字段并调用真实 producer，但完整生成仍需另行取得执行授权。
+
 ## 2026-08-01 A2 v8 实际运行证据构造器
 
 D4 已新增 `region_resource_v8_runtime_evidence.py`。main 可为冻结 registry 中的一个
@@ -12,10 +97,10 @@ episode 创建 `V8RuntimeEpisodeEvidenceBuilder`，再逐帧提交
 
 快照中的 region tuple 顺序是唯一索引顺序。真实边按 `bidirectional` 展开后必须与冻结
 拓扑完整一致；8/12 区域 ring 因而必须形成双向有向边，不能只提供单向环。区域供需由
-实际可用/已承诺资源、确定性 projector 备用下限和规则加权需求计算；边容量、分区、通信
-可用性、机动状态以及端点时延/丢包均来自实际 DTO。owner、plan、version、epoch、lease、
-coalition ACK 和 fault fence 原样进入在线帧。投影裁剪因 v8 action key 无法无损表达而
-失败关闭。
+实际可用/已承诺资源、确定性 projector 备用下限和规则加权需求计算并保留为在线特征；
+转移硬预算只扣除已承诺资源和确定性备用下限。边容量、分区、通信可用性、机动状态以及
+端点时延/丢包均来自实际 DTO。owner、plan、version、epoch、lease、coalition ACK 和
+fault fence 原样进入在线帧。投影裁剪因 v8 action key 无法无损表达而失败关闭。
 
 正向或反向正类必须存在实际安全投影转移，方向和总资源数与冻结 recipe 完全一致，且无
 投影拒绝。困难负类必须存在指定资源数的真实匿名候选、实际投影为空，并由通信、容量、
@@ -24,8 +109,9 @@ coalition ACK 和 fault fence 原样进入在线帧。投影裁剪因 v8 action 
 
 main 调用顺序为 `stage_frame(0..N-1) -> finalize() ->
 V8TrainDatasetWriter.stage_episode()`。专项 9/9、D4 全量 964/964 通过；仅有既有
-Matplotlib `Axes3D` 环境警告。当前只关闭 D4 构造接口缺口，main scalable 3D recipe
-adapter 尚未接线，324 个真实 episode 尚未生成，训练、注册、运行准入和控制权限均未改变。
+Matplotlib `Axes3D` 环境警告。main scalable 3D recipe adapter 已接线并完成真实 producer
+连续前缀 `sequence=0/1`；324 个正式 episode 尚未生成，训练、注册、运行准入和控制权限
+均未改变。
 
 ## 2026-08-01 A2 v8 TRAIN 数据集写出器
 
@@ -52,10 +138,9 @@ schedule entry 逐项保留 registry 的 `topology_id`、`communication_conditio
 专项测试使用受控轻量 DTO 覆盖完整 108 cells x 3 replicates，并验证规范字节、文件隔离、
 重复项、非连续帧、标签错配、在线真值泄漏、旧/脏来源、缺 episode 和“仅场景名声明处理”
 拒绝，结果 8/8；D4 全量为 955/955，通过时只有既有 Matplotlib `Axes3D` 环境警告。
-本轮没有运行 main 场景配方，没有生成 324 个真实 episode，没有训练、注册或连接运行
-策略。readiness 仍是生成前置条件状态，不能标记为 producer complete。main 仍需实现
-8/9/12/16 区域、三类通信、
-三类供需和正反向/困难负样本的 runtime recipe adapter。
+main 场景配方已用于 `sequence=0/1` 的诊断性真实 producer 前缀，并由内存审计覆盖全部
+324 个冻结单元；尚未写出正式 324 episode，也没有训练、注册或连接运行策略。readiness
+仍是生成前置条件状态，不能标记为 producer complete。
 
 ## 2026-08-01 A2 v8 main 全局种子分配绑定
 

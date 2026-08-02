@@ -1,5 +1,79 @@
 # D4 实现差距审计：分布式协同与降级接管
 
+## 2026-08-02 main treatment frozen-hash 缺口关闭
+
+main treatment 物理文件因 D3 匿名事件合同变化而漂移，D4 readiness 正确以
+`main_treatment_implementation_file_sha256_mismatch` 失败关闭。D4 两个 treatment 代码段
+逐字未变；324/324 episode、972 帧和 108/108 去重复组合重新通过，失败数和在线真值使用均
+为 0。真实 producer 的 sequence 0/1 两次调用暂停恢复通过，资源数 1/2、lease、version、
+epoch、联盟确认、故障围栏和零真值门均未退化。
+
+该 D4-owned 阻塞已关闭。请求内容/文件 SHA-256 更新为
+`1d53de5ca23b2de7b06aab6a0be719ffc78c8c977bcc408775e372ad677a10c1` 和
+`18b595057197dda06b8b2a1ec2a357f1f4d652d2512752be83db2f1e979df1e2`。只有
+`source_generation_request` 权限为 true；正式生成执行、数据集发布、训练、运行、降级、
+联盟和控制仍关闭。完整 324 episode 生成与 D6 独立来源审计继续作为跨模块 P1，本轮没有
+新增 D4-owned P0。readiness 定向回归为 `49 passed`，D4 全量为
+`1013 passed, 1 warning in 130.68s`。
+统一 preflight 的 D4 blocker 为空；全局仅因未提交工作树而未进入执行计划。
+
+## 2026-08-01 A2 v8 第二冻结项与全单元 viability 复核
+
+### 已关闭的 D4-owned 阻塞
+
+1. **第二冻结项可生成。** `sequence=1` 的三个真实帧原先均被
+   `v8_r0_transfer_insufficient_source_surplus` 拒绝。来源合同现与确定性投影器共享受保护
+   资源预算，供需差不再构成重复硬围栏。
+2. **全冻结单元请求门已失败关闭。** 生成前内存审计覆盖 324/324 episode、972 帧、
+   324/324 完整组合和 108/108 去重复组合；失败数和在线真值使用数为 0。producer 绑定或
+   任一 cell 漂移都会阻断 readiness。
+3. **真实连续前缀已验证。** main scalable producer 在同一 staging 下完成
+   `sequence=0 -> suspend -> resume -> sequence=1`，两项各 3 帧，累计 2 个诊断 episode。
+
+### 仍开放的边界
+
+1. **正式来源未生成。** 真实 producer 只覆盖 sequence 0/1，内存审计不能替代其余 322 项
+   的实际 writer 生成。正式 dataset episode/sample 计数仍为 0。
+2. **授权和独立审计未开始。** clean commit preflight、generation-only authorization、
+   D6 全来源审计、validation/test、训练、注册和运行准入仍待完成。
+3. **安全与 AirSim 状态不变。** 本次没有改变 lease、epoch、联盟、主动/被动降级或 AirSim
+   接口。已检查 `reports/AIRSIM_INTEGRATION_PLAN.md`，无需修改。
+
+当前 request 内容 SHA-256 为
+`1d53de5ca23b2de7b06aab6a0be719ffc78c8c977bcc408775e372ad677a10c1`，文件 SHA-256 为
+`18b595057197dda06b8b2a1ec2a357f1f4d652d2512752be83db2f1e979df1e2`。当前无新增 D4-owned
+P0；正式 324 项生成及其独立审计继续作为跨模块 P1。收尾全量回归为
+`1013 passed, 1 warning`，全目录 Python 语法编译通过。
+
+## 2026-08-01 A2 v8 生成请求与断点续跑复核
+
+### 已关闭的 D4-owned P1
+
+1. **生成请求已独立版本化。** 新 artifact 以仓库相对路径和 SHA-256 锁定 frozen request、
+   schedule/module registry、main allocation binding、global seed registry 和 writer resume
+   实现；原 request/registry/binding 未改写。
+2. **请求门已失败关闭接线。** D4 readiness 只在 324 个 TRAIN seed、8/9/12/16 区域、
+   空 validation/test、引用无漂移和 generation-request-only 权限成立时返回
+   `source_generation_request_ready=true`。main 可消费的 path/SHA/ready 字段已经稳定。
+3. **跨进程恢复缺口已关闭。** writer 现持久化自哈希 sidecar 并使用进程锁。恢复逐项重建
+   schedule/manifest 内存状态，重验 clean-source、连续 index、精确 seed、完整文件库存、
+   online/offline SHA-256 和 strict episode loader；损坏、缺口或漂移均拒绝。
+4. **权限语义已分层。** 仅“提交生成请求”权限为 true；main execution authorization、实际
+   dataset generation、training、validation/test selection 及全部运行/控制权限为 false。
+
+### 保持开放的跨模块 P1
+
+1. main 统一 preflight 已在 main ownership 内消费 D4 的稳定字段，并完成真实 producer
+   `sequence=0/1` 诊断前缀；该接线证据不等于完整生成获准。
+2. 正式生成尚未授权。正式 TRAIN episode/sample 仍为 0，生成命令为空；request ready 不得
+   被解释为 execution plan ready。
+3. 真实 324 episode 完成后仍需 D4/D6 独立来源、类别、拓扑、通信、真值隔离和哈希审计。
+   actor、validation/test、训练、选模和所有后续准入继续后置。
+
+2026-08-01 受控 324 项测试在第 17 项后跨 writer 实例恢复并完成 finalize；该夹具不是实际
+来源。定向 readiness/writer `60 passed`，D4 全量 `1004 passed, 1 warning`，唯一警告为
+既有 Matplotlib `Axes3D` 环境问题。当前无新增 D4-owned P0。
+
 ## 2026-08-01 A2 v8 实际证据构造缺口复核
 
 ### 已关闭的 D4-owned P1
@@ -17,8 +91,8 @@
 
 ### 仍开放的跨模块 P1
 
-1. main scalable 3D producer 尚未把冻结 324 项 recipe 接到该构造器，真实 TRAIN 来源仍为
-   0 episode；本轮没有生成 runtime treatment、模型或运行准入证据。
+1. main scalable 3D producer 已把冻结 recipe 接到该构造器，并完成真实连续前缀
+   `sequence=0/1`；其余 322 项尚未正式生成。本轮没有生成模型或运行准入证据。
 2. 冻结 schema 对同一 episode 使用单一 transfer class，不能表达同一候选由分区负类跨帧
    变为恢复后正类。当前可验证分区阻断和恢复允许的实际机制，但类别跃迁需拆分 recipe 或
    另行版本化合同。
@@ -47,10 +121,10 @@
 
 ### 保持开放的跨模块 P1
 
-1. **main recipe adapter 尚未实现。** scalable 3D producer 还需把冻结 8/9/12/16 区域
-   拓扑、三类供需、三类通信、正向/反向 1/2/3 资源转移和困难负样本构造成真实 DTO。
-2. **真实 TRAIN 来源仍不存在。** 本轮完整 324 项仅为单元测试中的受控构造，用于证明
-   writer/loader 可闭环；没有形成可训练的 324 个真实 episode，也没有数据内容独立审计。
+1. **main recipe adapter 已形成连续前缀证据。** scalable 3D producer 已对
+   `sequence=0/1` 构造真实 DTO；全部冻结组合另由内存 viability 审计通过，但尚未逐项写出。
+2. **正式 TRAIN 来源仍不存在。** 324 项内存审计和两个诊断 episode 只证明可生成性及
+   producer 前缀；没有形成可训练的 324 个正式 episode，也没有数据内容独立审计。
 3. **后续模型链仍未开始。** actor、独立 validation/test、训练、checkpoint、校准、注册、
    runtime preflight 和 D6 来源审计均保持开放，不能标记 producer complete 或 model ready。
 

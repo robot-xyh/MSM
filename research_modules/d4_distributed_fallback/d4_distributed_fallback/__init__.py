@@ -641,6 +641,13 @@ from .region_resource_v8_runtime_evidence import (
     V8RuntimeEpisodeEvidenceBuilder,
     V8RuntimeFrameEvidence,
 )
+from .region_resource_v8_source_viability import (
+    RegionResourceV8SourceViabilityError,
+    V8_SOURCE_VIABILITY_AUDIT_SCHEMA,
+    V8_SOURCE_VIABILITY_READY_STATUS,
+    V8SourceViabilityAudit,
+    audit_v8_frozen_source_viability,
+)
 
 __all__ = [
     "ActiveDegradationArbiter",
@@ -1155,4 +1162,9 @@ __all__ = [
     "V8BuiltRuntimeEpisodeEvidence",
     "V8RuntimeEpisodeEvidenceBuilder",
     "V8RuntimeFrameEvidence",
+    "RegionResourceV8SourceViabilityError",
+    "V8_SOURCE_VIABILITY_AUDIT_SCHEMA",
+    "V8_SOURCE_VIABILITY_READY_STATUS",
+    "V8SourceViabilityAudit",
+    "audit_v8_frozen_source_viability",
 ]

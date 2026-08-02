@@ -17,6 +17,7 @@ if str(_REPOSITORY_ROOT) not in sys.path:
 from d4_distributed_fallback.region_resource_v8_main_allocation_readiness import (
     RegionResourceV8MainAllocationError,
     default_v8_main_allocation_binding_path,
+    default_v8_source_generation_request_path,
     validate_v8_main_allocation_pre_generation_readiness,
 )
 
@@ -40,6 +41,11 @@ def build_parser() -> argparse.ArgumentParser:
         type=Path,
         default=_REPOSITORY_ROOT,
     )
+    parser.add_argument(
+        "--source-generation-request",
+        type=Path,
+        default=default_v8_source_generation_request_path(),
+    )
     return parser
 
 
@@ -48,6 +54,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     try:
         readiness = validate_v8_main_allocation_pre_generation_readiness(
             binding_path=args.binding,
+            source_generation_request_path=args.source_generation_request,
             repository_root=args.repository_root,
         )
     except RegionResourceV8MainAllocationError as exc:
@@ -57,6 +64,7 @@ def main(argv: Sequence[str] | None = None) -> int:
                     "schema": "d4-region-resource-v8-main-seed-allocation-readiness-error-v1",
                     "status": "failed_closed",
                     "generation_prerequisites_ready": False,
+                    "source_generation_request_ready": False,
                     "error_code": exc.code,
                     "error": str(exc),
                 },

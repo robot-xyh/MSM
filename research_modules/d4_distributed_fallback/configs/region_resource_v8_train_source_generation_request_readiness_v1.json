@@ -1,0 +1,158 @@
+{
+  "schema": "d4-region-resource-v8-train-source-generation-request-readiness-v1",
+  "artifact_id": "d4-a2-v8-train-source-generation-request-readiness-20260801-v1",
+  "report_date": "2026-08-01",
+  "status": "source_generation_request_ready_execution_not_authorized",
+  "purpose": "Approve only the machine-verifiable D4 A2 v8 TRAIN source-generation request. This artifact does not authorize main to execute generation, train, select validation or test data, or enter shadow, assist, degradation, takeover, coalition, runtime, physical, or control stages.",
+  "references": {
+    "frozen_request": {
+      "role": "frozen_train_source_request",
+      "request_id": "d4-region-resource-v8-development-source-request-v1",
+      "path": "research_modules/d4_distributed_fallback/reports/D4_V7_FAILURE_ATTRIBUTION_V8_DATA_REQUEST_20260801/v8_development_data_request.json",
+      "content_sha256": "cfdb88649d70fd390204edcd891cb1826aa8aa85d2af706ebb2ed95bc46ee8aa",
+      "file_sha256": "daa42fd6a980923231e244d772b20dc8d7b76ee12e1d53b15009ff346de12d38"
+    },
+    "schedule_registry": {
+      "role": "frozen_train_schedule_and_seed_registry",
+      "registry_id": "d4-v8-development-train-source-request-v1",
+      "path": "research_modules/d4_distributed_fallback/reports/D4_V7_FAILURE_ATTRIBUTION_V8_DATA_REQUEST_20260801/v8_development_seed_registry.json",
+      "content_sha256": "16f8acd4457c0914a0ec9296724280fcccfe43f2667d87401464fb9a27c04550",
+      "schedule_content_sha256": "8b736f2ad6272e90fcf366969b5206039e9616fb0e1197bdb3c615e2e107f890",
+      "file_sha256": "cd40390994a6216ebb6ab3415fd467762d6900c45ad7f6ebd7ee783a9bf77015"
+    },
+    "main_allocation_binding": {
+      "role": "main_owned_allocation_binding",
+      "binding_id": "d4-a2-v8-main-seed-allocation-binding-20260801-v1",
+      "path": "research_modules/d4_distributed_fallback/configs/region_resource_v8_main_seed_allocation_binding_v1.json",
+      "content_sha256": "60b42f2be28f3b389cae9a299045a3457e8b549d1525d5a7102c0a3e30533a20",
+      "file_sha256": "d88a8222e383ad18c59111ab6b7f3b7b41f4929f1472ed15fadca8cc4bbdaff7"
+    },
+    "global_seed_registry": {
+      "role": "main_owned_global_seed_registry",
+      "registry_id": "scalable3d-learning-source-allocation-20260801-v1",
+      "path": "research_modules/scalable_3d_simulation/configs/scalable_learning_global_seed_registry_v1.json",
+      "content_sha256": "89d99bf064a8c0e226eead5b675f05daf70ac2d4c6f6139322502da54ab0aea7",
+      "file_sha256": "1c9778e1cbfcd5679956ac2c1fc71a1e780207c4579abdc9b129d162a252c4b6"
+    },
+    "writer_resume_implementation": {
+      "role": "d4_train_writer_cross_process_resume_implementation",
+      "path": "research_modules/d4_distributed_fallback/d4_distributed_fallback/region_resource_v8_dataset_writer.py",
+      "resume_state_schema": "d4-region-resource-v8-train-writer-resume-state-v1",
+      "file_sha256": "26c34413f7449b1b5ffc9b26bf50f49ff1636be0126897e21bf43fbeb8a2204b"
+    },
+    "v8_contract_implementation": {
+      "role": "d4_v8_strict_online_offline_contract",
+      "path": "research_modules/d4_distributed_fallback/d4_distributed_fallback/region_resource_v8_development_contract.py",
+      "file_sha256": "a0675de43feeaecd9963949ec78c8b5dafed37fa9c511bfcc7d314c469633ea7"
+    },
+    "runtime_evidence_implementation": {
+      "role": "d4_actual_runtime_evidence_builder",
+      "path": "research_modules/d4_distributed_fallback/d4_distributed_fallback/region_resource_v8_runtime_evidence.py",
+      "file_sha256": "b8da96aef791bc45044f1670bbb57bd7ba6c57f6e2ee00d764364f9ef1796628"
+    },
+    "source_viability_implementation": {
+      "role": "d4_all_frozen_cells_pre_generation_viability_audit",
+      "path": "research_modules/d4_distributed_fallback/d4_distributed_fallback/region_resource_v8_source_viability.py",
+      "audit_schema": "d4-region-resource-v8-source-viability-audit-v1",
+      "file_sha256": "5d577a22f689f3c4cfc8755b9e9fb54f4818fb085edbace55e0dcb082ad64fc4"
+    },
+    "region_resource_policy_implementation": {
+      "role": "d4_rule_policy_and_deterministic_projector",
+      "path": "research_modules/d4_distributed_fallback/d4_distributed_fallback/region_resource.py",
+      "file_sha256": "1f47de6104f16c563ca6fc8cca3f1540437d77f3d3617225eef7b8b2423a78c2"
+    },
+    "main_runtime_adapter_implementation": {
+      "role": "main_truth_isolated_d4_runtime_adapter",
+      "path": "research_modules/scalable_3d_simulation/learning_source_adapters.py",
+      "file_sha256": "1b409de412dcfd3affb4dde254d7782804b296e013fdbab254e9b8995bfed642"
+    },
+    "main_treatment_implementation": {
+      "role": "main_frozen_d4_topology_supply_and_communication_treatment",
+      "path": "research_modules/scalable_3d_simulation/episode_treatments.py",
+      "file_sha256": "8e77b53dc1f9a5558d4b2f73e10c03f36aa292a298c76c6182169070c5e5ae19"
+    }
+  },
+  "request_scope": {
+    "candidate_version": "d4-a2-v8",
+    "allocation_id": "d4-a2-v8-train",
+    "allocation_usage_class": "train_only",
+    "requested_split": "train",
+    "seed_count": 324,
+    "seed_range": [
+      28100,
+      28423
+    ],
+    "seed_inventory_sha256": "e1bf7b14943fee8e600a60731aee1788d36586d1e52a20da9406473ac3a4b621",
+    "cell_count": 108,
+    "replicates_per_cell": 3,
+    "topology_region_counts": [
+      8,
+      9,
+      12,
+      16
+    ],
+    "validation_seed_allocation": [],
+    "test_seed_allocation": [],
+    "source_viability_audit": {
+      "schema": "d4-region-resource-v8-source-viability-audit-v1",
+      "required_episode_count": 324,
+      "required_full_cell_combination_count": 324,
+      "required_reduced_combination_count": 108,
+      "required_online_truth_use_count": 0,
+      "failure_policy": "fail_closed"
+    }
+  },
+  "resume_safety": {
+    "cross_process_resume_required": true,
+    "writer_resume_supported": true,
+    "resume_state_schema": "d4-region-resource-v8-train-writer-resume-state-v1",
+    "checkpoint_commit_policy": "episode_pair_then_atomic_self_hashed_sidecar",
+    "resume_validation_checks": [
+      "exact_staging_file_inventory",
+      "contiguous_schedule_index",
+      "exact_frozen_seed_order",
+      "online_offline_file_sha256",
+      "strict_episode_round_trip",
+      "exact_clean_source_metadata",
+      "all_authority_permissions_false"
+    ],
+    "corruption_policy": "fail_closed",
+    "gap_policy": "fail_closed"
+  },
+  "permissions": {
+    "schema": "d4-region-resource-v8-generation-request-only-permissions-v1",
+    "source_generation_request": true,
+    "dataset_generation_execution": false,
+    "training": false,
+    "validation_selection": false,
+    "test_selection": false,
+    "shadow": false,
+    "assist": false,
+    "authority": false,
+    "assignment": false,
+    "degradation": false,
+    "takeover": false,
+    "coalition": false,
+    "runtime": false,
+    "physical": false,
+    "control": false,
+    "production": false,
+    "registration": false,
+    "runtime_ack": false,
+    "d3": false,
+    "d7": false
+  },
+  "execution_claims": {
+    "main_execution_authorization": false,
+    "generation_command_authorized": false,
+    "generation_command": "",
+    "dataset_generation_executed": false,
+    "episode_generation_count": 0,
+    "sample_generation_count": 0,
+    "training_count": 0,
+    "checkpoint_count": 0,
+    "model_registration_count": 0,
+    "runtime_connection_count": 0
+  },
+  "content_sha256": "1d53de5ca23b2de7b06aab6a0be719ffc78c8c977bcc408775e372ad677a10c1"
+}

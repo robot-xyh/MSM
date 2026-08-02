@@ -1,0 +1,69 @@
+{
+  "schema": "d4-region-resource-v8-source-viability-result-v1",
+  "report_date": "2026-08-01",
+  "status": "sequence_001_blocker_closed_all_frozen_cells_viable",
+  "pre_fix_sequence_001": {
+    "sequence": 1,
+    "seed": 28101,
+    "topology_id": "directed_ring_8",
+    "supply_demand_condition": "source_surplus_target_deficit",
+    "communication_condition": "nominal",
+    "requested_target_class": "safe_forward_transfer",
+    "requested_transfer_resource_count": 2,
+    "runtime_frame_count": 3,
+    "frame_rejections": [
+      {
+        "measurement_timestamp_s": 0.75,
+        "runtime_evidence_built": true,
+        "builder_accepted": false,
+        "reason": "v8_r0_transfer_insufficient_source_surplus"
+      },
+      {
+        "measurement_timestamp_s": 1.0,
+        "runtime_evidence_built": true,
+        "builder_accepted": false,
+        "reason": "v8_r0_transfer_insufficient_source_surplus"
+      },
+      {
+        "measurement_timestamp_s": 2.0,
+        "runtime_evidence_built": true,
+        "builder_accepted": false,
+        "reason": "v8_r0_transfer_insufficient_source_surplus"
+      }
+    ],
+    "main_surface_error": "d4_no_qualifying_runtime_frames"
+  },
+  "post_fix_real_prefix": {
+    "completed_sequences": [0, 1],
+    "completed_episode_count": 2,
+    "sequence_001_frame_count": 3,
+    "sequence_001_online_truth_use_count": 0,
+    "sequence_001_online_features_sha256": "bb83809d86f6f0c5eec48f07ea276494fa13f0bb08734f8b1249219114e48fdd",
+    "sequence_001_offline_labels_sha256": "d4d6f54876d83c33d44a56a9298a63422127f03c399f4758ff24d70280ca5a09",
+    "diagnostic_only_not_formal_generation": true
+  },
+  "all_cell_viability": {
+    "schedule_episode_count": 324,
+    "audited_frame_count": 972,
+    "full_cell_combination_count": 324,
+    "reduced_combination_count": 108,
+    "failure_count": 0,
+    "online_truth_use_count": 0,
+    "cell_evidence_sha256": "1cdb83e6ee4dd9a1f85ef166fc907446cd384218b8dfa563d7f0983e98471dc2",
+    "audit_content_sha256": "77e79e3ceb41e369d7494d7985750bba3a2c49e9056864809adbe019996ea7a6"
+  },
+  "permissions": {
+    "dataset_generation_execution": false,
+    "training": false,
+    "validation_selection": false,
+    "test_selection": false,
+    "shadow": false,
+    "assist": false,
+    "degradation": false,
+    "takeover": false,
+    "coalition": false,
+    "runtime": false,
+    "physical": false,
+    "control": false
+  }
+}

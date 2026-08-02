@@ -1,5 +1,55 @@
 # 分布式协同与降级接管模块原理（模块编号 D4）
 
+## 冻结实现重绑定原则（2026-08-02）
+
+D4 的来源请求不仅冻结本模块合同，也冻结 main 中实际构造区域拓扑和供需处理的实现文件。
+main 文件因 D3 匿名事件合同变化而发生字节漂移时，即使 D4 类本身未变，readiness 也必须
+先失败关闭。D4 owner 需重新检查类代码段、全冻结 viability 和真实 producer 前缀；验证
+通过后才能更新文件摘要和请求自哈希，不能跳过行为审计直接接受新摘要。
+
+本轮代码段比较确认两个 D4 treatment 逐字未变。324/324 episode、972 帧和 108/108 条件
+组合通过，`sequence=0/1` 暂停恢复也保持资源数 1/2、双时间戳、lease、version、epoch、
+联盟确认、故障围栏和在线真值隔离。该证据只恢复“来源生成请求可提交”的软件状态；正式
+生成、训练、降级、联盟、运行和控制权限没有随哈希更新而改变。
+本轮 D4 全量回归为 `1013 passed, 1 warning`。
+
+## A2 v8 来源可生成性原则（2026-08-01）
+
+冻结来源合同必须与运行时权威投影器采用同一硬资源围栏。转移预算定义为“可用资源－已承诺
+资源－确定性备用下限”。区域需求参与供需差、规则压力和学习特征计算，但不再从该预算中
+重复扣除。这样可以避免规则投影已经接受的合法转移在证据 builder 中被第二套口径拒绝。
+
+冻结 `sequence=1` 首次暴露了该问题。三个真实区域帧均可形成运行证据，却在 builder 中以
+`v8_r0_transfer_insufficient_source_surplus` 被拒绝。修正后，lease、version、epoch、联盟
+ACK、故障围栏、边容量、通信和机动门仍逐项重验，变更不等于放宽安全约束。
+
+请求就绪前必须完成全冻结单元 viability 审计。当前内存审计覆盖 324 个 episode、972 帧和
+全部 108 个去重复条件组合，失败数与在线真值使用数为 0。真实 producer 只连续验证了
+`sequence=0/1`；该两项诊断性前缀不能替代正式 324 episode 的写出和独立来源审计。D4
+全量回归为 `1013 passed, 1 warning`，唯一警告为既有 Matplotlib `Axes3D` 环境问题。
+
+## A2 v8 生成请求与可恢复写出原则（2026-08-01）
+
+### 请求不等于执行
+
+生成请求、生成执行和模型准入是三个独立状态。当前 artifact 只允许
+`source_generation_request=true`；它要求 TRAIN 324 seed、8/9/12/16 区域、固定引用哈希
+和空 validation/test。`source_generation_request_ready=true` 表示请求可被 main 统一预检
+消费，不表示 main 已获执行授权，也不表示 episode、样本或模型存在。实际生成、训练、
+validation/test selection、shadow、assist、降级、接管、联盟、运行、物理和控制权限均保持
+false。
+
+### checkpoint 必须可审计
+
+324 项长批次不能仅依赖进程内列表和随机 tempfile。每个已完成 episode 必须在 online/label
+文件落盘并 fsync 后，由原子、自哈希 sidecar 提交 checkpoint；同一 staging 使用进程锁排除
+并发 writer。恢复只接受显式 staging 路径，并重新核对 frozen request/registry、clean-source
+commit/config、连续 schedule index、精确 seed 前缀、完整文件库存和每对文件 SHA-256。
+
+恢复过程复用严格 episode loader，而不是相信 sidecar 中的 episode 声明。损坏、缺文件、
+额外文件、顺序缺口、seed/hash/source/split/permission 漂移全部失败关闭，不自动跳过、覆盖或
+补造 episode。受控 324 项中途恢复测试证明该合同可执行，但不构成真实 TRAIN 来源证据。
+
 ## A2 v8 实际运行证据构造原则（2026-08-01）
 
 ### 事实来源
@@ -16,10 +66,10 @@
 拓扑采用相同的完整库存判据。边的容量、分区、通信和机动状态来自边 DTO，时延与丢包采用
 两端区域实际摘要的保守最大值。
 
-供需余量按“可用资源－已承诺资源－确定性备用下限－向上取整后的规则加权需求”计算。
-备用下限复用当前 projector 的最低数量与最低比例。该口径比 projector 单独的转移预算更
-保守；若 projector 接受的动作无法通过 v8 源区余量检查，构造器拒绝该帧，不放宽数据合同。
-owner、plan、version、epoch、lease、联盟确认和故障围栏均取自实际区域 DTO。
+供需差按“可用资源－已承诺资源－确定性备用下限－向上取整后的规则加权需求”计算，用于
+在线特征和冻结供需条件核验。转移硬预算按“可用资源－已承诺资源－确定性备用下限”计算，
+与 projector 保持一致。备用下限复用当前 projector 的最低数量与最低比例。owner、plan、
+version、epoch、lease、联盟确认和故障围栏均取自实际区域 DTO。
 
 ### 标签与边界
 

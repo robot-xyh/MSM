@@ -1,5 +1,89 @@
 # D4 分布式协同与降级接管计划
 
+## 2026-08-02 frozen-hash repair
+
+### 已完成
+
+- [x] 审计 main 当前 `episode_treatments.py`；D4 region graph 和 supply/demand treatment
+  代码段逐字未变，D3 新事件执行合同未进入 D4 recipe 分支。
+- [x] 重新运行 324-cell viability：324/324 episode、972 帧、108/108 去重复组合通过，
+  在线真值使用和失败数均为 0。
+- [x] 两次调用真实 producer：`sequence=0 -> suspend -> resume -> sequence=1`。两个 seed
+  各 3 帧，请求资源数 1/2 均保持，安全端点 lease 有效，plan version/epoch 不回退。
+- [x] 仅在 D4 请求、readiness 常量和测试中重绑定 main treatment 文件 SHA，并重算请求
+  内容/文件 SHA；readiness 定向回归 `49 passed`，D4 全量回归
+  `1013 passed, 1 warning in 130.68s`。
+- [x] 核对权限：只有 `source_generation_request=true`；正式生成执行、训练、runtime、
+  degradation、coalition 和 control 均为 false，正式 episode/sample 计数为 0。
+- [x] 统一只读 preflight 中 D4 blocker 为空；全局仅受
+  `generation_worktree_dirty` 阻断，未形成执行计划或授权。
+
+### 后续门
+
+- [ ] 本轮诊断临时文件已清理，不构成正式来源。完整 324 episode 只能在 clean-tree
+  preflight 和 main generation-only authorization 后顺序生成，再由 D4/D6 独立审计。
+- [ ] 本次不改变 AirSim、主动/被动降级、二级接管或 M 对 N 联盟计划。
+
+## 2026-08-01 A2 v8 来源可生成性收尾
+
+### 已完成
+
+- [x] 复现冻结 `sequence=1`：seed `28101`、`directed_ring_8`、
+  `source_surplus_target_deficit`、`nominal`、`safe_forward_transfer`、资源数 2；三个
+  区域帧均在 builder 被 `v8_r0_transfer_insufficient_source_surplus` 拒绝。
+- [x] 将 v8 来源合同和运行证据拒绝原因统一到确定性投影器的受保护资源预算：可用资源减
+  已承诺资源和备用下限。供需差继续作为特征和场景覆盖条件，不再构成第二道转移硬围栏。
+- [x] 增加冻结来源生成前 viability 审计，并绑定其实现哈希。324/324 episode、972 帧、
+  324/324 完整组合、108/108 去重复组合通过，失败和在线真值使用均为 0；任一缺口使请求门
+  失败关闭。
+- [x] 使用真实 scalable producer 和同一 writer staging 连续完成 `sequence=0`、恢复和
+  `sequence=1`，两项各 3 帧，累计 2 个诊断性 episode，在线真值使用为 0。
+- [x] 保持 lease、plan version、epoch、联盟 ACK、故障围栏、通信、容量、机动和全部执行
+  权限门不变。
+- [x] D4 全量回归 `1013 passed, 1 warning`，全目录 Python 语法编译通过；唯一警告为既有
+  Matplotlib `Axes3D` 环境问题。
+
+### 剩余门
+
+- [ ] 真实 producer 证据仅覆盖冻结前缀 `sequence=0/1`。内存 viability 覆盖 324 个单元，
+  不能替代 writer 对全部 324 episode 的正式生成和 D6 独立来源审计。
+- [ ] 正式 generation 仍需 clean commit preflight 和 generation-only authorization；当前
+  dataset generation、training、validation/test、shadow、assist、degradation、takeover、
+  coalition、runtime、physical 和 control 均未获授权。
+- [ ] 本轮不扩展区域资源算法，不调整联盟、主动降级或 AirSim 接口。
+
+## 2026-08-01 A2 v8 TRAIN 新来源生成请求门
+
+### 本轮完成
+
+- [x] 新增独立、自哈希、版本化 generation-request readiness artifact；保持冻结 request、
+  seed registry 和既有 main allocation binding 字节不变，绑定四类要求输入的仓库相对路径、
+  内容 SHA-256 和文件 SHA-256。
+- [x] 将 artifact 接入 D4 main-allocation pre-generation validator。只有 324 个 TRAIN seed
+  `28100-28423`、8/9/12/16 区域、精确 schedule/registry、空 validation/test 和请求专用
+  权限同时成立，才输出 `source_generation_request_ready=true`。
+- [x] 为 main 统一预检提供稳定根字段和 producer capability 字段：
+  `source_generation_request_path`、`source_generation_request_sha256`、
+  `source_generation_request_ready`；路径固定为仓库相对路径。
+- [x] 审计并关闭 writer 跨进程恢复缺口。每个成功 stage 后原子更新自哈希 resume sidecar；
+  显式恢复重验冻结合同、clean-source metadata、顺序、seed、文件库存、文件哈希和 strict
+  episode round-trip，使用 `flock` 阻止并发 writer。
+- [x] 负例覆盖 artifact/引用/writer 哈希漂移、seed/region/split 漂移、validation/test 非空、
+  任一越权 permission，以及 resume 状态损坏、文件缺口、错序、seed/hash/source/权限漂移。
+  2026-08-01 定向 `60 passed`，D4 全量 `1004 passed, 1 warning`。
+
+### 后续门
+
+- [x] main 统一预检和真实 producer 已在 main ownership 内读取 D4 稳定字段；D4 未修改
+  `scalable_3d_simulation`。当前证据限于诊断性连续前缀 `sequence=0/1`。
+- [ ] `source_generation_request_ready=true` 不授予 main execution authorization。本轮没有
+  生成命令，实际 324 episode 生成必须另行批准并在启动前重新执行全部哈希和 clean-source
+  检查。
+- [ ] validation/test 仍未分配，且不能随 TRAIN 请求开放；必须等 TRAIN 来源和 actor 冻结后
+  从全新、互斥来源单独申请。
+- [ ] 训练、checkpoint、选模、shadow、assist、degradation、takeover、coalition、runtime、
+  physical、control、D3/D7、注册和生产权限继续为 false。
+
 ## 2026-08-01 A2 v8 实际运行证据构造器收口
 
 ### 本轮完成
@@ -21,9 +105,11 @@
 
 ### 后续门
 
-- [ ] main 在 owned scalable 3D producer 中按冻结 324-entry registry 生成实际 snapshot、
-  rule result、匿名候选和 projection result，再调用本构造器及既有 writer；D4 不越界实现
-  main recipe。
+- [x] main-owned scalable 3D producer 已按冻结 registry 为 `sequence=0/1` 生成实际
+  snapshot、rule result、匿名候选和 projection result，并调用本构造器及既有 writer；D4
+  未越界修改 main recipe。
+- [ ] 其余 322 个 episode 仍需在正式授权后通过真实 producer 和 writer，不能由内存审计
+  代替。
 - [ ] 同一冻结 episode 的 `target_class` 不能跨帧变化。要表达“同一候选分区时阻断、恢复
   后转为正类”，需后续修订冻结 label 合同或拆为两个 recipe；当前
   `partition_then_recovery` 正类只能让非所选边经历分区恢复，不能伪造类别切换。
@@ -51,8 +137,10 @@
 
 ### 后续门
 
-- [ ] main 仍需实现 scalable 3D producer recipe adapter，把 8/9/12/16 区域拓扑、三类
-  通信、三类供需、1/2/3 资源正反向转移和困难负样本映射为真实 DTO，再逐项调用 writer。
+- [x] main scalable 3D producer recipe adapter 已完成真实 `sequence=0/1` 前缀调用；全部
+  8/9/12/16 区域、三类通信、三类供需、1/2/3 资源正反向转移和困难负样本已由 D4 内存
+  viability 审计验证结构可生成。
+- [ ] 正式 324 项仍需逐项经过真实 producer 和 writer 后才能关闭来源生成缺口。
 - [ ] writer 完成不改变 readiness 为 producer complete。只有 324 个真实 episode 经本
   writer 收口并由 D4/D6 独立内容审计后，才能讨论 TRAIN 来源可用性。
 - [ ] v8 actor、validation/test 新来源、训练、选模、校准、注册、preflight 和运行准入

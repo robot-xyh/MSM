@@ -801,7 +801,6 @@ def _derive_actual_rejections(
                 "v8_runtime_projector_clipping_not_representable"
             )
 
-    region_by_index = {item.region_index: item for item in regions}
     node_by_id = snapshot.region_by_id
     action_by_id = {item.region_id: item for item in raw_actor.actions}
     online: list[str] = []
@@ -821,7 +820,6 @@ def _derive_actual_rejections(
 
     for candidate in candidates:
         mapped = _transfer_to_v8(candidate.transfer, mapping)
-        source_state = region_by_index[mapped.source_region_index]
         source_node = node_by_id[candidate.transfer.source_region_id]
         target_node = node_by_id[candidate.transfer.target_region_id]
         edge = mapping.edge_by_pair[
@@ -839,10 +837,7 @@ def _derive_actual_rejections(
             candidate_reasons.append("edge_capacity_exceeded")
 
         source_budget = _transfer_budget(source_node, projector)
-        if (
-            mapped.resource_count > source_budget
-            or mapped.resource_count > source_state.supply_demand_gap
-        ):
+        if mapped.resource_count > source_budget:
             candidate_reasons.append("insufficient_source_surplus")
 
         for node in (source_node, target_node):

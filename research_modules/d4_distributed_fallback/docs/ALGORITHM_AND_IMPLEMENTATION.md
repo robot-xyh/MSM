@@ -1,5 +1,106 @@
 # D4 分布式协同与降级接管算法及实施方案
 
+## 冻结哈希重绑定（2026-08-02）
+
+readiness 对 main treatment 文件使用物理 SHA-256，而不是仅绑定 D4 类名。当前文件因 D3
+匿名 roster 和稳定观测窗口实现变化，从旧摘要变为
+`8e77b53dc1f9a5558d4b2f73e10c03f36aa292a298c76c6182169070c5e5ae19`。D4 先比较
+`D4RegionGraphTreatment` 和 `D4SupplyDemandTreatment` 代码段，再运行冻结矩阵和实际
+producer。两段代码相对当前提交逐字一致，324-cell 审计和 sequence 0/1 暂停恢复均通过。
+
+请求制品随后按以下顺序更新：写入 main treatment 文件摘要，移除旧 `content_sha256` 后按
+D4 规范 JSON 重算内容摘要，再按落盘字节计算请求文件摘要，最后把两个摘要和 treatment
+摘要写入 D4 validator 常量与回归测试。新的内容/文件 SHA-256 分别为
+`1d53de5ca23b2de7b06aab6a0be719ffc78c8c977bcc408775e372ad677a10c1` 和
+`18b595057197dda06b8b2a1ec2a357f1f4d652d2512752be83db2f1e979df1e2`。任一文件再次
+漂移都会重新失败关闭；哈希更新不授予数据写盘、训练或在线执行权限。
+readiness 定向测试为 `49 passed`，D4 全量回归为 `1013 passed, 1 warning`。
+
+## A2 v8 来源可生成性审计（2026-08-01）
+
+### 阻塞与修正
+
+冻结 `sequence=1` 的三个真实区域帧已通过 main 运行证据转换，但在
+`V8RuntimeEpisodeEvidenceBuilder.stage_frame()` 中稳定触发
+`v8_r0_transfer_insufficient_source_surplus`。旧实现使用包含区域需求的供需差限制转移，
+权威 `DeterministicResourceProjector` 则只保护已承诺资源和确定性备用下限。
+
+来源合同的转移校验和运行证据拒绝原因现统一使用等价预算：
+
+```text
+protected_transfer_budget = max(0, available - committed - reserve_floor)
+```
+
+`demand_required` 继续写入 `supply_demand_gap`，用于供需处理覆盖和在线学习特征。它不再
+参与硬转移预算。其余边、容量、通信、机动、owner、plan version、epoch、lease、联盟 ACK
+和故障围栏检查保持不变。
+
+### 生成前审计
+
+`audit_v8_frozen_source_viability()` 在内存中逐项运行冻结 recipe、规则策略、确定性投影器、
+实际证据 builder 和严格 DTO 往返。审计覆盖 324 个冻结 episode、972 帧、324 个完整组合
+及 108 个去重复的拓扑×目标类别×通信×资源数组合。任一构造失败、边缺失、方向错误、类别
+不成立或在线真值使用都会阻断 `source_generation_request_ready`。
+
+真实 scalable producer 已完成同一 writer staging 下的 `sequence=0`、暂停、恢复和
+`sequence=1`，两项各 3 帧。该前缀只证明 adapter、builder 和 resume 的连续调用，不证明
+其余 322 项已经真实写出。正式 generation 和所有后续权限保持关闭。收尾验证结果为 D4
+全量 `1013 passed, 1 warning`，全目录 Python 语法编译通过。
+
+## A2 v8 TRAIN generation-request readiness 与安全恢复（2026-08-01）
+
+### 请求 artifact
+
+`region_resource_v8_train_source_generation_request_readiness_v1.json` 是独立、自哈希的请求
+就绪制品。`references` 固定 frozen request、schedule/module registry、main allocation
+binding、global seed registry 和 writer resume 实现的仓库相对路径、内容哈希（适用时）与
+物理文件哈希。`request_scope` 固定 allocation=`d4-a2-v8-train`、split=`train`、324 seed
+`28100-28423`、108 cells x 3 replicates、区域集合 8/9/12/16，以及空 validation/test。
+
+`V8GenerationRequestOnlyPermissions` 使用严格键集。只有
+`source_generation_request=true`；实际生成执行、training、validation/test selection、
+shadow、assist、authority、assignment、degradation、takeover、coalition、runtime、
+physical、control、production、registration、runtime ACK、D3 和 D7 均必须为 false。
+`execution_claims` 还要求 main execution authorization 和 generation command authorization
+为 false，命令为空，全部生成/训练/注册/连接计数为 0。
+
+### readiness 校验
+
+`validate_v8_main_allocation_pre_generation_readiness()` 先验证 artifact 自哈希和固定物理文件
+SHA-256，再沿 artifact 引用加载 binding、global registry、request 和 schedule/registry。
+既有检查继续验证全局 seed 互斥、完整 324 seed、source binding、108x3 schedule、空
+validation/test 和零权限；新增检查显式确认所有 schedule entry 都是 TRAIN，区域集合精确为
+8/9/12/16，并核对 writer 文件 SHA 和 resume schema。成功 DTO 在根及
+`producer_capability` 中都提供稳定字段：
+
+```text
+source_generation_request_path
+source_generation_request_sha256
+source_generation_request_ready
+```
+
+path 必须是仓库相对路径，SHA-256 是 artifact 物理文件摘要。任一输入、scope 或权限漂移均
+抛出稳定错误并失败关闭。成功仍保持 `main_execution_authorization=false`、
+`dataset_generation_executed=false`、`training_ready=false`、`model_ready=false` 和
+`runtime_admission_ready=false`。
+
+### writer resume 合同
+
+每次 `stage_episode()` 成功写入 online/label 文件并完成目录 fsync 后，writer 原子替换同级
+自哈希 resume sidecar。sidecar 绑定 staging/destination、dataset/schedule ID、frozen
+request/registry 内容及文件摘要、clean-source commit/config 摘要、按序 staged episode
+清单和全 false 权限。`flock` 保证同一 staging 同时只有一个活动 writer。
+
+`suspend_for_resume()` 持久化 checkpoint 并释放锁；新进程用
+`resume_from_contract_files()` 显式指定 staging。恢复要求目录只能含 `online/`、`labels/`
+及 sidecar 声明的精确文件集，schedule index 必须从 0 连续，seed 必须等于 frozen registry
+前缀。每个文件重算 SHA-256 并通过 `load_v8_episode_pair()`，然后重建 schedule/manifest
+内存项并与 sidecar 逐字段比较。损坏文件、缺口、额外文件、错序、seed/hash、clean-source、
+split 或权限漂移都不会自动修补，只会失败关闭。
+
+受控 324 项测试在 index 17 处由新 writer 实例恢复后完成 finalize；这只验证恢复合同，不是
+实际来源生成。2026-08-01 定向 `60 passed`，D4 全量 `1004 passed, 1 warning`。
+
 ## A2 v8 实际运行证据构造器（2026-08-01）
 
 ### main 调用接口
@@ -42,8 +143,9 @@ writer.stage_episode(
 2. 用同一 `DeterministicResourceProjector` 重新投影匿名 proposal，并与实际投影结果比较。
 3. 按 snapshot region tuple 建立匿名索引；将实际双向边展开为两个方向，与冻结规范边表
    完整比较。ring 8/12 分别要求 16/24 条有向边。
-4. 从实际区域资源、规则加权需求和 projector 备用配置计算 region state；从实际边及端点
-   摘要计算 directed edge state。R0 action/transfer、匿名候选和 projected transfer 均通过
+4. 从实际区域资源、规则加权需求和 projector 备用配置计算 region state；供需差保留需求，
+   转移硬预算只扣除 committed 与 reserve floor。从实际边及端点摘要计算 directed edge
+   state。R0 action/transfer、匿名候选和 projected transfer 均通过
    同一实际边映射。
 5. 正类检查方向、资源数、通信/机动、源区余量和权属代次；困难负类将实际阻断事实映射为
    v8 allowlist 原因。场景名称和 recipe 名称不进入这些判断。

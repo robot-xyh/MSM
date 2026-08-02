@@ -1,10 +1,13 @@
 from __future__ import annotations
 
 from dataclasses import replace
+import json
 from pathlib import Path
+from typing import Callable
 
 import pytest
 
+import d4_distributed_fallback.region_resource_v8_dataset_writer as writer_module
 from d4_distributed_fallback.region_resource_v8_dataset_writer import (
     RegionResourceV8DatasetWriterError,
     V8CleanSourceMetadata,
@@ -27,6 +30,7 @@ from d4_distributed_fallback.region_resource_v8_development_contract import (
     V8Transfer,
     V8TransferClass,
     canonical_v8_json_line,
+    canonical_v8_sha256,
     classify_v8_edge_direction,
     expected_v8_directed_edges,
     load_v8_frozen_request,
@@ -67,6 +71,56 @@ def _writer(
         schedule_id="controlled-v8-main-schedule-v1",
         dataset_id="controlled-v8-train-source-v1",
     )
+
+
+def _resume_writer(
+    tmp_path: Path,
+    staging_root: Path,
+    *,
+    source_metadata: V8CleanSourceMetadata | None = None,
+) -> V8TrainDatasetWriter:
+    return V8TrainDatasetWriter.resume_from_contract_files(
+        staging_root=staging_root,
+        dataset_root=tmp_path / "dataset",
+        main_schedule_path=tmp_path / "schedule" / "main_schedule.json",
+        request_path=_REQUEST_PATH,
+        registry_path=_REGISTRY_PATH,
+        expected_source_metadata=source_metadata or _source_metadata(),
+        schedule_id="controlled-v8-main-schedule-v1",
+        dataset_id="controlled-v8-train-source-v1",
+    )
+
+
+def _rewrite_resume_state(
+    path: Path,
+    mutate: Callable[[dict[str, object]], None],
+) -> None:
+    payload = json.loads(path.read_text(encoding="utf-8"))
+    mutate(payload)
+    payload.pop("content_sha256")
+    payload["content_sha256"] = canonical_v8_sha256(payload)
+    path.write_bytes(canonical_v8_json_line(payload))
+
+
+def _stage_and_suspend(
+    tmp_path: Path,
+    *,
+    episode_count: int = 2,
+) -> tuple[Path, Path]:
+    writer = _writer(tmp_path)
+    frozen = load_v8_frozen_request(_REQUEST_PATH, _REGISTRY_PATH)
+    for index, entry in enumerate(frozen.schedule[:episode_count]):
+        frames, labels = _episode_pair(entry, index)
+        writer.stage_episode(
+            schedule_index=index,
+            episode_id=frames[0].episode_id,
+            frames=frames,
+            labels=labels,
+            source_metadata=_source_metadata(),
+        )
+    state_path = writer.resume_state_path
+    staging_root = writer.suspend_for_resume()
+    return staging_root, state_path
 
 
 def _selected_transfers(
@@ -340,7 +394,24 @@ def finalized_dataset(tmp_path_factory: pytest.TempPathFactory) -> V8DatasetWrit
     root = tmp_path_factory.mktemp("v8-writer-complete")
     writer = _writer(root)
     frozen = load_v8_frozen_request(_REQUEST_PATH, _REGISTRY_PATH)
-    for index, entry in enumerate(frozen.schedule):
+    resume_index = 17
+    for index, entry in enumerate(frozen.schedule[:resume_index]):
+        frames, labels = _episode_pair(entry, index)
+        writer.stage_episode(
+            schedule_index=index,
+            episode_id=frames[0].episode_id,
+            frames=frames,
+            labels=labels,
+            source_metadata=_source_metadata(),
+        )
+    staging_root = writer.suspend_for_resume()
+    writer = _resume_writer(root, staging_root)
+    assert writer.staged_episode_count == resume_index
+    assert writer.next_schedule_index == resume_index
+    for index, entry in enumerate(
+        frozen.schedule[resume_index:],
+        start=resume_index,
+    ):
         frames, labels = _episode_pair(entry, index)
         writer.stage_episode(
             schedule_index=index,
@@ -421,6 +492,178 @@ def test_writer_uses_canonical_bytes_and_separate_exact_inventory(
     files = {path.relative_to(result.dataset_root) for path in result.dataset_root.rglob("*") if path.is_file()}
     assert len(files) == 649
     assert all(path.parts[0] in {"online", "labels"} or path == Path("manifest.json") for path in files)
+
+
+def test_resume_reloads_order_seed_hash_and_clean_source_state(
+    tmp_path: Path,
+) -> None:
+    staging_root, state_path = _stage_and_suspend(tmp_path, episode_count=3)
+
+    resumed = _resume_writer(tmp_path, staging_root)
+
+    assert resumed.staged_episode_count == 3
+    assert resumed.next_schedule_index == 3
+    assert tuple(item.schedule_index for item in resumed.staged_episodes) == (0, 1, 2)
+    assert tuple(item.seed for item in resumed.staged_episodes) == (
+        28100,
+        28101,
+        28102,
+    )
+    assert state_path.is_file()
+    resumed.abort()
+    assert not staging_root.exists()
+    assert not state_path.exists()
+
+
+def test_resume_rejects_corrupted_episode_hash(tmp_path: Path) -> None:
+    staging_root, _ = _stage_and_suspend(tmp_path, episode_count=1)
+    online_path = staging_root / "online" / "000_28100.jsonl"
+    online_path.write_bytes(online_path.read_bytes() + b"\n")
+
+    with pytest.raises(
+        RegionResourceV8DatasetWriterError,
+        match="v8_writer_resume_episode_invalid:0:.*sha256_mismatch",
+    ):
+        _resume_writer(tmp_path, staging_root)
+
+
+def test_resume_rejects_missing_staged_episode_file(tmp_path: Path) -> None:
+    staging_root, _ = _stage_and_suspend(tmp_path, episode_count=1)
+    (staging_root / "labels" / "000_28100.jsonl").unlink()
+
+    with pytest.raises(
+        RegionResourceV8DatasetWriterError,
+        match="v8_writer_resume_file_inventory_mismatch",
+    ):
+        _resume_writer(tmp_path, staging_root)
+
+
+def test_resume_rejects_schedule_gap_or_reordering(tmp_path: Path) -> None:
+    staging_root, state_path = _stage_and_suspend(tmp_path, episode_count=2)
+
+    def reorder(payload: dict[str, object]) -> None:
+        entries = payload["staged_episodes"]
+        assert isinstance(entries, list)
+        entries.reverse()
+
+    _rewrite_resume_state(state_path, reorder)
+
+    with pytest.raises(
+        RegionResourceV8DatasetWriterError,
+        match="v8_writer_resume_schedule_gap_or_order_mismatch",
+    ):
+        _resume_writer(tmp_path, staging_root)
+
+
+def test_resume_rejects_seed_drift_even_when_state_is_rehashed(
+    tmp_path: Path,
+) -> None:
+    staging_root, state_path = _stage_and_suspend(tmp_path, episode_count=1)
+
+    def drift_seed(payload: dict[str, object]) -> None:
+        entries = payload["staged_episodes"]
+        assert isinstance(entries, list)
+        assert isinstance(entries[0], dict)
+        entries[0]["seed"] = 29999
+
+    _rewrite_resume_state(state_path, drift_seed)
+
+    with pytest.raises(
+        RegionResourceV8DatasetWriterError,
+        match="v8_writer_resume_seed_inventory_mismatch",
+    ):
+        _resume_writer(tmp_path, staging_root)
+
+
+def test_resume_rejects_clean_source_drift(tmp_path: Path) -> None:
+    staging_root, _ = _stage_and_suspend(tmp_path, episode_count=1)
+    stale_source = replace(_source_metadata(), source_git_commit="c" * 40)
+
+    with pytest.raises(
+        RegionResourceV8DatasetWriterError,
+        match="v8_writer_resume_clean_source_mismatch",
+    ):
+        _resume_writer(
+            tmp_path,
+            staging_root,
+            source_metadata=stale_source,
+        )
+
+
+def test_resume_rejects_permission_escalation_in_rehashed_state(
+    tmp_path: Path,
+) -> None:
+    staging_root, state_path = _stage_and_suspend(tmp_path, episode_count=1)
+
+    def escalate(payload: dict[str, object]) -> None:
+        permissions = payload["permissions"]
+        assert isinstance(permissions, dict)
+        permissions["degradation"] = True
+
+    _rewrite_resume_state(state_path, escalate)
+
+    with pytest.raises(
+        RegionResourceV8DatasetWriterError,
+        match="v8_writer_resume_permissions_not_all_false",
+    ):
+        _resume_writer(tmp_path, staging_root)
+
+
+def test_resume_rejects_state_hash_drift(tmp_path: Path) -> None:
+    staging_root, state_path = _stage_and_suspend(tmp_path, episode_count=1)
+    payload = json.loads(state_path.read_text(encoding="utf-8"))
+    payload["dataset_id"] = "tampered-without-rehash"
+    state_path.write_bytes(canonical_v8_json_line(payload))
+
+    with pytest.raises(
+        RegionResourceV8DatasetWriterError,
+        match="v8_writer_resume_state_content_sha256_mismatch",
+    ):
+        _resume_writer(tmp_path, staging_root)
+
+
+def test_schedule_publish_failure_rolls_back_to_resumable_staging(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    writer = _writer(tmp_path)
+    frozen = load_v8_frozen_request(_REQUEST_PATH, _REGISTRY_PATH)
+    for index, entry in enumerate(frozen.schedule):
+        frames, labels = _episode_pair(entry, index)
+        writer.stage_episode(
+            schedule_index=index,
+            episode_id=frames[0].episode_id,
+            frames=frames,
+            labels=labels,
+            source_metadata=_source_metadata(),
+        )
+    staging_root = writer.staging_root
+    state_path = writer.resume_state_path
+    schedule_path = tmp_path / "schedule" / "main_schedule.json"
+    original_replace = writer_module.os.replace
+
+    def fail_schedule_publish(source: object, destination: object) -> None:
+        if Path(destination).resolve() == schedule_path.resolve():
+            raise OSError("controlled schedule publish failure")
+        original_replace(source, destination)
+
+    monkeypatch.setattr(writer_module.os, "replace", fail_schedule_publish)
+    with pytest.raises(OSError, match="controlled schedule publish failure"):
+        writer.finalize()
+
+    assert writer.staged_episode_count == 324
+    assert writer.staging_root == staging_root
+    assert staging_root.is_dir()
+    assert state_path.is_file()
+    assert not (tmp_path / "dataset").exists()
+    assert not schedule_path.exists()
+    assert not (staging_root / "manifest.json").exists()
+
+    writer.suspend_for_resume()
+    monkeypatch.setattr(writer_module.os, "replace", original_replace)
+    resumed = _resume_writer(tmp_path, staging_root)
+    result = resumed.finalize()
+    assert result.manifest.episode_count == 324
 
 
 def test_out_of_order_duplicate_episode_and_duplicate_seed_fail_closed(

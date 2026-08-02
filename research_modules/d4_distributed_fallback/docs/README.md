@@ -1,5 +1,20 @@
 # D4 文档索引
 
+2026-08-01 完成 A2 v8 来源可生成性收口。资源硬预算已与确定性投影器统一为“可用资源减
+已承诺资源和备用下限”，供需差继续作为特征而非额外转移围栏。低成本审计覆盖 324/324
+冻结 episode 和 972 帧；真实 scalable producer 连续证据只覆盖 `sequence=0/1`，正式
+324 episode 数据集仍未生成。generation request 内容/文件 SHA-256 分别为
+`9974a6d5...c9359` 和 `be5773fd...c4688`。详见
+`../reports/D4_A2_V8_SOURCE_VIABILITY_20260801/REPORT_CN.md`。收尾全量回归为
+`1013 passed, 1 warning`，Python 语法编译通过。
+
+2026-08-01 新增 A2 v8 TRAIN generation-request readiness 与 writer 安全断点续跑。当前
+artifact 以路径/SHA-256 绑定 frozen request、schedule/registry、main allocation binding、
+global seed registry 和 resume 实现；readiness 提供 main 稳定 path/SHA/ready 字段。只有
+生成请求权限为 true，main execution authorization 及所有生成后权限仍为 false。详见
+`../README.md`、`../PLAN.md`、`ALGORITHM_AND_IMPLEMENTATION.md` 和
+`MODULE_PRINCIPLES_CN.md`。
+
 2026-08-01 新增 v7 来源独立失败归因和 v8 development data request。冻结 128 帧的
 validation/test 精确正动作均为 0/9，train 三个实际变化全部是负类错误边和虚假转移。
 45 个失败帧的流水线阶段归因覆盖 45/45；逐区域供需、完整拓扑和图特征未导出，特征级
