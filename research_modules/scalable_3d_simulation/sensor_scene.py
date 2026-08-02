@@ -55,20 +55,34 @@ class SensorScene:
         self._acoustic_scan_index = 0
         self._visual_scan_index = 0
 
-    def radar_scan(self, snapshot: WorldSnapshot) -> ObservationBatch:
+    def radar_scan(
+        self,
+        snapshot: WorldSnapshot,
+        *,
+        stable_observation: bool = False,
+    ) -> ObservationBatch:
         """Generate one range/azimuth/elevation scan from the protected-site radar."""
 
+        _require_boolean_stable_mode(stable_observation)
         self._radar_scan_index += 1
         timestamp = float(snapshot.timestamp)
         positions = snapshot.intruders.position_ned
         active = snapshot.intruders.active
         ranges = np.linalg.norm(positions, axis=1)
         candidate = active & (ranges <= self.config.radar_range_limit_m)
-        detected = candidate & (
-            self.radar_rng.random(positions.shape[0]) < self.config.radar_detection_probability
+        detected = (
+            candidate
+            if stable_observation
+            else candidate
+            & (
+                self.radar_rng.random(positions.shape[0])
+                < self.config.radar_detection_probability
+            )
         )
         fixed_standard_noise = (
-            self.radar_rng.normal(size=(positions.shape[0], 3))
+            np.zeros((positions.shape[0], 3), dtype=float)
+            if stable_observation
+            else self.radar_rng.normal(size=(positions.shape[0], 3))
             if self._uses_entity_fixed_random_schedule
             else None
         )
@@ -141,9 +155,15 @@ class SensorScene:
             )
         return ObservationBatch(tuple(measurements), tuple(labels))
 
-    def acoustic_scan(self, snapshot: WorldSnapshot) -> ObservationBatch:
+    def acoustic_scan(
+        self,
+        snapshot: WorldSnapshot,
+        *,
+        stable_observation: bool = False,
+    ) -> ObservationBatch:
         """Generate coarse azimuth/elevation and class-level soundprint hints."""
 
+        _require_boolean_stable_mode(stable_observation)
         self._acoustic_scan_index += 1
         timestamp = float(snapshot.timestamp)
         measurements: list[SensorMeasurement] = []
@@ -167,17 +187,26 @@ class SensorScene:
             relative = positions - sensor_position[None, :]
             ranges = np.linalg.norm(relative, axis=1)
             candidate = active & (ranges <= self.config.acoustic_range_limit_m)
-            detected = candidate & (
-                self.acoustic_rng.random(positions.shape[0])
-                < self.config.acoustic_detection_probability
+            detected = (
+                candidate
+                if stable_observation
+                else candidate
+                & (
+                    self.acoustic_rng.random(positions.shape[0])
+                    < self.config.acoustic_detection_probability
+                )
             )
             fixed_angle_noise = (
-                self.acoustic_rng.normal(size=(positions.shape[0], 2))
+                np.zeros((positions.shape[0], 2), dtype=float)
+                if stable_observation
+                else self.acoustic_rng.normal(size=(positions.shape[0], 2))
                 if self._uses_entity_fixed_random_schedule
                 else None
             )
             fixed_soundprint_noise = (
-                self.acoustic_rng.normal(size=(positions.shape[0], 3))
+                np.zeros((positions.shape[0], 3), dtype=float)
+                if stable_observation
+                else self.acoustic_rng.normal(size=(positions.shape[0], 3))
                 if self._uses_entity_fixed_random_schedule
                 else None
             )
@@ -256,9 +285,11 @@ class SensorScene:
         camera_aim_points: Mapping[str, np.ndarray] | None = None,
         camera_horizontal_fov_deg: Mapping[str, float] | None = None,
         camera_command_versions: Mapping[str, tuple[int, int, int]] | None = None,
+        stable_observation: bool = False,
     ) -> ObservationBatch:
         """Project active intruders into all interceptor and recon cameras."""
 
+        _require_boolean_stable_mode(stable_observation)
         self._visual_scan_index += 1
         timestamp = float(snapshot.timestamp)
         views = self.camera_views(
@@ -281,7 +312,12 @@ class SensorScene:
             fixed_detection_draws = None
             fixed_center_noise = None
             fixed_scale_noise = None
-            if self._uses_entity_fixed_random_schedule:
+            if stable_observation:
+                target_count = snapshot.intruders.state.shape[0]
+                fixed_detection_draws = np.zeros(target_count, dtype=float)
+                fixed_center_noise = np.zeros((target_count, 2), dtype=float)
+                fixed_scale_noise = np.zeros(target_count, dtype=float)
+            elif self._uses_entity_fixed_random_schedule:
                 target_count = snapshot.intruders.state.shape[0]
                 fixed_detection_draws = self.visual_rng.random(target_count)
                 fixed_center_noise = self.visual_rng.normal(
@@ -289,12 +325,13 @@ class SensorScene:
                 )
                 fixed_scale_noise = self.visual_rng.normal(size=target_count)
             if active_indices.size == 0:
-                self._append_false_alarms(
-                    view,
-                    timestamp,
-                    measurements,
-                    labels,
-                )
+                if not stable_observation:
+                    self._append_false_alarms(
+                        view,
+                        timestamp,
+                        measurements,
+                        labels,
+                    )
                 frame_events.append(
                     self._camera_frame_event(
                         view,
@@ -431,12 +468,13 @@ class SensorScene:
                         measurement_timestamp=timestamp,
                     )
                 )
-            self._append_false_alarms(
-                view,
-                timestamp,
-                measurements,
-                labels,
-            )
+            if not stable_observation:
+                self._append_false_alarms(
+                    view,
+                    timestamp,
+                    measurements,
+                    labels,
+                )
             frame_events.append(
                 self._camera_frame_event(
                     view,
@@ -727,3 +765,8 @@ def _camera_fov(
     if not np.isfinite(value) or not 1.0 < value < 179.0:
         raise ValueError(f"invalid horizontal FOV for {sensor_id}")
     return value
+
+
+def _require_boolean_stable_mode(value: bool) -> None:
+    if not isinstance(value, (bool, np.bool_)):
+        raise TypeError("stable_observation must be boolean")

@@ -19,7 +19,7 @@ from .models import ScenarioConfig
 from .scenarios import AVAILABLE_SCENARIOS, make_curriculum_scenario
 
 
-D3_A1_V3_RECIPE_SCHEMA_VERSION = "scalable3d-d3-a1-v3-recipe-v1"
+D3_A1_V3_RECIPE_SCHEMA_VERSION = "scalable3d-d3-a1-v3-recipe-v2"
 D4_A2_V8_RECIPE_SCHEMA_VERSION = "scalable3d-d4-a2-v8-recipe-v1"
 D5_A3_V3_RECIPE_SCHEMA_VERSION = "scalable3d-d5-a3-v3-recipe-v1"
 
@@ -44,10 +44,8 @@ _D3_RUNTIME_SCENARIO = {
     "near_tie_hard_negative": "dense_crossing",
     **{name: name for name in AVAILABLE_SCENARIOS},
 }
-_D3_TREATMENT = {
-    "dynamic_add_drop": "roster_event_schedule_v1",
-    "near_tie_hard_negative": "near_tie_cost_boundary_v1",
-}
+_D3_ANONYMOUS_EVENT_TREATMENT = "anonymous_external_event_schedule_v1"
+_D3_NEAR_TIE_TREATMENT = "near_tie_cost_boundary_v1"
 
 
 class LearningSourceRecipeError(ValueError):
@@ -71,13 +69,13 @@ class FrozenScheduleLineage:
 
 @dataclass(frozen=True)
 class RosterEventRecipe:
-    """One deterministic truth-world roster event; no online identity is carried."""
+    """One seed-selected truth-world roster event with no online identity."""
 
     fraction_of_duration: float
     entity_kind: str
     action: str
-    ordinal_start: int
     ordinal_count: int
+    selection_key: str
 
     def __post_init__(self) -> None:
         fraction = float(self.fraction_of_duration)
@@ -87,8 +85,44 @@ class RosterEventRecipe:
             raise LearningSourceRecipeError("roster_event_entity_kind_invalid")
         if self.action not in {"activate", "deactivate"}:
             raise LearningSourceRecipeError("roster_event_action_invalid")
-        if int(self.ordinal_start) < 0 or int(self.ordinal_count) <= 0:
+        if isinstance(self.ordinal_count, bool) or int(self.ordinal_count) <= 0:
             raise LearningSourceRecipeError("roster_event_ordinal_invalid")
+        if not str(self.selection_key).strip():
+            raise LearningSourceRecipeError("roster_event_selection_key_invalid")
+
+
+@dataclass(frozen=True)
+class StableObservationWindowRecipe:
+    """A preregistered kinematic/observation hold with no copied frames."""
+
+    start_fraction_of_duration: float
+    end_fraction_of_duration: float
+    minimum_assignment_ticks: int
+    window_key: str
+    observation_mode: str
+
+    def __post_init__(self) -> None:
+        start = float(self.start_fraction_of_duration)
+        end = float(self.end_fraction_of_duration)
+        if (
+            not math.isfinite(start)
+            or not math.isfinite(end)
+            or start < 0.0
+            or end > 1.0
+            or end <= start
+        ):
+            raise LearningSourceRecipeError("stable_window_fraction_invalid")
+        if isinstance(self.minimum_assignment_ticks, bool) or int(
+            self.minimum_assignment_ticks
+        ) < 3:
+            raise LearningSourceRecipeError("stable_window_tick_quota_invalid")
+        if not str(self.window_key).strip():
+            raise LearningSourceRecipeError("stable_window_key_invalid")
+        if self.observation_mode not in {
+            "noiseless_regeneration_v1",
+            "radar_only_noiseless_regeneration_v1",
+        }:
+            raise LearningSourceRecipeError("stable_window_observation_mode_invalid")
 
 
 @dataclass(frozen=True)
@@ -111,6 +145,7 @@ class D3A1V3EpisodeRecipe:
     minimum_hard_negative_frames: int
     treatment_id: str | None
     roster_events: tuple[RosterEventRecipe, ...]
+    stable_observation_windows: tuple[StableObservationWindowRecipe, ...]
 
     def build_config(self, base: ScenarioConfig) -> ScenarioConfig:
         config = make_curriculum_scenario(
@@ -138,13 +173,31 @@ class D3A1V3EpisodeRecipe:
                     "fraction_of_duration": item.fraction_of_duration,
                     "entity_kind": item.entity_kind,
                     "action": item.action,
-                    "ordinal_start": item.ordinal_start,
                     "ordinal_count": item.ordinal_count,
+                    "selection_key": item.selection_key,
+                    "selection_method": "episode_seeded_permutation_v1",
                 }
                 for item in self.roster_events
             ],
+            "stable_observation_windows": [
+                {
+                    "start_fraction_of_duration": item.start_fraction_of_duration,
+                    "end_fraction_of_duration": item.end_fraction_of_duration,
+                    "minimum_assignment_ticks": item.minimum_assignment_ticks,
+                    "window_key": item.window_key,
+                    "kinematic_mode": "hold_state_v1",
+                    "observation_mode": item.observation_mode,
+                    "frame_copying_allowed": False,
+                }
+                for item in self.stable_observation_windows
+            ],
             "permissions": _false_permissions(),
         }
+        _validate_stable_window_tick_coverage(
+            self.stable_observation_windows,
+            duration_s=config.duration_s,
+            assignment_period_s=config.assignment_period_s,
+        )
         return replace(config, metadata=metadata)
 
 
@@ -421,22 +474,25 @@ def load_d3_a1_v3_episode_recipes(
                 "d3_minimum_hard_negative_frames",
                 minimum=1,
             ),
-            treatment_id=_D3_TREATMENT.get(family),
-            roster_events=(
-                _d3_dynamic_roster_events(
-                    _integer(
-                        raw["configured_target_count"],
-                        "d3_target_count",
-                        minimum=1,
-                    ),
-                    _integer(
-                        raw["configured_resource_count"],
-                        "d3_resource_count",
-                        minimum=1,
-                    ),
-                )
-                if family == "dynamic_add_drop"
-                else ()
+            treatment_id=_d3_treatment_id(
+                cell_id=str(raw["cell_id"]),
+                scenario_family=family,
+            ),
+            roster_events=_d3_roster_events(
+                cell_id=str(raw["cell_id"]),
+                target_count=_integer(
+                    raw["configured_target_count"],
+                    "d3_target_count",
+                    minimum=1,
+                ),
+                resource_count=_integer(
+                    raw["configured_resource_count"],
+                    "d3_resource_count",
+                    minimum=1,
+                ),
+            ),
+            stable_observation_windows=_d3_stable_observation_windows(
+                cell_id=str(raw["cell_id"]),
             ),
         )
         recipes.append(recipe)
@@ -739,19 +795,114 @@ def _parse_d5_hard_confusion(
     )
 
 
-def _d3_dynamic_roster_events(
+def _d3_treatment_id(*, cell_id: str, scenario_family: str) -> str | None:
+    if scenario_family == "near_tie_hard_negative":
+        return _D3_NEAR_TIE_TREATMENT
+    if _d3_roster_events_required(cell_id) or _d3_stable_window_required(cell_id):
+        return _D3_ANONYMOUS_EVENT_TREATMENT
+    return None
+
+
+def _d3_roster_events_required(cell_id: str) -> bool:
+    return cell_id in {
+        "formation-split-50t50r",
+        "resource-surplus-20t30r",
+        "resource-shortage-30t20r",
+        "dynamic-add-drop-100t80r",
+    }
+
+
+def _d3_stable_window_required(cell_id: str) -> bool:
+    return cell_id in {
+        "delayed-noisy-200t200r",
+        "communication-degraded-5t5r",
+        "high-threat-m-to-n-100t100r",
+        "high-threat-m-to-n-200t200r",
+    }
+
+
+def _d3_roster_events(
+    *,
+    cell_id: str,
     target_count: int,
     resource_count: int,
 ) -> tuple[RosterEventRecipe, ...]:
-    if target_count < 10 or resource_count < 8:
-        raise LearningSourceRecipeError("d3_dynamic_roster_inventory_too_small")
+    if cell_id == "dynamic-add-drop-100t80r":
+        if target_count < 20 or resource_count < 8:
+            raise LearningSourceRecipeError("d3_dynamic_roster_inventory_too_small")
+        return (
+            RosterEventRecipe(0.0, "intruder", "deactivate", 10, "dynamic-target-a"),
+            RosterEventRecipe(0.25, "intruder", "activate", 10, "dynamic-target-a"),
+            RosterEventRecipe(0.50, "intruder", "deactivate", 10, "dynamic-target-b"),
+            RosterEventRecipe(0.625, "interceptor", "deactivate", 8, "dynamic-resource-a"),
+            RosterEventRecipe(0.75, "interceptor", "activate", 8, "dynamic-resource-a"),
+        )
+    if cell_id == "formation-split-50t50r":
+        count = max(5, int(math.ceil(0.10 * target_count)))
+        if count >= target_count:
+            raise LearningSourceRecipeError("d3_formation_roster_inventory_too_small")
+        return (
+            RosterEventRecipe(0.20, "intruder", "deactivate", count, "formation-target-a"),
+            RosterEventRecipe(0.65, "intruder", "activate", count, "formation-target-a"),
+        )
+    if cell_id in {"resource-surplus-20t30r", "resource-shortage-30t20r"}:
+        count = max(3, int(math.ceil(0.15 * resource_count)))
+        if count >= resource_count:
+            raise LearningSourceRecipeError("d3_resource_roster_inventory_too_small")
+        key = "surplus-resource-a" if "surplus" in cell_id else "shortage-resource-a"
+        return (
+            RosterEventRecipe(0.25, "interceptor", "deactivate", count, key),
+            RosterEventRecipe(0.60, "interceptor", "activate", count, key),
+        )
+    return ()
+
+
+def _d3_stable_observation_windows(
+    *,
+    cell_id: str,
+) -> tuple[StableObservationWindowRecipe, ...]:
+    if not _d3_stable_window_required(cell_id):
+        return ()
+    if cell_id == "delayed-noisy-200t200r":
+        return (
+            StableObservationWindowRecipe(
+                start_fraction_of_duration=0.0,
+                end_fraction_of_duration=0.65,
+                minimum_assignment_ticks=3,
+                window_key=f"{cell_id}-stable-a",
+                observation_mode="radar_only_noiseless_regeneration_v1",
+            ),
+        )
     return (
-        RosterEventRecipe(0.0, "intruder", "deactivate", target_count - 10, 10),
-        RosterEventRecipe(0.25, "intruder", "activate", target_count - 10, 10),
-        RosterEventRecipe(0.50, "intruder", "deactivate", 0, 10),
-        RosterEventRecipe(0.625, "interceptor", "deactivate", 0, 8),
-        RosterEventRecipe(0.75, "interceptor", "activate", 0, 8),
+        StableObservationWindowRecipe(
+            start_fraction_of_duration=0.25,
+            end_fraction_of_duration=0.80,
+            minimum_assignment_ticks=3,
+            window_key=f"{cell_id}-stable-a",
+            observation_mode="noiseless_regeneration_v1",
+        ),
     )
+
+
+def _validate_stable_window_tick_coverage(
+    windows: Sequence[StableObservationWindowRecipe],
+    *,
+    duration_s: float,
+    assignment_period_s: float,
+) -> None:
+    duration = _positive_float(duration_s, "stable_window_duration_s")
+    period = _positive_float(assignment_period_s, "stable_window_assignment_period_s")
+    tick_count = int(math.floor(duration / period + 1.0e-12)) + 1
+    ticks = tuple(index * period for index in range(tick_count))
+    for window in windows:
+        start = window.start_fraction_of_duration * duration
+        end = window.end_fraction_of_duration * duration
+        covered = sum(start - 1.0e-12 <= tick < end - 1.0e-12 for tick in ticks)
+        if covered < window.minimum_assignment_ticks:
+            raise LearningSourceRecipeError(
+                "stable_window_assignment_tick_coverage_insufficient",
+                window.window_key,
+            )
 
 
 def _read_schedule(path: str | Path) -> tuple[Path, Mapping[str, Any]]:
@@ -900,6 +1051,7 @@ __all__ = [
     "FrozenScheduleLineage",
     "LearningSourceRecipeError",
     "RosterEventRecipe",
+    "StableObservationWindowRecipe",
     "load_d3_a1_v3_episode_recipes",
     "load_d4_a2_v8_episode_recipes",
     "load_d5_a3_v3_episode_recipes",

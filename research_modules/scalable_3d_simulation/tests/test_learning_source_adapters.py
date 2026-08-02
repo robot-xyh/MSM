@@ -13,7 +13,7 @@ from research_modules.d3_assignment_planner.src.d3_assignment_planner.a1_v3_data
 from research_modules.d3_assignment_planner.src.d3_assignment_planner.a1_v3_dataset_writer import (
     A1V3AdapterFrameEvidence,
     A1V3DatasetWriter,
-    A1V3OfflineFrameSidecar,
+    build_a1_v3_online_frame,
     load_a1_v3_writer_contract,
 )
 from research_modules.d4_distributed_fallback.d4_distributed_fallback.region_resource_v8_dataset_writer import (
@@ -266,6 +266,12 @@ def test_actual_d5_runtime_covers_all_boundaries_and_window_quotas(
 
 def _d3_smoke_evidence(frame_index: int) -> A1V3AdapterFrameEvidence:
     measurement = 0.1 * frame_index
+    teacher_resources = (0, 1, 0, 1, 1, 1, 1, 1, 1)
+    hard_frames = {0, 4}
+    teacher_resource = teacher_resources[frame_index]
+    candidate_resource = (
+        1 - teacher_resource if frame_index in hard_frames else teacher_resource
+    )
     return A1V3AdapterFrameEvidence(
         frame_index=frame_index,
         measurement_timestamp_s=measurement,
@@ -275,9 +281,9 @@ def _d3_smoke_evidence(frame_index: int) -> A1V3AdapterFrameEvidence:
         candidate_mask_shape=(1, 2),
         candidate_mask_true_edges=((0, 0), (0, 1)),
         rule_cost_matrix=((1.0, 1.001),),
-        teacher_edges=((0, 0),),
-        candidate_selected_edges=((0, 0),),
-        effective_selected_edges=((0, 0),),
+        teacher_edges=((0, teacher_resource),),
+        candidate_selected_edges=((0, candidate_resource),),
+        effective_selected_edges=((0, teacher_resource),),
         residual_ranking=(
             A1V3EdgeResidualRank(edge=(0, 0), residual=0.0, rank=1),
             A1V3EdgeResidualRank(edge=(0, 1), residual=0.001, rank=2),
@@ -285,31 +291,6 @@ def _d3_smoke_evidence(frame_index: int) -> A1V3AdapterFrameEvidence:
         target_demand_slots=(1,),
         pre_projection_reason_codes=("rule_candidate_available",),
         post_projection_reason_codes=("effective_plan_projected",),
-    )
-
-
-def _d3_smoke_sidecar(
-    frame_index: int,
-    *,
-    frame_class: str,
-    hard_negative: bool,
-) -> A1V3OfflineFrameSidecar:
-    return A1V3OfflineFrameSidecar(
-        frame_index=frame_index,
-        frame_class=frame_class,
-        hard_negative=hard_negative,
-        action_change_type=(
-            "single_target_rebind_with_resource_release"
-            if frame_class == "positive"
-            else "keep_exact_r0"
-        ),
-        hard_negative_type=(
-            "near_tie_but_teacher_keeps_r0" if hard_negative else None
-        ),
-        truth_target_labels=(),
-        actor_labels=(),
-        object_labels=(),
-        center_global_track_labels=(),
     )
 
 
@@ -321,16 +302,6 @@ def test_strict_writers_stage_one_synthetic_episode_without_finalizing_inventory
     d3_contract = load_a1_v3_writer_contract()
     d3_episode = d3_contract.schedule.episodes[0]
     d3_evidence = [_d3_smoke_evidence(index) for index in range(9)]
-    d3_sidecars = [
-        _d3_smoke_sidecar(
-            index,
-            frame_class="positive" if index < 3 else "negative",
-            hard_negative=(
-                3 <= index < 3 + d3_episode.minimum_hard_negative_frames
-            ),
-        )
-        for index in range(9)
-    ]
     d3_writer = A1V3DatasetWriter(
         tmp_path / "d3",
         dataset_id="main-adapter-smoke-d3",
@@ -339,7 +310,6 @@ def test_strict_writers_stage_one_synthetic_episode_without_finalizing_inventory
     d3_summary = d3_writer.stage_episode(
         d3_episode,
         d3_evidence,
-        d3_sidecars,
     )
     assert d3_summary.frame_count == 9
     assert d3_writer.staged_episode_count == 1
@@ -397,3 +367,35 @@ def test_strict_writers_stage_one_synthetic_episode_without_finalizing_inventory
     assert decoded_online.to_dict() == d5_online.to_dict()
     assert decoded_offline.to_dict() == d5_offline.to_dict()
     assert not (root / "manifest.json").exists()
+
+
+def test_actual_d3_adapter_reason_codes_are_writer_canonical() -> None:
+    stack = IntegratedScalableModuleStack(
+        IntegratedStackConfig(capture_learning_artifacts=True)
+    )
+    result = run_episode(
+        ScenarioConfig(
+            target_count=5,
+            resource_count=5,
+            recon_count=1,
+            duration_s=2.0,
+            seed=31_901,
+            radar_detection_probability=1.0,
+            visual_detection_probability=1.0,
+            visual_false_alarm_rate=0.0,
+        ),
+        module_stack=stack,
+    )
+    assert result.summary["online_truth_use_count"] == 0
+    adapted = adapt_d3_a1_runtime_frame(
+        stack.learning_artifacts().d3_a1_source_frames[0]
+    )
+    contract = load_a1_v3_writer_contract()
+    frame = build_a1_v3_online_frame(contract.schedule.episodes[0], adapted)
+
+    assert tuple(frame.pre_projection_reason_codes) == tuple(
+        sorted(frame.pre_projection_reason_codes)
+    )
+    assert tuple(frame.post_projection_reason_codes) == tuple(
+        sorted(frame.post_projection_reason_codes)
+    )

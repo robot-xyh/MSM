@@ -238,10 +238,16 @@ class VectorizedPointMassWorld:
         intruder_acceleration_ned: np.ndarray | None = None,
         interceptor_acceleration_ned: np.ndarray | None = None,
         recon_acceleration_ned: np.ndarray | None = None,
+        hold_kinematics: bool = False,
     ) -> WorldStepDiagnostics:
         """Advance all entity groups by one configured physics step."""
 
         dt_s = self.config.physics_dt_s
+        if not isinstance(hold_kinematics, (bool, np.bool_)):
+            raise TypeError("hold_kinematics must be boolean")
+        if hold_kinematics:
+            self.timestamp = round(self.timestamp + dt_s, 12)
+            return self.diagnostics()
         intruder_commands = (
             self.default_intruder_commands(self.timestamp)
             if intruder_acceleration_ned is None
@@ -395,6 +401,30 @@ class VectorizedPointMassWorld:
         module control.
         """
 
+        start = int(ordinal_start)
+        count = int(ordinal_count)
+        if (
+            isinstance(ordinal_start, bool)
+            or isinstance(ordinal_count, bool)
+            or start < 0
+            or count <= 0
+        ):
+            raise ValueError("roster event ordinal range is outside the inventory")
+        return self.apply_selected_roster_event(
+            entity_kind=entity_kind,
+            action=action,
+            selected_ordinals=tuple(range(start, start + count)),
+        )
+
+    def apply_selected_roster_event(
+        self,
+        *,
+        entity_kind: str,
+        action: str,
+        selected_ordinals: tuple[int, ...],
+    ) -> tuple[int, int]:
+        """Apply one preregistered anonymous active-mask transition."""
+
         kind = str(entity_kind).strip().lower()
         transition = str(action).strip().lower()
         if kind == "intruder":
@@ -405,22 +435,20 @@ class VectorizedPointMassWorld:
             raise ValueError("roster event entity_kind must be intruder or interceptor")
         if transition not in {"activate", "deactivate"}:
             raise ValueError("roster event action must be activate or deactivate")
-        start = int(ordinal_start)
-        count = int(ordinal_count)
+        if not isinstance(selected_ordinals, tuple) or not selected_ordinals:
+            raise ValueError("roster event selection must be a non-empty tuple")
+        if any(isinstance(value, bool) for value in selected_ordinals):
+            raise ValueError("roster event selection contains a non-integer ordinal")
+        selected = tuple(int(value) for value in selected_ordinals)
         if (
-            isinstance(ordinal_start, bool)
-            or isinstance(ordinal_count, bool)
-            or start < 0
-            or count <= 0
-            or start + count > active.size
+            len(set(selected)) != len(selected)
+            or any(value < 0 or value >= active.size for value in selected)
         ):
-            raise ValueError("roster event ordinal range is outside the inventory")
+            raise ValueError("roster event selection is outside the inventory")
         before = int(np.count_nonzero(active))
-        active[start : start + count] = transition == "activate"
+        active[np.asarray(selected, dtype=int)] = transition == "activate"
         if kind == "intruder" and transition == "activate":
-            self.intercepted_target_indices.difference_update(
-                range(start, start + count)
-            )
+            self.intercepted_target_indices.difference_update(selected)
         after = int(np.count_nonzero(active))
         return before, after
 

@@ -327,6 +327,22 @@ class Scalable3DEpisodeRunner:
                     timestamp_s=float(self.world.timestamp),
                 )
             )
+            stable_observation_mode = (
+                treatment_executor.stable_observation_mode
+            )
+            if stable_observation_mode == (
+                "radar_only_noiseless_regeneration_v1"
+            ):
+                next_acoustic_time = _skip_due_schedule(
+                    next_acoustic_time,
+                    self.config.acoustic_period_s,
+                    float(self.world.timestamp),
+                )
+                next_visual_time = _skip_due_schedule(
+                    next_visual_time,
+                    self.config.visual_period_s,
+                    float(self.world.timestamp),
+                )
             snapshot = self.world.snapshot()
             current_time = snapshot.timestamp
             _refresh_camera_runtime_states(
@@ -344,7 +360,10 @@ class Scalable3DEpisodeRunner:
 
             if self.config.radar_enabled and current_time + 1.0e-12 >= next_radar_time:
                 started = time.perf_counter()
-                batch = self.sensor_scene.radar_scan(snapshot)
+                batch = self.sensor_scene.radar_scan(
+                    snapshot,
+                    stable_observation=stable_observation_mode is not None,
+                )
                 timing.add("radar_scene", time.perf_counter() - started)
                 offline_labels.extend(batch.offline_truth_labels)
                 for online_batch in _group_sensor_batches(batch.measurements):
@@ -357,7 +376,10 @@ class Scalable3DEpisodeRunner:
 
             if self.config.acoustic_enabled and current_time + 1.0e-12 >= next_acoustic_time:
                 started = time.perf_counter()
-                batch = self.sensor_scene.acoustic_scan(snapshot)
+                batch = self.sensor_scene.acoustic_scan(
+                    snapshot,
+                    stable_observation=stable_observation_mode is not None,
+                )
                 timing.add("acoustic_scene", time.perf_counter() - started)
                 offline_labels.extend(batch.offline_truth_labels)
                 for online_batch in _group_sensor_batches(batch.measurements):
@@ -385,6 +407,7 @@ class Scalable3DEpisodeRunner:
                         )
                         for camera_id, state in camera_states.items()
                     },
+                    stable_observation=stable_observation_mode is not None,
                 )
                 timing.add("visual_scene", time.perf_counter() - started)
                 offline_labels.extend(batch.offline_truth_labels)
@@ -781,6 +804,7 @@ class Scalable3DEpisodeRunner:
                 diagnostics = self.world.step(
                     interceptor_acceleration_ned=interceptor_command,
                     recon_acceleration_ned=recon_command,
+                    hold_kinematics=stable_observation_mode is not None,
                 )
                 proximity_intercepts.extend(self.world.register_proximity_intercepts())
                 timing.add("world_dynamics", time.perf_counter() - started)
@@ -2250,6 +2274,22 @@ def _nonnegative_int(value: Any, name: str) -> int:
 
 def _optional_bool(value: Any) -> bool | None:
     return value if isinstance(value, bool) else None
+
+
+def _skip_due_schedule(next_time_s: float, period_s: float, now_s: float) -> float:
+    """Advance a suppressed source without replaying missed scans later."""
+
+    next_time = float(next_time_s)
+    period = float(period_s)
+    now = float(now_s)
+    if not all(np.isfinite(value) for value in (next_time, period, now)):
+        raise ValueError("suppressed source timing must be finite")
+    if period <= 0.0:
+        raise ValueError("suppressed source period must be positive")
+    if next_time > now + 1.0e-12:
+        return next_time
+    skipped = int(np.floor((now - next_time) / period + 1.0e-12)) + 1
+    return next_time + skipped * period
 
 
 def _communication_partition_generation(

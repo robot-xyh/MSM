@@ -234,7 +234,7 @@ def main(argv: list[str] | None = None) -> int:
         "learning_export_components": sorted(set(args.learning_components)),
         "d5_recon_track_cues_enabled": bool(args.d5_recon_track_cues),
         "d5_active_vision_collection_profile": collection_profile,
-        "d5_active_vision_collection_treatment": dict(
+        "d5_active_vision_collection_treatment": _json_compatible_copy(
             collection_treatment.to_dict()
         ),
         "d5_active_vision_split_preflight": {
@@ -996,6 +996,19 @@ def _write_json(path: Path, payload: Mapping[str, Any]) -> None:
     path.write_text(
         json.dumps(payload, ensure_ascii=False, indent=2, sort_keys=True) + "\n",
         encoding="utf-8",
+    )
+
+
+def _json_compatible_copy(value: Mapping[str, Any]) -> dict[str, Any]:
+    """Freeze nested tuples with the same representation used on disk."""
+
+    return json.loads(
+        json.dumps(
+            dict(value),
+            ensure_ascii=False,
+            sort_keys=True,
+            allow_nan=False,
+        )
     )
 
 

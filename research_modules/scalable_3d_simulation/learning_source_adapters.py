@@ -655,10 +655,14 @@ def adapt_d3_a1_runtime_frame(
         for rank, (residual, row, column) in enumerate(residual_items, start=1)
     )
     target_demand_slots = _d3_target_demand_slots(evidence, rule)
-    pre_reasons = (
-        f"planning_path_{_reason_token(evidence.planning_path)}",
-        f"selection_source_{_reason_token(evidence.selection_source)}",
-        f"learning_state_{_reason_token(evidence.learning_state)}",
+    pre_reasons = tuple(
+        sorted(
+            {
+                f"planning_path_{_reason_token(evidence.planning_path)}",
+                f"selection_source_{_reason_token(evidence.selection_source)}",
+                f"learning_state_{_reason_token(evidence.learning_state)}",
+            }
+        )
     )
     post_reasons = [
         "effective_plan_projected",
@@ -683,7 +687,7 @@ def adapt_d3_a1_runtime_frame(
         residual_ranking=residual_ranking,
         target_demand_slots=target_demand_slots,
         pre_projection_reason_codes=pre_reasons,
-        post_projection_reason_codes=tuple(post_reasons),
+        post_projection_reason_codes=tuple(sorted(set(post_reasons))),
     )
 
 

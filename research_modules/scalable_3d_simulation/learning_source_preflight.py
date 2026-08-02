@@ -54,6 +54,21 @@ D4_SEED_REGISTRY_PATH = (
     "D4_V7_FAILURE_ATTRIBUTION_V8_DATA_REQUEST_20260801/"
     "v8_development_seed_registry.json"
 )
+D3_SOURCE_GENERATION_REQUEST_PATH = (
+    REPOSITORY_ROOT
+    / "research_modules/d3_assignment_planner/configs/"
+    "a1_source_independent_v3_source_generation_request_readiness_v1.json"
+)
+D4_SOURCE_GENERATION_REQUEST_PATH = (
+    REPOSITORY_ROOT
+    / "research_modules/d4_distributed_fallback/configs/"
+    "region_resource_v8_train_source_generation_request_readiness_v1.json"
+)
+D5_SOURCE_GENERATION_REQUEST_PATH = (
+    REPOSITORY_ROOT
+    / "research_modules/d5_terminal_association/configs/"
+    "a3_v3_source_generation_request_20260801.json"
+)
 
 _FALSE_PERMISSIONS = {
     "generation": False,
@@ -339,7 +354,12 @@ def render_learning_source_preflight_markdown(
             "",
             "- D3、D4、D5 的种子集合保持互斥，并继续受全局登记表约束。",
             "- 三个 adapter 已通过冻结日程映射和受控内存 probe；probe 不等同于正式来源清单。",
-            "- 三个生成请求仍为 false，因此不会形成生成命令或写入来源 payload。",
+            (
+                "- 三个模块生成请求已通过独立路径和 SHA-256 核对；"
+                "请求就绪不等同于 main 执行授权。"
+                if report["all_generation_requests_ready"]
+                else "- 至少一个模块生成请求尚未就绪，因此不能进入 main 执行授权。"
+            ),
             "- 即使后续请求获批，存在未提交改动时仍不得形成可执行生成计划。",
             "- 本阶段没有生成 300/324/104 episode 清单、样本、模型或正式评价结果。",
         ]
@@ -450,10 +470,19 @@ def _assess_d3_producer(
     self_check, blockers = _run_adapter_self_check(
         "D3", lambda: self_check_d3_a1_adapter(root)
     )
+    request = _validated_module_generation_request(
+        root,
+        "D3",
+        report,
+        D3_SOURCE_GENERATION_REQUEST_PATH.relative_to(REPOSITORY_ROOT),
+    )
+    blockers.extend(item for item in request["blockers"] if item not in blockers)
     adapter_complete = self_check is not None
     return {
         "producer_adapter_complete": adapter_complete,
-        "source_generation_request_ready": False,
+        "source_generation_request_ready": request["ready"],
+        "source_generation_request_path": request["path"],
+        "source_generation_request_sha256": request["sha256"],
         "module_plan_ready": bool(report.get("ready")),
         "planned_episode_count": len(episodes),
         "schedule_schema_version": payload.get("schema_version"),
@@ -475,9 +504,18 @@ def _assess_d4_producer(
     self_check, blockers = _run_adapter_self_check(
         "D4", lambda: self_check_d4_v8_adapter(root)
     )
+    request = _validated_module_generation_request(
+        root,
+        "D4",
+        report,
+        D4_SOURCE_GENERATION_REQUEST_PATH.relative_to(REPOSITORY_ROOT),
+    )
+    blockers.extend(item for item in request["blockers"] if item not in blockers)
     return {
         "producer_adapter_complete": self_check is not None,
-        "source_generation_request_ready": False,
+        "source_generation_request_ready": request["ready"],
+        "source_generation_request_path": request["path"],
+        "source_generation_request_sha256": request["sha256"],
         "module_plan_ready": bool(report.get("generation_prerequisites_ready")),
         "planned_episode_count": len(schedule),
         "schedule_schema_version": payload.get("schema"),
@@ -504,11 +542,20 @@ def _assess_d5_producer(
     blockers.extend(
         item for item in self_check_blockers if item not in blockers
     )
+    request = _validated_module_generation_request(
+        root,
+        "D5",
+        report,
+        D5_SOURCE_GENERATION_REQUEST_PATH.relative_to(REPOSITORY_ROOT),
+    )
+    blockers.extend(item for item in request["blockers"] if item not in blockers)
     return {
         "producer_adapter_complete": bool(
             declared_complete and self_check is not None
         ),
-        "source_generation_request_ready": False,
+        "source_generation_request_ready": request["ready"],
+        "source_generation_request_path": request["path"],
+        "source_generation_request_sha256": request["sha256"],
         "module_plan_ready": bool(report.get("plan_ready")),
         "planned_episode_count": int(
             report.get("source_schedule", {}).get("planned_episode_count", 0)
@@ -516,10 +563,67 @@ def _assess_d5_producer(
         "entry_field_support": dict(capability.get("entry_field_support", {})),
         "recipe_support": dict(capability.get("recipe_support", {})),
         "module_declared_source_generation_request_ready": bool(
-            capability.get("source_generation_request_ready")
+            report.get("source_generation_request_ready")
         ),
         "adapter_self_check": self_check,
         "blockers": blockers,
+    }
+
+
+def _validated_module_generation_request(
+    root: Path,
+    module: str,
+    report: Mapping[str, Any],
+    expected_relative_path: Path,
+) -> dict[str, Any]:
+    """Independently bind one module-ready request to exact repository bytes."""
+
+    declared_ready = _required_bool(
+        report, "source_generation_request_ready", module
+    )
+    declared_path = report.get("source_generation_request_path")
+    declared_sha = report.get("source_generation_request_sha256")
+    logical_path = expected_relative_path.as_posix()
+    if not declared_ready:
+        return {
+            "ready": False,
+            "path": None if declared_path is None else str(declared_path),
+            "sha256": None if declared_sha is None else str(declared_sha),
+            "blockers": [f"{module.lower()}_source_generation_request_not_ready"],
+        }
+    if str(declared_path) != logical_path:
+        raise LearningSourcePreflightError(
+            "source_generation_request_path_mismatch", module
+        )
+    if (
+        not isinstance(declared_sha, str)
+        or len(declared_sha) != 64
+        or any(character not in "0123456789abcdef" for character in declared_sha)
+    ):
+        raise LearningSourcePreflightError(
+            "source_generation_request_sha256_invalid", module
+        )
+    candidate = root / expected_relative_path
+    if candidate.is_symlink():
+        raise LearningSourcePreflightError(
+            "source_generation_request_symlink_forbidden", module
+        )
+    try:
+        source = candidate.resolve(strict=True)
+        source.relative_to(root)
+    except (OSError, ValueError) as exc:
+        raise LearningSourcePreflightError(
+            "source_generation_request_file_unavailable", module
+        ) from exc
+    if not source.is_file() or _file_sha256(source) != declared_sha:
+        raise LearningSourcePreflightError(
+            "source_generation_request_sha256_mismatch", module
+        )
+    return {
+        "ready": True,
+        "path": logical_path,
+        "sha256": declared_sha,
+        "blockers": [],
     }
 
 

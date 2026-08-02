@@ -79,19 +79,82 @@ def test_d3_dynamic_and_near_tie_treatments_are_explicit() -> None:
     )
 
     assert dynamic.runtime_scenario == "nominal"
-    assert dynamic.treatment_id == "roster_event_schedule_v1"
+    assert dynamic.treatment_id == "anonymous_external_event_schedule_v1"
     assert [
-        (item.fraction_of_duration, item.entity_kind, item.action, item.ordinal_count)
+        (
+            item.fraction_of_duration,
+            item.entity_kind,
+            item.action,
+            item.ordinal_count,
+            item.selection_key,
+        )
         for item in dynamic.roster_events
     ] == [
-        (0.0, "intruder", "deactivate", 10),
-        (0.25, "intruder", "activate", 10),
-        (0.5, "intruder", "deactivate", 10),
-        (0.625, "interceptor", "deactivate", 8),
-        (0.75, "interceptor", "activate", 8),
+        (0.0, "intruder", "deactivate", 10, "dynamic-target-a"),
+        (0.25, "intruder", "activate", 10, "dynamic-target-a"),
+        (0.5, "intruder", "deactivate", 10, "dynamic-target-b"),
+        (0.625, "interceptor", "deactivate", 8, "dynamic-resource-a"),
+        (0.75, "interceptor", "activate", 8, "dynamic-resource-a"),
     ]
+    assert dynamic.stable_observation_windows == ()
     assert near_tie.runtime_scenario == "dense_crossing"
     assert near_tie.treatment_id == "near_tie_cost_boundary_v1"
+
+
+def test_d3_problem_cells_receive_preregistered_anonymous_events() -> None:
+    recipes = load_d3_a1_v3_episode_recipes(D3_SCHEDULE)
+    by_cell = {item.cell_id: item for item in recipes}
+
+    formation = by_cell["formation-split-50t50r"]
+    assert formation.treatment_id == "anonymous_external_event_schedule_v1"
+    assert [(item.entity_kind, item.action) for item in formation.roster_events] == [
+        ("intruder", "deactivate"),
+        ("intruder", "activate"),
+    ]
+    assert formation.roster_events[0].selection_key == (
+        formation.roster_events[1].selection_key
+    )
+
+    for cell_id in ("resource-surplus-20t30r", "resource-shortage-30t20r"):
+        recipe = by_cell[cell_id]
+        assert [(item.entity_kind, item.action) for item in recipe.roster_events] == [
+            ("interceptor", "deactivate"),
+            ("interceptor", "activate"),
+        ]
+        config = recipe.build_config(ScenarioConfig())
+        serialized = json.dumps(config.metadata["learning_source_recipe"])
+        assert "ordinal_start" not in serialized
+        assert '"global_track_id":' not in serialized
+        assert "truth_id" not in serialized
+
+
+def test_d3_unstable_cells_receive_noncopying_stable_windows() -> None:
+    recipes = load_d3_a1_v3_episode_recipes(D3_SCHEDULE)
+    by_cell = {item.cell_id: item for item in recipes}
+
+    for cell_id in (
+        "delayed-noisy-200t200r",
+        "communication-degraded-5t5r",
+        "high-threat-m-to-n-100t100r",
+        "high-threat-m-to-n-200t200r",
+    ):
+        recipe = by_cell[cell_id]
+        assert recipe.treatment_id == "anonymous_external_event_schedule_v1"
+        assert recipe.roster_events == ()
+        assert len(recipe.stable_observation_windows) == 1
+        window = recipe.stable_observation_windows[0]
+        assert window.minimum_assignment_ticks >= 3
+        config = recipe.build_config(ScenarioConfig())
+        raw = config.metadata["learning_source_recipe"][
+            "stable_observation_windows"
+        ][0]
+        assert raw["frame_copying_allowed"] is False
+        expected_mode = (
+            "radar_only_noiseless_regeneration_v1"
+            if cell_id == "delayed-noisy-200t200r"
+            else "noiseless_regeneration_v1"
+        )
+        assert raw["observation_mode"] == expected_mode
 
 
 def test_d3_recipe_builds_non_authoritative_runtime_config() -> None:
@@ -281,7 +344,7 @@ def test_d5_recipe_builds_exact_m_n_recon_and_window_metadata() -> None:
         recipe.resource_count,
         recipe.recon_count,
     )
-    assert config.duration_s == 6.0
+    assert config.duration_s == 8.0
     metadata = config.metadata["learning_source_recipe"]
     assert metadata["episode_id"] == recipe.episode_id
     assert len(metadata["intent_windows"]) == 4
