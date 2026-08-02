@@ -1,5 +1,21 @@
 # D6 AirSim 离线集成计划
 
+## 2026-08-01 受控末端扰动接入结果
+
+main 已运行一次真实 AirSim SimpleFlight 专项。输入为 seed `1`、`ClockSpeed=0.2`、2 个资源、
+2 个 actor 目标和 AirSim detect，包含 `bbox_area_jump`、`bbox_clipping` 两个 case。D6 只读
+消费 main summary、两个 `d7-actual-execution-metrics-v2`、两层 stage timing 和物理结果，
+不连接 AirSim、不发送控制命令。
+
+两例受控扰动均通过专项合规门，实际执行证据为 `2/2 available`，在线 truth identity/state
+均为 0。case-aware timing 的双层 manifest 一致；control tick 共 49 条且全部超过 100 ms，
+main bus 只有 1/49 超预算。完整 suite 因未提供 dropout、长回放和其他 P1 输入仍为 false，
+不能把专项子集状态解释成完整验收失败或完整验收通过。
+
+下一轮 AirSim 接入需增加多资源共拦和同资源多相机观测。末端本地身份切换必须按资源/相机
+流评估，并与跨视角冲突指标分开。当前计数器只按全局航迹分组，真实多相机证据进入正式报告
+前必须完成该 P1 校准；本轮不改指标实现。
+
 ## 2026-07-25 在线发布证据子集快照评估边界
 
 本轮新增 evaluator 只读消费三维质点 episode，不修改 AirSim topic、相机、actor、reset、

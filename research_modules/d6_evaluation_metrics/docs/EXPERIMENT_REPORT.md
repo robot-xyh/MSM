@@ -1,5 +1,21 @@
 # D6 正式实验矩阵准入预检报告
 
+## 真实 AirSim 末端受控扰动（2026-08-01）
+
+本次只读评估覆盖 seed `1`、`ClockSpeed=0.2` 的两个真实 AirSim SimpleFlight 2 对 2 case。
+目标为 actor，检测为 AirSim detect。面积突跳和边框裁切各注入 1 次并各取得 1 条合规证据；
+有效视觉控制均被阻断，实际执行保持 `radar_pn`，预期和分配的全局航迹一致。每例资源对和
+目标物理结果均为 `2/2`，在线 truth identity/state 使用为 0。
+
+D6 actual-execution 输入可用性为 `2/2`。四类控制层样本分母合计 82，合同/控制/末端切换许可/
+模式切换计数为 `41/22/22/4`；物理正式计数为 4 且无统一控制样本分母。control tick 两例均值
+为 `1074.4/1044.4 ms`，49 条全部超 100 ms；main bus 均值为 `46.0/42.4 ms`，仅 1/49 超预算。
+本批未覆盖 dropout、多 seed 和完整输入矩阵，full-suite false 不代表两个受控 case 失败。
+
+main bus 诊断的 `terminal_id_switch_count=2` 在两例中均由两个独立资源/相机流各自的一次本地
+号变化形成，本批不存在跨流合法本地号误计。计数器只按全局航迹分组，对多资源共拦和多相机
+场景仍有 P1 语义风险。最终合并指标保持 unavailable，未将诊断值用于正式验收。
+
 ## D5 A3 v2 BC model 独立审计（2026-08-01）
 
 D6 对开发三维质点候选执行低层独立审计，没有调用 D5 evaluator、corpus gate、precheck 或

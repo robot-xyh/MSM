@@ -1,5 +1,29 @@
 # D6 系统级评估指标实验报告
 
+## 2.50 真实 AirSim 末端受控扰动专项
+
+2026-08-01 运行 seed `1`、`ClockSpeed=0.2` 的两个真实 AirSim SimpleFlight 2 对 2 case。
+入侵目标为 actor，在线识别使用 AirSim detect，未保存截图。`bbox_area_jump` 与
+`bbox_clipping` 均完成 1 次受控注入并各有 1 条合规证据。拒绝原因分别为
+`bbox_area_jump` 和 `bbox_right_clipped`；两例均阻断有效视觉控制，继续执行雷达比例导引，
+预期/分配全局航迹均为 `T002`，没有在线使用 truth identity/state。
+
+每个 case 的资源对物理成功为 `2/2`，目标成功为 `2/2`。D6 验证两个实际执行制品全部可用。
+合同、控制、末端切换许可和模式切换的正式执行计数分别合计 `41/22/22/4`，共同控制样本分母
+为 `82`。物理正式计数合计 `4`，其规范 envelope 没有控制样本分母；每例 `2/2` 分母保留在
+离线物理诊断层。专项未运行 dropout、长回放和多 seed，因此完整验收为 false，专项结论仍为
+两个受控 case 通过。
+
+control tick 两例分别有 24 和 25 条记录，平均 `1074.4 ms` 和 `1044.4 ms`，全部超过
+`100 ms`。main bus 平均 `46.0 ms` 和 `42.4 ms`，分别有 1 条和 0 条超预算。主耗时位于
+`guidance_and_control_rpc`；main bus 主耗时位于 D1 融合。两个层级不能相加。
+
+main bus 回放指标在两例中均给出 `terminal_id_switch_count=2`。原始终端记录显示，T001 只由
+INT-01/Interceptor1:0 观察，T002 只由 INT-02/Interceptor2:0 观察；各流在 0.6 秒附近分别从
+初始本地号切换为 `det:0003`。当前值不是不同资源或相机合法本地号的混算。计数实现只按全局
+航迹分组，在多资源或多相机场景中存在语义风险，已登记 P1。最终 execution merge 将该指标
+保持 unavailable，本报告不将诊断值 2 作为正式执行性能结论。
+
 ## 2.49 高威胁 clean smoke 修复后复核
 
 2026-07-31，D6 只读复核 clean commit `b063535` 的 6 个高威胁 episode。5、100、

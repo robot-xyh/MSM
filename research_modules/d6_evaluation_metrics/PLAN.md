@@ -1,5 +1,33 @@
 # D6 Evaluation Metrics Plan
 
+## 2026-08-01 真实 AirSim 受控 TTC 专项复核
+
+### 已完成
+
+- [x] 只读复核 seed `1`、`ClockSpeed=0.2`、2 对 2 的
+  `bbox_area_jump` 和 `bbox_clipping` 两个真实 SimpleFlight case。
+- [x] 确认两类扰动应用/合规均为 `1/1`，回退保持 `radar_pn`，有效控制授权为 false，
+  预期/分配全局航迹一致，在线 truth identity/state 使用为 `0/0`。
+- [x] 确认每例资源对和目标物理结果均为 `2/2`；正式末端四类控制样本分母为
+  `40/42`，suite 合计 `82`，物理正式计数没有统一控制样本分母。
+- [x] 确认 stage timing 使用 `case_aware_suite`，两层 manifest 一致且不跨 case、跨层求和。
+  control tick 两例均值为 `1074.4/1044.4 ms`，`49/49` 超过 100 ms；main bus 均值为
+  `46.0/42.4 ms`，`1/49` 超预算。
+- [x] 审计 main bus 的 `terminal_id_switch_count=2`。本批每个全局航迹只对应一个资源/相机
+  流，两次计数均为各自流内一次本地航迹号变化，不是跨资源混算。
+
+### P1 待完成
+
+- [ ] 将末端本地身份连续性按 `(global_track_id, resource_id, camera_id/stream_id)` 分流定义并
+  校准；同一全局航迹在不同资源或相机中的合法不同 `local_track_id` 不应形成切换。
+- [ ] 增加多资源共拦、多相机同看、输入记录重排和单流真实切换用例，分别验证跨流计数为 0、
+  流内切换计数正确、结果与记录顺序无关。相机/流身份缺失时应明确 unavailable 或采用冻结的
+  兼容规则，不得按全局航迹静默混流。
+- [ ] 对齐 main bus 诊断值、integrated replay 回放值和 post-control execution availability。
+  在口径闭合前，`terminal_id_switch_count` 不进入正式 actual-execution 验收。
+- [ ] 扩展到完整多 seed、dropout 和 full-suite；本次 1 seed/2 case 专项通过不能外推为完整
+  P1 通过。
+
 ## 2026-08-01 D5 A3 v2 BC model 独立审计
 
 ### 已完成

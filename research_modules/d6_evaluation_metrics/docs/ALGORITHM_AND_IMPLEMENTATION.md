@@ -1,5 +1,23 @@
 # D6 系统级离线评估：算法原理与实施说明
 
+## 末端 ID Switch 分组审计
+
+当前 `_count_terminal_id_switches()` 过滤缺少全局航迹或本地航迹号的记录，并忽略
+`fov_entry` 类状态；随后按 `assigned_global_track_id` 收集时间到本地航迹号的映射，按时间比较
+相邻本地号。该实现能计算单一观测流内的本地号变化，但分组键没有 `resource_id`，
+`TerminalRecord` 也没有独立 `camera_id/stream_id` 字段。多个资源或相机同时观测同一全局航迹
+时，合法的不同本地号可能进入同一序列；同一时间的 `setdefault` 还会使选择依赖记录顺序。
+
+P1 修正应先冻结流身份合同，再将比较键定义为
+`(assigned_global_track_id, resource_id, camera_id_or_stream_id)`。验收至少覆盖四类样本：两个稳定
+相机流使用不同本地号时计数为 0；单流发生一次真实号变更时计数为 1；记录重排不改变结果；
+缺少相机/流身份时明确报告不可用或执行版本化兼容规则。跨相机注册错误继续由跨视角指标统计。
+本轮只完成语义审计和 P1 登记，没有修改指标代码。
+
+真实 AirSim seed `1` 的两个 2 对 2 case 中，T001 始终绑定 INT-01/Interceptor1:0，T002 始终
+绑定 INT-02/Interceptor2:0。两个诊断计数分别来自各流内部一次本地号变化，不是跨资源误计。
+最终 execution merge 因执行后来源未提供该指标而保持 unavailable。
+
 ## D5 A3 v2 BC model 独立前向与指标复算
 
 输入为冻结配置、候选公共 evidence、source generation plan/summary/registry、feature cache 和

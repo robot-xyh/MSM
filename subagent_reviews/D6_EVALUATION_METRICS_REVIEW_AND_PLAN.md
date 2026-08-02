@@ -1,5 +1,21 @@
 # D6 系统评估指标综述及子方案
 
+## 2026-08-01 真实 AirSim 受控末端专项评审
+
+评审接受两个受控 case 的专项结论。两类扰动应用/合规均为 `1/1`，回退为 `radar_pn`，
+有效控制授权为 false，预期/分配全局航迹一致；每例资源对和目标物理结果均为 `2/2`，在线
+truth identity/state 为 0。D6 actual-execution 制品为 `2/2 available`。专项只覆盖 1 seed
+和两个 case，不能替代完整多 seed、dropout 或 full-suite。
+
+stage timing 采用 case-aware suite，两层 manifest 一致。control tick 两例均值为
+`1074.4/1044.4 ms`，49 条全部超 100 ms；main bus 为 `46.0/42.4 ms`，1/49 超预算。
+两层不相加。
+
+对 `terminal_id_switch_count=2` 的记录审计表明，本批两个全局航迹各自只存在于一个
+资源/相机流，计数来自流内真实本地号变化，不是跨流误计。评审同时确认实现缺少资源/相机
+分组键，在多资源或多相机条件下存在语义风险。该项列为 P1，要求分流、顺序不变性和缺字段
+失败关闭验证；本轮不修改指标代码。最终 post-control 指标保持 unavailable 是正确的保守口径。
+
 ## 2026-08-01 D5 A3 v2 BC model 独立审计评审
 
 评审接受 D6 低层复算链。实现不导入 D5 运行代码，直接验证 frozen config、source generation

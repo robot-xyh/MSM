@@ -1,5 +1,31 @@
 # D6 Evaluation Metrics
 
+## 2026-08-01 真实 AirSim 末端受控扰动复核
+
+D6 只读复核了 seed `1`、`ClockSpeed=0.2` 的两个真实 AirSim SimpleFlight 2 对 2 case。
+目标由 actor 驱动，在线检测使用 AirSim detect，未保存截图。`bbox_area_jump` 与
+`bbox_clipping` 的扰动应用/合规均为 `1/1`；拒绝原因分别包含 `bbox_area_jump` 和
+`bbox_right_clipped`。两例均保持 `effective_control_authorized=false`、执行
+`radar_pn`，且预期与分配的全局航迹均为 `T002`。每例资源对和目标物理结果均为 `2/2`，
+在线 truth identity/state 使用计数均为 `0/0`。
+
+`d6_acceptance_suite` 对两个实际执行制品均验证可用。末端正式执行层的合同、控制、切换许可
+和模式切换总分母为 `40+42=82`；对应计数为 `41/22/22/4`。物理拦截正式计数为 `4`，该层
+没有统一样本分母；main 诊断层另保留每例 `2/2` 的资源对分母。专项只覆盖两种受控扰动，
+因此完整验收仍为 false；这不表示两个受控 case 失败，也不替代 dropout、多 seed 或完整
+P1 suite。
+
+分阶段延迟按 case-aware manifest 消费，两层 case 顺序一致。两个 case 的 control tick
+均值为 `1074.4/1044.4 ms`，共 `49/49` 超过 `100 ms` 预算；main bus 均值为
+`46.0/42.4 ms`，共 `1/49` 超预算。两层存在包含关系，不相加。
+
+main bus 诊断中两个 case 的 `terminal_id_switch_count` 均为 `2`。逐记录审计表明，当前
+两次计数分别来自 `INT-01/T001` 与 `INT-02/T002` 自身流内本地航迹号由初始号切换到
+`det:0003`，本批没有把不同资源或相机的合法本地号相互比较。现有计数器只按
+`assigned_global_track_id` 分组，尚未纳入资源和相机流键；多资源共拦或多相机输入下存在
+混流误计风险，作为 P1 保留。最终 execution merge 因执行后来源未提供该指标，将其标为
+unavailable；D6 不把 main bus 的诊断值写成正式验收值。
+
 ## 2026-08-01 D5 A3 v2 BC model 低层独立审计
 
 D6 新增 `d5_a3_v2_bc_model_audit.py`，不导入或调用 D5 evaluator、corpus gate、precheck

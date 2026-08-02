@@ -1,5 +1,23 @@
 # D6 实现差距审计
 
+## 2026-08-01 末端本地 ID Switch 流分组 P1
+
+真实 AirSim seed `1` 的 `bbox_area_jump` 与 `bbox_clipping` 两个 2 对 2 case 均完成专项合规
+验证。实际执行证据 `2/2 available`，每例资源对/目标物理结果 `2/2`，在线 truth
+identity/state 为 0。control tick `49/49` 超 100 ms，main bus `1/49` 超预算。该批只有
+1 seed、2 个受控 case；完整多 seed、dropout 和 full-suite 仍未完成，没有新增 P0。
+
+main bus 在两例均记录 `terminal_id_switch_count=2`。逐条终端记录确认，每个全局航迹在本批只
+对应一个资源/相机流；两个计数来自 INT-01/T001 和 INT-02/T002 各自流内一次本地号变化，
+不是不同资源/相机合法本地号之间的误计。最终 execution merge 将该指标标为 unavailable，
+D6 acceptance 未把诊断值作为正式指标。
+
+剩余 P1 是计数器的通用分组语义。当前 `_count_terminal_id_switches()` 只按
+`assigned_global_track_id` 分组，没有使用 `resource_id` 或相机/流身份。多资源共拦、多相机
+同看、同时间记录顺序变化时可能产生假切换或漏切换。关闭条件为：冻结资源/相机流键；增加
+跨流稳定、单流切换、记录重排和缺流身份测试；对齐 main bus、replay 与 post-control 的
+availability。在关闭前不得把该指标用于正式多相机 actual-execution 验收。本轮按要求不改代码。
+
 ## 2026-08-01 D5 A3 v2 BC model 独立审计 P1 部分关闭
 
 ### 已关闭范围
