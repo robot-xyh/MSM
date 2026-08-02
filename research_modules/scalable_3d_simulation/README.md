@@ -2673,9 +2673,14 @@ D3 已冻结 15-cell/300-episode 日程，D4 已把 108-cell、3 replicate 的 3
 采集配方。三模块计划级 readiness 均通过。
 
 main 新增 `run_learning_source_preflight.py`，统一调用三个模块的只读校验器，并把模块计划
-完整性与生产器执行能力分开。2026-08-01 预检结果为：模块计划 `3/3` 完整，生产器适配
-`0/3` 完整，执行计划和生成授权均为 false。D3 仍缺逐 episode 场景及非等量目标/资源映射和
-A1 v3 writer；D4 仍缺区域拓扑、通信条件、转移正负样本和 v8 writer；D5 仍缺意图窗口、
-困难混淆 treatment 及生成时配额控制。因此当前不启动数据生成，也不开放 shadow、assist、
-运行或控制权限。完整状态见
+完整性与生产器执行能力分开。2026-08-01 更新后的预检结果为：模块计划 `3/3` 完整，
+生产器适配 `3/3` 完整，D3、D4、D5 的受控内存 probe 分别覆盖 `1/1`、`3/9` 和
+`5/493` 个 episode/帧。D3 已映射逐 episode 非等量规模和 13 个场景族；D4 已映射区域
+拓扑、通信条件、正反转移及困难无转移负样本；D5 已执行四段意图窗口、相机角色、五类困难
+混淆和窗口配额检查。三个严格 writer 均有单 episode staging smoke。
+
+当前三个来源生成请求仍为 false，工作树也不干净，所以
+`execution_plan_ready=false`、`execution_authorized=false`，执行命令保持为空。本轮没有形成
+300/324/104 episode 来源清单，没有训练，也不开放 shadow、assist、运行或控制权限。完整
+状态见
 [学习来源预生成检查](docs/SCALABLE_3D_LEARNING_SOURCE_PREFLIGHT_20260801_CN.md)。

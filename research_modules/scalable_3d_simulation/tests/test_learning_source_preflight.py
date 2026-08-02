@@ -17,15 +17,17 @@ from research_modules.scalable_3d_simulation.learning_source_preflight import (
 ROOT = Path(__file__).resolve().parents[3]
 
 
-def test_repository_preflight_fails_closed_on_missing_producer_adapters() -> None:
+def test_repository_preflight_passes_adapters_but_fails_closed_on_requests() -> None:
     report = evaluate_learning_source_preflight(repository_root=ROOT)
 
     assert report["schema_version"] == LEARNING_SOURCE_PREFLIGHT_SCHEMA_VERSION
     assert report["status"] == (
-        "blocked_by_producer_adapter_or_module_readiness"
+        "blocked_by_source_generation_request"
+        if report["source_worktree_clean"]
+        else "blocked_by_source_generation_request_and_dirty_worktree"
     )
     assert report["all_module_plans_ready"] is True
-    assert report["all_producer_adapters_complete"] is False
+    assert report["all_producer_adapters_complete"] is True
     assert report["all_generation_requests_ready"] is False
     assert type(report["source_worktree_clean"]) is bool
     assert report["execution_plan_ready"] is False
@@ -39,6 +41,15 @@ def test_repository_preflight_fails_closed_on_missing_producer_adapters() -> Non
     assert report["modules"]["D3"]["producer"]["planned_episode_count"] == 300
     assert report["modules"]["D4"]["producer"]["planned_episode_count"] == 324
     assert report["modules"]["D5"]["producer"]["planned_episode_count"] == 104
+    for module in ("D3", "D4", "D5"):
+        producer = report["modules"][module]["producer"]
+        assert producer["producer_adapter_complete"] is True
+        assert producer["source_generation_request_ready"] is False
+        assert producer["adapter_self_check"]["status"] == (
+            "pass_authority_free_in_memory_smoke"
+        )
+        assert producer["adapter_self_check"]["online_truth_use_count"] == 0
+        assert producer["adapter_self_check"]["formal_inventory_generated"] is False
     assert all(value is False for value in report["permissions"].values())
 
 

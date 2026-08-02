@@ -3378,18 +3378,28 @@ D6 独立只读审计确认 644 个当前多成员联盟目标闭合，100/100 �
 4. 登记表可由生成器逐字节复现，专项测试 `6 passed`。本轮没有生成数据、训练模型、读取
    正式 payload 或更改 D1-D7 运行权限。
 
+### 本轮关闭
+
+1. D3 producer 已映射 300 条逐 episode 配方、非等量目标/资源规模、13 个场景族、双时间戳、
+   匿名需求槽和计划边。A1 v3 严格 writer 已通过单 episode staging smoke。
+2. D4 producer 已映射 324 条 TRAIN 配方、8/9/12/16 区域拓扑、三类通信条件、正反转移和
+   困难无转移负样本。v8 严格 writer 已通过单 episode staging/abort smoke。
+3. D5 producer 已映射 104 条三 split 配方、四段意图窗口、两类相机角色、五类困难混淆和
+   最低唯一样本配额。在线/离线 episode DTO 与 staging smoke 已通过。
+4. main 的实际运行自检分别覆盖 D3 `1 episode/1 帧`、D4 `3 episode/9 帧`、D5
+   `5 episode/493 帧`。在线真值使用、学习路径创建或改写 `global_track_id` 的计数均为 0。
+5. D3、D4、D5 owner 已同步模块 readiness、README、PLAN、GAP/review 和受影响算法文档。
+
 ### 仍开放 P1
 
-1. D3 的 15-cell/300-episode registry 与 schedule 已完成，readiness 为 `ready(plan_only)`；
-   当前 P1 转为 main producer 缺逐 episode 目标/资源数量、五类场景映射及 A1 v3 writer。
-2. D4 的 allocation/hash 与 TRAIN-only readiness 已完成；main producer 仍不能执行 8/16 区域
-   拓扑、通信条件、正向转移、困难负样本和 v8 writer。validation/test 继续未分配。
-3. D5 的 104 条三 split 采集日程、配额重算和一次性 future-held-out 门已完成；main producer
-   仍不能执行意图窗口、相机角色和困难混淆 treatment，生成时配额控制尚不存在。
-4. main 跨模块预检已实现并实测：模块计划 `3/3` 完整，producer adapter `0/3` 完整，
-   `execution_plan_ready=false`、`execution_authorized=false`，执行命令为空。
-5. adapter 完成后必须由三个 module owner 分别复核，再由 main 重跑预检。R0 `450/900`、
-   shards 0-9 和禁止运行 shards 10-19 的边界保持不变。
+1. 三个来源生成请求仍为 false，main 尚未形成明确的全量执行授权。该门不能由 adapter
+   readiness 自动打开。
+2. 当前工作树包含未提交改动，不能作为正式来源生成基线。需要完成分批审查和提交后，从
+   干净提交重跑预检。
+3. 300/324/104 episode 的正式分区目录、manifest 和 D6 来源审计尚不存在。D5
+   future-held-out 仍保持一次性读取，D4 validation/test 仍未分配。
+4. R0 `450/900`、shards 0-9 和禁止运行 shards 10-19 的边界保持不变。本轮内存 probe
+   不构成模型训练、候选准入或运行权限证据。
 
 ## 2026-08-01 学习来源跨模块预生成门
 
@@ -3397,16 +3407,10 @@ main 新增只读聚合器，直接消费 D3 A1 v3、D4 A2 v8 和 D5 A3 v3 readi
 验证全局登记表的 658 个保护 seed、728 个新分配 seed、全部来源文件 SHA-256 和模块精确
 seed 集。它不读取 episode/sample payload，不生成数据，不训练，也不授予任何权限。
 
-当前结果为 `blocked_by_producer_adapter_or_module_readiness`。阻断来源已经从“模块没有计划”
-收敛为“main 生产器不能执行计划”：
+当前结果为 `blocked_by_source_generation_request_and_dirty_worktree`。模块计划和 producer
+adapter 均为 `3/3` 完整，但三个生成请求保持 false，工作树门也未通过。执行计划、生成授权、
+训练、影子、辅助、运行和控制权限全部为 false，执行命令为空。
 
-1. D3 生产器不识别 A1 v3 日程 schema，不能逐 episode 传入非等量目标/资源规模，且缺
-   `nominal_balanced`、`resource_shortage`、`resource_surplus`、`dynamic_add_drop` 和
-   `near_tie_hard_negative` 映射。
-2. D4 生产器不识别 v8 区域日程，不能按 8/16 区域拓扑、通信条件和正负转移 treatment
-   生成训练帧。
-3. D5 生产器只能按整次运行设置采集 profile，不能执行逐 episode 意图窗口、投影边界、
-   遮挡/陈旧投影、角色匹配和近似并列目标 treatment。
-
-当前没有新增运行级 P0。上述三项是来源生成前的 P1 阻断；在关闭前不得创建数据生成命令。
-producer 完成后还必须关闭干净工作树执行门，不能从含未提交改动的工作树启动生成。
+当前没有新增运行级 P0。剩余 P1 已从“生产器无法执行冻结计划”收敛为“正式生成治理尚未
+批准”：先完成干净提交，再由 main 审查三个 request；两道门均通过后仍需单独给出非空执行
+授权。本轮不得创建正式来源清单。

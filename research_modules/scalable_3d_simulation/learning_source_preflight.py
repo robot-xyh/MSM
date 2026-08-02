@@ -21,7 +21,12 @@ from .global_seed_registry import (
     load_global_seed_registry,
     validate_registry_source_contracts,
 )
-from .scenarios import AVAILABLE_SCENARIOS
+from .learning_source_adapters import (
+    LearningSourceAdapterError,
+    self_check_d3_a1_adapter,
+    self_check_d4_v8_adapter,
+    self_check_d5_a3_adapter,
+)
 
 
 LEARNING_SOURCE_PREFLIGHT_SCHEMA_VERSION = (
@@ -110,7 +115,7 @@ def evaluate_learning_source_preflight(
     producer = {
         "D3": _assess_d3_producer(root, d3_report),
         "D4": _assess_d4_producer(root, d4_report),
-        "D5": _assess_d5_producer(d5_report),
+        "D5": _assess_d5_producer(root, d5_report),
     }
     source_state = _source_state(root)
     return assemble_learning_source_preflight(
@@ -213,6 +218,12 @@ def assemble_learning_source_preflight(
         and all_generation_requests_ready
     ):
         status = "blocked_by_dirty_generation_worktree"
+    elif all_module_plans_ready and all_producer_adapters_complete:
+        status = (
+            "blocked_by_source_generation_request"
+            if source_worktree_clean
+            else "blocked_by_source_generation_request_and_dirty_worktree"
+        )
     else:
         status = "blocked_by_producer_adapter_or_module_readiness"
     return {
@@ -301,15 +312,18 @@ def render_learning_source_preflight_markdown(
         "",
         "## 模块状态",
         "",
-        "| 模块 | 计划 | 生产器适配 | 生成请求 |",
-        "| --- | :---: | :---: | :---: |",
+        "| 模块 | 冻结计划 | 生产器适配 | 内存 probe | 生成请求 |",
+        "| --- | :---: | :---: | ---: | :---: |",
     ]
     for module in ("D3", "D4", "D5"):
         item = report["modules"][module]
+        probe = item["producer"].get("adapter_self_check") or {}
         lines.append(
             "| "
             f"{module} | {_yes_no(item['module_plan_ready'])} | "
             f"{_yes_no(item['producer_adapter_complete'])} | "
+            f"{int(probe.get('runtime_probe_episode_count', 0))} episode / "
+            f"{int(probe.get('runtime_probe_frame_count', 0))} 帧 | "
             f"{_yes_no(item['source_generation_request_ready'])} |"
         )
     lines.extend(["", "## 阻断项", ""])
@@ -324,10 +338,10 @@ def render_learning_source_preflight_markdown(
             "## 执行边界",
             "",
             "- D3、D4、D5 的种子集合保持互斥，并继续受全局登记表约束。",
-            "- 模块计划通过只表示元数据完整，不表示 producer 已能形成所需样本。",
-            "- 即使全部 adapter 就绪，存在未提交改动时仍不得形成可执行生成计划。",
-            "- 生产器适配完成后须由模块 owner 复核 readiness，再由 main 重新生成本报告。",
-            "- 本阶段没有生成 episode、样本、模型或正式评价结果。",
+            "- 三个 adapter 已通过冻结日程映射和受控内存 probe；probe 不等同于正式来源清单。",
+            "- 三个生成请求仍为 false，因此不会形成生成命令或写入来源 payload。",
+            "- 即使后续请求获批，存在未提交改动时仍不得形成可执行生成计划。",
+            "- 本阶段没有生成 300/324/104 episode 清单、样本、模型或正式评价结果。",
         ]
     )
     return "\n".join(lines) + "\n"
@@ -428,29 +442,26 @@ def _assess_d3_producer(
     scenario_families = sorted(
         {str(item["scenario_family"]) for item in episodes}
     )
-    unsupported = sorted(set(scenario_families) - set(AVAILABLE_SCENARIOS))
     unequal_count = sum(
         int(item["configured_target_count"])
         != int(item["configured_resource_count"])
         for item in episodes
     )
-    blockers = [
-        "d3_schedule_schema_not_supported_by_run_learning_dataset",
-        "d3_per_episode_target_resource_counts_not_mapped",
-        "d3_a1_v3_online_offline_writer_not_bound",
-    ]
-    if unsupported:
-        blockers.append("d3_scenario_family_mapping_incomplete")
+    self_check, blockers = _run_adapter_self_check(
+        "D3", lambda: self_check_d3_a1_adapter(root)
+    )
+    adapter_complete = self_check is not None
     return {
-        "producer_adapter_complete": False,
+        "producer_adapter_complete": adapter_complete,
         "source_generation_request_ready": False,
         "module_plan_ready": bool(report.get("ready")),
         "planned_episode_count": len(episodes),
         "schedule_schema_version": payload.get("schema_version"),
         "schedule_file_sha256": _file_sha256(schedule_path),
         "scenario_families": scenario_families,
-        "unsupported_scenario_families": unsupported,
+        "unsupported_scenario_families": [],
         "unequal_target_resource_episode_count": unequal_count,
+        "adapter_self_check": self_check,
         "blockers": blockers,
     }
 
@@ -461,8 +472,11 @@ def _assess_d4_producer(
     schedule_path = root / D4_SEED_REGISTRY_PATH.relative_to(REPOSITORY_ROOT)
     payload = json.loads(schedule_path.read_text(encoding="utf-8"))
     schedule = payload.get("schedule", ())
+    self_check, blockers = _run_adapter_self_check(
+        "D4", lambda: self_check_d4_v8_adapter(root)
+    )
     return {
-        "producer_adapter_complete": False,
+        "producer_adapter_complete": self_check is not None,
         "source_generation_request_ready": False,
         "module_plan_ready": bool(report.get("generation_prerequisites_ready")),
         "planned_episode_count": len(schedule),
@@ -470,34 +484,70 @@ def _assess_d4_producer(
         "schedule_file_sha256": _file_sha256(schedule_path),
         "region_counts": sorted({int(item["region_count"]) for item in schedule}),
         "topology_ids": sorted({str(item["topology_id"]) for item in schedule}),
-        "blockers": [
-            "d4_v8_schedule_schema_not_supported_by_run_learning_dataset",
-            "d4_region_topology_and_communication_treatment_not_mapped",
-            "d4_transfer_class_and_hard_negative_treatment_not_mapped",
-            "d4_v8_online_offline_writer_not_bound",
-        ],
+        "adapter_self_check": self_check,
+        "blockers": blockers,
     }
 
 
-def _assess_d5_producer(report: Mapping[str, Any]) -> dict[str, Any]:
+def _assess_d5_producer(
+    root: Path,
+    report: Mapping[str, Any],
+) -> dict[str, Any]:
     capability = report.get("producer_capability")
     if not isinstance(capability, Mapping):
         raise LearningSourcePreflightError("d5_producer_capability_missing")
+    self_check, self_check_blockers = _run_adapter_self_check(
+        "D5", lambda: self_check_d5_a3_adapter(root)
+    )
+    declared_complete = bool(capability.get("producer_adapter_complete"))
+    blockers = list(capability.get("blockers", ()))
+    blockers.extend(
+        item for item in self_check_blockers if item not in blockers
+    )
     return {
         "producer_adapter_complete": bool(
-            capability.get("producer_adapter_complete")
+            declared_complete and self_check is not None
         ),
-        "source_generation_request_ready": bool(
-            capability.get("source_generation_request_ready")
-        ),
+        "source_generation_request_ready": False,
         "module_plan_ready": bool(report.get("plan_ready")),
         "planned_episode_count": int(
             report.get("source_schedule", {}).get("planned_episode_count", 0)
         ),
         "entry_field_support": dict(capability.get("entry_field_support", {})),
         "recipe_support": dict(capability.get("recipe_support", {})),
-        "blockers": list(capability.get("blockers", ())),
+        "module_declared_source_generation_request_ready": bool(
+            capability.get("source_generation_request_ready")
+        ),
+        "adapter_self_check": self_check,
+        "blockers": blockers,
     }
+
+
+def _run_adapter_self_check(
+    module: str,
+    check: Any,
+) -> tuple[dict[str, Any] | None, list[str]]:
+    """Convert any adapter failure into one stable fail-closed blocker."""
+
+    try:
+        result = check()
+    except (LearningSourceAdapterError, OSError, TypeError, ValueError) as exc:
+        return None, [
+            f"{module.lower()}_producer_adapter_self_check_failed:"
+            f"{type(exc).__name__}:{exc}"
+        ]
+    if (
+        not isinstance(result, Mapping)
+        or result.get("status") != "pass_authority_free_in_memory_smoke"
+        or result.get("module") != module
+        or result.get("online_truth_use_count") != 0
+        or result.get("formal_inventory_generated") is not False
+        or result.get("source_payload_written") is not False
+        or result.get("training_started") is not False
+        or result.get("runtime_authority_granted") is not False
+    ):
+        return None, [f"{module.lower()}_producer_adapter_self_check_invalid"]
+    return dict(result), []
 
 
 def _source_state(root: Path) -> dict[str, Any]:

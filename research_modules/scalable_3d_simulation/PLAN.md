@@ -2043,12 +2043,14 @@ GAP、算法文档和系统总报告。
 3. [x] D5 已生成三个互斥 split 的 104 条逐 episode source schedule；future-held-out 继续
    一次性读取且不得用于训练、选模、校准或门限修改。
 4. [x] main 已实现 D3/D4/D5 跨模块预生成门控，独立核对全局登记、来源哈希、模块 readiness
-   和 producer 能力。当前模块计划 `3/3` 完整，producer adapter `0/3` 完整。
-5. [ ] main 实现 D3 producer adapter：逐 episode 映射目标/资源数量、补齐五类未支持场景，
-   写出 A1 v3 在线帧、离线标签和 manifest。
-6. [ ] main 实现 D4 producer adapter：执行 8/16 区域拓扑、通信条件、正向转移和困难负样本，
-   写出 v8 训练合同要求的匿名在线/离线记录。
-7. [ ] main 实现 D5 producer adapter：执行相机角色、四段意图窗口和困难混淆 treatment，并在
-   生成时检查最低唯一样本配额。
-8. [ ] adapter 完成后由 D3/D4/D5 owner 分别复核并更新 readiness。main 只有在新预检返回
-   `ready_for_explicit_main_execution_authorization` 后才能创建非空执行命令；当前不得生成。
+   和 producer 能力。当前模块计划与 producer adapter 均为 `3/3` 完整。
+5. [x] D3 producer adapter 已逐 episode 映射非等量目标/资源数量、13 个场景族、双时间戳、
+   需求槽和计划边；A1 v3 writer 已完成严格单 episode staging smoke。
+6. [x] D4 producer adapter 已映射 8/9/12/16 区域拓扑、三类通信条件、正反转移和困难无转移
+   负样本；v8 writer 已完成严格单 episode staging/abort smoke。
+7. [x] D5 producer adapter 已执行相机角色、四段意图窗口、五类困难混淆和最低唯一样本配额；
+   在线/离线 episode DTO 与 staging smoke 已通过。
+8. [x] D3/D4/D5 owner 已更新本模块 writer、readiness、README、PLAN、GAP 和算法文档；main
+   自检分别覆盖 `1/1`、`3/9` 和 `5/493` 个 episode/帧，在线真值使用为 0。
+9. [ ] 由 main 单独审查来源生成请求，并从干净提交重跑预检。只有三个 request 与工作树门
+   同时通过后才能形成非空执行命令；当前不得生成 300/324/104 episode 清单或训练模型。
