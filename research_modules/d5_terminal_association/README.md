@@ -2,6 +2,33 @@
 
 科研模块，用于把末端相机视场中的本地视觉轨迹保守关联到中心分配的 `global_track_id`。模块可在统一三维 episode 中在线运行；训练标签和真值评分仍保持离线。D5 只输出视觉关联与相机观察意图，不修改、重写或重新分配任何全局轨迹 ID。
 
+## 2026-08-01 A3 v3 episode 证据与冻结写出接口
+
+D5 已实现供 main 三维 producer 调用的 A3 v3 episode 配方、证据校验、分区 staging、分区
+finalize 和来源 manifest 装配接口。读取入口仍绑定 104 条冻结 schedule、全局 allocation、协议
+和内容哈希。main 的逐 episode 配方转换、意图窗口 treatment、五类困难混淆运行时证据适配
+以及 D5 writer 单 episode 写出已通过 smoke 验证。readiness 当前为
+`producer_adapter_complete=true`，但 `source_generation_request_ready=false`。
+
+每个 episode 固定四个连续的 1.5 秒意图窗口。校验器在每个窗口内按 sample fingerprint 独立
+去重并要求至少 24 个有效样本，episode 总数至少 96。样本不能复制、过采样或从其他 episode
+转移配额。困难混淆不再由 treatment 名直接判定。离线 boundary state 分别保存分配引用、几何
+族、通信状态、投影内外与新鲜度、侦察线索、云台忙闲、目标证据保持、合法目标数和投影质量差；
+五类标签由这些状态的边界关系推导，调用方给出的 `achieved` 与推导结果不一致时失败关闭。
+
+在线文件只保存冻结配方、双时间戳、匿名候选指纹、相机/资源角色、控制状态和中心只读
+`global_track_id`。truth、actor 和 object 身份只允许进入物理隔离的离线审计文件。development
+与 future-held-out 使用独立根目录；分区 manifest 保留原始 48/24/32 split，不随机重分，不跨
+episode 补配额。future-held-out 的用途合同明确禁止训练、拟合、选模、校准和阈值选择，只允许
+模型冻结且 validation 通过后的一次评估。development loader 遇到 future 分区直接拒绝。
+
+本轮未生成 104 个正式 episode。2026-08-01 的 main smoke 使用非正式 seed
+`31100-31104`，配置为 5 个目标、5 个资源、2 个侦察相机和 0.05 秒视觉周期；五类困难混淆均
+形成，所有意图窗口均达到至少 24 个唯一样本，在线 truth 使用计数为 0。main adapter 专项为
+`4 passed in 17.65s`，D5 evidence/readiness 专项为 `35 passed in 1.16s`，D5 全量为
+`846 passed, 2 warnings in 103.23s`。这些结果只关闭 adapter/writer 技术接线，不构成正式
+来源生成、模型训练或运行准入。
+
 ## 2026-08-01 A3 v3 全局 seed 分配与来源计划
 
 D5 已把 main 的全局 seed 登记表接入冻结的 A3 v3 少数意图协议。新增版本化 allocation
@@ -21,12 +48,12 @@ episode，禁止跨 split 复用、复制样本、过采样、合成 fixture 和
 SHA-256，检查 D5 allocation 的 owner/version/lifecycle/usage/operations、精确 seed 集、来源
 绑定、逐 episode 配额重算、正式/v2 禁止范围和全 false authority。它还固定核对 main producer
 入口、采集 treatment 和 v2 参考 schedule 的文件哈希。当前输出为
-`plan_ready_but_producer_adapter_missing`：计划已冻结，`pre_generation_ready=false`，生成请求和
-训练均未就绪。现有 producer 只支持场景、规模、seed、时长及整次运行的 collection profile，
-尚不能执行逐 episode split/ID/节点数量、意图窗口、困难混淆 treatment 或生成时配额约束。
+`plan_and_producer_adapter_ready_generation_not_authorized`：`plan_ready=true`、
+`pre_generation_ready=true`、`producer_adapter_complete=true`，生成请求和训练仍为 false。
+正式 104 episode 的执行授权、分区 finalize、source manifest 和后续训练均未开始。
 
-专项协议与 readiness 回归为 `58 passed in 1.29s`，D5 全量为
-`837 passed, 2 warnings in 103.78s`。两条 warning 是既有 Matplotlib Axes3D 与 NVML 环境告警。
+最新 evidence/readiness 专项为 `35 passed in 1.16s`，D5 全量为
+`846 passed, 2 warnings in 103.23s`。两条 warning 是既有 Matplotlib Axes3D 与 NVML 环境告警。
 本轮没有生成 episode、sample、source manifest、cache 或权重，没有训练，也没有授予 shadow、
 assist、runtime、camera command、control 或 `global_track_id` 写权限。
 

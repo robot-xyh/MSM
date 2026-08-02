@@ -1,5 +1,30 @@
 # D5 末端视觉配准与协同身份认证综述及子方案
 
+## 2026-08-01 A3 v3 episode evidence/writer 复核
+
+D5 已把冻结 schedule 转换为 main 可调用的逐 episode recipe。每条 recipe 保留 schedule
+lineage、entry、split、allocation、seed、episode ID、规模、目标/资源/侦察节点数量、相机角色、
+四段意图窗口、两类困难混淆任务和控制项。四段窗口均为 1.5 秒，每段独立要求至少 24 个唯一
+sample fingerprint，episode 总下限为 96。配额不能跨窗口或跨 episode 转移。
+
+困难混淆证据采用状态推导。投影边界要求同一分配与几何族下出现稳定内投影和边界外/退化
+投影；线索丢失要求同一分配与几何族下侦察线索可用性翻转；云台边界要求目标证据保持且忙碌/
+可转动状态翻转；角色匹配要求 interceptor 与 recon 具有相同几何及通信签名；近似并列要求
+两侧均有至少两个合法目标且质量差不超过同一冻结上限。treatment 名只用于核对 recipe，不再
+决定 `achieved`。状态不满足谓词却声明达成时，episode 拒绝写出。
+
+在线 evidence 与离线 audit 分开保存。在线侧只包含双时间戳、匿名候选指纹、相机/资源角色、
+控制状态和中心只读 `global_track_id`；离线 sidecar 才能保存 truth/actor 评价。分区 finalizer
+保持 train/validation/future-held-out 的 48/24/32 原始 split，禁止随机重分、复制、过采样和跨
+episode 补配额。future-held-out 的 manifest 明确禁止训练、拟合、选模、校准和阈值选择；
+development loader 无法读取该分区。
+
+专项 evidence 回归为 `9 passed`，与来源 readiness 合并为 `35 passed`；D5 全量回归为
+`846 passed, 2 warnings in 103.23s`。main 的非正式 smoke 使用 seed `31100-31104`、5 个目标、
+5 个资源和 2 个侦察相机，五类困难混淆均形成，每窗口至少 24 个唯一样本，在线 truth 使用为
+0；main adapter 专项为 `4 passed in 17.65s`。这些结果验证了 adapter/writer 技术接线和失败
+关闭条件。104 个正式 episode、source manifest、训练及运行准入均未执行。
+
 ## 2026-08-01 A3 v3 来源分配复核
 
 D5 已接受 main 登记的三组新 seed，但只以版本化 binding 和 schedule 保存分配事实。train
@@ -12,13 +37,14 @@ treatment 和最低样本配额；集合级重算证明 8 个意图-角色单元
 一个 episode 不再宣称覆盖全部 8 个组合或全部五类困难混淆。该计划仍不能证明 producer 已形成
 唯一有效样本。
 
-现有 producer 只能映射 scenario、scale、seed、duration 和整次运行的 collection profile。
-逐 episode split/ID/节点数、意图窗口以及投影边界、遮挡、角色匹配、近似并列目标 treatment
-尚不可执行。因此 readiness 为 `plan_ready_but_producer_adapter_missing`，生成请求保持关闭。
-main 补齐并验收 adapter 后，才能生成三 partition；其后再进行 manifest 验收、train/validation
-开发、模型冻结、future-held-out 一次性评估和 D6 独立审计。
+main 已完成逐 episode recipe、意图窗口 treatment、五类实际边界状态和 D5 writer 的 smoke
+接线。readiness 为 `plan_and_producer_adapter_ready_generation_not_authorized`，其中
+`producer_adapter_complete=true`，生成请求仍为 false。main 取得单独授权后才能生成三
+partition；其后再进行 manifest 验收、train/validation 开发、模型冻结、future-held-out 一次性
+评估和 D6 独立审计。
 
-专项回归为 `58 passed`，D5 全量为 `837 passed, 2 warnings`。本轮没有 AirSim 或实际语料结果，
+最新 evidence/readiness 专项为 `35 passed`，D5 全量为 `846 passed, 2 warnings`。本轮没有
+AirSim 或正式语料结果，
 因此不调整相机、检测、跨视角配准和运行准入口径。
 
 ## 2026-08-01 A3 v2 开发态行为克隆复核

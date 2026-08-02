@@ -1,5 +1,22 @@
 # D5 实现差距审计
 
+## 2026-08-01 A3 v3 episode evidence/writer GAP
+
+| 项目 | 当前状态 | 证据与剩余限制 |
+| --- | --- | --- |
+| 逐 episode recipe 与 lineage | **D5 合同缺口已关闭** | DTO 完整绑定冻结 schedule、entry、split、allocation、seed、episode ID、目标/资源/侦察数量、四段窗口、相机角色、treatment、控制项和内容哈希。main 适配器按该 recipe 构造运行配置，D5 writer 再核对同一 lineage。 |
+| 1.5 秒窗口唯一配额 | **D5 writer 缺口已关闭** | 四个窗口分别按 fingerprint 去重，每窗口至少 24，episode 总数至少 96。重复 fingerprint、角色/窗口错配、缺任一窗口或跨 episode 补配额均失败关闭。 |
+| 困难混淆标签真实性 | **D5 合同缺口已关闭，正式来源证据待生成** | 五类标签由分配引用、实际投影边界、线索状态、云台忙闲、角色与几何签名、合法目标数和质量差推导。非正式 smoke 已形成全部五类边界；正式 104 episode 尚未生成，不能把 smoke 计入训练覆盖。 |
+| 在线/离线身份边界 | **D5 合同缺口已关闭** | 在线 payload 无 truth/actor/object ID，只携带双时间戳、匿名特征指纹、计划元数据、控制状态和中心只读 `global_track_id`。创建、改写、在线 truth 使用计数固定为 0；评价字段独立写入 offline sidecar。 |
+| 冻结 split 与 future 隔离 | **D5 writer 缺口已关闭，揭盲执行 P1 开放** | development 与 future-held-out 物理分区；48/24/32 split 不重排。future 用途合同禁止训练、拟合、选模、校准和阈值选择，development loader 拒绝 future payload。模型冻结后的一次性评估执行和 ledger 消费仍属后续 P1。 |
+| main scalable_3d recipe 与 writer 适配 | **P1 技术接线已关闭** | 非正式 seed `31100-31104` 逐 episode 执行五类困难混淆；每窗口不少于 24 个唯一样本，在线 truth 使用为 0。单 episode staging 与严格 JSON 复载通过，未 finalize 正式 inventory。 |
+| 实际来源、训练与准入 | **P1 开放** | 尚未生成正式 104 episode、训练 cache、权重或模型。AirSim、真实相机、A3/R0 收益和任何运行权限均未变化；生成请求仍未授权。 |
+
+2026-08-01 验证结果：episode evidence 专项 `9 passed`，与 source readiness 合并为
+`35 passed in 1.16s`，main adapter 专项为 `4 passed in 17.65s`，D5 全量为
+`846 passed, 2 warnings in 103.23s`。本轮没有新增 P0。adapter/writer 技术接线已完成；正式
+来源生成、manifest、训练和运行准入仍未开始。
+
 ## 2026-08-01 A3 v3 全局 seed 接线 GAP
 
 | 项目 | 当前状态 | 证据与剩余限制 |
@@ -7,13 +24,13 @@
 | main 全局 seed allocation 绑定 | **合同缺口已关闭** | D5 绑定全局登记表 `scalable3d-learning-source-allocation-20260801-v1` 的内容哈希和文件哈希，并逐 split 固定 owner、candidate version、lifecycle、usage、operations、来源合同与精确 seed 集。任何登记表或来源文件漂移均失败关闭。 |
 | 三 split 原子性和互斥 | **计划缺口已关闭** | train/validation/future-held-out 为 48/24/32 个 whole-episode seed，交集为 0。`1000-1019` 和 `22100-22199` 禁止读取或复用。尚未生成 episode，不能把计划解释为数据证据。 |
 | 少数意图与困难混淆覆盖计划 | **计划合同已关闭，实际覆盖 P1 开放** | schedule 明列 104 条 episode。每条含四段意图窗口和两类困难混淆 treatment；8 个意图-角色单元按集合覆盖 24/12/16 个 episode，五类困难混淆均高于协议下限。计划最低样本量为 4608/2304/3072，实际覆盖仍需 source manifest 验收。 |
-| main producer adapter | **P1 阻断** | `run_learning_dataset.py` 只接收 scenario/scale/seeds/duration，collection profile 只能按整次运行设置。逐 episode split/ID/节点数、意图窗口、投影边界、遮挡/陈旧投影、角色匹配几何、近似并列目标及生成时配额约束均未映射。 |
+| main producer adapter | **P1 已关闭** | 逐 episode split/ID/节点数通过冻结 recipe 传入运行配置；四段意图窗口、五类实际边界状态、每窗口配额和单 episode writer 已通过非正式 smoke。该结论只覆盖 adapter，不包含正式来源生成。 |
 | future-held-out 治理 | **生成前权限合同已关闭** | metadata 可预先冻结；payload 在模型冻结和 validation gate 通过前不可读。后续最多一次评估，不能训练、选模、校准、调阈值、失败回训或二次读取。当前 payload read count 为 0。 |
-| 数据、训练和运行能力 | **P1 开放** | 当前 readiness 为 `plan_ready_but_producer_adapter_missing`，`plan_ready=true`、`pre_generation_ready=false`、`source_generation_request_ready=false`。source manifest、cache、权重和模型均不存在；全部运行和身份权限为 false。 |
+| 数据、训练和运行能力 | **P1 开放** | 当前 readiness 为 `plan_and_producer_adapter_ready_generation_not_authorized`，`plan_ready=true`、`pre_generation_ready=true`、`producer_adapter_complete=true`、`source_generation_request_ready=false`。source manifest、cache、权重和模型均不存在；全部运行和身份权限为 false。 |
 
-专项合同测试为 `58 passed in 1.29s`，D5 全量为
-`837 passed, 2 warnings in 103.78s`。本轮验证日期为 2026-08-01，验证对象为静态合同和失败关闭
-路径，没有 AirSim、真实相机或物理运行证据。
+最新 evidence/readiness 专项为 `35 passed in 1.16s`，D5 全量为
+`846 passed, 2 warnings in 103.23s`。本轮验证日期为 2026-08-01，验证对象为静态合同、失败
+关闭路径和非正式三维质点 smoke，没有 AirSim、真实相机或物理运行证据。
 
 ## 2026-08-01 A3 v3 少数意图协议冻结 GAP
 

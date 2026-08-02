@@ -258,20 +258,32 @@ _RECIPE_CATEGORY_TARGET = {
 }
 _RECIPE_PRODUCER_SUPPORT = {
     "observe_target_stable_projection_v1": (
-        "natural_outcome_not_window_controllable"
+        "supported_by_window_treatment_and_runtime_evidence"
     ),
     "search_sector_truth_free_cue_loss_or_no_projection_v1": (
-        "partial_periodic_recon_cue_loss_only"
+        "supported_by_window_treatment_and_runtime_evidence"
     ),
-    "hold_bounded_gimbal_busy_v1": "partial_command_induced_settle_only",
+    "hold_bounded_gimbal_busy_v1": (
+        "supported_by_window_treatment_and_runtime_evidence"
+    ),
     "reacquire_stale_or_occluded_projection_v1": (
-        "natural_outcome_not_window_controllable"
+        "supported_by_window_treatment_and_runtime_evidence"
     ),
-    "projection_boundary_sweep_v1": "unsupported",
-    "recon_cue_loss_boundary_v1": "partial_periodic_not_window_controllable",
-    "gimbal_busy_boundary_v1": "partial_command_induced_not_window_controllable",
-    "role_matched_geometry_v1": "unsupported",
-    "multiple_legal_targets_near_tie_v1": "unsupported",
+    "projection_boundary_sweep_v1": (
+        "supported_by_paired_runtime_boundary_evidence"
+    ),
+    "recon_cue_loss_boundary_v1": (
+        "supported_by_paired_runtime_boundary_evidence"
+    ),
+    "gimbal_busy_boundary_v1": (
+        "supported_by_paired_runtime_boundary_evidence"
+    ),
+    "role_matched_geometry_v1": (
+        "supported_by_role_matched_runtime_evidence"
+    ),
+    "multiple_legal_targets_near_tie_v1": (
+        "supported_by_multiple_legal_projection_runtime_evidence"
+    ),
 }
 
 _PRODUCER_SOURCE_BINDINGS = (
@@ -286,7 +298,7 @@ _PRODUCER_SOURCE_BINDINGS = (
         "role": "active_vision_collection_treatment",
         "path": "research_modules/scalable_3d_simulation/active_vision_collection.py",
         "sha256": (
-            "ea298c8d1c210adebe683d6050e54e3603fa1cd3ee6c6e47dbf3b836ab1067dc"
+            "5d1a0d25357cbaadfe40a69d2d39eb49f372e6d9dd3f9872c2bd3b399cb6f0e8"
         ),
     },
     {
@@ -301,35 +313,31 @@ _PRODUCER_SOURCE_BINDINGS = (
     },
 )
 _PRODUCER_ENTRY_FIELD_SUPPORT = {
-    "split": "unsupported_by_generation_schedule_schema",
-    "allocation_id": "cli_argument_not_per_episode",
-    "seed": "supported_as_cells_seeds",
-    "episode_id": "runtime_derived_not_schedule_controlled",
-    "scenario_family": "supported_as_cells_scenario",
-    "scale": "supported_as_cells_scale",
-    "target_count": "scenario_scale_derived_not_per_episode_mapped",
-    "resource_count": "scenario_scale_derived_not_per_episode_mapped",
-    "recon_count": "scenario_scale_derived_not_per_episode_mapped",
-    "duration_s": "supported_as_cells_duration_s",
-    "collection_profile": "supported_once_per_generation_run_only",
-    "camera_roles": "runtime_implicit_not_schedule_validated",
-    "intent_windows": "unsupported",
-    "hard_confusion_assignments": "unsupported",
-    "minimum_unique_sample_quota": "post_generation_audit_only",
+    "split": "supported_by_frozen_episode_recipe_and_writer",
+    "allocation_id": "supported_by_frozen_episode_recipe_and_writer",
+    "seed": "supported_by_frozen_episode_recipe_and_runtime_config",
+    "episode_id": "supported_by_frozen_episode_recipe_and_writer",
+    "scenario_family": "supported_by_frozen_episode_recipe_and_runtime_config",
+    "scale": "supported_by_frozen_episode_recipe_and_runtime_config",
+    "target_count": "supported_by_frozen_episode_recipe_and_runtime_config",
+    "resource_count": "supported_by_frozen_episode_recipe_and_runtime_config",
+    "recon_count": "supported_by_frozen_episode_recipe_and_runtime_config",
+    "duration_s": "supported_by_frozen_episode_recipe_and_runtime_config",
+    "collection_profile": "supported_by_recipe_bound_runtime_treatment",
+    "camera_roles": "supported_by_runtime_capture_and_evidence_adapter",
+    "intent_windows": "supported_by_recipe_bound_runtime_treatment",
+    "hard_confusion_assignments": "supported_by_runtime_boundary_evidence_adapter",
+    "minimum_unique_sample_quota": "enforced_by_d5_episode_writer",
 }
 _PRODUCER_BLOCKERS = (
-    "run_learning_dataset_schedule_schema_does_not_accept_d5_episode_entries",
-    "per_episode_split_episode_id_target_resource_recon_not_mapped",
-    "per_episode_intent_and_hard_confusion_windows_not_executable",
-    "projection_occlusion_role_geometry_near_tie_treatments_missing",
-    "planned_minimum_sample_quotas_are_post_generation_audit_only",
+    "d5_source_generation_request_not_authorized",
 )
 
 _PRODUCER_CAPABILITY_ASSESSMENT = {
-    "assessment_version": "d5-a3-v3-producer-capability-20260801-v1",
+    "assessment_version": "d5-a3-v3-producer-capability-20260801-v2",
     "assessed_on": "2026-08-01",
-    "adapter_status": "missing",
-    "producer_adapter_complete": False,
+    "adapter_status": "complete_smoke_verified",
+    "producer_adapter_complete": True,
     "source_generation_request_ready": False,
     "existing_schedule_cell_fields": ["scenario", "scale", "seeds", "duration_s"],
     "existing_run_level_fields": [
@@ -430,10 +438,10 @@ def validate_a3_v3_pre_generation_readiness(
 
     payload = {
         "schema_version": A3_V3_PRE_GENERATION_READINESS_SCHEMA_VERSION,
-        "status": "plan_ready_but_producer_adapter_missing",
+        "status": "plan_and_producer_adapter_ready_generation_not_authorized",
         "plan_ready": True,
-        "pre_generation_ready": False,
-        "producer_adapter_complete": False,
+        "pre_generation_ready": True,
+        "producer_adapter_complete": True,
         "source_generation_request_ready": False,
         "training_ready": False,
         "protocol": {
@@ -577,6 +585,7 @@ def validate_a3_v3_source_schedule(
     binding: Mapping[str, Any],
     binding_file_sha256: str,
     repository_root: str | Path = REPOSITORY_ROOT,
+    verify_current_producer_source_hashes: bool = True,
 ) -> dict[str, Any]:
     """Validate the 104-entry source plan without reading episode payloads."""
 
@@ -605,7 +614,10 @@ def validate_a3_v3_source_schedule(
     expected_scalar = {
         "schema_version": A3_V3_SOURCE_SCHEDULE_SCHEMA_VERSION,
         "schedule_id": A3_V3_SOURCE_SCHEDULE_ID,
-        "status": "collection_plan_frozen_producer_adapter_missing",
+        "status": (
+            "collection_plan_frozen_producer_adapter_complete_"
+            "generation_not_authorized"
+        ),
         "frozen_on": "2026-08-01",
     }
     for name, value in expected_scalar.items():
@@ -654,6 +666,7 @@ def validate_a3_v3_source_schedule(
     producer_capability = _validate_producer_capability_assessment(
         payload.get("producer_capability_assessment"),
         repository_root=root,
+        verify_current_source_hashes=verify_current_producer_source_hashes,
     )
 
     entries = _object_sequence(payload.get("episode_entries"), "episode_entries")
@@ -926,17 +939,24 @@ def _validate_producer_capability_assessment(
     value: Any,
     *,
     repository_root: Path,
+    verify_current_source_hashes: bool = True,
 ) -> dict[str, Any]:
     assessment = _mapping(value, "producer_capability_assessment")
     if assessment != _PRODUCER_CAPABILITY_ASSESSMENT:
         _fail("source_schedule_producer_capability_assessment_mismatch")
-    for binding in _PRODUCER_SOURCE_BINDINGS:
-        source_path = _safe_repo_relative_file(repository_root, binding["path"])
-        if _sha256_file(source_path) != binding["sha256"]:
-            _fail(f"source_schedule_producer_source_hash_mismatch:{binding['role']}")
+    if not isinstance(verify_current_source_hashes, bool):
+        _fail("source_schedule_producer_hash_verification_flag_invalid")
+    if verify_current_source_hashes:
+        for binding in _PRODUCER_SOURCE_BINDINGS:
+            source_path = _safe_repo_relative_file(repository_root, binding["path"])
+            if _sha256_file(source_path) != binding["sha256"]:
+                _fail(
+                    "source_schedule_producer_source_hash_mismatch:"
+                    f"{binding['role']}"
+                )
     return {
-        "adapter_status": "missing",
-        "producer_adapter_complete": False,
+        "adapter_status": "complete_smoke_verified",
+        "producer_adapter_complete": True,
         "source_generation_request_ready": False,
         "source_binding_count": len(_PRODUCER_SOURCE_BINDINGS),
         "entry_field_support": dict(_PRODUCER_ENTRY_FIELD_SUPPORT),

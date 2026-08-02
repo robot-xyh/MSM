@@ -2,6 +2,59 @@
 
 **状态日期：2026-08-01**
 
+## A3 v3 episode evidence 与冻结写出实现
+
+`active_vision_a3_v3_episode_evidence.py` 提供 producer-facing 的四层数据结构。第一层是
+`A3V3EpisodeRecipeV1`，从冻结的 104 条 schedule 中读取，不接受调用方重写 split、seed、
+allocation、episode ID 或窗口。第二层是 `A3V3OnlineSampleEvidenceV1`，记录 frame index、
+相对时间、量测时间、到达时间、匿名候选特征指纹、相机/资源角色、意图窗口、控制状态和中心
+只读航迹引用。第三层是 `A3V3OfflineSampleAuditV1` 与 boundary state，只在离线侧记录达成
+审计和可选真值评价。第四层是 episode descriptor 与 partition manifest，绑定两侧文件哈希和
+逐 episode 校验摘要。
+
+样本指纹由 schedule 文件哈希、entry 哈希、entry index、split、allocation、seed、episode ID、
+frame index、camera ID 和候选特征指纹共同计算。校验器先验证 fingerprint 在 episode 内唯一，
+再按 `window_id` 建立四个互不借样的集合。窗口必须连续且各为 1.5 秒。只有该样本的全部必需
+控制状态为真，且离线 treatment 达成审计为真时，样本才进入有效集合。对窗口 (w)，验收条件为
+
+\[
+\left|\{f_i\mid i\in w,\;control_i=1,\;audit_i=1\}\right|\geq 24,
+\]
+
+并同时要求 episode 有效指纹总数不少于 96。随后再核对逐意图、逐相机角色和“意图×角色”
+配额。任一层缺失均拒绝整个 episode，finalizer 不允许从其他 episode 转移配额。
+
+困难混淆 pair 使用 `A3V3HardConfusionBoundaryStateV1`。状态包含冻结分配引用哈希、几何族哈希、
+通信状态哈希、相机角色、投影可用/边界内/新鲜/陈旧遮挡、侦察线索可用、云台忙碌、可转动、
+目标证据保持、合法目标数、投影质量差和预定近似并列上限。`achieved` 由以下谓词计算：
+
+1. 投影边界：同一分配和几何族，一侧为可用、边界内、新鲜且未退化投影，另一侧为不可用、
+   边界外或陈旧/遮挡投影。
+2. 线索丢失：同一分配和几何族，两侧侦察线索可用性相反。
+3. 云台忙碌：同一分配和几何族，两侧均保留目标证据，且“忙碌或不可转动”状态相反。
+4. 角色匹配：同一分配、几何族和通信状态，一侧为拦截相机，另一侧为侦察相机。
+5. 多合法目标近似并列：同一分配和几何族，两侧合法目标数均不少于 2，质量差均不超过相同
+   的预定上限。
+
+pair 还必须引用该 episode 中两个不同、已通过窗口配额条件的样本。boundary state 的相机角色
+必须与对应在线样本一致，分配引用必须等于由冻结 recipe 推导的哈希。treatment recipe 只参与
+配方一致性核对；即使名称正确，只要状态谓词不成立，`achieved=true` 也会失败关闭。
+
+`stage_a3_v3_episode_evidence()` 把在线和离线文件写入 development 或 future-held-out 的独立
+根目录，并用原子写入、SHA-256 和只读权限生成 descriptor。`finalize_a3_v3_frozen_partition()`
+只接受调用方声明的精确 recipe 集，不随机重分，不复制或过采样，并检查 episode 间 fingerprint
+零重复。partition manifest 内写入用途合同：train 只用于拟合，validation 只用于选模、校准和
+阈值冻结；future-held-out 的上述用途全部为空，只保留模型冻结后的单次评估用途。
+
+`load_a3_v3_development_online_evidence()` 只读取 development manifest 指向的在线文件，遇到
+future 分区直接拒绝。`write_a3_v3_source_manifest()` 只读取两个 partition manifest 的元数据，
+不打开 episode payload；两分区必须物理隔离、完整覆盖冻结 48/24/32 episode、lineage 一致且
+指纹无交叉。D5 evidence/readiness 专项为 `35 passed in 1.16s`，D5 全量为
+`846 passed, 2 warnings in 103.23s`。main 的非正式 smoke 使用 seed `31100-31104` 构造 5 个
+目标、5 个资源和 2 个侦察相机的三维质点 episode，五类边界均形成，每窗口至少 24 个唯一
+样本，在线 truth 使用为 0；main adapter 专项为 `4 passed in 17.65s`。尚未生成正式 104
+episode，因此 source generation、training 和 runtime authority 仍为 false。
+
 ## A3 v3 全局 seed allocation 与生成前校验实现
 
 `a3_v3_global_seed_allocation_binding_20260801.json` 固定 main 全局登记表的 registry ID、内容
@@ -28,23 +81,23 @@ role 和困难混淆计数，不信任 schedule 内声明的汇总值。删除�
 配额均失败关闭。
 
 producer 能力审计固定绑定 `run_learning_dataset.py`、`active_vision_collection.py` 和 v2 参考
-schedule 的 SHA-256。现有入口支持 scenario、scale、seeds、duration；collection profile 只能
-按整次运行设置。逐 episode split/ID/目标资源数量、意图窗口、投影边界、陈旧或遮挡投影、角色
-匹配几何、多个合法目标近似并列和生成时样本配额均未映射。周期性侦察 cue loss 与命令后相机
-settle 只能提供部分自然 treatment，不能按计划窗口执行。
+schedule 的 SHA-256。逐 episode recipe adapter 把 split、allocation、seed、episode ID、场景、
+目标/资源/侦察数量和时长映射到运行配置。意图窗口 treatment 控制投影、侦察线索与云台状态；
+运行时 evidence adapter 提取五类边界，D5 writer 再按窗口唯一指纹执行样本配额。
 
 `active_vision_a3_v3_source_readiness.py` 只读取上述 metadata 和冻结协议。成功结果为
-`plan_ready_but_producer_adapter_missing`。返回值固定 `plan_ready=true`、
-`pre_generation_ready=false`、`producer_adapter_complete=false`、
-`source_generation_request_ready=false` 和 `training_ready=false`，并列出五项 producer blocker。
+`plan_and_producer_adapter_ready_generation_not_authorized`。返回值固定 `plan_ready=true`、
+`pre_generation_ready=true`、`producer_adapter_complete=true`、
+`source_generation_request_ready=false` 和 `training_ready=false`。剩余 blocker 仅表示 D5 正式
+来源生成请求未授权。
 episode/sample payload read count 均为 0，future-held-out payload 不可读。CLI 只向标准输出打印
 JSON，不创建目录或输出产物。
 
 负向测试覆盖登记表自哈希、文件哈希、来源文件哈希、owner/version/lifecycle/usage/operations、
 精确 seed 集、split 交叉、意图/角色/困难混淆缺项、计划样本不足、future 提前读取、协议哈希、
 身份写权限和任一 authority 漂移。即使篡改方重算 binding、schedule 或 registry 的内容哈希，
-固定文件哈希和代码锚点仍会失败关闭。专项协议与 readiness 测试为 `58 passed in 1.29s`，D5
-全量为 `837 passed, 2 warnings in 103.78s`。本轮没有生成数据或权重，也没有训练、AirSim 或
+固定文件哈希和代码锚点仍会失败关闭。最新 evidence/readiness 测试为 `35 passed in 1.16s`，
+D5 全量为 `846 passed, 2 warnings in 103.23s`。本轮没有生成正式数据或权重，也没有训练、AirSim 或
 运行权限变化。
 
 ## A3 v3 分层意图与合法候选排序协议实现

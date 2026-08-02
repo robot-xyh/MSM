@@ -138,15 +138,17 @@ def _validate_copied_tree(root: Path, paths: dict[str, Path]) -> None:
     )
 
 
-def test_actual_plan_is_frozen_but_generation_remains_fail_closed() -> None:
+def test_actual_plan_and_adapter_are_ready_but_generation_remains_unauthorized() -> None:
     readiness = validate_a3_v3_pre_generation_readiness()
     report = readiness.to_dict()
 
     assert report["schema_version"] == A3_V3_PRE_GENERATION_READINESS_SCHEMA_VERSION
-    assert readiness.status == "plan_ready_but_producer_adapter_missing"
+    assert readiness.status == (
+        "plan_and_producer_adapter_ready_generation_not_authorized"
+    )
     assert report["plan_ready"] is True
-    assert readiness.pre_generation_ready is False
-    assert report["producer_adapter_complete"] is False
+    assert readiness.pre_generation_ready is True
+    assert report["producer_adapter_complete"] is True
     assert report["source_generation_request_ready"] is False
     assert report["training_ready"] is False
     assert report["future_held_out_payload_read_allowed"] is False
@@ -159,8 +161,20 @@ def test_actual_plan_is_frozen_but_generation_remains_fail_closed() -> None:
         "planned_minimum_unique_sample_count"
     ] == 4608
     assert report["source_schedule"]["planned_episode_count"] == 104
-    assert report["producer_capability"]["adapter_status"] == "missing"
-    assert len(report["producer_capability"]["blockers"]) == 5
+    assert report["producer_capability"]["adapter_status"] == (
+        "complete_smoke_verified"
+    )
+    assert report["producer_capability"]["blockers"] == [
+        "d5_source_generation_request_not_authorized"
+    ]
+    assert all(
+        "unsupported" not in value and "partial" not in value
+        for value in report["producer_capability"]["entry_field_support"].values()
+    )
+    assert all(
+        value.startswith("supported_by_")
+        for value in report["producer_capability"]["recipe_support"].values()
+    )
     assert not any(report["authority"].values())
 
 
@@ -321,17 +335,18 @@ def test_declared_coverage_summary_cannot_replace_entry_recount() -> None:
         _validate_schedule(schedule)
 
 
-def test_missing_producer_adapter_is_explicit_and_false_ready_claim_fails_closed() -> None:
+def test_generation_request_remains_unauthorized_and_false_authority_is_strict() -> None:
     readiness = validate_a3_v3_pre_generation_readiness().to_dict()
-    assert readiness["status"] == "plan_ready_but_producer_adapter_missing"
+    assert readiness["status"] == (
+        "plan_and_producer_adapter_ready_generation_not_authorized"
+    )
     assert readiness["plan_ready"] is True
-    assert readiness["pre_generation_ready"] is False
+    assert readiness["pre_generation_ready"] is True
+    assert readiness["producer_adapter_complete"] is True
     assert readiness["source_generation_request_ready"] is False
 
     schedule = _load(SCHEDULE_PATH)
     capability = schedule["producer_capability_assessment"]
-    capability["adapter_status"] = "complete"
-    capability["producer_adapter_complete"] = True
     capability["source_generation_request_ready"] = True
     capability["blockers"] = []
     _rehash(schedule)

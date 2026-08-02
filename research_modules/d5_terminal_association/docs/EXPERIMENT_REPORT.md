@@ -1,5 +1,26 @@
 # D5 末端视觉配准与身份认证实验报告
 
+## 2026-08-01 A3 v3 adapter/writer 冒烟验证
+
+本轮验证 main 三维质点运行帧能否转换为 D5 A3 v3 严格 episode 证据。测试使用非正式 seed
+`31100-31104`，每个 episode 配置 5 个目标、5 个资源、2 个侦察相机、6 秒时长和 0.05 秒
+视觉周期。测试没有运行正式 seed `24000-24103`，没有生成 104 episode inventory，也没有读取
+future-held-out payload。
+
+五个 episode 合计覆盖投影内外边界、侦察线索丢失、云台忙闲、拦截/侦察角色同几何和多合法
+目标近似并列五类困难混淆。每个 1.5 秒意图窗口均得到不少于 24 个唯一证据样本。近似并列样本
+含至少两个中心只读目标投影，质量差为 0，小于冻结上限 0.05。在线 truth 使用、
+`global_track_id` 创建和改写计数均为 0。
+
+main adapter 专项结果为 `4 passed in 17.65s`。D5 episode evidence 与 readiness 组合结果为
+`35 passed in 1.16s`，D5 全量结果为 `846 passed, 2 warnings in 103.23s`，接受阈值均为零
+失败。两条 warning 来自既有 Matplotlib Axes3D 与 NVML 环境。
+
+本结果关闭逐 episode 字段映射、五类边界证据转换和单 episode writer staging 的软件接线项。
+readiness 为 `plan_and_producer_adapter_ready_generation_not_authorized`，生成请求、训练和全部运行
+权限仍为 false。正式三分区生成、partition finalize、source manifest、模型训练和一次性
+future-held-out 评估仍未执行。本轮没有 AirSim、真实相机或物理效果证据。
+
 ## 2026-08-01 A3 v2 开发态行为克隆实验
 
 本轮在已通过 owner 验收的 100-episode 语料上执行一次冻结训练。输入共 159,502 个样本，

@@ -1,5 +1,34 @@
 # D5 终端视觉配准与身份认证计划
 
+## 2026-08-01 A3 v3 episode evidence/writer 计划
+
+- [x] 定义严格的逐 episode recipe DTO，绑定 schedule lineage、entry index、split、allocation、
+  seed、episode ID、目标/资源/侦察节点数量、相机角色、四段意图窗口、困难混淆配方、控制项和
+  schedule entry SHA-256。
+- [x] 定义 truth-free 在线 evidence 与独立离线 audit。在线只保留双时间戳、匿名候选指纹、
+  控制状态和中心只读 `global_track_id`；创建、改写和在线 truth 使用计数固定为 0。
+- [x] 按每个连续 1.5 秒窗口独立统计唯一样本。每窗口至少 24、episode 总数至少 96；重复
+  fingerprint、窗口/角色错配、缺控制状态或跨 episode 补 quota 均失败关闭。
+- [x] 为五类困难混淆定义状态边界。标签由投影内外和新鲜度、侦察线索有无、云台忙闲、
+  interceptor/recon 同几何签名、合法目标数与质量差推导，不接受 treatment 名直接贴标。
+- [x] 实现 development/future-held-out 独立 staging 与 frozen finalize。保留 48/24/32 split，
+  禁止随机重分、复制、过采样和跨 episode 配额转移。
+- [x] 在 partition manifest 固定用途合同。future-held-out 禁止训练、拟合、选模、校准和阈值
+  选择；development loader 禁止读取 future payload。
+- [x] 实现 metadata-only source manifest assembler。仅在两分区完整覆盖冻结 schedule、来源
+  lineage 一致、样本指纹跨分区无交叉时允许写出。
+- [x] 增加最小合法 episode、重复 fingerprint、truth leak、窗口 quota、五类真实状态边界、
+  角色/分配绑定、冻结 split、future isolation 和中心 ID 所有权回归。evidence 专项 `9 passed`，
+  与来源 readiness 合并为 `35 passed in 1.16s`；D5 全量
+  `846 passed, 2 warnings in 103.23s`。
+- [x] main 完成 scalable_3d 逐 episode recipe、意图窗口 treatment、五类困难混淆证据适配和
+  D5 单 episode writer smoke。非正式 seed `31100-31104` 覆盖五类边界，每窗口不少于 24 个
+  唯一样本，在线 truth 使用为 0；main 专项 `4 passed in 17.65s`。
+- [ ] main 获得单独授权后才可执行 104 个正式 episode。当前未生成正式 inventory、分区
+  manifest 或 source manifest，也未读取 future-held-out payload。
+- [ ] D5 在实际 48/24/32 分区上 finalize manifest，main/D6 复核真实覆盖。完成前不训练；
+  future-held-out 仍保持未访问。
+
 ## 2026-08-01 A3 v3 全局 seed 接线计划
 
 - [x] 冻结 D5 allocation binding，固定 main 全局登记表 ID、内容 SHA-256、文件 SHA-256、
@@ -13,11 +42,11 @@
   协议配额重算、producer 文件哈希、能力声明和全 false authority。
 - [x] 增加 allocation、split、coverage、future 权限、协议哈希、来源哈希、身份和 authority
   漂移负例。专项 `58 passed`，D5 全量 `837 passed, 2 warnings`。
-- [ ] main 先补齐 producer adapter：映射逐 episode split/ID/节点数量、意图窗口和困难混淆
-  treatment，并在生成后审计计划配额。完成前 readiness 固定为
-  `plan_ready_but_producer_adapter_missing`，不得发起来源生成。
-- [ ] producer adapter 通过独立验收后，main 才能按冻结 schedule 生成三 split 来源并输出逐
-  episode/source manifest；不得读取 `1000-1019` 或复用 `22100-22199`。
+- [x] 完成 producer adapter 独立 smoke，并把 readiness 更新为
+  `plan_and_producer_adapter_ready_generation_not_authorized`。逐 episode 字段、四段意图窗口、
+  五类困难混淆状态和 writer 配额均有运行时证据；该状态不授予生成权限。
+- [ ] main 取得显式生成授权后，才能按冻结 schedule 生成三 split 来源并输出逐 episode/source
+  manifest；不得读取 `1000-1019` 或复用 `22100-22199`。
 - [ ] D5 对实际 source manifest 重新核验唯一 sample/episode/seed 覆盖。计划计数不能代替实际
   producer 证据；未通过前不得训练。
 - [ ] 仅使用 train 更新参数，validation 只做最佳 epoch、温度校准和冻结门。通过后冻结模型。
