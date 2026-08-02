@@ -1,0 +1,145 @@
+{
+  "schema_version": "d5.active-vision-a3-v3-source-generation-request.v1",
+  "request_id": "d5-a3-v3-source-generation-request-20260801-v2",
+  "candidate_version": "d5-a3-v3",
+  "status": "approved_source_generation_request_only",
+  "approved_on": "2026-08-01",
+  "approval_scope": "source_artifact_generation_only",
+  "artifact_bindings": {
+    "minority_intent_protocol": {
+      "path": "research_modules/d5_terminal_association/configs/a3_v3_minority_intent_protocol_20260801.json",
+      "sha256": "5a01b9f5f0636a3d22338ac1c3212a242d51944a974263ca7a165909ab3dcb64"
+    },
+    "source_collection_schedule": {
+      "path": "research_modules/d5_terminal_association/configs/a3_v3_source_collection_schedule_20260801.json",
+      "sha256": "d14b19d8c2f8051fc10363f8460fd9146ee37da24f6e24ac8014989e3f41082e"
+    },
+    "global_seed_allocation_binding": {
+      "path": "research_modules/d5_terminal_association/configs/a3_v3_global_seed_allocation_binding_20260801.json",
+      "sha256": "a36dab497cc4ca4eeff7704b64ec8964390e94ee7fcf98bbfdf6118248260d72"
+    },
+    "global_seed_registry": {
+      "path": "research_modules/scalable_3d_simulation/configs/scalable_learning_global_seed_registry_v1.json",
+      "sha256": "1c9778e1cbfcd5679956ac2c1fc71a1e780207c4579abdc9b129d162a252c4b6"
+    },
+    "episode_staging_implementation": {
+      "path": "research_modules/d5_terminal_association/src/d5_terminal_association/active_vision_a3_v3_episode_evidence.py",
+      "sha256": "0951b23083a9ec07241198e98c2f670fcc032086da02fd5609f0a3ca19d5fdc9"
+    }
+  },
+  "source_request": {
+    "source_domain": "scalable_3d_point_mass_runtime",
+    "source_artifact_kind": "a3_v3_episode_evidence_and_source_manifest",
+    "planned_episode_count": 104,
+    "seed_count": 104,
+    "seed_range": [
+      24000,
+      24103
+    ],
+    "split_requests": {
+      "train": {
+        "allocation_id": "d5-a3-v3-train",
+        "planned_episode_count": 48,
+        "seed_count": 48,
+        "seed_range": [
+          24000,
+          24047
+        ]
+      },
+      "validation": {
+        "allocation_id": "d5-a3-v3-validation",
+        "planned_episode_count": 24,
+        "seed_count": 24,
+        "seed_range": [
+          24048,
+          24071
+        ]
+      },
+      "future_held_out": {
+        "allocation_id": "d5-a3-v3-future-held-out",
+        "planned_episode_count": 32,
+        "seed_count": 32,
+        "seed_range": [
+          24072,
+          24103
+        ]
+      }
+    },
+    "whole_episode_seed_atomic": true,
+    "one_episode_per_seed": true,
+    "cross_split_episode_reuse_allowed": false,
+    "source_artifact_generation_only": true
+  },
+  "future_held_out_access": {
+    "metadata_planning_allowed_before_model_freeze": true,
+    "episode_or_sample_payload_read_allowed_before_model_freeze": false,
+    "episode_or_sample_payload_read_allowed_before_validation_gate": false,
+    "training_use_allowed": false,
+    "model_selection_use_allowed": false,
+    "calibration_use_allowed": false,
+    "threshold_adjustment_use_allowed": false,
+    "access_policy": "one_shot_after_validation_pass_and_model_freeze",
+    "maximum_access_count": 1,
+    "second_access_allowed": false,
+    "feedback_after_access_allowed": false
+  },
+  "identity": {
+    "online_truth_free_required": true,
+    "truth_identity_available_to_online_policy": false,
+    "global_track_id_ownership": "center_read_only",
+    "global_track_id_create_allowed": false,
+    "global_track_id_write_allowed": false
+  },
+  "permissions": {
+    "source_artifact_generation": true,
+    "model_artifact_generation": false,
+    "model_training": false,
+    "model_inference": false,
+    "model_selection": false,
+    "validation": false,
+    "future_held_out_payload_read": false,
+    "future_held_out_model_selection": false,
+    "calibration": false,
+    "threshold_adjustment": false,
+    "shadow": false,
+    "assist": false,
+    "promotion": false,
+    "ppo": false,
+    "assignment": false,
+    "degradation": false,
+    "camera_command": false,
+    "runtime": false,
+    "production": false,
+    "control": false,
+    "global_track_id_create": false,
+    "global_track_id_write": false
+  },
+  "generation_state": {
+    "source_generation_started": false,
+    "source_artifact_generated": false,
+    "episode_payload_read_count": 0,
+    "sample_payload_read_count": 0,
+    "future_held_out_payload_read_count": 0,
+    "training_started": false,
+    "model_artifact_generated": false
+  },
+  "resume_contract": {
+    "planned_episode_count": 104,
+    "cross_process_resume_required": true,
+    "read_only_inventory_helper": "recover_a3_v3_staged_episode_inventory",
+    "idempotent_resume_helper": "resume_a3_v3_episode_evidence",
+    "generation_finalize_helper": "finalize_a3_v3_generation_partition",
+    "descriptor_self_hash_required": true,
+    "online_payload_hash_required": true,
+    "offline_payload_hash_required": true,
+    "split_binding_required": true,
+    "partial_artifact_set_rejected": true,
+    "future_held_out_physical_root_separate": true,
+    "future_held_out_payload_deserialized_by_inventory": false,
+    "future_held_out_integrity_only_finalize": true,
+    "future_held_out_semantic_evaluation_during_generation": false,
+    "integrity_verification_is_held_out_consumption": false,
+    "future_held_out_payload_read_count": 0
+  },
+  "content_sha256": "3b242acdba02d7274cefe05ce0166a9de41ea8d21e12d60b72a4f28964da7560"
+}

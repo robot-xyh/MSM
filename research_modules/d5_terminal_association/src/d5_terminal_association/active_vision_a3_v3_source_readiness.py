@@ -30,15 +30,30 @@ A3_V3_ALLOCATION_BINDING_SCHEMA_VERSION = (
 A3_V3_SOURCE_SCHEDULE_SCHEMA_VERSION = (
     "d5.active-vision-a3-v3-source-collection-schedule.v2"
 )
+A3_V3_SOURCE_GENERATION_REQUEST_SCHEMA_VERSION = (
+    "d5.active-vision-a3-v3-source-generation-request.v1"
+)
 A3_V3_PRE_GENERATION_READINESS_SCHEMA_VERSION = (
-    "d5.active-vision-a3-v3-pre-generation-readiness.v2"
+    "d5.active-vision-a3-v3-pre-generation-readiness.v4"
 )
 
 A3_V3_ALLOCATION_BINDING_ID = "d5-a3-v3-global-seed-binding-20260801-v1"
-A3_V3_SOURCE_SCHEDULE_ID = "d5-a3-v3-source-collection-schedule-20260801-v2"
+A3_V3_SOURCE_SCHEDULE_ID = "d5-a3-v3-source-collection-schedule-20260801-v3"
+A3_V3_SOURCE_GENERATION_REQUEST_ID = (
+    "d5-a3-v3-source-generation-request-20260801-v2"
+)
 A3_V3_PROTOCOL_ID = "a3_v3_hierarchical_intent_legal_candidate_ranking_20260801"
 A3_V3_PROTOCOL_SHA256 = (
     "5a01b9f5f0636a3d22338ac1c3212a242d51944a974263ca7a165909ab3dcb64"
+)
+A3_V3_SOURCE_SCHEDULE_FILE_SHA256 = (
+    "d14b19d8c2f8051fc10363f8460fd9146ee37da24f6e24ac8014989e3f41082e"
+)
+A3_V3_ALLOCATION_BINDING_FILE_SHA256 = (
+    "a36dab497cc4ca4eeff7704b64ec8964390e94ee7fcf98bbfdf6118248260d72"
+)
+A3_V3_EPISODE_STAGING_IMPLEMENTATION_SHA256 = (
+    "0951b23083a9ec07241198e98c2f670fcc032086da02fd5609f0a3ca19d5fdc9"
 )
 
 GLOBAL_REGISTRY_SCHEMA_VERSION = "scalable3d-global-seed-registry-v1"
@@ -61,6 +76,13 @@ DEFAULT_ALLOCATION_BINDING_PATH = (
 )
 DEFAULT_SOURCE_SCHEDULE_PATH = (
     MODULE_ROOT / "configs/a3_v3_source_collection_schedule_20260801.json"
+)
+SOURCE_GENERATION_REQUEST_RELATIVE_PATH = (
+    "research_modules/d5_terminal_association/configs/"
+    "a3_v3_source_generation_request_20260801.json"
+)
+DEFAULT_SOURCE_GENERATION_REQUEST_PATH = (
+    REPOSITORY_ROOT / SOURCE_GENERATION_REQUEST_RELATIVE_PATH
 )
 DEFAULT_GLOBAL_REGISTRY_PATH = (
     REPOSITORY_ROOT
@@ -192,8 +214,24 @@ _SCENARIO_FAMILIES = (
 )
 _SCALES = (5, 20, 50, 100, 200)
 _COLLECTION_PROFILE = "balanced_action_role_v1"
-_EPISODE_DURATION_S = 6.0
+_EPISODE_DURATION_S = 8.0
 _MINIMUM_SAMPLES_PER_INTENT_WINDOW = 24
+_MINIMUM_RECON_CAMERA_COUNT = 4
+_PRODUCER_VISUAL_PERIOD_S = 0.1
+_PRODUCER_MAXIMUM_ACTIVE_VISION_STARTUP_S = 1.4
+_PRODUCER_MAXIMUM_ACTIVE_VISION_TAIL_S = 0.5
+
+_PRODUCER_SAMPLE_CAPACITY_CONTRACT = {
+    "visual_period_s": _PRODUCER_VISUAL_PERIOD_S,
+    "maximum_active_vision_startup_s": (
+        _PRODUCER_MAXIMUM_ACTIVE_VISION_STARTUP_S
+    ),
+    "maximum_active_vision_tail_s": _PRODUCER_MAXIMUM_ACTIVE_VISION_TAIL_S,
+    "minimum_recon_camera_count": _MINIMUM_RECON_CAMERA_COUNT,
+    "minimum_unique_samples_per_window": _MINIMUM_SAMPLES_PER_INTENT_WINDOW,
+    "unique_samples_per_visual_tick": "one_per_distinct_camera_decision",
+    "capacity_validation": "all_104_frozen_entries_fail_closed",
+}
 
 _INTENT_RECIPE_BY_INTENT = {
     "observe_target": "observe_target_stable_projection_v1",
@@ -288,10 +326,45 @@ _RECIPE_PRODUCER_SUPPORT = {
 
 _PRODUCER_SOURCE_BINDINGS = (
     {
-        "role": "generation_entrypoint",
-        "path": "research_modules/scalable_3d_simulation/run_learning_dataset.py",
+        "role": "source_generation_orchestrator",
+        "path": (
+            "research_modules/scalable_3d_simulation/"
+            "learning_source_generation.py"
+        ),
         "sha256": (
-            "71dc52572e7a0ec12ad0b4496dacf27b0145bc0acfe3cff26812114b55394aab"
+            "83fb35777699d2a79e562fd80d725ac3c71cd3aba689fa25720a6ee60600c7e6"
+        ),
+    },
+    {
+        "role": "source_recipe_loader",
+        "path": (
+            "research_modules/scalable_3d_simulation/learning_source_recipes.py"
+        ),
+        "sha256": (
+            "7af7cbcc2585cf79faebe01ea6b231af73d1dd7d2fc8c780a6476201e4d70a44"
+        ),
+    },
+    {
+        "role": "runtime_evidence_adapter",
+        "path": (
+            "research_modules/scalable_3d_simulation/learning_source_adapters.py"
+        ),
+        "sha256": (
+            "1b409de412dcfd3affb4dde254d7782804b296e013fdbab254e9b8995bfed642"
+        ),
+    },
+    {
+        "role": "runtime_module_stack",
+        "path": "research_modules/scalable_3d_simulation/module_stack.py",
+        "sha256": (
+            "936b50f3932cb4ef358f9cb729623858d357124a68c65e08999c9a2c3917b196"
+        ),
+    },
+    {
+        "role": "runtime_orchestrator",
+        "path": "research_modules/scalable_3d_simulation/orchestrator.py",
+        "sha256": (
+            "bdc5adebe7cbb0f5cb65716ee08fc1f636ed5fd45c65883a3bb8409080e0335f"
         ),
     },
     {
@@ -302,13 +375,13 @@ _PRODUCER_SOURCE_BINDINGS = (
         ),
     },
     {
-        "role": "v2_reference_schedule",
+        "role": "producer_base_config",
         "path": (
             "research_modules/scalable_3d_simulation/configs/"
-            "d5_a3_source_independent_point_mass_v2.json"
+            "nominal_200v200.json"
         ),
         "sha256": (
-            "fcc288262b64a971cfc94ad152081a01e31388032a4c1eacbd58a1e70e7279a7"
+            "2279fa380ce2d79d98690b148653b0409a2471bb35d8aab77f9ed5d0f7b97072"
         ),
     },
 )
@@ -334,7 +407,7 @@ _PRODUCER_BLOCKERS = (
 )
 
 _PRODUCER_CAPABILITY_ASSESSMENT = {
-    "assessment_version": "d5-a3-v3-producer-capability-20260801-v2",
+    "assessment_version": "d5-a3-v3-producer-capability-20260801-v3",
     "assessed_on": "2026-08-01",
     "adapter_status": "complete_smoke_verified",
     "producer_adapter_complete": True,
@@ -348,6 +421,7 @@ _PRODUCER_CAPABILITY_ASSESSMENT = {
     "source_bindings": [dict(item) for item in _PRODUCER_SOURCE_BINDINGS],
     "entry_field_support": dict(_PRODUCER_ENTRY_FIELD_SUPPORT),
     "recipe_support": dict(_RECIPE_PRODUCER_SUPPORT),
+    "sample_capacity_contract": dict(_PRODUCER_SAMPLE_CAPACITY_CONTRACT),
     "blockers": list(_PRODUCER_BLOCKERS),
 }
 
@@ -363,6 +437,129 @@ _FUTURE_ACCESS_CONTRACT = {
     "maximum_access_count": 1,
     "second_access_allowed": False,
     "feedback_after_access_allowed": False,
+}
+
+_SOURCE_GENERATION_REQUEST_BINDINGS = {
+    "minority_intent_protocol": {
+        "path": (
+            "research_modules/d5_terminal_association/configs/"
+            "a3_v3_minority_intent_protocol_20260801.json"
+        ),
+        "sha256": A3_V3_PROTOCOL_SHA256,
+    },
+    "source_collection_schedule": {
+        "path": (
+            "research_modules/d5_terminal_association/configs/"
+            "a3_v3_source_collection_schedule_20260801.json"
+        ),
+        "sha256": A3_V3_SOURCE_SCHEDULE_FILE_SHA256,
+    },
+    "global_seed_allocation_binding": {
+        "path": (
+            "research_modules/d5_terminal_association/configs/"
+            "a3_v3_global_seed_allocation_binding_20260801.json"
+        ),
+        "sha256": A3_V3_ALLOCATION_BINDING_FILE_SHA256,
+    },
+    "global_seed_registry": {
+        "path": (
+            "research_modules/scalable_3d_simulation/configs/"
+            "scalable_learning_global_seed_registry_v1.json"
+        ),
+        "sha256": GLOBAL_REGISTRY_FILE_SHA256,
+    },
+    "episode_staging_implementation": {
+        "path": (
+            "research_modules/d5_terminal_association/src/"
+            "d5_terminal_association/active_vision_a3_v3_episode_evidence.py"
+        ),
+        "sha256": A3_V3_EPISODE_STAGING_IMPLEMENTATION_SHA256,
+    },
+}
+
+_SOURCE_GENERATION_SPLIT_REQUESTS = {
+    split: {
+        "allocation_id": expected["allocation_id"],
+        "planned_episode_count": expected["seed_count"],
+        "seed_count": expected["seed_count"],
+        "seed_range": expected["seed_range"],
+    }
+    for split, expected in _SPLIT_EXPECTATIONS.items()
+}
+
+_SOURCE_GENERATION_REQUEST_SCOPE = {
+    "source_domain": "scalable_3d_point_mass_runtime",
+    "source_artifact_kind": "a3_v3_episode_evidence_and_source_manifest",
+    "planned_episode_count": 104,
+    "seed_count": 104,
+    "seed_range": [24000, 24103],
+    "split_requests": _SOURCE_GENERATION_SPLIT_REQUESTS,
+    "whole_episode_seed_atomic": True,
+    "one_episode_per_seed": True,
+    "cross_split_episode_reuse_allowed": False,
+    "source_artifact_generation_only": True,
+}
+
+_SOURCE_GENERATION_REQUEST_IDENTITY = {
+    "online_truth_free_required": True,
+    "truth_identity_available_to_online_policy": False,
+    "global_track_id_ownership": "center_read_only",
+    "global_track_id_create_allowed": False,
+    "global_track_id_write_allowed": False,
+}
+
+_SOURCE_GENERATION_REQUEST_PERMISSIONS = {
+    "source_artifact_generation": True,
+    "model_artifact_generation": False,
+    "model_training": False,
+    "model_inference": False,
+    "model_selection": False,
+    "validation": False,
+    "future_held_out_payload_read": False,
+    "future_held_out_model_selection": False,
+    "calibration": False,
+    "threshold_adjustment": False,
+    "shadow": False,
+    "assist": False,
+    "promotion": False,
+    "ppo": False,
+    "assignment": False,
+    "degradation": False,
+    "camera_command": False,
+    "runtime": False,
+    "production": False,
+    "control": False,
+    "global_track_id_create": False,
+    "global_track_id_write": False,
+}
+
+_SOURCE_GENERATION_REQUEST_STATE = {
+    "source_generation_started": False,
+    "source_artifact_generated": False,
+    "episode_payload_read_count": 0,
+    "sample_payload_read_count": 0,
+    "future_held_out_payload_read_count": 0,
+    "training_started": False,
+    "model_artifact_generated": False,
+}
+
+_SOURCE_GENERATION_RESUME_CONTRACT = {
+    "planned_episode_count": 104,
+    "cross_process_resume_required": True,
+    "read_only_inventory_helper": "recover_a3_v3_staged_episode_inventory",
+    "idempotent_resume_helper": "resume_a3_v3_episode_evidence",
+    "generation_finalize_helper": "finalize_a3_v3_generation_partition",
+    "descriptor_self_hash_required": True,
+    "online_payload_hash_required": True,
+    "offline_payload_hash_required": True,
+    "split_binding_required": True,
+    "partial_artifact_set_rejected": True,
+    "future_held_out_physical_root_separate": True,
+    "future_held_out_payload_deserialized_by_inventory": False,
+    "future_held_out_integrity_only_finalize": True,
+    "future_held_out_semantic_evaluation_during_generation": False,
+    "integrity_verification_is_held_out_consumption": False,
+    "future_held_out_payload_read_count": 0,
 }
 
 
@@ -400,6 +597,9 @@ def validate_a3_v3_pre_generation_readiness(
     allocation_binding_path: str | Path = DEFAULT_ALLOCATION_BINDING_PATH,
     source_schedule_path: str | Path = DEFAULT_SOURCE_SCHEDULE_PATH,
     global_registry_path: str | Path = DEFAULT_GLOBAL_REGISTRY_PATH,
+    source_generation_request_path: str | Path = (
+        DEFAULT_SOURCE_GENERATION_REQUEST_PATH
+    ),
 ) -> A3V3PreGenerationReadiness:
     """Validate the frozen source plan without opening any generated payload."""
 
@@ -407,7 +607,8 @@ def validate_a3_v3_pre_generation_readiness(
     if not root.is_dir():
         _fail("repository_root_invalid", str(root))
 
-    protocol = load_frozen_a3_v3_protocol(_safe_file(Path(protocol_path), root))
+    resolved_protocol_path = _safe_file(Path(protocol_path), root)
+    protocol = load_frozen_a3_v3_protocol(resolved_protocol_path)
     if protocol.protocol_id != A3_V3_PROTOCOL_ID:
         _fail("protocol_id_mismatch")
     if protocol.sha256 != A3_V3_PROTOCOL_SHA256:
@@ -436,13 +637,49 @@ def validate_a3_v3_pre_generation_readiness(
         repository_root=root,
     )
 
+    request_path = _safe_file(Path(source_generation_request_path), root)
+    try:
+        request_relative_path = request_path.relative_to(root).as_posix()
+    except ValueError as exc:  # pragma: no cover - _safe_file already guards this
+        raise A3V3SourceReadinessError(
+            "source_generation_request_path_unsafe",
+            str(request_path),
+        ) from exc
+    if request_relative_path != SOURCE_GENERATION_REQUEST_RELATIVE_PATH:
+        _fail("source_generation_request_path_mismatch", request_relative_path)
+    request = _read_json(request_path, "source_generation_request")
+    request_summary = validate_a3_v3_source_generation_request(
+        request,
+        repository_root=root,
+        protocol_path=resolved_protocol_path,
+        allocation_binding_path=binding_path,
+        source_schedule_path=schedule_path,
+        global_registry_path=registry_path,
+    )
+    request_file_sha256 = _sha256_file(request_path)
+    producer_capability = dict(schedule_summary["producer_capability"])
+    producer_capability.update(
+        {
+            "source_generation_request_path": request_relative_path,
+            "source_generation_request_sha256": request_file_sha256,
+            "source_generation_request_ready": True,
+            "cross_process_resume_supported": True,
+            "resume_contract": request_summary["resume_contract"],
+            "blockers": [],
+        }
+    )
+
     payload = {
         "schema_version": A3_V3_PRE_GENERATION_READINESS_SCHEMA_VERSION,
-        "status": "plan_and_producer_adapter_ready_generation_not_authorized",
+        "status": "source_generation_request_ready_generation_only",
         "plan_ready": True,
         "pre_generation_ready": True,
         "producer_adapter_complete": True,
-        "source_generation_request_ready": False,
+        "source_generation_request_path": request_relative_path,
+        "source_generation_request_sha256": request_file_sha256,
+        "source_generation_request_ready": True,
+        "source_generation_execution_authorized": False,
+        "generation_started": False,
         "training_ready": False,
         "protocol": {
             "protocol_id": protocol.protocol_id,
@@ -466,8 +703,17 @@ def validate_a3_v3_pre_generation_readiness(
             "file_sha256": _sha256_file(schedule_path),
             "planned_episode_count": schedule_summary["planned_episode_count"],
         },
+        "source_generation_request": {
+            "request_id": request_summary["request_id"],
+            "status": request_summary["status"],
+            "content_sha256": request["content_sha256"],
+            "planned_episode_count": request_summary["planned_episode_count"],
+            "split_episode_counts": request_summary["split_episode_counts"],
+            "seed_range": request_summary["seed_range"],
+            "resume_contract": request_summary["resume_contract"],
+        },
         "split_summary": schedule_summary["split_summary"],
-        "producer_capability": schedule_summary["producer_capability"],
+        "producer_capability": producer_capability,
         "seed_overlap_count": 0,
         "protected_seed_overlap_count": 0,
         "episode_payload_read_count": 0,
@@ -478,9 +724,10 @@ def validate_a3_v3_pre_generation_readiness(
         "future_held_out_payload_read_allowed": False,
         "source_manifest_generated": False,
         "weights_generated": False,
+        "permissions": request_summary["permissions"],
         "authority": dict(_FALSE_AUTHORITY),
         "downstream_blockers": [
-            *_PRODUCER_BLOCKERS,
+            "source_generation_execution_not_authorized",
             "source_episode_payloads_not_generated",
             "source_manifest_not_generated",
             "development_cache_not_generated",
@@ -490,6 +737,168 @@ def validate_a3_v3_pre_generation_readiness(
         ],
     }
     return A3V3PreGenerationReadiness(payload=payload)
+
+
+def validate_a3_v3_source_generation_request(
+    payload: Mapping[str, Any],
+    *,
+    repository_root: str | Path = REPOSITORY_ROOT,
+    protocol_path: str | Path = DEFAULT_PROTOCOL_PATH,
+    allocation_binding_path: str | Path = DEFAULT_ALLOCATION_BINDING_PATH,
+    source_schedule_path: str | Path = DEFAULT_SOURCE_SCHEDULE_PATH,
+    global_registry_path: str | Path = DEFAULT_GLOBAL_REGISTRY_PATH,
+) -> dict[str, Any]:
+    """Validate the generation-only request and all bound metadata hashes."""
+
+    _expect_fields(
+        payload,
+        {
+            "schema_version",
+            "request_id",
+            "candidate_version",
+            "status",
+            "approved_on",
+            "approval_scope",
+            "artifact_bindings",
+            "source_request",
+            "future_held_out_access",
+            "identity",
+            "permissions",
+            "generation_state",
+            "resume_contract",
+            "content_sha256",
+        },
+        "source_generation_request",
+    )
+    _validate_self_hash(payload, "source_generation_request")
+    expected_scalar = {
+        "schema_version": A3_V3_SOURCE_GENERATION_REQUEST_SCHEMA_VERSION,
+        "request_id": A3_V3_SOURCE_GENERATION_REQUEST_ID,
+        "candidate_version": "d5-a3-v3",
+        "status": "approved_source_generation_request_only",
+        "approved_on": "2026-08-01",
+        "approval_scope": "source_artifact_generation_only",
+    }
+    for name, value in expected_scalar.items():
+        if payload.get(name) != value:
+            _fail(f"source_generation_request_{name}_mismatch")
+
+    root = Path(repository_root).resolve()
+    if not root.is_dir():
+        _fail("repository_root_invalid", str(root))
+    loaded_paths = {
+        "minority_intent_protocol": _safe_file(Path(protocol_path), root),
+        "source_collection_schedule": _safe_file(Path(source_schedule_path), root),
+        "global_seed_allocation_binding": _safe_file(
+            Path(allocation_binding_path), root
+        ),
+        "global_seed_registry": _safe_file(Path(global_registry_path), root),
+    }
+    bindings = _mapping(
+        payload.get("artifact_bindings"),
+        "source_generation_request.artifact_bindings",
+    )
+    _expect_fields(
+        bindings,
+        set(_SOURCE_GENERATION_REQUEST_BINDINGS),
+        "source_generation_request.artifact_bindings",
+    )
+    for role, expected in _SOURCE_GENERATION_REQUEST_BINDINGS.items():
+        binding = _mapping(bindings[role], f"source_generation_request.{role}")
+        _expect_fields(
+            binding,
+            {"path", "sha256"},
+            f"source_generation_request.{role}",
+        )
+        if binding != expected:
+            _fail(f"source_generation_request_binding_mismatch:{role}")
+        source_path = _safe_repo_relative_file(root, str(binding["path"]))
+        if role in loaded_paths and source_path != loaded_paths[role]:
+            _fail(f"source_generation_request_loaded_path_mismatch:{role}")
+        if _sha256_file(source_path) != binding["sha256"]:
+            _fail(f"source_generation_request_bound_file_sha256_mismatch:{role}")
+
+    source_request = _mapping(
+        payload.get("source_request"),
+        "source_generation_request.source_request",
+    )
+    _expect_fields(
+        source_request,
+        set(_SOURCE_GENERATION_REQUEST_SCOPE),
+        "source_generation_request.source_request",
+    )
+    if source_request.get("planned_episode_count") != 104:
+        _fail("source_generation_request_episode_count_mismatch")
+    if source_request.get("seed_count") != 104:
+        _fail("source_generation_request_seed_count_mismatch")
+    if source_request.get("seed_range") != [24000, 24103]:
+        _fail("source_generation_request_seed_range_mismatch")
+    split_requests = _mapping(
+        source_request.get("split_requests"),
+        "source_generation_request.split_requests",
+    )
+    _expect_fields(
+        split_requests,
+        set(A3_V3_SOURCE_SPLITS),
+        "source_generation_request.split_requests",
+    )
+    requested_seeds: list[int] = []
+    for split in A3_V3_SOURCE_SPLITS:
+        request = _mapping(
+            split_requests[split],
+            f"source_generation_request.split_requests.{split}",
+        )
+        if request != _SOURCE_GENERATION_SPLIT_REQUESTS[split]:
+            _fail(f"source_generation_request_split_mismatch:{split}")
+        requested_seeds.extend(_seed_range(request["seed_range"], split))
+    if requested_seeds != list(range(24000, 24104)):
+        _fail("source_generation_request_exact_seed_set_mismatch")
+    scope_without_counts = {
+        name: value
+        for name, value in _SOURCE_GENERATION_REQUEST_SCOPE.items()
+        if name
+        not in {
+            "planned_episode_count",
+            "seed_count",
+            "seed_range",
+            "split_requests",
+        }
+    }
+    if any(source_request.get(name) != value for name, value in scope_without_counts.items()):
+        _fail("source_generation_request_scope_mismatch")
+
+    if payload.get("future_held_out_access") != _FUTURE_ACCESS_CONTRACT:
+        _fail("source_generation_request_future_access_mismatch")
+    if payload.get("identity") != _SOURCE_GENERATION_REQUEST_IDENTITY:
+        _fail("source_generation_request_identity_mismatch")
+    permissions = _mapping(
+        payload.get("permissions"),
+        "source_generation_request.permissions",
+    )
+    if permissions != _SOURCE_GENERATION_REQUEST_PERMISSIONS:
+        _fail("source_generation_request_permissions_mismatch")
+    enabled_permissions = {
+        name for name, enabled in permissions.items() if enabled is True
+    }
+    if enabled_permissions != {"source_artifact_generation"}:
+        _fail("source_generation_request_not_generation_only")
+    if payload.get("generation_state") != _SOURCE_GENERATION_REQUEST_STATE:
+        _fail("source_generation_request_generation_state_mismatch")
+    if payload.get("resume_contract") != _SOURCE_GENERATION_RESUME_CONTRACT:
+        _fail("source_generation_request_resume_contract_mismatch")
+
+    return {
+        "request_id": A3_V3_SOURCE_GENERATION_REQUEST_ID,
+        "status": "approved_source_generation_request_only",
+        "planned_episode_count": 104,
+        "split_episode_counts": {
+            split: int(_SPLIT_EXPECTATIONS[split]["seed_count"])
+            for split in A3_V3_SOURCE_SPLITS
+        },
+        "seed_range": [24000, 24103],
+        "permissions": dict(_SOURCE_GENERATION_REQUEST_PERMISSIONS),
+        "resume_contract": dict(_SOURCE_GENERATION_RESUME_CONTRACT),
+    }
 
 
 def validate_a3_v3_allocation_binding(payload: Mapping[str, Any]) -> None:
@@ -676,6 +1085,7 @@ def validate_a3_v3_source_schedule(
 
     seen_episode_ids: set[str] = set()
     seen_seeds: set[int] = set()
+    runtime_sample_capacities: list[int] = []
     entries_by_split: dict[str, list[Mapping[str, Any]]] = {
         split: [] for split in A3_V3_SOURCE_SPLITS
     }
@@ -697,6 +1107,9 @@ def validate_a3_v3_source_schedule(
             _fail(f"source_schedule_seed_duplicate:{seed}")
         seen_episode_ids.add(episode_id)
         seen_seeds.add(seed)
+        runtime_sample_capacities.extend(
+            _validate_episode_runtime_sample_capacity(validated).values()
+        )
         entries_by_split[expected_split].append(validated)
 
     split_seed_sets = {
@@ -739,6 +1152,22 @@ def validate_a3_v3_source_schedule(
             "quota_plan_passed": True,
         }
         for split, coverage in planned_coverage.items()
+    }
+    producer_capability = {
+        **producer_capability,
+        "viability_audit": {
+            "status": "all_frozen_entries_runtime_sample_capacity_passed",
+            "frozen_episode_count": len(entries),
+            "intent_window_count": len(runtime_sample_capacities),
+            "minimum_window_capacity": min(runtime_sample_capacities),
+            "minimum_window_quota": _MINIMUM_SAMPLES_PER_INTENT_WINDOW,
+            "minimum_capacity_margin": (
+                min(runtime_sample_capacities)
+                - _MINIMUM_SAMPLES_PER_INTENT_WINDOW
+            ),
+            "episode_payload_read_count": 0,
+            "sample_payload_read_count": 0,
+        },
     }
 
     return {
@@ -954,6 +1383,21 @@ def _validate_producer_capability_assessment(
                     "source_schedule_producer_source_hash_mismatch:"
                     f"{binding['role']}"
                 )
+            if binding["role"] == "producer_base_config":
+                base_config = _read_json(
+                    source_path,
+                    "source_schedule_producer_base_config",
+                )
+                try:
+                    visual_period_s = float(base_config["visual_period_s"])
+                except (KeyError, TypeError, ValueError) as exc:
+                    raise A3V3SourceReadinessError(
+                        "source_schedule_producer_visual_period_invalid"
+                    ) from exc
+                if abs(
+                    visual_period_s - _PRODUCER_VISUAL_PERIOD_S
+                ) > 1.0e-12:
+                    _fail("source_schedule_producer_visual_period_mismatch")
     return {
         "adapter_status": "complete_smoke_verified",
         "producer_adapter_complete": True,
@@ -961,6 +1405,7 @@ def _validate_producer_capability_assessment(
         "source_binding_count": len(_PRODUCER_SOURCE_BINDINGS),
         "entry_field_support": dict(_PRODUCER_ENTRY_FIELD_SUPPORT),
         "recipe_support": dict(_RECIPE_PRODUCER_SUPPORT),
+        "sample_capacity_contract": dict(_PRODUCER_SAMPLE_CAPACITY_CONTRACT),
         "blockers": list(_PRODUCER_BLOCKERS),
     }
 
@@ -1013,7 +1458,10 @@ def _expected_episode_entry(
         "scale": scale,
         "target_count": scale,
         "resource_count": scale,
-        "recon_count": max(1, math.ceil(scale / 25)),
+        "recon_count": max(
+            _MINIMUM_RECON_CAMERA_COUNT,
+            math.ceil(scale / 25),
+        ),
         "duration_s": _EPISODE_DURATION_S,
         "collection_profile": _COLLECTION_PROFILE,
         "camera_roles": list(A3_V3_CAMERA_ROLES),
@@ -1061,6 +1509,55 @@ def _expected_intent_windows(entry_index: int) -> list[dict[str, Any]]:
             }
         )
     return windows
+
+
+def _validate_episode_runtime_sample_capacity(
+    entry: Mapping[str, Any],
+) -> dict[str, int]:
+    """Prove the frozen 10 Hz producer can reach every window quota."""
+
+    duration_s = float(entry["duration_s"])
+    role_camera_counts = {
+        "interceptor": int(entry["resource_count"]),
+        "recon": int(entry["recon_count"]),
+    }
+    capacities: dict[str, int] = {}
+    for window_value in _object_sequence(
+        entry["intent_windows"],
+        f"episode_capacity_windows:{entry['entry_index']}",
+    ):
+        window = _mapping(
+            window_value,
+            f"episode_capacity_window:{entry['entry_index']}",
+        )
+        start_s = max(
+            float(window["start_s"]),
+            _PRODUCER_MAXIMUM_ACTIVE_VISION_STARTUP_S,
+        )
+        end_s = min(
+            float(window["end_s"]),
+            duration_s - _PRODUCER_MAXIMUM_ACTIVE_VISION_TAIL_S,
+        )
+        usable_duration_s = max(0.0, end_s - start_s)
+        visual_tick_count = int(
+            math.floor(
+                (usable_duration_s + 1.0e-12)
+                / _PRODUCER_VISUAL_PERIOD_S
+            )
+        )
+        role = str(window["camera_role"])
+        capacity = visual_tick_count * role_camera_counts[role]
+        window_id = str(window["window_id"])
+        capacities[window_id] = capacity
+        if capacity < int(window["minimum_unique_samples"]):
+            _fail(
+                "source_schedule_episode_runtime_sample_capacity_below_quota",
+                (
+                    f"{entry['entry_index']}:{window_id}:"
+                    f"{capacity}<{window['minimum_unique_samples']}"
+                ),
+            )
+    return capacities
 
 
 def _expected_hard_confusion_assignments(
@@ -1468,13 +1965,17 @@ __all__ = [
     "A3V3SourceReadinessError",
     "A3_V3_ALLOCATION_BINDING_SCHEMA_VERSION",
     "A3_V3_PRE_GENERATION_READINESS_SCHEMA_VERSION",
+    "A3_V3_SOURCE_GENERATION_REQUEST_SCHEMA_VERSION",
     "A3_V3_SOURCE_SCHEDULE_SCHEMA_VERSION",
     "DEFAULT_ALLOCATION_BINDING_PATH",
     "DEFAULT_GLOBAL_REGISTRY_PATH",
     "DEFAULT_PROTOCOL_PATH",
+    "DEFAULT_SOURCE_GENERATION_REQUEST_PATH",
     "DEFAULT_SOURCE_SCHEDULE_PATH",
+    "SOURCE_GENERATION_REQUEST_RELATIVE_PATH",
     "validate_a3_v3_allocation_binding",
     "validate_a3_v3_pre_generation_readiness",
     "validate_a3_v3_registry_allocation",
+    "validate_a3_v3_source_generation_request",
     "validate_a3_v3_source_schedule",
 ]

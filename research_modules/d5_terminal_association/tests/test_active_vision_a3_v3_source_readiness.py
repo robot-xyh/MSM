@@ -14,10 +14,13 @@ from d5_terminal_association.active_vision_a3_v3_protocol import (
 from d5_terminal_association.active_vision_a3_v3_source_readiness import (
     A3V3SourceReadinessError,
     A3_V3_PRE_GENERATION_READINESS_SCHEMA_VERSION,
+    SOURCE_GENERATION_REQUEST_RELATIVE_PATH,
     validate_a3_v3_allocation_binding,
     validate_a3_v3_pre_generation_readiness,
     validate_a3_v3_registry_allocation,
+    validate_a3_v3_source_generation_request,
     validate_a3_v3_source_schedule,
+    _validate_episode_runtime_sample_capacity,
 )
 
 
@@ -30,6 +33,9 @@ BINDING_PATH = (
     MODULE_ROOT / "configs/a3_v3_global_seed_allocation_binding_20260801.json"
 )
 SCHEDULE_PATH = MODULE_ROOT / "configs/a3_v3_source_collection_schedule_20260801.json"
+REQUEST_PATH = (
+    MODULE_ROOT / "configs/a3_v3_source_generation_request_20260801.json"
+)
 REGISTRY_PATH = (
     REPOSITORY_ROOT
     / "research_modules/scalable_3d_simulation/configs/"
@@ -103,19 +109,36 @@ def _copy_metadata_tree(destination: Path) -> dict[str, Path]:
             "research_modules/d5_terminal_association/configs/"
             "a3_v3_source_collection_schedule_20260801.json"
         ),
+        "request": Path(SOURCE_GENERATION_REQUEST_RELATIVE_PATH),
         "registry": Path(
             "research_modules/scalable_3d_simulation/configs/"
             "scalable_learning_global_seed_registry_v1.json"
         ),
-        "producer_entrypoint": Path(
-            "research_modules/scalable_3d_simulation/run_learning_dataset.py"
+        "producer_generation": Path(
+            "research_modules/scalable_3d_simulation/learning_source_generation.py"
+        ),
+        "producer_recipes": Path(
+            "research_modules/scalable_3d_simulation/learning_source_recipes.py"
+        ),
+        "producer_adapters": Path(
+            "research_modules/scalable_3d_simulation/learning_source_adapters.py"
+        ),
+        "producer_stack": Path(
+            "research_modules/scalable_3d_simulation/module_stack.py"
+        ),
+        "producer_orchestrator": Path(
+            "research_modules/scalable_3d_simulation/orchestrator.py"
         ),
         "producer_treatment": Path(
             "research_modules/scalable_3d_simulation/active_vision_collection.py"
         ),
-        "producer_v2_schedule": Path(
+        "producer_base_config": Path(
             "research_modules/scalable_3d_simulation/configs/"
-            "d5_a3_source_independent_point_mass_v2.json"
+            "nominal_200v200.json"
+        ),
+        "episode_staging_implementation": Path(
+            "research_modules/d5_terminal_association/src/"
+            "d5_terminal_association/active_vision_a3_v3_episode_evidence.py"
         ),
     }
     result: dict[str, Path] = {}
@@ -135,21 +158,28 @@ def _validate_copied_tree(root: Path, paths: dict[str, Path]) -> None:
         allocation_binding_path=paths["binding"],
         source_schedule_path=paths["schedule"],
         global_registry_path=paths["registry"],
+        source_generation_request_path=paths["request"],
     )
 
 
-def test_actual_plan_and_adapter_are_ready_but_generation_remains_unauthorized() -> None:
+def test_actual_generation_only_request_is_ready_with_stable_main_fields() -> None:
     readiness = validate_a3_v3_pre_generation_readiness()
     report = readiness.to_dict()
 
     assert report["schema_version"] == A3_V3_PRE_GENERATION_READINESS_SCHEMA_VERSION
-    assert readiness.status == (
-        "plan_and_producer_adapter_ready_generation_not_authorized"
-    )
+    assert readiness.status == "source_generation_request_ready_generation_only"
     assert report["plan_ready"] is True
     assert readiness.pre_generation_ready is True
     assert report["producer_adapter_complete"] is True
-    assert report["source_generation_request_ready"] is False
+    assert report["source_generation_request_ready"] is True
+    assert report["source_generation_request_path"] == (
+        SOURCE_GENERATION_REQUEST_RELATIVE_PATH
+    )
+    assert report["source_generation_request_sha256"] == hashlib.sha256(
+        REQUEST_PATH.read_bytes()
+    ).hexdigest()
+    assert report["source_generation_execution_authorized"] is False
+    assert report["generation_started"] is False
     assert report["training_ready"] is False
     assert report["future_held_out_payload_read_allowed"] is False
     assert report["episode_payload_read_count"] == 0
@@ -161,12 +191,29 @@ def test_actual_plan_and_adapter_are_ready_but_generation_remains_unauthorized()
         "planned_minimum_unique_sample_count"
     ] == 4608
     assert report["source_schedule"]["planned_episode_count"] == 104
+    assert report["producer_capability"]["viability_audit"] == {
+        "status": "all_frozen_entries_runtime_sample_capacity_passed",
+        "frozen_episode_count": 104,
+        "intent_window_count": 416,
+        "minimum_window_capacity": 24,
+        "minimum_window_quota": 24,
+        "minimum_capacity_margin": 0,
+        "episode_payload_read_count": 0,
+        "sample_payload_read_count": 0,
+    }
     assert report["producer_capability"]["adapter_status"] == (
         "complete_smoke_verified"
     )
-    assert report["producer_capability"]["blockers"] == [
-        "d5_source_generation_request_not_authorized"
+    capability = report["producer_capability"]
+    assert capability["source_generation_request_path"] == (
+        SOURCE_GENERATION_REQUEST_RELATIVE_PATH
+    )
+    assert capability["source_generation_request_sha256"] == report[
+        "source_generation_request_sha256"
     ]
+    assert capability["source_generation_request_ready"] is True
+    assert capability["cross_process_resume_supported"] is True
+    assert capability["blockers"] == []
     assert all(
         "unsupported" not in value and "partial" not in value
         for value in report["producer_capability"]["entry_field_support"].values()
@@ -175,6 +222,9 @@ def test_actual_plan_and_adapter_are_ready_but_generation_remains_unauthorized()
         value.startswith("supported_by_")
         for value in report["producer_capability"]["recipe_support"].values()
     )
+    assert {
+        name for name, enabled in report["permissions"].items() if enabled
+    } == {"source_artifact_generation"}
     assert not any(report["authority"].values())
 
 
@@ -238,7 +288,14 @@ def test_schedule_has_104_unique_whole_episode_seed_entries() -> None:
     assert len({entry["episode_id"] for entry in entries}) == 104
     assert len({entry["seed"] for entry in entries}) == 104
     assert all(entry["camera_roles"] == ["interceptor", "recon"] for entry in entries)
+    assert all(entry["duration_s"] == 8.0 for entry in entries)
+    assert all(entry["recon_count"] >= 4 for entry in entries)
     assert all(len(entry["intent_windows"]) == 4 for entry in entries)
+    assert all(
+        window["end_s"] - window["start_s"] == 2.0
+        for entry in entries
+        for window in entry["intent_windows"]
+    )
     assert all(len(entry["hard_confusion_assignments"]) == 2 for entry in entries)
     assert all(entry["minimum_unique_sample_quota"]["total"] == 96 for entry in entries)
     assert not any(
@@ -246,6 +303,55 @@ def test_schedule_has_104_unique_whole_episode_seed_entries() -> None:
         for entry in entries
         for value in entry["generation_controls"].values()
     )
+
+
+def test_all_104_frozen_cells_have_conservative_runtime_sample_capacity() -> None:
+    entries = _load(SCHEDULE_PATH)["episode_entries"]
+    capacities = {
+        entry["episode_id"]: _validate_episode_runtime_sample_capacity(entry)
+        for entry in entries
+    }
+
+    assert len(capacities) == 104
+    assert min(
+        capacity
+        for episode in capacities.values()
+        for capacity in episode.values()
+    ) >= 24
+    assert {entry["split"] for entry in entries} == {
+        "train",
+        "validation",
+        "future_held_out",
+    }
+    assert {
+        tuple(window["camera_role"] for window in entry["intent_windows"])
+        for entry in entries
+    } == {
+        ("interceptor", "recon", "interceptor", "recon"),
+        ("recon", "interceptor", "recon", "interceptor"),
+    }
+    assert {
+        assignment["family"]
+        for entry in entries
+        for assignment in entry["hard_confusion_assignments"]
+    } == {
+        "observe_vs_reacquire_projection_boundary",
+        "search_vs_reacquire_cue_loss_boundary",
+        "hold_vs_observe_gimbal_busy_boundary",
+        "role_matched_interceptor_recon_geometry",
+        "multiple_legal_targets_near_tie",
+    }
+
+
+def test_runtime_sample_capacity_rejects_old_single_recon_schedule() -> None:
+    entry = deepcopy(_load(SCHEDULE_PATH)["episode_entries"][1])
+    entry["recon_count"] = 1
+
+    with pytest.raises(
+        A3V3SourceReadinessError,
+        match="runtime_sample_capacity_below_quota",
+    ):
+        _validate_episode_runtime_sample_capacity(entry)
 
 
 def test_schedule_aggregate_coverage_matches_protocol_minimums() -> None:
@@ -335,23 +441,119 @@ def test_declared_coverage_summary_cannot_replace_entry_recount() -> None:
         _validate_schedule(schedule)
 
 
-def test_generation_request_remains_unauthorized_and_false_authority_is_strict() -> None:
+def test_independent_request_does_not_mutate_frozen_schedule_assessment() -> None:
     readiness = validate_a3_v3_pre_generation_readiness().to_dict()
-    assert readiness["status"] == (
-        "plan_and_producer_adapter_ready_generation_not_authorized"
-    )
+    assert readiness["status"] == "source_generation_request_ready_generation_only"
     assert readiness["plan_ready"] is True
     assert readiness["pre_generation_ready"] is True
     assert readiness["producer_adapter_complete"] is True
-    assert readiness["source_generation_request_ready"] is False
+    assert readiness["source_generation_request_ready"] is True
 
     schedule = _load(SCHEDULE_PATH)
     capability = schedule["producer_capability_assessment"]
+    assert capability["source_generation_request_ready"] is False
+    assert capability["blockers"] == [
+        "d5_source_generation_request_not_authorized"
+    ]
     capability["source_generation_request_ready"] = True
     capability["blockers"] = []
     _rehash(schedule)
     with pytest.raises(A3V3SourceReadinessError, match="capability_assessment_mismatch"):
         _validate_schedule(schedule)
+
+
+def test_generation_request_reference_hash_drift_fails_closed(tmp_path: Path) -> None:
+    paths = _copy_metadata_tree(tmp_path)
+    request = _load(paths["request"])
+    request["artifact_bindings"]["source_collection_schedule"]["sha256"] = (
+        "0" * 64
+    )
+    _rehash(request)
+    paths["request"].write_text(json.dumps(request), encoding="utf-8")
+
+    with pytest.raises(A3V3SourceReadinessError, match="binding_mismatch"):
+        _validate_copied_tree(tmp_path, paths)
+
+
+@pytest.mark.parametrize(
+    "mutate",
+    [
+        lambda request: request["source_request"].__setitem__(
+            "planned_episode_count", 103
+        ),
+        lambda request: request["source_request"]["split_requests"][
+            "train"
+        ].__setitem__("seed_count", 47),
+        lambda request: request["source_request"]["split_requests"][
+            "future_held_out"
+        ].__setitem__("seed_range", [24072, 24102]),
+    ],
+)
+def test_generation_request_episode_split_and_seed_drift_fail_closed(
+    mutate,
+) -> None:
+    request = _load(REQUEST_PATH)
+    mutate(request)
+    _rehash(request)
+
+    with pytest.raises(A3V3SourceReadinessError):
+        validate_a3_v3_source_generation_request(request)
+
+
+def test_generation_request_missing_future_one_shot_constraint_fails_closed() -> None:
+    request = _load(REQUEST_PATH)
+    request["future_held_out_access"].pop("second_access_allowed")
+    _rehash(request)
+
+    with pytest.raises(A3V3SourceReadinessError, match="future_access_mismatch"):
+        validate_a3_v3_source_generation_request(request)
+
+
+def test_generation_request_future_integrity_only_finalize_drift_fails_closed() -> None:
+    request = _load(REQUEST_PATH)
+    request["resume_contract"]["future_held_out_integrity_only_finalize"] = False
+    _rehash(request)
+
+    with pytest.raises(A3V3SourceReadinessError, match="resume_contract_mismatch"):
+        validate_a3_v3_source_generation_request(request)
+
+
+@pytest.mark.parametrize(
+    "permission",
+    [
+        "model_artifact_generation",
+        "model_training",
+        "model_inference",
+        "model_selection",
+        "future_held_out_payload_read",
+        "future_held_out_model_selection",
+        "shadow",
+        "assist",
+        "camera_command",
+        "runtime",
+        "production",
+        "control",
+        "global_track_id_write",
+    ],
+)
+def test_generation_request_privilege_escalation_fails_closed(
+    permission: str,
+) -> None:
+    request = _load(REQUEST_PATH)
+    request["permissions"][permission] = True
+    _rehash(request)
+
+    with pytest.raises(A3V3SourceReadinessError, match="permissions_mismatch"):
+        validate_a3_v3_source_generation_request(request)
+
+
+def test_generation_request_online_truth_identity_drift_fails_closed() -> None:
+    request = _load(REQUEST_PATH)
+    request["identity"]["truth_identity_available_to_online_policy"] = True
+    _rehash(request)
+
+    with pytest.raises(A3V3SourceReadinessError, match="identity_mismatch"):
+        validate_a3_v3_source_generation_request(request)
 
 
 def test_future_heldout_permission_drift_fails_closed() -> None:

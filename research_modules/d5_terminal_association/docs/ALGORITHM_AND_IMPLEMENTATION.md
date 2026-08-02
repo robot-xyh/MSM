@@ -1,6 +1,64 @@
 # D5 终端视觉配准与身份认证算法原理与实施文档
 
-**状态日期：2026-08-01**
+**状态日期：2026-08-02**
+
+## A3 v3 当前生产器绑定与续跑实现
+
+来源 readiness 采用两层验证。第一层逐项解析 104 条冻结 recipe，并分别用 main 和 D5 loader
+复核 entry index、seed、episode ID、split 与 allocation。每条 recipe 都必须能够构造当前
+`ScenarioConfig`，且目标数、资源数、侦察相机数、时长、四个意图窗口和两个困难混淆任务与
+schedule 一致。序列化的在线配置禁止出现 truth、actor、object 身份字段，recipe 中的 assignment、
+camera command、runtime、control 和 `global_track_id` create/write 权限必须全部为 false。
+
+第二层使用真实 runtime 的非正式种子探针。五个 episode 覆盖四类意图、interceptor/recon
+两类相机角色及五类困难混淆，共产生 693 帧。适配后的 online/offline DTO 完成严格复载；
+`online_truth_use_count`、`global_track_id_created_count` 和
+`global_track_id_rewritten_count` 均为 0。该运行探针验证配方族和证据转换，不替代 104 条正式
+来源生成。
+
+schedule 先更新发生漂移的 `source_recipe_loader` 与 `runtime_orchestrator` 文件 SHA，再重算
+自身内容哈希和文件哈希。request 随后更新 schedule 文件绑定并重算自身内容哈希。当前
+schedule 内容/文件 SHA 为 `a8538e6d...43cdd` / `d14b19d8...1082e`，request 内容/文件 SHA
+为 `3b242acd...a7560` / `157166b8...80b3`。其余 producer 和 D5 staging 引用未发生漂移，未做
+无证据重冻结。
+
+断点续跑回归直接调用 main 的 `run_authorized_learning_source_generation()`，测试授权对象只含
+dataset generation 权限。第一次以 `max_episodes_per_run=1` 写入 train seed `24000`，第二次
+在同一临时目录以 `resume=true` 写入 `24001`。库存计数从 1 增至 2，session、checkpoint 和
+progress 前缀保持一致；future-held-out 分区没有 online/offline payload。该回归不构成正式执行
+授权，也未触发训练、验证消费或 held-out 读取。
+
+2026-08-02 定向回归为 `51 passed, 1 warning in 20.13s`，D5 全量为
+`877 passed, 2 warnings in 139.85s`。warning 来自既有 Matplotlib Axes3D 与 NVML 环境，
+不影响本次 readiness、writer 或 resume 结果。
+
+## A3 v3 真实生产器采样容量实现
+
+旧冻结计划的窗口长度为 1.5 秒，正式基础配置的视觉周期为 0.1 秒。单相机在完整窗口内最多
+产生 15 个不同时间帧，低于 24 个唯一样本配额。实际 seed `24000` 还在 0.85 秒才形成首个
+主动视觉帧，第二窗口只有 15 个合格指纹。旧自检通过的原因是测试配置把视觉周期改为 0.05 秒，
+同时把侦察相机数改为 2，与真实 generation 路径不一致。
+
+schedule v3 将 episode 延长到 8 秒，四个窗口分别为 `[0,2)`、`[2,4)`、`[4,6)`、`[6,8)`，
+并把侦察相机下限固定为 4。配额仍为每窗 24。readiness 对每个窗口计算保守容量
+
+\[
+K_w=\left\lfloor\frac{\max(0,\min(t_w^e,T-0.5)-\max(t_w^s,1.4))}{0.1}\right\rfloor
+\times n_{role(w)}.
+\]
+
+其中，`1.4` 秒是绑定生产器允许的最大主动视觉启动时间，`0.5` 秒是最大尾段缺口，
+`n_role` 为该窗口角色的实际相机数。104 条冻结 entry 的每个 `K_w` 都必须不小于 24；旧单
+侦察相机 entry 的负例会得到容量不足错误。该公式只做生成前下界审计。真实 writer 仍按
+`seed + episode + frame + camera + candidate feature` 指纹去重，并要求全部控制状态与离线达成
+审计为真，因此容量审计不能制造或重复样本。
+
+producer 哈希绑定已改为实际使用的 source generation orchestrator、recipe loader、runtime
+evidence adapter、module stack、runtime orchestrator、主动视觉 treatment 和默认基础配置。
+request v2 重新绑定 schedule 与 staging 实现。真实代表配方 `0/1/2/70/72/95` 的窗口实际最低
+计数为 32，覆盖三个分区、两种角色排列和五类困难混淆；在线 truth 使用为 0。首配方已完成
+临时 development staging。定向回归 `64 passed`，D5 全量
+`875 passed, 2 warnings in 119.98s`。
 
 ## A3 v3 episode evidence 与冻结写出实现
 
@@ -10,11 +68,12 @@ allocation、episode ID 或窗口。第二层是 `A3V3OnlineSampleEvidenceV1`，
 相对时间、量测时间、到达时间、匿名候选特征指纹、相机/资源角色、意图窗口、控制状态和中心
 只读航迹引用。第三层是 `A3V3OfflineSampleAuditV1` 与 boundary state，只在离线侧记录达成
 审计和可选真值评价。第四层是 episode descriptor 与 partition manifest，绑定两侧文件哈希和
-逐 episode 校验摘要。
+逐 episode 校验摘要。descriptor v2 另带自身内容 SHA-256，使下一进程能在不依赖内存状态的
+情况下复核完整落盘边界。
 
 样本指纹由 schedule 文件哈希、entry 哈希、entry index、split、allocation、seed、episode ID、
 frame index、camera ID 和候选特征指纹共同计算。校验器先验证 fingerprint 在 episode 内唯一，
-再按 `window_id` 建立四个互不借样的集合。窗口必须连续且各为 1.5 秒。只有该样本的全部必需
+再按 `window_id` 建立四个互不借样的集合。当前冻结窗口必须连续且各为 2 秒。只有该样本的全部必需
 控制状态为真，且离线 treatment 达成审计为真时，样本才进入有效集合。对窗口 (w)，验收条件为
 
 \[
@@ -42,15 +101,26 @@ pair 还必须引用该 episode 中两个不同、已通过窗口配额条件的
 
 `stage_a3_v3_episode_evidence()` 把在线和离线文件写入 development 或 future-held-out 的独立
 根目录，并用原子写入、SHA-256 和只读权限生成 descriptor。`finalize_a3_v3_frozen_partition()`
-只接受调用方声明的精确 recipe 集，不随机重分，不复制或过采样，并检查 episode 间 fingerprint
-零重复。partition manifest 内写入用途合同：train 只用于拟合，validation 只用于选模、校准和
-阈值冻结；future-held-out 的上述用途全部为空，只保留模型冻结后的单次评估用途。
+保留为兼容入口并委托 generation-stage 严格 finalizer。新增
+`recover_a3_v3_staged_episode_inventory()` 按全部 104 条 recipe 扫描 descriptor 和文件 SHA，
+只返回完成/剩余清单；`resume_a3_v3_episode_evidence()` 在 incoming DTO 与已落盘 descriptor
+完全相同时幂等返回，任何部分文件或 hash/split/partition 漂移均拒绝。
+
+`finalize_a3_v3_generation_partition()` 只接受调用方声明的精确 recipe 集，不随机重分、不复制或
+过采样，并检查 episode 间 fingerprint 零重复。development 分区可重新反序列化 payload 做语义
+复验；future-held-out 分区只验证 descriptor 自哈希、recipe binding 和 online/offline 文件
+SHA-256，直接使用 staging 时已验证并自哈希保护的 summary，不调用 payload `from_dict()`。
+manifest 固定 `future_held_out_payload_read_count=0` 和
+`integrity_verification_is_held_out_consumption=false`。文件哈希完整性核验不能转换为训练、选模、
+校准或语义评估权限。partition usage contract 中 train 只用于拟合，validation 只用于选模、校准
+和阈值冻结；future-held-out 的上述用途全部为空，只保留模型冻结后的单次评估用途。
 
 `load_a3_v3_development_online_evidence()` 只读取 development manifest 指向的在线文件，遇到
 future 分区直接拒绝。`write_a3_v3_source_manifest()` 只读取两个 partition manifest 的元数据，
 不打开 episode payload；两分区必须物理隔离、完整覆盖冻结 48/24/32 episode、lineage 一致且
-指纹无交叉。D5 evidence/readiness 专项为 `35 passed in 1.16s`，D5 全量为
-`846 passed, 2 warnings in 103.23s`。main 的非正式 smoke 使用 seed `31100-31104` 构造 5 个
+指纹无交叉。D5 request/resume/finalize/evidence/readiness 专项为 `61 passed in 1.29s`，全量为
+`872 passed, 2 warnings in 118.53s`。main
+的非正式 smoke 使用 seed `31100-31104` 构造 5 个
 目标、5 个资源和 2 个侦察相机的三维质点 episode，五类边界均形成，每窗口至少 24 个唯一
 样本，在线 truth 使用为 0；main adapter 专项为 `4 passed in 17.65s`。尚未生成正式 104
 episode，因此 source generation、training 和 runtime authority 仍为 false。
@@ -65,7 +135,7 @@ allocation 还必须逐字段等于冻结期望，并对协议、协议 schema �
 重新计算 SHA-256。
 
 `a3_v3_source_collection_schedule_20260801.json` 明列 104 条 episode metadata。每条包含 split、
-seed、episode ID、九类场景之一、规模与目标/资源/侦察数量、6 秒时长、采集 profile、两类相机
+seed、episode ID、九类场景之一、规模与目标/资源/侦察数量、8 秒时长、采集 profile、两类相机
 角色、四段意图窗口、两类困难混淆 treatment 和最低样本配额。四段窗口各规划 24 个唯一样本，
 因此 split \(s\) 的计划总下限为
 
@@ -80,24 +150,32 @@ validation/future episode。困难混淆采用每 episode 两类的轮转分配�
 role 和困难混淆计数，不信任 schedule 内声明的汇总值。删除或篡改任一 entry、窗口、recipe 或
 配额均失败关闭。
 
-producer 能力审计固定绑定 `run_learning_dataset.py`、`active_vision_collection.py` 和 v2 参考
-schedule 的 SHA-256。逐 episode recipe adapter 把 split、allocation、seed、episode ID、场景、
+producer 能力审计固定绑定实际 source generation orchestrator、recipe loader、runtime evidence
+adapter、module stack、runtime orchestrator、`active_vision_collection.py` 和默认基础配置的
+SHA-256。逐 episode recipe adapter 把 split、allocation、seed、episode ID、场景、
 目标/资源/侦察数量和时长映射到运行配置。意图窗口 treatment 控制投影、侦察线索与云台状态；
 运行时 evidence adapter 提取五类边界，D5 writer 再按窗口唯一指纹执行样本配额。
 
-`active_vision_a3_v3_source_readiness.py` 只读取上述 metadata 和冻结协议。成功结果为
-`plan_and_producer_adapter_ready_generation_not_authorized`。返回值固定 `plan_ready=true`、
+独立制品 `a3_v3_source_generation_request_20260801.json` 以仓库相对路径和文件 SHA-256 绑定
+protocol、schedule、allocation binding、global seed registry 和上述 staging/finalize 实现。
+request 自身使用 canonical content hash；权限映射中只有 `source_artifact_generation=true`。
+模型创建/训练/推理/选模、validation、future payload read、shadow、assist、相机命令、runtime、
+production、control 和中心 ID create/write 均必须为 false。
+
+`active_vision_a3_v3_source_readiness.py` 只读取上述 metadata、冻结协议和 request。成功结果为
+`source_generation_request_ready_generation_only`。返回值固定 `plan_ready=true`、
 `pre_generation_ready=true`、`producer_adapter_complete=true`、
-`source_generation_request_ready=false` 和 `training_ready=false`。剩余 blocker 仅表示 D5 正式
-来源生成请求未授权。
+`source_generation_request_ready=true`，同时 `source_generation_execution_authorized=false`、
+`training_ready=false`。顶层和 producer capability 均输出仓库相对
+`source_generation_request_path`、文件 `source_generation_request_sha256` 和 ready 布尔值。
 episode/sample payload read count 均为 0，future-held-out payload 不可读。CLI 只向标准输出打印
 JSON，不创建目录或输出产物。
 
 负向测试覆盖登记表自哈希、文件哈希、来源文件哈希、owner/version/lifecycle/usage/operations、
 精确 seed 集、split 交叉、意图/角色/困难混淆缺项、计划样本不足、future 提前读取、协议哈希、
 身份写权限和任一 authority 漂移。即使篡改方重算 binding、schedule 或 registry 的内容哈希，
-固定文件哈希和代码锚点仍会失败关闭。最新 evidence/readiness 测试为 `35 passed in 1.16s`，
-D5 全量为 `846 passed, 2 warnings in 103.23s`。本轮没有生成正式数据或权重，也没有训练、AirSim 或
+固定文件哈希和代码锚点仍会失败关闭。最新定向测试为 `61 passed in 1.29s`。本轮没有生成
+正式数据或权重，也没有训练、AirSim 或
 运行权限变化。
 
 ## A3 v3 分层意图与合法候选排序协议实现

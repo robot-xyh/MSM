@@ -1,5 +1,57 @@
 # D5 末端视觉配准与身份认证实验报告
 
+## 2026-08-02 A3 v3 谱系与续跑验证
+
+main 来源配方加载器和运行编排器发生变更后，旧 producer binding 按失败关闭策略拒绝 readiness。
+D5 对全部 104 条冻结 entry 重新执行元数据与配置构造审计。结果为 104/104 可构造，split 计数
+`48/24/32`，覆盖 9 个场景族、5 个规模、416 个意图窗口和 208 个困难混淆 assignment。在线
+配置未发现 truth/actor/object 身份字段，权限矩阵保持全 false。
+
+非正式 runtime probe 共运行 5 个 episode、形成 693 帧，覆盖四类意图、两类相机角色和五类
+困难混淆。在线 truth 使用、`global_track_id` 创建和改写均为 0，未写正式来源 inventory。
+更新后 readiness 状态为 `source_generation_request_ready_generation_only`。schedule 内容/文件
+SHA 为 `a8538e6d...43cdd` / `d14b19d8...1082e`，request 内容/文件 SHA 为
+`3b242acd...a7560` / `157166b8...80b3`。
+
+断点恢复测试在临时目录调用 main generation API 两次，每次最多生成 1 条。第一次完成 train
+seed `24000`，第二次恢复后完成 `24001`，completed count 为 `1 -> 2`。future-held-out staged
+count 为 0，online/offline payload 文件数为 0；训练、运行和控制标志均为 false。该测试是
+bounded smoke，不是 104 条正式来源生成，也没有 held-out 语义读取。
+
+readiness/producer 定向回归为 `51 passed, 1 warning in 20.13s`；D5 全量为
+`877 passed, 2 warnings in 139.85s`。本轮没有 AirSim、真实相机、模型质量或物理拦截新证据。
+
+## 2026-08-01 A3 v3 真实来源生产器可达性验证
+
+本轮复现了正式来源首 episode 的写出失败。旧配方 seed `24000` 为 6 秒，四个意图窗口各
+1.5 秒，每窗最低 24 个唯一样本；真实基础配置视觉周期为 0.1 秒。运行时共形成 50 个
+`active_vision_frames`，首帧 0.85 秒。`intent-window-1` 只在 `1.55-2.95` 秒取得 15 个唯一
+时间样本，稳定触发 `intent_window_unique_sample_quota_missing`。该结果确认旧计划与正式采样
+周期不相容。
+
+修复后的 schedule v3 使用 8 秒 episode、四个 2 秒窗口和至少 4 个侦察相机。静态审计遍历
+104 条 entry，按 0.1 秒周期、1.4 秒最大启动时间和 0.5 秒最大尾段缺口计算每窗保守容量，
+最低值为 24。负例把侦察相机恢复为 1 后被容量审计拒绝。审计没有复制帧、降低配额或跨 episode
+转移样本。
+
+真实 scalable producer 运行 entry `0/1/2/70/72/95`，覆盖 train、validation、
+future-held-out、两种角色排列和五类困难混淆。六条配方的窗口计数分别为：
+
+| entry | split | 场景 | 四窗口唯一样本数 | 在线真值使用 |
+| ---: | --- | --- | --- | ---: |
+| 0 | train | nominal | 65 / 80 / 100 / 72 | 0 |
+| 1 | train | dense_crossing | 48 / 390 / 80 / 360 | 0 |
+| 2 | train | formation_split | 637 / 80 / 980 / 72 | 0 |
+| 70 | validation | secondary_failure | 65 / 80 / 100 / 72 | 0 |
+| 72 | future-held-out | nominal | 650 / 80 / 1000 / 72 | 0 |
+| 95 | future-held-out | communication_degraded | 32 / 100 / 80 / 90 | 0 |
+
+最低实际计数为 32。首条配方完成严格 episode evidence 校验并写入临时 development 分区。
+future-held-out 代表配方只用于生成路径合同验证，没有交给模型、评估器、校准器或阈值逻辑，
+也没有持久化为可消费数据。定向测试为 `64 passed`，D5 全量为
+`875 passed, 2 warnings in 119.98s`。本轮未生成正式 104-episode inventory、partition/source
+manifest、cache、权重或模型，没有新增 AirSim 和物理拦截证据。
+
 ## 2026-08-01 A3 v3 adapter/writer 冒烟验证
 
 本轮验证 main 三维质点运行帧能否转换为 D5 A3 v3 严格 episode 证据。测试使用非正式 seed

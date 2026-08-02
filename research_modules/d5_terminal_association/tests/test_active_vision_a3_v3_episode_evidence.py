@@ -2,10 +2,12 @@ from __future__ import annotations
 
 from dataclasses import replace
 import hashlib
+import json
 from pathlib import Path
 
 import pytest
 
+import d5_terminal_association.active_vision_a3_v3_episode_evidence as a3_evidence_module
 from d5_terminal_association.active_vision_a3_v3_episode_evidence import (
     A3V3BoundaryPairEvidenceV1,
     A3V3EpisodeEvidenceError,
@@ -18,8 +20,11 @@ from d5_terminal_association.active_vision_a3_v3_episode_evidence import (
     a3_v3_boundary_pair_id,
     a3_v3_sample_fingerprint,
     finalize_a3_v3_frozen_partition,
+    finalize_a3_v3_generation_partition,
     load_a3_v3_development_online_evidence,
     load_frozen_a3_v3_episode_recipes,
+    recover_a3_v3_staged_episode_inventory,
+    resume_a3_v3_episode_evidence,
     stage_a3_v3_episode_evidence,
     validate_a3_v3_episode_evidence,
     write_a3_v3_source_manifest,
@@ -28,6 +33,22 @@ from d5_terminal_association.active_vision_a3_v3_episode_evidence import (
 
 def _sha(value: str) -> str:
     return hashlib.sha256(value.encode("utf-8")).hexdigest()
+
+
+def _rehash_descriptor(payload: dict[str, object]) -> None:
+    content = dict(payload)
+    content.pop("content_sha256", None)
+    encoded = (
+        json.dumps(
+            content,
+            ensure_ascii=True,
+            allow_nan=False,
+            sort_keys=True,
+            separators=(",", ":"),
+        )
+        + "\n"
+    ).encode("utf-8")
+    payload["content_sha256"] = hashlib.sha256(encoded).hexdigest()
 
 
 def _boundary_states(recipe, assignment, left_sample, right_sample):
@@ -214,7 +235,7 @@ def test_legal_minimum_episode_binds_recipe_and_detaches_truth(recipes) -> None:
     }
     assert all(value == 24 for value in summary["coverage"]["by_intent"].values())
     assert all(
-        window.end_s - window.start_s == 1.5
+        window.end_s - window.start_s == 2.0
         for window in recipes[0].intent_windows
     )
     assert summary["identity"] == {
@@ -438,6 +459,15 @@ def test_frozen_split_staging_and_future_isolation(
         ),
         "future_held_out_maximum_access_count": 1,
     }
+    assert future_manifest["generation_integrity_contract"][
+        "future_held_out_payload_deserialized_during_finalization"
+    ] is False
+    assert future_manifest["generation_integrity_contract"][
+        "integrity_verification_is_held_out_consumption"
+    ] is False
+    assert future_manifest["generation_integrity_contract"][
+        "future_held_out_payload_read_count"
+    ] == 0
     assert len(load_a3_v3_development_online_evidence(development_dir)) == 1
     with pytest.raises(
         A3V3EpisodeEvidenceError,
@@ -456,6 +486,248 @@ def test_frozen_split_staging_and_future_isolation(
             future_held_out_manifest_path=future_dir / "manifest.json",
         )
     assert not output.exists()
+
+
+def test_generation_finalizer_does_not_deserialize_future_heldout_payload(
+    tmp_path: Path,
+    recipes,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    development_dir = tmp_path / "development"
+    future_dir = tmp_path / "future_held_out"
+    future_recipe = next(item for item in recipes if item.split == "future_held_out")
+    online, offline = _valid_episode(future_recipe)
+    stage_a3_v3_episode_evidence(
+        development_dir=development_dir,
+        future_held_out_dir=future_dir,
+        online=online,
+        offline=offline,
+    )
+    original_read_json = a3_evidence_module._read_json
+
+    def reject_payload_deserialization(path: Path, label: str):
+        if label in {"online_episode", "offline_episode"}:
+            raise AssertionError("future-held-out payload was deserialized")
+        return original_read_json(path, label)
+
+    monkeypatch.setattr(
+        a3_evidence_module,
+        "_read_json",
+        reject_payload_deserialization,
+    )
+    manifest = finalize_a3_v3_generation_partition(
+        future_dir,
+        partition="future_held_out",
+        expected_recipes=(future_recipe,),
+    )
+
+    assert manifest["partition"] == "future_held_out"
+    assert manifest["generation_integrity_contract"] == {
+        "descriptor_self_hash_verified": True,
+        "online_file_sha256_verified": True,
+        "offline_file_sha256_verified": True,
+        "episode_evidence_contract_validated_at_staging": True,
+        "development_payload_deserialized_during_finalization": False,
+        "future_held_out_payload_deserialized_during_finalization": False,
+        "future_held_out_semantic_evaluation_during_finalization": False,
+        "integrity_verification_is_held_out_consumption": False,
+        "future_held_out_payload_read_count": 0,
+    }
+
+
+def test_generation_finalizer_rejects_future_heldout_file_hash_drift(
+    tmp_path: Path,
+    recipes,
+) -> None:
+    development_dir = tmp_path / "development"
+    future_dir = tmp_path / "future_held_out"
+    future_recipe = next(item for item in recipes if item.split == "future_held_out")
+    online, offline = _valid_episode(future_recipe)
+    descriptor = stage_a3_v3_episode_evidence(
+        development_dir=development_dir,
+        future_held_out_dir=future_dir,
+        online=online,
+        offline=offline,
+    )
+    offline_path = future_dir / descriptor["offline_file"]
+    offline_path.chmod(0o644)
+    offline_path.write_bytes(offline_path.read_bytes() + b"\n")
+
+    with pytest.raises(
+        A3V3EpisodeEvidenceError,
+        match="frozen_partition_offline_sha256_mismatch",
+    ):
+        finalize_a3_v3_generation_partition(
+            future_dir,
+            partition="future_held_out",
+            expected_recipes=(future_recipe,),
+        )
+
+
+def test_cross_process_resume_is_idempotent_and_inventory_is_payload_free(
+    tmp_path: Path,
+    recipes,
+) -> None:
+    development_dir = tmp_path / "development"
+    future_dir = tmp_path / "future_held_out"
+    train_online, train_offline = _valid_episode(recipes[0])
+    future_recipe = next(item for item in recipes if item.split == "future_held_out")
+    future_online, future_offline = _valid_episode(future_recipe)
+
+    train_descriptor = resume_a3_v3_episode_evidence(
+        development_dir=development_dir,
+        future_held_out_dir=future_dir,
+        online=train_online,
+        offline=train_offline,
+    )
+    resume_a3_v3_episode_evidence(
+        development_dir=development_dir,
+        future_held_out_dir=future_dir,
+        online=future_online,
+        offline=future_offline,
+    )
+    descriptor_path = (
+        development_dir
+        / "episodes"
+        / f"{train_online.recipe.episode_id}.episode.json"
+    )
+    before_bytes = descriptor_path.read_bytes()
+    before_modified_ns = descriptor_path.stat().st_mtime_ns
+
+    recovered = resume_a3_v3_episode_evidence(
+        development_dir=development_dir,
+        future_held_out_dir=future_dir,
+        online=A3V3OnlineEpisodeEvidenceV1.from_dict(train_online.to_dict()),
+        offline=A3V3OfflineEpisodeAuditV1.from_dict(train_offline.to_dict()),
+    )
+    assert dict(recovered) == dict(train_descriptor)
+    assert descriptor_path.read_bytes() == before_bytes
+    assert descriptor_path.stat().st_mtime_ns == before_modified_ns
+
+    inventory = recover_a3_v3_staged_episode_inventory(
+        development_dir=development_dir,
+        future_held_out_dir=future_dir,
+    )
+    assert inventory["planned_episode_count"] == 104
+    assert inventory["staged_episode_count"] == 2
+    assert inventory["remaining_episode_count"] == 102
+    assert inventory["split_staged_counts"] == {
+        "train": 1,
+        "validation": 0,
+        "future_held_out": 1,
+    }
+    assert inventory["future_held_out_isolation"] == {
+        "physical_root_separate": True,
+        "payload_deserialized": False,
+        "descriptor_self_hash_verified": True,
+        "payload_file_hashes_verified": True,
+    }
+    assert "samples" not in inventory
+    assert not any(inventory["authority"].values())
+
+
+def test_resume_inventory_rejects_partial_and_hash_damaged_artifacts(
+    tmp_path: Path,
+    recipes,
+) -> None:
+    development_dir = tmp_path / "partial" / "development"
+    future_dir = tmp_path / "partial" / "future_held_out"
+    online, offline = _valid_episode(recipes[0])
+    descriptor = stage_a3_v3_episode_evidence(
+        development_dir=development_dir,
+        future_held_out_dir=future_dir,
+        online=online,
+        offline=offline,
+    )
+    descriptor_path = (
+        development_dir / "episodes" / f"{online.recipe.episode_id}.episode.json"
+    )
+    descriptor_path.unlink()
+    with pytest.raises(
+        A3V3EpisodeEvidenceError,
+        match="episode_resume_online_artifact_set_mismatch",
+    ):
+        recover_a3_v3_staged_episode_inventory(
+            development_dir=development_dir,
+            future_held_out_dir=future_dir,
+        )
+
+    development_dir = tmp_path / "hash" / "development"
+    future_dir = tmp_path / "hash" / "future_held_out"
+    descriptor = stage_a3_v3_episode_evidence(
+        development_dir=development_dir,
+        future_held_out_dir=future_dir,
+        online=online,
+        offline=offline,
+    )
+    online_path = development_dir / descriptor["online_file"]
+    online_path.chmod(0o644)
+    online_path.write_bytes(online_path.read_bytes() + b"\n")
+    with pytest.raises(
+        A3V3EpisodeEvidenceError,
+        match="episode_resume_online_sha256_mismatch",
+    ):
+        recover_a3_v3_staged_episode_inventory(
+            development_dir=development_dir,
+            future_held_out_dir=future_dir,
+        )
+
+
+def test_resume_inventory_rejects_rehashed_split_drift(
+    tmp_path: Path,
+    recipes,
+) -> None:
+    development_dir = tmp_path / "development"
+    future_dir = tmp_path / "future_held_out"
+    online, offline = _valid_episode(recipes[0])
+    stage_a3_v3_episode_evidence(
+        development_dir=development_dir,
+        future_held_out_dir=future_dir,
+        online=online,
+        offline=offline,
+    )
+    descriptor_path = (
+        development_dir / "episodes" / f"{online.recipe.episode_id}.episode.json"
+    )
+    payload = json.loads(descriptor_path.read_text(encoding="utf-8"))
+    payload["split"] = "validation"
+    _rehash_descriptor(payload)
+    descriptor_path.chmod(0o644)
+    descriptor_path.write_text(json.dumps(payload), encoding="utf-8")
+
+    with pytest.raises(
+        A3V3EpisodeEvidenceError,
+        match="frozen_partition_recipe_lineage_mismatch",
+    ):
+        recover_a3_v3_staged_episode_inventory(
+            development_dir=development_dir,
+            future_held_out_dir=future_dir,
+        )
+
+
+def test_resume_inventory_rejects_swapped_future_heldout_root(
+    tmp_path: Path,
+    recipes,
+) -> None:
+    development_dir = tmp_path / "development"
+    future_dir = tmp_path / "future_held_out"
+    future_recipe = next(item for item in recipes if item.split == "future_held_out")
+    online, offline = _valid_episode(future_recipe)
+    stage_a3_v3_episode_evidence(
+        development_dir=development_dir,
+        future_held_out_dir=future_dir,
+        online=online,
+        offline=offline,
+    )
+
+    with pytest.raises(
+        A3V3EpisodeEvidenceError,
+        match="episode_descriptor_contract_mismatch",
+    ):
+        recover_a3_v3_staged_episode_inventory(
+            development_dir=future_dir,
+            future_held_out_dir=development_dir,
+        )
 
 
 def test_global_track_id_is_center_read_only(recipes) -> None:

@@ -1,10 +1,72 @@
 # D5 末端视觉配准与协同身份认证综述及子方案
 
+## 2026-08-02 A3 v3 producer 谱系复核
+
+main 更新来源配方加载器和 runtime orchestrator 后，D5 的旧 producer 文件哈希按预期失败关闭。
+D5 先用 main 与 D5 两套 loader 同序解析 104 条冻结 entry，再逐条构造当前运行配置。结果覆盖
+train/validation/future-held-out 的 `48/24/32`、9 个场景族、5 个规模、416 个意图窗口和
+208 个困难混淆 assignment；配置元数据未出现 truth/actor/object 身份，权限保持全 false。
+
+五个非正式运行探针覆盖四类意图、两类相机角色和五类困难混淆，共形成 693 帧。在线 truth
+使用、`global_track_id` 创建和改写计数均为 0。完成能力审计后，D5 更新两个实际漂移的 main
+文件引用，并级联重算 schedule 与 request 自哈希。当前 schedule file SHA 为
+`d14b19d8...1082e`，generation-only request file SHA 为 `157166b8...80b3`。
+
+main generation API 的两次临时有界调用分别把库存推进到 1 和 2，只处理 train seed
+`24000/24001`。future-held-out 没有 staged episode 或 payload 文件，训练、validation
+consumption、held-out read、shadow、assist、runtime、control、camera command 和中心 ID 写权限
+均未开启。定向回归 `51 passed, 1 warning in 20.13s`，D5 全量
+`877 passed, 2 warnings in 139.85s`。正式 104 条来源生成和后续模型流程仍由 main 另行授权。
+
+## 2026-08-01 A3 v3 真实 producer 可达性复核
+
+main 的真实首 episode 暴露了自检与冻结生产条件不一致。旧 schedule 为 6 秒，四窗各 1.5 秒，
+每窗要求 24 个唯一样本；真实基础配置为 0.1 秒视觉周期。seed `24000` 共形成 50 个主动视觉帧，
+首帧 0.85 秒，`intent-window-1` 只有 `1.55-2.95` 秒的 15 个唯时间样本。旧 smoke 使用 0.05 秒
+周期和 2 个侦察相机，不能证明正式冻结配方可写出。
+
+D5 将 schedule 实例升级为 v3。episode 时长为 8 秒，窗口为 `0-2/2-4/4-6/6-8` 秒，侦察相机
+下限为 4。每窗 24、episode 96 的最低配额保持不变。readiness v4 新增 104-cell viability audit，
+按真实 0.1 秒周期、1.4 秒最大启动时间和 0.5 秒最大尾段缺口计算保守容量。最不利窗口容量为
+24；任一 entry、窗口、角色数量或 producer 配置漂移导致容量不足时，请求直接失败关闭。
+
+真实 producer 复核覆盖 entry `0/1/2/70/72/95`。这些配方覆盖 train、validation、
+future-held-out、两种相机角色排列和五类困难混淆，实际窗口最低计数为 32，在线 truth 使用为 0。
+首条配方已完成严格 evidence 校验和临时 development staging。当前 request v2 文件 SHA-256 为
+`157166b8...80b3`；更早 request 与授权不再有效。定向测试 `64 passed`，D5 全量
+`875 passed, 2 warnings in 119.98s`。正式 104 episode、训练和 future 语义评估未执行，所有
+运行、相机命令、控制和中心 ID 写权限保持 false。
+
+## 2026-08-01 A3 v3 来源生成请求与恢复复核
+
+D5 已形成独立、版本化、可机器验证的 generation-only request。request 以仓库相对路径和
+SHA-256 绑定冻结 protocol、schedule、allocation binding、main global seed registry 和 D5
+episode staging 实现。validator 重新核对 104 条 episode、`48/24/32` split、精确 seed
+`24000-24103`、future-held-out one-shot 合同、在线 truth 隔离和 permission 集；任一不一致
+均不返回 ready。readiness 顶层与 producer capability 暴露相同的 request path/hash/ready
+稳定字段，便于 main 统一消费。
+
+原 `stage_a3_v3_episode_evidence()` 保持 create-only。新增只读 inventory 允许下一进程在运行
+episode 前确认哪些冻结 recipe 已完整落盘；新增 resume helper 只在 incoming evidence 与已落盘
+descriptor/hash 完全一致时幂等返回，不重写文件。descriptor v2 自带内容哈希，恢复路径拒绝
+部分文件、损坏、online/offline hash 漂移、split 漂移和 development/future 根错位。
+
+专项复核还发现旧 finalizer 会反序列化 future-held-out payload。现已增加
+`finalize_a3_v3_generation_partition()`：future 最终化只核对 descriptor 自哈希、冻结 recipe
+binding 及 online/offline 文件 SHA，不调用 payload `from_dict()`；manifest 明确
+`future_held_out_payload_read_count=0` 且 integrity verification 不等于 held-out consumption。
+development 仍可在最终化时做语义重验。修复后定向回归为 `64 passed`，D5 全量为
+`875 passed, 2 warnings in 119.98s`，零失败。
+
+当前 readiness 是 `source_generation_request_ready_generation_only`，不是执行 ACK。104 个正式
+episode、source manifest、训练和 future 一次性评估均未执行。模型、shadow、assist、相机命令、
+runtime、production、control 和中心 ID 写权限保持 false；在线仍不得读取 truth ID。
+
 ## 2026-08-01 A3 v3 episode evidence/writer 复核
 
 D5 已把冻结 schedule 转换为 main 可调用的逐 episode recipe。每条 recipe 保留 schedule
 lineage、entry、split、allocation、seed、episode ID、规模、目标/资源/侦察节点数量、相机角色、
-四段意图窗口、两类困难混淆任务和控制项。四段窗口均为 1.5 秒，每段独立要求至少 24 个唯一
+四段意图窗口、两类困难混淆任务和控制项。当前四段窗口均为 2 秒，每段独立要求至少 24 个唯一
 sample fingerprint，episode 总下限为 96。配额不能跨窗口或跨 episode 转移。
 
 困难混淆证据采用状态推导。投影边界要求同一分配与几何族下出现稳定内投影和边界外/退化
@@ -38,8 +100,8 @@ treatment 和最低样本配额；集合级重算证明 8 个意图-角色单元
 唯一有效样本。
 
 main 已完成逐 episode recipe、意图窗口 treatment、五类实际边界状态和 D5 writer 的 smoke
-接线。readiness 为 `plan_and_producer_adapter_ready_generation_not_authorized`，其中
-`producer_adapter_complete=true`，生成请求仍为 false。main 取得单独授权后才能生成三
+接线。当前 readiness 为 `source_generation_request_ready_generation_only`，其中
+`producer_adapter_complete=true`、request ready=true，但执行授权仍为 false。main 取得单独执行授权后才能生成三
 partition；其后再进行 manifest 验收、train/validation 开发、模型冻结、future-held-out 一次性
 评估和 D6 独立审计。
 

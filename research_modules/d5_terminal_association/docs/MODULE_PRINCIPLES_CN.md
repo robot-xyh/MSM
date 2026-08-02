@@ -1,10 +1,65 @@
 # 第五研究模块末端视觉关联（Terminal Association, D5）原理
 
-**状态日期：2026-08-01**
+**状态日期：2026-08-02**
+
+## 生产器谱系原则
+
+D5 的来源计划必须绑定实际执行的 main producer 文件。producer 文件变化后，旧 schedule 和
+request 自动失效，不能仅替换哈希恢复 ready。D5 先验证全部 104 条 recipe 能由当前 loader
+解析并构造运行配置，再用独立非正式种子运行四类意图、两类相机角色和五类困难混淆。只有
+字段映射、配额容量、证据转换和在线身份隔离同时成立，才允许重冻结发生变化的引用。
+
+本轮 104 条逐项审计覆盖 `48/24/32` 三分区、9 个场景族、5 个规模、416 个意图窗口和
+208 个困难混淆任务。五个运行探针形成 693 帧，在线 truth 使用以及全局航迹编号创建、改写
+均为 0。schedule 文件 SHA 更新为 `d14b19d8...1082e`，generation-only request 文件 SHA
+更新为 `157166b8...80b3`。
+
+跨进程续跑必须通过 main 的同一 generation API、同一 session 和严格库存前缀完成。临时
+两次调用的完成数为 `1 -> 2`，只写入 train 分区；future-held-out 文件数和读取数均为 0。
+该结果只证明有界恢复机制可用。正式 104 条生成仍需 main 在 clean commit 上单独授权，训练、
+validation consumption、held-out read、shadow、assist、相机命令、运行、控制和全局编号写权限
+继续关闭。
+
+## 真实生产器采样可达性原则
+
+窗口配额必须同时满足统计要求和生产器可达性。旧 A3 v3 计划把 24 个唯一样本放入 1.5 秒
+窗口，而正式生产器视觉周期为 0.1 秒，单相机最多只有 15 个时间样本。seed `24000` 的实际
+首帧为 0.85 秒，第二窗口只有 15 个样本。该 episode 被拒绝说明 writer 正常工作，不能通过
+复制帧、跨窗口借样本或降低配额处理。
+
+当前冻结计划使用 8 秒 episode、四个 2 秒连续窗口和至少 4 个侦察相机。生成前审计采用
+0.1 秒视觉周期、1.4 秒最大主动视觉启动时间和 0.5 秒最大尾段缺口，为 104 条配方逐窗计算
+最低容量。保守容量低于 24 时 readiness 失败关闭。该容量只表示在绑定生产器条件下可采集，
+不等于样本已经生成，也不替代 writer 对真实指纹、控制状态和离线 treatment 的逐 episode
+复核。
+
+代表性真实运行覆盖三个数据分区、两种相机角色排列和五类困难混淆，实际每窗最低 32，在线
+真值身份使用为 0。首条训练配方已完成临时 staging。future-held-out 在生成阶段仍只允许写出
+和完整性最终化；模型、语义评估和阈值过程不得读取其 payload。当前 D5 全量回归为
+`875 passed, 2 warnings in 119.98s`，104 条正式来源尚未生成。
+
+## A3 v3 来源生成请求与恢复原则
+
+来源生成请求必须是独立于冻结 protocol、schedule 和 allocation binding 的版本化制品。request
+只能通过仓库相对路径和文件 SHA-256 引用三者、main global seed registry 与 D5 staging 实现；
+不得回写或重冻结原文件。validator 必须重新核对 104 episode、`48/24/32` split、seed
+`24000-24103`、whole-episode 原子性、future one-shot 合同与在线 truth-free 身份边界。唯一可为
+true 的 permission 是 source artifact generation；request ready 不等于 producer execution ACK。
+
+跨进程恢复必须以磁盘制品为真值，不依赖上一进程的内存集合。每个 staged descriptor 自带内容
+哈希并绑定冻结 recipe、online/offline 文件 SHA、split 和物理 partition。只读 inventory 只能返回
+episode ID、完成/剩余计数和完整性状态，不返回样本；严格 resume 只对完全相同的完整 episode
+幂等成功。部分写入、孤立文件、hash/split 漂移或 development/future 根错位必须失败关闭。
+
+future-held-out 在生成阶段允许写出和文件完整性核验，不允许作为训练、拟合、选模、校准、阈值
+或语义评估输入。generation finalizer 只能验证 descriptor 自哈希、冻结 recipe binding 和两侧
+文件 SHA，不反序列化 future payload。完整性核验不计为 held-out consumption，manifest 和
+readiness 中的 `future_held_out_payload_read_count` 长期保持 0；只有模型与校准冻结、validation
+gate 通过并取得另行一次性访问授权后，才可能进入后续 evaluator。
 
 ## A3 v3 episode 证据原则
 
-A3 v3 的训练来源必须先在单个 episode 内成立。一个 episode 包含四个连续 1.5 秒意图窗口，
+A3 v3 的训练来源必须先在单个 episode 内成立。一个 episode 包含四个连续 2 秒意图窗口，
 每个窗口分别按不可重复的样本指纹计数。每窗口至少 24 个有效样本，四段合计至少 96 个。
 其他窗口或其他 episode 的样本不能填补当前窗口缺口。该约束避免高频、易采集状态掩盖少数
 意图窗口没有形成有效观测的问题。
@@ -46,8 +101,9 @@ episode/seed 下限。每个 episode 只安排五类困难混淆中的两类，�
 
 main producer adapter 已能把逐 episode 元数据映射到运行配置，执行意图窗口 treatment，提取
 五类困难混淆边界状态，并把合格证据交给 D5 writer。该能力只通过非正式 smoke 验证。
-readiness 为 `pre_generation_ready=true`、`producer_adapter_complete=true`，但
-`source_generation_request_ready=false`；没有单独授权时不得开始正式生成。
+readiness 为 `pre_generation_ready=true`、`producer_adapter_complete=true`、
+`source_generation_request_ready=true`，但 `source_generation_execution_authorized=false`；
+没有单独执行授权时不得开始正式生成。
 
 future-held-out 在开发期间只允许登记 metadata。episode 和 sample payload 要等 validation
 gate 通过且模型权重、校准结果冻结后才能打开一次。评估结果不能反馈训练、选模、温度校准或
@@ -85,10 +141,10 @@ sample/episode/seed 分别为 train `128/16/16`、validation `64/8/8`、future
 在线 truth 使用、`global_track_id` 创建/改写和全部 authority 必须为 0/false。
 
 协议基础状态仍是 `protocol_frozen_data_not_generated`；来源 readiness 状态为
-`plan_and_producer_adapter_ready_generation_not_authorized`。实现已有冻结配置、JSON Schema、
-allocation binding、104 条 episode schedule、集合配额重算、producer adapter 和能力审计；默认
-入口不读取 cache、不创建正式来源、不写权重。最新 evidence/readiness 专项为
-`35 passed in 1.16s`，D5 全量为 `846 passed, 2 warnings in 103.23s`；测试未执行优化器训练。
+`source_generation_request_ready_generation_only`。实现已有冻结配置、JSON Schema、allocation
+binding、104 条 episode schedule、集合配额重算、producer adapter、request、resume 与
+integrity-only finalizer；默认入口不读取 cache、不创建正式来源、不写权重。最新定向专项为
+`61 passed in 1.29s`，D5 全量为 `872 passed, 2 warnings in 118.53s`；测试未执行优化器训练。
 两条 warning 仍来自既有
 Matplotlib Axes3D 与 NVML 环境。本批没有新 episode、数据、训练、模型、AirSim 或物理结果，
 shadow、assist、PPO、runtime、camera command、control、分配、降级、生产、晋级及

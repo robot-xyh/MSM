@@ -59,6 +59,14 @@ def build_parser() -> argparse.ArgumentParser:
             "scalable_learning_global_seed_registry_v1.json"
         ),
     )
+    parser.add_argument(
+        "--source-generation-request",
+        type=Path,
+        default=(
+            MODULE_ROOT
+            / "configs/a3_v3_source_generation_request_20260801.json"
+        ),
+    )
     return parser
 
 
@@ -70,6 +78,7 @@ def main() -> int:
         allocation_binding_path=args.allocation_binding,
         source_schedule_path=args.source_schedule,
         global_registry_path=args.global_seed_registry,
+        source_generation_request_path=args.source_generation_request,
     )
     print(json.dumps(readiness.to_dict(), ensure_ascii=False, indent=2, sort_keys=True))
     return 0

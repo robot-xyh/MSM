@@ -37,6 +37,7 @@ from .active_vision_a3_v3_source_readiness import (
     DEFAULT_ALLOCATION_BINDING_PATH,
     DEFAULT_GLOBAL_REGISTRY_PATH,
     DEFAULT_PROTOCOL_PATH,
+    DEFAULT_SOURCE_GENERATION_REQUEST_PATH,
     DEFAULT_SOURCE_SCHEDULE_PATH,
     REPOSITORY_ROOT,
     validate_a3_v3_allocation_binding,
@@ -70,14 +71,16 @@ A3_V3_OFFLINE_EPISODE_AUDIT_SCHEMA_VERSION = (
     "d5.active-vision-a3-v3-offline-episode-audit.v1"
 )
 A3_V3_EPISODE_DESCRIPTOR_SCHEMA_VERSION = (
-    "d5.active-vision-a3-v3-episode-descriptor.v1"
+    "d5.active-vision-a3-v3-episode-descriptor.v2"
 )
 A3_V3_FROZEN_PARTITION_MANIFEST_SCHEMA_VERSION = (
-    "d5.active-vision-a3-v3-frozen-partition-manifest.v1"
+    "d5.active-vision-a3-v3-frozen-partition-manifest.v2"
+)
+A3_V3_STAGED_EPISODE_INVENTORY_SCHEMA_VERSION = (
+    "d5.active-vision-a3-v3-staged-episode-inventory.v1"
 )
 
 _PARTITIONS = ("development", "future_held_out")
-_INTENT_WINDOW_DURATION_S = 1.5
 _SPLITS_BY_PARTITION = {
     "development": ("train", "validation"),
     "future_held_out": ("future_held_out",),
@@ -359,8 +362,9 @@ class A3V3EpisodeRecipeV1:
             for left, right in zip(windows, windows[1:])
         ):
             _fail("episode_recipe_window_gap_or_overlap")
+        expected_window_duration_s = duration / len(A3_V3_INTENTS)
         if any(
-            abs((item.end_s - item.start_s) - _INTENT_WINDOW_DURATION_S)
+            abs((item.end_s - item.start_s) - expected_window_duration_s)
             > 1.0e-9
             for item in windows
         ):
@@ -1050,6 +1054,9 @@ def load_frozen_a3_v3_episode_recipes(
     allocation_binding_path: str | Path = DEFAULT_ALLOCATION_BINDING_PATH,
     source_schedule_path: str | Path = DEFAULT_SOURCE_SCHEDULE_PATH,
     global_registry_path: str | Path = DEFAULT_GLOBAL_REGISTRY_PATH,
+    source_generation_request_path: str | Path = (
+        DEFAULT_SOURCE_GENERATION_REQUEST_PATH
+    ),
 ) -> tuple[A3V3EpisodeRecipeV1, ...]:
     """Return all 104 recipes only after the existing frozen plan validates."""
 
@@ -1060,6 +1067,7 @@ def load_frozen_a3_v3_episode_recipes(
             allocation_binding_path=allocation_binding_path,
             source_schedule_path=source_schedule_path,
             global_registry_path=global_registry_path,
+            source_generation_request_path=source_generation_request_path,
         ).to_dict()
     except A3V3SourceReadinessError as exc:
         if not exc.code.startswith("source_schedule_producer_source_hash_mismatch:"):
@@ -1390,34 +1398,29 @@ def validate_a3_v3_episode_evidence(
     return MappingProxyType(summary)
 
 
-def stage_a3_v3_episode_evidence(
-    *,
+def _prepare_staged_episode_artifacts(
     development_dir: str | Path,
     future_held_out_dir: str | Path,
     online: A3V3OnlineEpisodeEvidenceV1,
     offline: A3V3OfflineEpisodeAuditV1,
-) -> Mapping[str, Any]:
-    """Stage one validated episode into its schedule-frozen physical partition."""
-
+) -> tuple[Path, Path, Path, Path, bytes, bytes, dict[str, Any]]:
     _require_recipe_matches_frozen_schedule(online.recipe)
     development_root, future_root = _isolated_roots(
         development_dir,
         future_held_out_dir,
     )
     summary = dict(validate_a3_v3_episode_evidence(online, offline))
-    root = future_root if online.recipe.partition == "future_held_out" else development_root
-    if (root / "manifest.json").exists():
-        _fail("frozen_partition_already_finalized", str(root))
+    root = (
+        future_root
+        if online.recipe.partition == "future_held_out"
+        else development_root
+    )
     episode_id = online.recipe.episode_id
     online_path = root / "online" / f"{episode_id}.online.json"
     offline_path = root / "offline" / f"{episode_id}.offline.json"
     descriptor_path = root / "episodes" / f"{episode_id}.episode.json"
-    if any(path.exists() for path in (online_path, offline_path, descriptor_path)):
-        _fail("episode_evidence_already_staged", episode_id)
-    online_payload = online.to_dict()
-    offline_payload = offline.to_dict()
-    online_bytes = _canonical_json_bytes(online_payload)
-    offline_bytes = _canonical_json_bytes(offline_payload)
+    online_bytes = _canonical_json_bytes(online.to_dict())
+    offline_bytes = _canonical_json_bytes(offline.to_dict())
     descriptor = {
         "schema_version": A3_V3_EPISODE_DESCRIPTOR_SCHEMA_VERSION,
         "status": "staged_episode_evidence_validated",
@@ -1435,6 +1438,45 @@ def stage_a3_v3_episode_evidence(
         "offline_sha256": hashlib.sha256(offline_bytes).hexdigest(),
         "validation_summary": summary,
     }
+    descriptor["content_sha256"] = sha256_json(descriptor)
+    return (
+        root,
+        online_path,
+        offline_path,
+        descriptor_path,
+        online_bytes,
+        offline_bytes,
+        descriptor,
+    )
+
+
+def stage_a3_v3_episode_evidence(
+    *,
+    development_dir: str | Path,
+    future_held_out_dir: str | Path,
+    online: A3V3OnlineEpisodeEvidenceV1,
+    offline: A3V3OfflineEpisodeAuditV1,
+) -> Mapping[str, Any]:
+    """Stage one validated episode into its schedule-frozen physical partition."""
+
+    (
+        root,
+        online_path,
+        offline_path,
+        descriptor_path,
+        online_bytes,
+        offline_bytes,
+        descriptor,
+    ) = _prepare_staged_episode_artifacts(
+        development_dir,
+        future_held_out_dir,
+        online,
+        offline,
+    )
+    if (root / "manifest.json").exists():
+        _fail("frozen_partition_already_finalized", str(root))
+    if any(path.exists() for path in (online_path, offline_path, descriptor_path)):
+        _fail("episode_evidence_already_staged", online.recipe.episode_id)
     _write_bytes_atomic(online_path, online_bytes)
     _write_bytes_atomic(offline_path, offline_bytes)
     _write_json_atomic(descriptor_path, descriptor)
@@ -1443,13 +1485,204 @@ def stage_a3_v3_episode_evidence(
     return MappingProxyType(descriptor)
 
 
-def finalize_a3_v3_frozen_partition(
+def resume_a3_v3_episode_evidence(
+    *,
+    development_dir: str | Path,
+    future_held_out_dir: str | Path,
+    online: A3V3OnlineEpisodeEvidenceV1,
+    offline: A3V3OfflineEpisodeAuditV1,
+) -> Mapping[str, Any]:
+    """Stage once or recover an exactly identical completed episode."""
+
+    (
+        root,
+        online_path,
+        offline_path,
+        descriptor_path,
+        _,
+        _,
+        expected_descriptor,
+    ) = _prepare_staged_episode_artifacts(
+        development_dir,
+        future_held_out_dir,
+        online,
+        offline,
+    )
+    if (root / "manifest.json").exists():
+        _fail("frozen_partition_already_finalized", str(root))
+    existing = tuple(
+        path.exists() for path in (online_path, offline_path, descriptor_path)
+    )
+    if not any(existing):
+        return stage_a3_v3_episode_evidence(
+            development_dir=development_dir,
+            future_held_out_dir=future_held_out_dir,
+            online=online,
+            offline=offline,
+        )
+    if not all(existing):
+        _fail("episode_resume_partial_artifact_set", online.recipe.episode_id)
+
+    stored = _read_json(descriptor_path, "episode_resume_descriptor")
+    _validate_descriptor_shape(stored, partition=online.recipe.partition)
+    _validate_descriptor_recipe_binding(stored, online.recipe)
+    if stored != expected_descriptor:
+        _fail("episode_resume_descriptor_mismatch", online.recipe.episode_id)
+    if sha256_file(online_path) != stored["online_sha256"]:
+        _fail("episode_resume_online_sha256_mismatch", online.recipe.episode_id)
+    if sha256_file(offline_path) != stored["offline_sha256"]:
+        _fail("episode_resume_offline_sha256_mismatch", online.recipe.episode_id)
+    return MappingProxyType(stored)
+
+
+def recover_a3_v3_staged_episode_inventory(
+    *,
+    development_dir: str | Path,
+    future_held_out_dir: str | Path,
+) -> Mapping[str, Any]:
+    """Return a payload-free, hash-verified inventory for cross-process resume."""
+
+    development_root, future_root = _isolated_roots(
+        development_dir,
+        future_held_out_dir,
+    )
+    recipes = _cached_frozen_recipes()
+    expected_by_id = {item.episode_id: item for item in recipes}
+    staged: list[A3V3EpisodeRecipeV1] = []
+    partition_state: dict[str, dict[str, Any]] = {}
+    for partition, root in (
+        ("development", development_root),
+        ("future_held_out", future_root),
+    ):
+        partition_recipes = tuple(
+            item for item in recipes if item.partition == partition
+        )
+        descriptor_paths = tuple(
+            sorted((root / "episodes").glob("*.episode.json"))
+        )
+        descriptor_online_files: set[str] = set()
+        descriptor_offline_files: set[str] = set()
+        partition_episode_ids: set[str] = set()
+        for descriptor_path in descriptor_paths:
+            if descriptor_path.is_symlink():
+                _fail("episode_resume_descriptor_symlink_forbidden")
+            descriptor = _read_json(
+                descriptor_path,
+                "episode_resume_inventory_descriptor",
+            )
+            _validate_descriptor_shape(descriptor, partition=partition)
+            episode_id = str(descriptor["episode_id"])
+            recipe = expected_by_id.get(episode_id)
+            if recipe is None or recipe.partition != partition:
+                _fail("episode_resume_unexpected_episode", episode_id)
+            _validate_descriptor_recipe_binding(descriptor, recipe)
+            expected_descriptor_path = (
+                root / "episodes" / f"{episode_id}.episode.json"
+            )
+            if descriptor_path.resolve() != expected_descriptor_path.resolve():
+                _fail("episode_resume_descriptor_path_mismatch", episode_id)
+            online_path = _safe_relative_file(root, descriptor["online_file"])
+            offline_path = _safe_relative_file(root, descriptor["offline_file"])
+            if online_path.is_symlink() or offline_path.is_symlink():
+                _fail("episode_resume_payload_symlink_forbidden", episode_id)
+            if sha256_file(online_path) != descriptor["online_sha256"]:
+                _fail("episode_resume_online_sha256_mismatch", episode_id)
+            if sha256_file(offline_path) != descriptor["offline_sha256"]:
+                _fail("episode_resume_offline_sha256_mismatch", episode_id)
+            descriptor_online_files.add(str(descriptor["online_file"]))
+            descriptor_offline_files.add(str(descriptor["offline_file"]))
+            if episode_id in partition_episode_ids:
+                _fail("episode_resume_episode_duplicate", episode_id)
+            partition_episode_ids.add(episode_id)
+            staged.append(recipe)
+
+        actual_online_files = {
+            path.relative_to(root).as_posix()
+            for path in (root / "online").glob("*.online.json")
+        }
+        actual_offline_files = {
+            path.relative_to(root).as_posix()
+            for path in (root / "offline").glob("*.offline.json")
+        }
+        if actual_online_files != descriptor_online_files:
+            _fail("episode_resume_online_artifact_set_mismatch", partition)
+        if actual_offline_files != descriptor_offline_files:
+            _fail("episode_resume_offline_artifact_set_mismatch", partition)
+
+        manifest_path = root / "manifest.json"
+        finalized = manifest_path.exists()
+        if finalized:
+            manifest = _read_json(manifest_path, "episode_resume_partition_manifest")
+            _validate_partition_manifest_shape(manifest)
+            manifest_episode_ids = {
+                str(item["episode_id"])
+                for item in manifest["episode_summaries"]
+            }
+            expected_partition_ids = {
+                item.episode_id for item in partition_recipes
+            }
+            if (
+                manifest["partition"] != partition
+                or manifest_episode_ids != partition_episode_ids
+                or partition_episode_ids != expected_partition_ids
+                or manifest["schedule_complete"] is not True
+            ):
+                _fail("episode_resume_incomplete_partition_finalized", partition)
+        partition_state[partition] = {
+            "physical_root": root.as_posix(),
+            "finalized": finalized,
+            "staged_episode_count": len(partition_episode_ids),
+            "expected_episode_count": len(partition_recipes),
+        }
+
+    staged_ids = {item.episode_id for item in staged}
+    if len(staged_ids) != len(staged):
+        _fail("episode_resume_cross_partition_episode_duplicate")
+    remaining = tuple(item for item in recipes if item.episode_id not in staged_ids)
+    split_staged_counts = {
+        split: sum(1 for item in staged if item.split == split)
+        for split in A3_V3_SOURCE_SPLITS
+    }
+    split_remaining_counts = {
+        split: sum(1 for item in remaining if item.split == split)
+        for split in A3_V3_SOURCE_SPLITS
+    }
+    payload = {
+        "schema_version": A3_V3_STAGED_EPISODE_INVENTORY_SCHEMA_VERSION,
+        "status": (
+            "all_episodes_staged"
+            if not remaining
+            else "resume_inventory_valid_generation_incomplete"
+        ),
+        "planned_episode_count": len(recipes),
+        "staged_episode_count": len(staged),
+        "remaining_episode_count": len(remaining),
+        "staged_episode_ids": [
+            item.episode_id for item in sorted(staged, key=lambda item: item.entry_index)
+        ],
+        "remaining_episode_ids": [item.episode_id for item in remaining],
+        "split_staged_counts": split_staged_counts,
+        "split_remaining_counts": split_remaining_counts,
+        "partitions": partition_state,
+        "future_held_out_isolation": {
+            "physical_root_separate": True,
+            "payload_deserialized": False,
+            "descriptor_self_hash_verified": True,
+            "payload_file_hashes_verified": True,
+        },
+        "identity": dict(_ONLINE_IDENTITY),
+        "authority": authority_false_contract(),
+    }
+    return MappingProxyType(payload)
+
+
+def finalize_a3_v3_generation_partition(
     partition_dir: str | Path,
     *,
     partition: str,
     expected_recipes: Sequence[A3V3EpisodeRecipeV1],
 ) -> Mapping[str, Any]:
-    """Freeze exact expected recipes without random split reassignment."""
+    """Freeze generation artifacts without consuming future-held-out payloads."""
 
     if partition not in _PARTITIONS:
         _fail("frozen_partition_invalid", partition)
@@ -1483,30 +1716,30 @@ def finalize_a3_v3_frozen_partition(
         recipe = expected_by_id.get(str(descriptor["episode_id"]))
         if recipe is None:
             _fail("frozen_partition_unexpected_episode")
-        if (
-            descriptor["entry_index"] != recipe.entry_index
-            or descriptor["split"] != recipe.split
-            or descriptor["allocation_id"] != recipe.allocation_id
-            or descriptor["seed"] != recipe.seed
-            or descriptor["schedule_entry_sha256"] != recipe.schedule_entry_sha256
-            or descriptor["schedule_lineage"] != recipe.lineage.to_dict()
-        ):
-            _fail("frozen_partition_recipe_lineage_mismatch", recipe.episode_id)
+        _validate_descriptor_recipe_binding(descriptor, recipe)
         online_path = _safe_relative_file(root, descriptor["online_file"])
         offline_path = _safe_relative_file(root, descriptor["offline_file"])
         if sha256_file(online_path) != descriptor["online_sha256"]:
             _fail("frozen_partition_online_sha256_mismatch", recipe.episode_id)
         if sha256_file(offline_path) != descriptor["offline_sha256"]:
             _fail("frozen_partition_offline_sha256_mismatch", recipe.episode_id)
-        online = A3V3OnlineEpisodeEvidenceV1.from_dict(
-            _read_json(online_path, "online_episode")
+        summary = _validate_staged_validation_summary(
+            descriptor["validation_summary"],
+            recipe,
         )
-        offline = A3V3OfflineEpisodeAuditV1.from_dict(
-            _read_json(offline_path, "offline_episode")
-        )
-        summary = dict(validate_a3_v3_episode_evidence(online, offline))
-        if summary != descriptor["validation_summary"]:
-            _fail("frozen_partition_validation_summary_mismatch", recipe.episode_id)
+        if partition == "development":
+            online = A3V3OnlineEpisodeEvidenceV1.from_dict(
+                _read_json(online_path, "online_episode")
+            )
+            offline = A3V3OfflineEpisodeAuditV1.from_dict(
+                _read_json(offline_path, "offline_episode")
+            )
+            revalidated = dict(validate_a3_v3_episode_evidence(online, offline))
+            if revalidated != summary:
+                _fail(
+                    "frozen_partition_validation_summary_mismatch",
+                    recipe.episode_id,
+                )
         fingerprints = set(summary["sample_fingerprints"])
         if all_fingerprints & fingerprints:
             _fail("frozen_partition_cross_episode_fingerprint_duplicate")
@@ -1574,6 +1807,9 @@ def finalize_a3_v3_frozen_partition(
             "sample_oversampling_allowed": False,
             "cross_episode_quota_transfer_allowed": False,
         },
+        "generation_integrity_contract": _generation_integrity_contract(
+            partition
+        ),
         "usage_contract": _partition_usage_contract(partition),
         "identity": dict(_ONLINE_IDENTITY),
         "authority": authority_false_contract(),
@@ -1581,6 +1817,21 @@ def finalize_a3_v3_frozen_partition(
     _write_json_atomic(manifest_path, manifest)
     _make_read_only(manifest_path)
     return MappingProxyType(manifest)
+
+
+def finalize_a3_v3_frozen_partition(
+    partition_dir: str | Path,
+    *,
+    partition: str,
+    expected_recipes: Sequence[A3V3EpisodeRecipeV1],
+) -> Mapping[str, Any]:
+    """Compatibility wrapper for the generation-stage strict finalizer."""
+
+    return finalize_a3_v3_generation_partition(
+        partition_dir,
+        partition=partition,
+        expected_recipes=expected_recipes,
+    )
 
 
 def load_a3_v3_development_online_evidence(
@@ -1768,6 +2019,24 @@ def _require_sample_counts(
             _fail(f"{label}_unique_sample_quota_missing", name)
 
 
+def _generation_integrity_contract(partition: str) -> dict[str, Any]:
+    if partition not in _PARTITIONS:
+        _fail("frozen_partition_invalid", partition)
+    return {
+        "descriptor_self_hash_verified": True,
+        "online_file_sha256_verified": True,
+        "offline_file_sha256_verified": True,
+        "episode_evidence_contract_validated_at_staging": True,
+        "development_payload_deserialized_during_finalization": (
+            partition == "development"
+        ),
+        "future_held_out_payload_deserialized_during_finalization": False,
+        "future_held_out_semantic_evaluation_during_finalization": False,
+        "integrity_verification_is_held_out_consumption": False,
+        "future_held_out_payload_read_count": 0,
+    }
+
+
 def _partition_usage_contract(partition: str) -> dict[str, Any]:
     if partition == "development":
         return {
@@ -1908,6 +2177,7 @@ def _validate_descriptor_shape(value: Mapping[str, Any], *, partition: str) -> N
             "offline_file",
             "offline_sha256",
             "validation_summary",
+            "content_sha256",
         },
         "episode_descriptor",
     )
@@ -1917,8 +2187,155 @@ def _validate_descriptor_shape(value: Mapping[str, Any], *, partition: str) -> N
         or payload["partition"] != partition
     ):
         _fail("episode_descriptor_contract_mismatch")
-    for name in ("online_sha256", "offline_sha256", "schedule_entry_sha256"):
+    for name in (
+        "online_sha256",
+        "offline_sha256",
+        "schedule_entry_sha256",
+        "content_sha256",
+    ):
         _sha256(payload[name], name)
+    content = dict(payload)
+    declared = content.pop("content_sha256")
+    if declared != sha256_json(content):
+        _fail("episode_descriptor_content_sha256_mismatch")
+
+
+def _validate_descriptor_recipe_binding(
+    descriptor: Mapping[str, Any],
+    recipe: A3V3EpisodeRecipeV1,
+) -> None:
+    episode_id = recipe.episode_id
+    expected = {
+        "partition": recipe.partition,
+        "entry_index": recipe.entry_index,
+        "split": recipe.split,
+        "allocation_id": recipe.allocation_id,
+        "seed": recipe.seed,
+        "episode_id": episode_id,
+        "schedule_lineage": recipe.lineage.to_dict(),
+        "schedule_entry_sha256": recipe.schedule_entry_sha256,
+        "online_file": f"online/{episode_id}.online.json",
+        "offline_file": f"offline/{episode_id}.offline.json",
+    }
+    if any(descriptor.get(name) != value for name, value in expected.items()):
+        _fail("frozen_partition_recipe_lineage_mismatch", episode_id)
+
+
+def _validate_staged_validation_summary(
+    value: Any,
+    recipe: A3V3EpisodeRecipeV1,
+) -> dict[str, Any]:
+    payload = _strict_mapping(
+        value,
+        {
+            "episode_id",
+            "entry_index",
+            "split",
+            "allocation_id",
+            "seed",
+            "sample_count",
+            "unique_qualifying_sample_count",
+            "sample_fingerprints",
+            "qualifying_sample_fingerprints",
+            "coverage",
+            "boundary_pair_ids_by_family",
+            "identity",
+        },
+        "episode_validation_summary",
+    )
+    expected_binding = {
+        "episode_id": recipe.episode_id,
+        "entry_index": recipe.entry_index,
+        "split": recipe.split,
+        "allocation_id": recipe.allocation_id,
+        "seed": recipe.seed,
+    }
+    if any(payload.get(name) != item for name, item in expected_binding.items()):
+        _fail("episode_validation_summary_recipe_mismatch", recipe.episode_id)
+
+    fingerprints = payload["sample_fingerprints"]
+    qualifying = payload["qualifying_sample_fingerprints"]
+    if (
+        not isinstance(fingerprints, list)
+        or not isinstance(qualifying, list)
+        or fingerprints != sorted(set(fingerprints))
+        or qualifying != sorted(set(qualifying))
+    ):
+        _fail("episode_validation_summary_fingerprint_catalog_invalid")
+    for fingerprint in (*fingerprints, *qualifying):
+        _sha256(fingerprint, "sample_fingerprint")
+    if not set(qualifying).issubset(fingerprints):
+        _fail("episode_validation_summary_qualifying_fingerprint_unknown")
+    if _non_negative_int(payload["sample_count"], "sample_count") != len(
+        fingerprints
+    ):
+        _fail("episode_validation_summary_sample_count_mismatch")
+    qualifying_count = _non_negative_int(
+        payload["unique_qualifying_sample_count"],
+        "unique_qualifying_sample_count",
+    )
+    if qualifying_count != len(qualifying):
+        _fail("episode_validation_summary_qualifying_count_mismatch")
+
+    coverage = _strict_mapping(
+        payload["coverage"],
+        {"by_window", "by_intent", "by_camera_role", "by_intent_camera_role"},
+        "episode_validation_summary.coverage",
+    )
+
+    def counts(
+        name: str,
+        expected_names: set[str],
+    ) -> dict[str, int]:
+        raw = coverage[name]
+        if not isinstance(raw, Mapping) or set(raw) != expected_names:
+            _fail(f"episode_validation_summary_{name}_keys_mismatch")
+        return {
+            str(key): _non_negative_int(item, f"{name}.{key}")
+            for key, item in raw.items()
+        }
+
+    by_window = counts(
+        "by_window",
+        {item.window_id for item in recipe.intent_windows},
+    )
+    by_intent = counts("by_intent", set(A3_V3_INTENTS))
+    by_role = counts("by_camera_role", set(A3_V3_CAMERA_ROLES))
+    by_cell = counts("by_intent_camera_role", set(A3_V3_INTENT_ROLE_CELLS))
+    if any(
+        by_window[window.window_id] < window.minimum_unique_samples
+        for window in recipe.intent_windows
+    ):
+        _fail("episode_validation_summary_window_quota_missing")
+    if any(
+        sum(items.values()) != qualifying_count
+        for items in (by_window, by_intent, by_role, by_cell)
+    ):
+        _fail("episode_validation_summary_coverage_count_mismatch")
+
+    pair_catalog = payload["boundary_pair_ids_by_family"]
+    assignment_by_family = {
+        item.family: item for item in recipe.hard_confusion_assignments
+    }
+    if not isinstance(pair_catalog, Mapping) or set(pair_catalog) != set(
+        assignment_by_family
+    ):
+        _fail("episode_validation_summary_boundary_catalog_invalid")
+    for family, raw_ids in pair_catalog.items():
+        if not isinstance(raw_ids, list) or raw_ids != sorted(set(raw_ids)):
+            _fail("episode_validation_summary_boundary_ids_invalid", family)
+        for pair_id in raw_ids:
+            _sha256(pair_id, "boundary_pair_id")
+        assignment = assignment_by_family.get(str(family))
+        if assignment is None and raw_ids:
+            _fail("episode_validation_summary_unassigned_boundary", family)
+        if assignment is not None and len(raw_ids) < (
+            assignment.minimum_unique_boundary_pairs
+        ):
+            _fail("episode_validation_summary_boundary_quota_missing", family)
+    if payload["identity"] != _ONLINE_IDENTITY:
+        _fail("episode_validation_summary_identity_mismatch")
+    return payload
 
 
 def _validate_partition_manifest_shape(value: Mapping[str, Any]) -> None:
@@ -1937,6 +2354,7 @@ def _validate_partition_manifest_shape(value: Mapping[str, Any]) -> None:
             "sample_fingerprints",
             "episode_summaries",
             "storage_contract",
+            "generation_integrity_contract",
             "usage_contract",
             "identity",
             "authority",
@@ -1999,6 +2417,10 @@ def _validate_partition_manifest_shape(value: Mapping[str, Any]) -> None:
     }
     if payload["storage_contract"] != expected_storage:
         _fail("frozen_partition_manifest_storage_contract_mismatch")
+    if payload["generation_integrity_contract"] != (
+        _generation_integrity_contract(partition)
+    ):
+        _fail("frozen_partition_manifest_integrity_contract_mismatch")
     if payload["usage_contract"] != _partition_usage_contract(partition):
         _fail("frozen_partition_manifest_usage_contract_mismatch")
     if (
@@ -2201,12 +2623,16 @@ __all__ = [
     "A3_V3_ONLINE_EPISODE_EVIDENCE_SCHEMA_VERSION",
     "A3_V3_ONLINE_SAMPLE_EVIDENCE_SCHEMA_VERSION",
     "A3_V3_SCHEDULE_LINEAGE_SCHEMA_VERSION",
+    "A3_V3_STAGED_EPISODE_INVENTORY_SCHEMA_VERSION",
     "a3_v3_assignment_reference_sha256",
     "a3_v3_boundary_pair_id",
     "a3_v3_sample_fingerprint",
     "finalize_a3_v3_frozen_partition",
+    "finalize_a3_v3_generation_partition",
     "load_a3_v3_development_online_evidence",
     "load_frozen_a3_v3_episode_recipes",
+    "recover_a3_v3_staged_episode_inventory",
+    "resume_a3_v3_episode_evidence",
     "stage_a3_v3_episode_evidence",
     "validate_a3_v3_episode_evidence",
     "write_a3_v3_source_manifest",

@@ -2,15 +2,91 @@
 
 科研模块，用于把末端相机视场中的本地视觉轨迹保守关联到中心分配的 `global_track_id`。模块可在统一三维 episode 中在线运行；训练标签和真值评分仍保持离线。D5 只输出视觉关联与相机观察意图，不修改、重写或重新分配任何全局轨迹 ID。
 
+## 2026-08-02 A3 v3 producer 谱系复核
+
+main 更新来源配方加载器和运行编排器后，D5 重新核对了冻结 schedule 的全部 104 条 entry。
+`48/24/32` 三分区、9 个场景族、5 个规模、416 个意图窗口和 208 个困难混淆分配均能构造
+当前 runtime 配置。配置元数据不含 truth/actor/object 身份，所有在线权限为 false；五个
+非正式运行探针覆盖四类意图、两类相机角色和五类困难混淆，共形成 693 帧，在线 truth 使用、
+`global_track_id` 创建和改写计数均为 0。
+
+更新后的 schedule 内容/文件 SHA-256 为
+`a8538e6dce63c35c1974103742dde8ed2df00b94e86b59b03d78b5083d943cdd` /
+`d14b19d8c2f8051fc10363f8460fd9146ee37da24f6e24ac8014989e3f41082e`。generation-only request
+内容/文件 SHA-256 为
+`3b242acdba02d7274cefe05ce0166a9de41ea8d21e12d60b72a4f28964da7560` /
+`157166b8188ded72d7b317161242b904914f083686cdaf76cd4f3a92c94f80b3`。request 中只有
+`source_artifact_generation=true`；训练、validation consumption、future-held-out read、
+shadow、assist、runtime、control、camera command 和全局编号写权限保持 false。
+
+main generation API 在临时目录完成两次 `max_episodes_per_run=1` 的续跑。第一次库存为 1，
+第二次从同一 session 恢复到 2；只处理 train seed `24000/24001`，future-held-out staged count
+和 payload 文件数均为 0。readiness/producer 定向回归为 `51 passed, 1 warning in 20.13s`，
+D5 全量为 `877 passed, 2 warnings in 139.85s`。本次没有执行正式 104-episode 全量生成，
+没有训练、揭盲、AirSim 运行或控制授权。
+
+## 2026-08-01 A3 v3 真实 producer 采样可达性修复
+
+真实 scalable runtime 首条冻结配方暴露了来源计划的结构性错误。旧计划为 6 秒，每个意图窗口
+1.5 秒，每窗要求 24 个唯一样本；默认视觉周期为 0.1 秒。seed `24000` 实际首帧为 0.85 秒，
+第二窗口仅覆盖 `1.55-2.95` 秒，只有 15 个单侦察相机唯一样本，writer 正确拒绝
+`intent_window_unique_sample_quota_missing`。旧 adapter 自检使用 0.05 秒周期和 2 个侦察相机，
+因此没有暴露该矛盾。
+
+冻结 schedule 已升级为 `d5-a3-v3-source-collection-schedule-20260801-v3`。episode 时长改为
+8 秒，四个连续窗口各 2 秒，侦察相机下限为 4；24 样本配额、双时间戳、在线 truth 隔离、
+中心只读 `global_track_id` 和全部安全门保持不变。readiness v4 按 0.1 秒视觉周期、最多 1.4 秒
+主动视觉启动时间和最多 0.5 秒尾段缺口，逐条计算 104 个冻结 cell 的保守样本容量。任何窗口
+容量低于 24 时，`source_generation_request_ready` 失败关闭。该审计不复制帧、不降低配额，
+也不从其他窗口或 episode 借样本。
+
+schedule 当前内容/文件 SHA-256 为 `a8538e6d...43cdd` / `d14b19d8...1082e`。generation-only
+request 已升级为 v2，当前文件 SHA-256 为 `157166b8...80b3`，并重新绑定 schedule 与
+`active_vision_a3_v3_episode_evidence.py` 的 `0951b230...5fdc9`。代表性真实运行覆盖 train、
+validation、future-held-out、两种角色排列和五类困难混淆，6 条配方的窗口计数最低为 32，
+在线 truth 使用为 0。首条真实配方已完成校验和临时 development staging。定向回归
+`64 passed`，D5 全量 `875 passed, 2 warnings in 119.98s`。104 条正式来源尚未生成；训练、
+模型选择、future-held-out 语义读取和全部运行/控制权限仍为 false。
+
+## 2026-08-01 A3 v3 来源生成请求 readiness
+
+D5 新增独立版本化请求
+`configs/a3_v3_source_generation_request_20260801.json`。该制品以仓库相对路径和文件
+SHA-256 绑定冻结 protocol、104-entry schedule、global allocation binding、main global seed
+registry，以及 D5 episode staging/resume 实现；当前请求文件 SHA-256 为
+`157166b8188ded72d7b317161242b904914f083686cdaf76cd4f3a92c94f80b3`。protocol 和 allocation
+binding 保持不变；schedule 已按上节的真实 producer 可达性结论升级并重新绑定。
+
+validator 只有在总 episode 为 104、split 为 `48/24/32`、seed 精确为 `24000-24103`、
+future-held-out 一次性访问合同完整、在线 truth identity 不可见，且唯一为 true 的 permission
+是 `source_artifact_generation` 时才输出 `source_generation_request_ready=true`。顶层 readiness
+和 `producer_capability` 均提供稳定字段 `source_generation_request_path`、
+`source_generation_request_sha256`、`source_generation_request_ready`。当前状态为
+`source_generation_request_ready_generation_only`；`source_generation_execution_authorized=false`，
+不代表 main 已开始生成。
+
+跨进程恢复由 `recover_a3_v3_staged_episode_inventory()` 和
+`resume_a3_v3_episode_evidence()` 提供。episode descriptor v2 带自哈希；恢复清单按 104 条冻结
+recipe 复核 descriptor、online/offline 文件哈希、split 和物理分区，但不反序列化
+future-held-out payload。相同完整 episode 可幂等恢复且不重写；部分写入、损坏、hash 漂移、
+split 漂移或 future root 对调均失败关闭。`finalize_a3_v3_generation_partition()` 对 future
+只验证 descriptor/recipe/file hash，不反序列化 online/offline payload；manifest 明确完整性
+核验不是 held-out consumption，长期 `future_held_out_payload_read_count=0`。2026-08-01 定向测试
+修复后定向回归为 `64 passed`，D5 全量为 `875 passed, 2 warnings in 119.98s`，接受阈值为零失败。
+正式 104 episode、source
+manifest、cache、模型和权重仍不存在；训练、future-held-out 读取/选模、shadow、assist、
+camera command、runtime、production、control 和 `global_track_id` create/write 均为 false。
+
 ## 2026-08-01 A3 v3 episode 证据与冻结写出接口
 
 D5 已实现供 main 三维 producer 调用的 A3 v3 episode 配方、证据校验、分区 staging、分区
 finalize 和来源 manifest 装配接口。读取入口仍绑定 104 条冻结 schedule、全局 allocation、协议
 和内容哈希。main 的逐 episode 配方转换、意图窗口 treatment、五类困难混淆运行时证据适配
 以及 D5 writer 单 episode 写出已通过 smoke 验证。readiness 当前为
-`producer_adapter_complete=true`，但 `source_generation_request_ready=false`。
+`producer_adapter_complete=true`、`source_generation_request_ready=true`，但只批准 generation-
+only 请求，执行权仍为 false。
 
-每个 episode 固定四个连续的 1.5 秒意图窗口。校验器在每个窗口内按 sample fingerprint 独立
+每个 episode 固定四个连续的 2 秒意图窗口。校验器在每个窗口内按 sample fingerprint 独立
 去重并要求至少 24 个有效样本，episode 总数至少 96。样本不能复制、过采样或从其他 episode
 转移配额。困难混淆不再由 treatment 名直接判定。离线 boundary state 分别保存分配引用、几何
 族、通信状态、投影内外与新鲜度、侦察线索、云台忙闲、目标证据保持、合法目标数和投影质量差；
@@ -38,7 +114,7 @@ binding 和 source collection schedule，分别绑定全局登记表 ID、内容
 episode，禁止跨 split 复用、复制样本、过采样、合成 fixture 和在线 truth 注入。
 
 采集 schedule 明列 104 条 per-episode 计划。每条记录 split、seed、episode ID、场景、规模、
-目标/资源/侦察节点数量、6 秒时长、相机角色、四段意图窗口、两类困难混淆 treatment 和最低
+目标/资源/侦察节点数量、8 秒时长、相机角色、四段意图窗口、两类困难混淆 treatment 和最低
 唯一样本配额。每个 episode 的四段窗口合计 96 个计划样本，interceptor/recon 角色交替分配；
 8 个意图-角色单元在 train/validation/future-held-out 中分别覆盖 24/12/16 个 episode。五类
 困难混淆按 seed 分散安排，每个 episode 只承担两类，集合计数均达到协议下限。三个 split 的
@@ -48,12 +124,13 @@ episode，禁止跨 split 复用、复制样本、过采样、合成 fixture 和
 SHA-256，检查 D5 allocation 的 owner/version/lifecycle/usage/operations、精确 seed 集、来源
 绑定、逐 episode 配额重算、正式/v2 禁止范围和全 false authority。它还固定核对 main producer
 入口、采集 treatment 和 v2 参考 schedule 的文件哈希。当前输出为
-`plan_and_producer_adapter_ready_generation_not_authorized`：`plan_ready=true`、
-`pre_generation_ready=true`、`producer_adapter_complete=true`，生成请求和训练仍为 false。
+`source_generation_request_ready_generation_only`：`plan_ready=true`、
+`pre_generation_ready=true`、`producer_adapter_complete=true`、请求 ready=true；训练与生成执行
+仍为 false。
 正式 104 episode 的执行授权、分区 finalize、source manifest 和后续训练均未开始。
 
-最新 evidence/readiness 专项为 `35 passed in 1.16s`，D5 全量为
-`846 passed, 2 warnings in 103.23s`。两条 warning 是既有 Matplotlib Axes3D 与 NVML 环境告警。
+最新 request/resume/evidence/readiness 专项为 `58 passed in 1.26s`，D5 全量为
+`869 passed, 2 warnings in 108.49s`。两条 warning 是既有 Matplotlib Axes3D 与 NVML 环境告警。
 本轮没有生成 episode、sample、source manifest、cache 或权重，没有训练，也没有授予 shadow、
 assist、runtime、camera command、control 或 `global_track_id` 写权限。
 
