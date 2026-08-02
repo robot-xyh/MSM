@@ -1,6 +1,40 @@
 # 集中式资源-目标分配模块（项目模块编号 D3）原理
 
-> 状态基线：2026-08-01。本文只描述当前仓库已实现行为、已验证证据和明确保留的研究边界，不改变模块能力状态。
+> 状态基线：2026-08-02。本文只描述当前仓库已实现行为、已验证证据和明确保留的研究边界，不改变模块能力状态。
+
+## A1 v3 生成请求与权限分层
+
+A1 v3 当前必须区分“来源请求已形成”“生成请求可提交”“实际生成已授权”和“数据已生成”。
+当前 `source_generation_request_ready=true`：版本化 artifact 已绑定 request、schedule、
+D3 allocation、main 全局 seed registry、schema、sidecar classifier 和 15/15 runtime quota
+probe。request readiness 不是 generation authorization；只有 `source_generation_request`
+permission 为 true，source generation、episode/dataset 写入、validation/formal payload 读取、
+训练、shadow、assist、assignment、runtime、physical 和 control 权限全部为 false。
+
+readiness 的机器消费者使用三个稳定字段：仓库相对
+`source_generation_request_path`、实际文件 `source_generation_request_sha256` 和布尔
+`source_generation_request_ready`。三者在报告顶层和 `producer_capability` 中必须一致。
+引用、文件摘要、schema、300 个 `23000-23299` seed、180/60/60 whole-seed split、固定
+schedule seed 绑定或 permission 任一漂移时，ready 必须回落为 false，不能部分放行。
+
+配额标签不能由 producer 自报。D3 用 demand multiset 证明 target+demand 是否为同一 roster
+事件，从 candidate-mask 资源列确定活动资源，并从连续 teacher/coverage 变化推导动作。近并列
+困难负类要求重算成本边界和 effective=teacher，不要求 caller 伪造 challenger；其他结构困难
+负类仍要求 candidate 偏离 teacher。无法推导的 taxonomy、独立多轴和调用方分类均拒绝。
+
+稳定 roster/demand/resource 下的 teacher 重分配还允许一种严格可审计情况：边数净减 1、
+coverage deficit 净增 1、匿名资源 multiset 只释放 1 个且不获取资源。这表示一个开放的
+assignment chain，仍归入已有 `single_target_rebind_with_resource_release`。若释放多于一个
+资源、同时获取资源或净量不闭合，继续失败关闭。
+
+main 已实现并实际运行匿名事件及稳定窗口。2026-08-02 的 15-cell、10 秒首 recipe 审计为
+15/15 达标；delayed-noisy-200 为 `3/6/6`、communication-degraded 为 `3/7/5`、
+high-threat-100 为 `5/5/5`。在线 truth 使用为 0，writer 全部 stage。稳定窗口只改变质点
+运动和无随机扰动量测生成，不复制训练帧，也不向 D3 提供标签。
+
+recipe 事件必须在 episode 开始前按场景、相对时间、数量和 seed-based anonymous selection
+冻结；禁止读取 truth ID、offline label 或运行中分类结果。writer 的 staged inventory 只读
+接口只暴露 index/id，不暴露 payload，也不改变生成权限。
 
 ## A1 v3 生成证据边界
 
@@ -12,8 +46,9 @@ A1 v3 的在线数据以匿名序号表示目标和资源。main producer 必须
 
 双时间戳保留了观测形成时刻与 D3 收到证据时刻的差异。adapter 要求
 `arrival_timestamp_s > measurement_timestamp_s`，不能把一个时刻复制两次以满足字段
-形式。episode 内两类时间按帧号单调，离线分类通过在线规范载荷 SHA-256 绑定，不能替换
-在线帧后继续沿用旧标签。
+形式。episode 内两类时间按帧号单调。D3 从完整连续序列推导分类，再通过在线规范载荷
+SHA-256 绑定离线标签；不能替换在线帧后继续沿用旧标签，也不能靠调用方修改 sidecar
+分类抬高配额。
 
 近边界困难负类由规则成本计算。对匿名目标 \(i\)，在合法候选集合中取最低成本
 \(c_{i,1}\) 和次低成本 \(c_{i,2}\)，定义：
@@ -35,8 +70,9 @@ manifest。该过程不重新划分 split，也不创建或改写中心 `global_
 
 离线身份数组用于 D6 后验核对，可以为空。manifest 按全部四类标签是否齐备，报告完整、
 部分或不可用。空数组只能得到 `unavailable`。当前 2700 帧合成合同测试即为该状态；它
-验证 writer，不证明真实三维数据已生成。main 的动态 roster、真实 near-tie treatment、
-source 重新冻结和生成授权仍未完成。
+验证 writer，不证明真实三维数据已生成。当前 request-readiness artifact 因 producer quota
+失败关闭；main 仍需补齐 per-episode duration、匿名外生事件合同并重新冻结 source，实际生成
+授权也未形成。
 
 ## 失败归因边界
 
@@ -2196,5 +2232,6 @@ S_{forbid}=S_{protected}\cup
 
 split 以数值 seed 为不可分单元。15 个 cell 中每个 cell 固定 12 个 TRAIN、4 个
 VALIDATION、4 个 TEST seed；同一 seed 只对应一个 cell、一个 episode 和一个 split。
-readiness 的 `ready` 只表示上述计划和来源可复算。它不表示 episode 已生成，也不授予
-训练、分配、计划发布或控制权限。
+readiness 的 `ready` 与 `source_generation_request_ready` 只表示上述计划、分类能力和请求
+制品可复算。它不表示实际生成已授权或 episode 已生成，也不授予训练、验证读取、分配、
+计划发布或控制权限。

@@ -1,5 +1,49 @@
 # D3 实现差距审计
 
+## 2026-08-02 A1 v3 producer viability 收敛
+
+本轮确认 main recipe v2 匿名事件合同已接入，并关闭一个 D3-owned 分类缺口：稳定
+roster/demand/resource 下，若匿名 teacher 对称差形成单一开放链，净释放一个资源、edge
+净减 1 且 coverage deficit 净增 1，则可审计为已有 release action。多资源释放、资源替换和
+其他不守恒变化仍失败关闭。near-tie 必须重算成本边界；其他结构困难负类仍要求 candidate
+偏离 teacher。writer 重算全部分类，caller sidecar 不能改配额。
+
+2026-08-02 使用 main 当前代码审计 15 个冻结 cell 的首个 10 秒 TRAIN recipe：
+
+| Cell | 正/负/困难负 | 状态 |
+| --- | ---: | --- |
+| nominal-balanced-5t5r | 3/7/3 | stage |
+| dense-crossing-20t20r | 3/7/6 | stage |
+| dense-crossing-50t50r | 7/3/3 | stage |
+| formation-split-50t50r | 4/6/6 | stage |
+| evasive-multilevel-100t100r | 6/4/4 | stage |
+| delayed-noisy-200t200r | 3/6/6 | stage |
+| communication-degraded-5t5r | 3/7/5 | stage |
+| center-failure-20t20r | 3/7/5 | stage |
+| secondary-failure-50t50r | 3/7/7 | stage |
+| high-threat-m-to-n-100t100r | 5/5/5 | stage |
+| high-threat-m-to-n-200t200r | 5/5/5 | stage |
+| resource-surplus-20t30r | 3/7/6 | stage |
+| resource-shortage-30t20r | 3/7/3 | stage |
+| dynamic-add-drop-100t80r | 7/3/3 | stage |
+| near-tie-hard-negative-50t50r | 3/7/7 | stage |
+
+审计不读 truth/离线标签，不复制帧，不降低 `3/3/2`，不写正式数据。`15/15` 成功 stage，
+在线 truth 使用总数为 0，分类异常为 0。三个原阻塞场景通过 episode 前预注册的稳定运动、
+无随机扰动重生成量测窗口形成自然正负样本；D3 分类器和 writer 未接收窗口标签。
+
+10 秒 producer 配额 GAP 已关闭。D3 保持冻结 request/schedule/config/allocation/global
+registry 不变。`source_generation_request_ready=true`，reason codes 为空；只有请求 permission
+为 true，实际 source generation、写盘、验证读取、训练、运行和控制权限仍为 false。
+
+仍开放的 P1 是 main 在独立生成授权后运行全部 300 recipe，并由 D3/D6 复核正式三文件
+数据集。正式生成前还需在 clean source commit 上重跑 preflight。默认 Hungarian、版本化
+AssignmentPlan 和控制边界不变，没有新增运行级 P0。
+
+本轮 D3 全量收集 797 项，结果为 `796 passed, 1 skipped, 1 warning`。因此当前 blocker
+不在 D3 首 recipe producer viability，而在 main 独立授权、300-episode 实际生成和 D6
+外部数据审计。
+
 ## 2026-08-01 A1 v3 producer 接口 GAP
 
 本轮关闭 D3-owned 的 writer/evidence 接口 P1。D3 已提供严格匿名帧 builder、独立离线
@@ -21,17 +65,20 @@ episode 和重复 frame 均必须为 0。
 `71 passed`。D3 全量收集 749 项，结果为 `748 passed, 1 skipped, 1 warning`；skip 为
 可选 OR-Tools，warning 为既有 Matplotlib `Axes3D` 导入环境问题。
 
+本节已关闭的 producer 条件：
+
+1. main adapter、dynamic roster 和 near-tie treatment 已由真实首 recipe 回归调用；
+2. 15 个首 recipe 的自然配额已全部达标；
+
 仍开放的 P1：
 
-1. main 尚未实现 scalable runtime 到该 DTO 的 adapter；
-2. `dynamic_add_drop` roster treatment 和真实三维 near-tie 成本边界 treatment 尚未实现；
-3. 300 个计划 episode 尚未由真实三维 runtime 生成，当前 2700 帧只是 writer 合同夹具；
-4. 冻结 source commit/hash 仍指向 adapter 实现前版本，main 需在跨模块代码完成后重新冻结；
-5. generator config 仍为 plan-only，缺少独立的 main 生成授权；
-6. D6 尚未对未来正式三文件数据集完成外部身份与配额复核。
+1. 300 个计划 episode 尚未由真实 runtime 生成，当前 2700 帧仍只是 writer 合同夹具；
+2. generator config 仍为 plan-only，缺少独立的 main 生成授权；
+3. D6 尚未对未来正式三文件数据集完成外部身份与配额复核。
 
-本轮不改变 `producer_adapter_complete`、`source_generation_request_ready`、模型准入或运行
-权限。默认规则加 Hungarian、M-to-N 需求槽、迟滞和版本合同保持原样。没有新增 P0。
+当前 `source_generation_request_ready=true`；实际 `source_generation`、模型准入和运行权限
+均未改变。
+默认规则加 Hungarian、M-to-N 需求槽、迟滞和版本合同保持原样。没有新增 P0。
 
 ## 2026-08-01 A1 v2 失败归因与 v3 来源 GAP
 

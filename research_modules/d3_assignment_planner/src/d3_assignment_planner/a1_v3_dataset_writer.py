@@ -72,6 +72,13 @@ from .a1_v3_data_contract import (
     load_a1_v3_global_seed_allocation,
     load_a1_v3_main_seed_registry,
 )
+from .a1_v3_sidecar_classification import (
+    A1_V3_SIDECAR_CLASSIFIER_LOGICAL_PATH,
+    DEFAULT_A1_V3_SIDECAR_CLASSIFICATION_POLICY_PATH,
+    A1V3SidecarClassificationPolicy,
+    derive_a1_v3_frame_classifications,
+    load_a1_v3_sidecar_classification_policy,
+)
 
 
 A1_V3_ADAPTER_EVIDENCE_SCHEMA_V1 = "d3_a1_v3_adapter_frame_evidence_v1"
@@ -238,6 +245,16 @@ class A1V3OfflineFrameSidecar:
     object_labels: tuple[str, ...]
     center_global_track_labels: tuple[str, ...]
 
+    @property
+    def classification_signature(self) -> tuple[int, str, bool, str, str | None]:
+        return (
+            self.frame_index,
+            self.frame_class,
+            self.hard_negative,
+            self.action_change_type,
+            self.hard_negative_type,
+        )
+
     @classmethod
     def from_mapping(cls, value: Mapping[str, Any]) -> "A1V3OfflineFrameSidecar":
         payload = _strict_mapping(
@@ -327,6 +344,7 @@ class A1V3WriterContract:
     registry: A1V3SeedRegistry
     schedule: A1V3GenerationSchedule
     near_tie_boundary: A1V3NearTieBoundary
+    sidecar_classification_policy: A1V3SidecarClassificationPolicy
     source_files: tuple[A1V3BoundSourceFile, ...]
 
 
@@ -588,6 +606,37 @@ def build_a1_v3_offline_label(
     )
 
 
+def derive_a1_v3_offline_sidecars(
+    scheduled_episode: A1V3ScheduledEpisode,
+    online_frames: Sequence[A1V3OnlineFrame],
+    *,
+    request: A1V3FrozenRequest,
+    policy: A1V3SidecarClassificationPolicy,
+) -> tuple[A1V3OfflineFrameSidecar, ...]:
+    """Build classification-only sidecars; callers may add identity labels."""
+
+    classifications = derive_a1_v3_frame_classifications(
+        scheduled_episode,
+        online_frames,
+        request=request,
+        policy=policy,
+    )
+    return tuple(
+        A1V3OfflineFrameSidecar(
+            frame_index=item.frame_index,
+            frame_class=item.frame_class,
+            hard_negative=item.hard_negative,
+            action_change_type=item.action_change_type,
+            hard_negative_type=item.hard_negative_type,
+            truth_target_labels=(),
+            actor_labels=(),
+            object_labels=(),
+            center_global_track_labels=(),
+        )
+        for item in classifications
+    )
+
+
 def load_a1_v3_writer_contract(
     *,
     request_path: str | Path = DEFAULT_A1_V3_REQUEST_PATH,
@@ -598,6 +647,9 @@ def load_a1_v3_writer_contract(
     registry_path: str | Path = DEFAULT_A1_V3_MAIN_SEED_REGISTRY_PATH,
     schedule_path: str | Path = DEFAULT_A1_V3_GENERATION_SCHEDULE_PATH,
     near_tie_boundary_path: str | Path = DEFAULT_A1_V3_NEAR_TIE_BOUNDARY_PATH,
+    sidecar_classification_policy_path: str | Path = (
+        DEFAULT_A1_V3_SIDECAR_CLASSIFICATION_POLICY_PATH
+    ),
 ) -> A1V3WriterContract:
     """Load the complete frozen plan used to bind a future producer writer."""
 
@@ -609,6 +661,7 @@ def load_a1_v3_writer_contract(
     registry_path = Path(registry_path)
     schedule_path = Path(schedule_path)
     near_tie_boundary_path = Path(near_tie_boundary_path)
+    sidecar_classification_policy_path = Path(sidecar_classification_policy_path)
 
     request = load_a1_v3_frozen_request(request_path)
     forbidden, exclusion_sha = load_a1_v3_exclusion_registry(
@@ -647,6 +700,18 @@ def load_a1_v3_writer_contract(
         registry=registry,
     )
     near_tie_boundary = load_a1_v3_near_tie_boundary(near_tie_boundary_path)
+    sidecar_policy = load_a1_v3_sidecar_classification_policy(
+        sidecar_classification_policy_path,
+        request=request,
+        near_tie_boundary_file_sha256=near_tie_boundary.file_sha256,
+    )
+    classifier_source_path = Path(__file__).with_name(
+        Path(A1_V3_SIDECAR_CLASSIFIER_LOGICAL_PATH).name
+    )
+    try:
+        classifier_source_sha256 = sha256(classifier_source_path.read_bytes()).hexdigest()
+    except OSError as exc:
+        _fail("sidecar_classifier_source_read_failed", str(exc))
     return A1V3WriterContract(
         request=request,
         descriptor=descriptor,
@@ -655,6 +720,7 @@ def load_a1_v3_writer_contract(
         registry=registry,
         schedule=schedule,
         near_tie_boundary=near_tie_boundary,
+        sidecar_classification_policy=sidecar_policy,
         source_files=(
             A1V3BoundSourceFile("request", request_path, request.file_sha256),
             A1V3BoundSourceFile(
@@ -675,6 +741,16 @@ def load_a1_v3_writer_contract(
                 "near_tie_boundary",
                 near_tie_boundary_path,
                 near_tie_boundary.file_sha256,
+            ),
+            A1V3BoundSourceFile(
+                "sidecar_classification_policy",
+                sidecar_classification_policy_path,
+                sidecar_policy.file_sha256,
+            ),
+            A1V3BoundSourceFile(
+                "sidecar_classifier_source",
+                classifier_source_path,
+                classifier_source_sha256,
             ),
         ),
     )
@@ -771,6 +847,9 @@ class A1V3DatasetWriter:
         registry_path: str | Path = DEFAULT_A1_V3_MAIN_SEED_REGISTRY_PATH,
         schedule_path: str | Path = DEFAULT_A1_V3_GENERATION_SCHEDULE_PATH,
         near_tie_boundary_path: str | Path = DEFAULT_A1_V3_NEAR_TIE_BOUNDARY_PATH,
+        sidecar_classification_policy_path: str | Path = (
+            DEFAULT_A1_V3_SIDECAR_CLASSIFICATION_POLICY_PATH
+        ),
     ) -> "A1V3DatasetWriter":
         contract = load_a1_v3_writer_contract(
             request_path=request_path,
@@ -781,18 +860,40 @@ class A1V3DatasetWriter:
             registry_path=registry_path,
             schedule_path=schedule_path,
             near_tie_boundary_path=near_tie_boundary_path,
+            sidecar_classification_policy_path=sidecar_classification_policy_path,
         )
         return cls(dataset_dir, dataset_id=dataset_id, contract=contract)
 
     @property
     def staged_episode_count(self) -> int:
-        return len(self._staged_episodes)
+        return len(self.staged_episode_indices)
+
+    @property
+    def staged_episode_indices(self) -> tuple[int, ...]:
+        """Return a disk-refreshed contiguous schedule prefix without payloads."""
+
+        self._verify_bound_sources()
+        staged = self._load_all_staged_episodes()
+        indices = tuple(sorted(staged))
+        if indices != tuple(range(len(indices))):
+            _fail("writer_staged_episode_inventory_not_prefix")
+        self._staged_episodes = staged
+        return indices
+
+    @property
+    def staged_episode_ids(self) -> tuple[str, ...]:
+        """Return schedule-bound ids for the validated staged prefix."""
+
+        return tuple(
+            self.contract.schedule.episodes[index].episode_id
+            for index in self.staged_episode_indices
+        )
 
     def stage_episode(
         self,
         scheduled_episode: A1V3ScheduledEpisode,
         online_evidence: Sequence[A1V3AdapterFrameEvidence],
-        offline_sidecars: Sequence[A1V3OfflineFrameSidecar],
+        offline_sidecars: Sequence[A1V3OfflineFrameSidecar] | None = None,
     ) -> A1V3StagedEpisodeSummary:
         """Validate and atomically stage one complete scheduled episode."""
 
@@ -810,32 +911,52 @@ class A1V3DatasetWriter:
             if evidence.frame_index in evidence_by_index:
                 _fail("writer_duplicate_online_frame", str(evidence.frame_index))
             evidence_by_index[evidence.frame_index] = evidence
-        sidecar_by_index: dict[int, A1V3OfflineFrameSidecar] = {}
-        for sidecar in offline_sidecars:
-            if not isinstance(sidecar, A1V3OfflineFrameSidecar):
-                _fail("offline_frame_sidecar_type_required")
-            if sidecar.frame_index in sidecar_by_index:
-                _fail("writer_duplicate_offline_frame", str(sidecar.frame_index))
-            sidecar_by_index[sidecar.frame_index] = sidecar
-        if set(evidence_by_index) != set(sidecar_by_index):
-            _fail("writer_online_offline_frame_inventory_mismatch")
         expected_indices = set(range(len(evidence_by_index)))
         if set(evidence_by_index) != expected_indices:
             _fail("writer_episode_frame_index_gap")
 
-        online_frames: list[A1V3OnlineFrame] = []
+        online_frames = [
+            build_a1_v3_online_frame(expected, evidence_by_index[frame_index])
+            for frame_index in sorted(evidence_by_index)
+        ]
+        derived_sidecars = derive_a1_v3_offline_sidecars(
+            expected,
+            online_frames,
+            request=self.contract.request,
+            policy=self.contract.sidecar_classification_policy,
+        )
+        if offline_sidecars is None:
+            sidecar_by_index = {
+                sidecar.frame_index: sidecar for sidecar in derived_sidecars
+            }
+        else:
+            sidecar_by_index: dict[int, A1V3OfflineFrameSidecar] = {}
+            for sidecar in offline_sidecars:
+                if not isinstance(sidecar, A1V3OfflineFrameSidecar):
+                    _fail("offline_frame_sidecar_type_required")
+                if sidecar.frame_index in sidecar_by_index:
+                    _fail("writer_duplicate_offline_frame", str(sidecar.frame_index))
+                sidecar_by_index[sidecar.frame_index] = sidecar
+            if set(evidence_by_index) != set(sidecar_by_index):
+                _fail("writer_online_offline_frame_inventory_mismatch")
+            for derived in derived_sidecars:
+                if sidecar_by_index[derived.frame_index].classification_signature != (
+                    derived.classification_signature
+                ):
+                    _fail(
+                        "writer_offline_sidecar_classification_mismatch",
+                        str(derived.frame_index),
+                    )
+
         offline_labels: list[A1V3OfflineLabel] = []
-        for frame_index in sorted(evidence_by_index):
-            frame = build_a1_v3_online_frame(
-                expected, evidence_by_index[frame_index]
-            )
+        for frame in online_frames:
+            frame_index = frame.source.frame_index
             label = build_a1_v3_offline_label(
                 expected,
                 frame,
                 sidecar_by_index[frame_index],
                 request=self.contract.request,
             )
-            online_frames.append(frame)
             offline_labels.append(label)
         self._validate_episode_records(
             expected, tuple(online_frames), tuple(offline_labels)
@@ -1237,6 +1358,25 @@ class A1V3DatasetWriter:
                 )
             ):
                 _fail("near_tie_hard_negative_boundary_not_met")
+        derived = derive_a1_v3_frame_classifications(
+            scheduled,
+            online,
+            request=self.contract.request,
+            policy=self.contract.sidecar_classification_policy,
+        )
+        for expected, label in zip(derived, offline, strict=True):
+            actual = (
+                label.frame_index,
+                label.frame_class,
+                label.hard_negative,
+                label.action_change_type,
+                label.hard_negative_type,
+            )
+            if actual != expected.signature:
+                _fail(
+                    "writer_offline_label_classification_mismatch",
+                    str(label.frame_index),
+                )
         counts = _episode_counts(offline)
         if (
             counts["frame_count"] < scheduled.minimum_observable_frames

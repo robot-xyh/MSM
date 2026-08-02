@@ -1,8 +1,42 @@
 # D3 集中式 Assignment Planner 计划
 
-## 2026-08-01 A1 v3 writer/evidence 接口
+## 2026-08-02 A1 v3 15-cell 来源请求收敛
 
-状态：`writer_evidence_interface_implemented_main_runtime_treatments_pending`。
+状态：`source_generation_request_ready_generation_not_authorized`。
+
+1. [x] 固定匿名多轴分类：target+demand 只有 demand multiset 能证明 roster 耦合时才合并；
+   活动资源来自 candidate-mask 资源列；独立多轴、混合 demand 重排和不可守恒 teacher 变化
+   继续拒绝。首帧非空 teacher 与延迟 coverage 闭合是可审计正类。
+2. [x] near-tie 困难负类不要求 caller 伪造 challenger；负类帧必须有重算 near-tie 且
+   effective 精确保持 teacher。其他结构困难负类仍要求 candidate 偏离 teacher。caller
+   sidecar override、truth、复制帧和降低 `3/3/2` 配额均禁止。
+3. [x] main recipe v2 匿名外生事件合同已由实际 runtime 消费；target/resource 事件使用
+   episode-seeded 匿名选择，稳定窗口重新量测且不复制帧，在线禁用 truth/label/override。
+4. [x] 修复单一净资源释放的匿名 teacher 重分配链；多资源释放、资源替换及不守恒变化
+   继续失败关闭，并增加正反单元测试。
+5. [x] 运行 15 个 cell 的 10 秒首 recipe。15 个均满足 `3/3/2` 并实际 stage；三个原阻塞
+   cell 分别为 delayed-noisy-200 `3/6/6`、communication-degraded `3/7/5`、
+   high-threat-100 `5/5/5`。
+6. [x] 重新冻结 request artifact content/file SHA；
+   `source_generation_request_ready=true`，reason codes 为空。冻结 request/schedule/generator/
+   allocation/global registry 不变。
+7. [x] request permission 只开放 `source_generation_request`；来源生成、episode/dataset 写入、
+   validation/formal payload 读取、训练、运行、分配和控制权限继续关闭。
+8. [ ] main 在独立生成授权后按冻结 schedule 运行 300 个 recipe；当前只完成 15-cell 首
+   recipe viability，尚未生成正式数据集。
+9. [x] `staged_episode_indices`/`staged_episode_ids` 继续只读、磁盘刷新并只返回 schedule 前缀；
+   默认 Hungarian、assignment/runtime/control 权限均未改变。
+10. [x] D3 全量收集 797 项，结果为 `796 passed, 1 skipped, 1 warning`；唯一跳过为可选
+    OR-Tools，告警为既有 Matplotlib `Axes3D` 环境提示。
+
+`docs/AIRSIM_INTEGRATION_PLAN.md` 已检查；本项只涉及质点 producer recipe/readiness，不改变
+AirSim DTO、settings、episode 或 control，因此无需修改。`docs/EXPERIMENT_REPORT.md` 已加入
+15-cell 软件审计表；该表是 request viability 证据，不是正式数据生成或物理实验。
+
+## 2026-08-01 A1 v3 writer/evidence 接口（历史阶段）
+
+状态：`writer_evidence_interface_implemented_runtime_adapter_complete`。本节原
+`main_runtime_treatments_pending` 状态已被 2026-08-02 顶部状态取代。
 
 1. [x] 新增 producer-facing `A1V3AdapterFrameEvidence`。强制接收独立
    `measurement_timestamp_s` 与 `arrival_timestamp_s`、规则代价矩阵、候选掩码、教师/
@@ -10,8 +44,9 @@
 2. [x] 从实际规则代价矩阵和合法掩码计算每个匿名目标的一二名候选。冻结绝对差边界
    `0.10`、相对差边界 `0.002` 和分母下限 `1.0`，写入边代价、差值和版本化 reason code。
    `scenario_family` 只用于 schedule 绑定，不能产生 near-tie 标签。
-3. [x] 新增独立离线 sidecar builder。在线 SHA-256 由 builder 计算并绑定；真值、Actor、
-   Object 和中心航迹标签只存在于离线文件。near-tie 边界未满足时禁止申报对应困难负类。
+3. [x] 新增独立离线 sidecar builder 和连续帧分类器。在线 SHA-256 由 builder 计算并绑定；
+   真值、Actor、Object 和中心航迹标签只存在于离线文件。调用方分类必须与重算结果完全
+   相同，near-tie 边界未满足时禁止申报对应困难负类。
 4. [x] 新增 episode 级原子 stager 和断点会话。恢复时重验 request/contract/registry/
    schedule/near-tie 边界文件 SHA、300-entry schedule inventory 和全部已暂存 episode。
 5. [x] finalizer 固定使用 schedule 的 episode、split、cell、seed 和配置 M/N，不重新散列。
@@ -20,17 +55,18 @@
 6. [x] 生成规范字节的 `online_frames.jsonl`、`offline_labels.jsonl` 和
    `dataset_manifest.json`。manifest 明确离线身份审计为完整、部分或不可用；空标签不
    宣称完整。
-7. [x] 新增 7 项 writer 专项，覆盖最小构造、双时间戳、在线身份泄漏、固定 split、配额、
+7. [x] writer 专项增至 11 项，覆盖最小构造、双时间戳、在线身份泄漏、固定 split、配额、
    重复/缺项、规范字节、resume、schedule/source hash 漂移及 near-tie 伪配额。A1 v3
-   合同与 writer 组合 `71 passed`；D3 全量 `748 passed, 1 skipped, 1 warning`。
-8. [ ] main 实现 `dynamic_add_drop` roster treatment、基于真实三维规则成本的 near-tie
-   treatment 和 scalable runtime adapter，再重新冻结 source commit/hash 并单独授权生成。
+   request/data-contract/writer 专项均通过；当前 D3 全量见上一节。
+8. [x] main 已实现 `dynamic_add_drop` roster treatment、基于真实三维规则成本的 near-tie
+   treatment 和 scalable runtime adapter；三者均已由 2026-08-02 的 15-cell 严格审计实际
+   调用。D3 request artifact 已重新冻结；独立来源生成授权仍待 main 下发。
 9. [ ] main 使用真实 runtime 输出逐条 stage 300 个 episode；D3/D6 严格复载三项制品并
    核对 15 cell、300 seed、2700/900/900/450 最低配额。当前合成测试不能关闭此项。
 
 `docs/AIRSIM_INTEGRATION_PLAN.md` 已检查。本项没有 AirSim DTO、settings、episode 调度或
-控制接口变化，因此无需修改。`docs/EXPERIMENT_REPORT.md` 已检查；本次只有软件合同合成
-测试，没有新增仿真或物理实验结果，因此无需修改。
+控制接口变化，因此无需修改。本节末尾关于实验报告的判断是 2026-08-01 历史快照；
+2026-08-02 的 15-cell runtime-to-writer 审计已经写入 `docs/EXPERIMENT_REPORT.md`。
 
 ## 2026-08-01 A1 v2 失败归因与 v3 来源请求
 
@@ -2670,8 +2706,9 @@ main 的安全顺序是 `plan()`、`bind_published_authority_generation()`、外
    mask/rank/demand、投影原因、动态规模和全 false 权限。
 3. [x] whole-seed 60/20/20 固定为 180/60/60；seed 与所有冻结/规范 union 排除集合重叠、
    split 重叠、episode/frame 重复均失败关闭。
-4. [x] readiness CLI 仅在 main registry 与 15-cell/300-episode schedule 完整绑定时返回
-   `ready`；API 显式不提供 registry 时仍返回 `request_only`。
+4. [x] readiness CLI 要求 main registry、15-cell/300-episode schedule 和独立 request
+   artifact 全部通过；当前 runtime quota probe 为 15/15 通过，返回 `ready`。API 显式不
+   提供 registry 时仍返回 `request_only`。
 5. [x] 只读 audit loader 复核 manifest、Git/dirty/config/SHA-256 和在线/离线一一绑定；
    training loader 只暴露严格 allowlist 的 `A1V3TrainingFeatures`，teacher/class 通过独立
    `A1V3TrainingTarget` 提供，不再暴露完整 online/audit frame。
@@ -2692,9 +2729,10 @@ main 的安全顺序是 `plan()`、`bind_published_authority_generation()`、外
    seed、split、cell、哈希、来源或权限漂移失败关闭。
 4. [x] forbidden union 精确纳入全局 658 个 protected seed 和 D4/D5 的 428 个其他
    allocation seed，共 1086 个。正式 `1000-1019` 的读取策略保持 false。
-5. [x] 默认 readiness 返回 `ready`，同时输出 `plan_only=true`、`data_generated=false`、
-   `model_trained=false` 和全 false 权限。专项 64 项通过；D3 全量 742 项为
-   `741 passed, 1 skipped`。
+5. [x] 独立 source-generation request artifact 接入并通过 15-cell probe 后，当前默认
+   readiness 为 `ready`、`source_generation_request_ready=true`，并继续输出
+   `plan_only=true`、`data_generated=false`、`model_trained=false`。除 request permission
+   外，生成、训练、运行和控制权限均为 false。
 
 ### 后续
 
@@ -2704,6 +2742,6 @@ main 的安全顺序是 `plan()`、`bind_published_authority_generation()`、外
    只完成计划检查，不生成 payload。
 3. [ ] 训练、选模、归一化重拟合、阈值调整、正式评价和任何运行/生产准入均不在本批范围。
 
-`docs/AIRSIM_INTEGRATION_PLAN.md` 与 `docs/EXPERIMENT_REPORT.md` 已检查。本次没有 AirSim
-DTO、settings、episode、控制接口或新实验数据，因此不修改。M-to-N 专项也已检查；本次
-只冻结两个高威胁 cell 的 seed 计划，没有改变需求槽、成员角色、波次或到达调度。
+`docs/AIRSIM_INTEGRATION_PLAN.md` 已检查。本次没有 AirSim DTO、settings、episode 或控制
+接口变化，因此不修改。`docs/EXPERIMENT_REPORT.md` 已补充 15-cell 软件审计表。M-to-N
+专项也已检查；本次没有改变需求槽、成员角色、波次或到达调度。

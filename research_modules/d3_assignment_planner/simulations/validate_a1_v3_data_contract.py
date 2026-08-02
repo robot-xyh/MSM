@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Validate A1 v3 generation readiness or generated dataset artifacts."""
+"""Validate A1 v3 source-generation request readiness or dataset artifacts."""
 
 from __future__ import annotations
 

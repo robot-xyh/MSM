@@ -1,0 +1,378 @@
+{
+  "schema_version": "d3_a1_source_independent_v3_source_generation_request_readiness_v1",
+  "request_id": "d3-a1-v3-source-generation-request-20260801-v1",
+  "status": "request_ready_frozen_runtime_quota_probe_passed",
+  "scope": {
+    "request_readiness_only": true,
+    "source_generation_authorized": false,
+    "episode_generation_started": false,
+    "data_generated": false,
+    "validation_payload_read": false,
+    "formal_seed_payload_read": false,
+    "model_trained": false,
+    "shadow_started": false,
+    "assignment_changed": false,
+    "runtime_started": false,
+    "physical_started": false,
+    "control_started": false
+  },
+  "bindings": {
+    "frozen_request": {
+      "path": "research_modules/d3_assignment_planner/configs/a1_source_independent_v3_development_data_request_v1.json",
+      "schema_version": "d3_a1_source_independent_v3_development_data_request_v1",
+      "identity": "d3-a1-source-independent-v3-development-data-request-20260801-v1",
+      "file_sha256": "6800fd622fbc7dd27a7411f3419fb92729b195bd8fc6880dcda4c5f8637043e2"
+    },
+    "generation_schedule": {
+      "path": "research_modules/d3_assignment_planner/configs/a1_source_independent_v3_generation_schedule_v1.json",
+      "schema_version": "d3_a1_source_independent_v3_generation_schedule_v1",
+      "identity": "d3-a1-v3-generation-schedule-20260801-v1",
+      "file_sha256": "0eac8bcfeb09e1e706c31c2532fab82296028e95c5e384ac11c4e81cb7cb05ba"
+    },
+    "main_allocation_registry": {
+      "path": "research_modules/d3_assignment_planner/configs/a1_source_independent_v3_main_allocation_registry_v1.json",
+      "schema_version": "d3_a1_source_independent_v3_main_seed_registry_v1",
+      "identity": "d3-a1-v3-main-allocation-registry-20260801-v1",
+      "file_sha256": "9014cba4510a033b307a28b8f8a11ca09650367b040d35c73aeb2f3a420391b7"
+    },
+    "global_seed_registry": {
+      "path": "research_modules/scalable_3d_simulation/configs/scalable_learning_global_seed_registry_v1.json",
+      "schema_version": "scalable3d-global-seed-registry-v1",
+      "identity": "scalable3d-learning-source-allocation-20260801-v1",
+      "content_sha256": "89d99bf064a8c0e226eead5b675f05daf70ac2d4c6f6139322502da54ab0aea7",
+      "file_sha256": "1c9778e1cbfcd5679956ac2c1fc71a1e780207c4579abdc9b129d162a252c4b6",
+      "allocation_id": "d3-a1-v3-all-splits"
+    },
+    "data_contract": {
+      "path": "research_modules/d3_assignment_planner/configs/a1_source_independent_v3_data_contract_v1.json",
+      "schema_version": "d3_a1_source_independent_v3_data_contract_v1",
+      "identity": "d3-a1-source-independent-v3-data-contract-20260801-v1",
+      "file_sha256": "5808782256908579fa443fafbc6aade8f78b340aa8bb722d16735ba2847fa60e"
+    },
+    "sidecar_classification_policy": {
+      "path": "research_modules/d3_assignment_planner/configs/a1_source_independent_v3_sidecar_classification_policy_v1.json",
+      "schema_version": "d3_a1_v3_sidecar_classification_policy_v1",
+      "identity": "d3-a1-v3-sidecar-classification-policy-20260801-v1",
+      "file_sha256": "3fbcd97dbd27e73888f81b2d0b05653cc47998af52d0dee5b93843681762e7ac"
+    },
+    "sidecar_classifier": {
+      "path": "research_modules/d3_assignment_planner/src/d3_assignment_planner/a1_v3_sidecar_classification.py",
+      "schema_version": "d3_a1_v3_derived_sidecar_classification_v1",
+      "file_sha256": "b04cbbcb9d696c01875032bf3a2d2ad2e2309160000e25bc16bd772f62c6edaf"
+    }
+  },
+  "seed_contract": {
+    "allocation_id": "d3-a1-v3-all-splits",
+    "assigned_seed_count": 300,
+    "assigned_seed_minimum": 23000,
+    "assigned_seed_maximum": 23299,
+    "assigned_seed_values_sha256": "67423ae44a257fb3951acbfc4761bc79faf35bf61d5307e2b7921a57dc9a0a6d",
+    "split_policy_version": "d3_a1_source_independent_v3_whole_seed_60_20_20_v1",
+    "split_seed_counts": {
+      "train": 180,
+      "validation": 60,
+      "test": 60
+    },
+    "split_seed_values_sha256": {
+      "train": "c8802a3b0955f387791acd9c00a56d73472b31aa51de3f52f4cebdae47b4c5c9",
+      "validation": "91b563bfcc8c3e63ee7e390853b51fa85f90a0412d45eb170548ee53eb4f34a4",
+      "test": "c9a84a0dca5d97262b582ad2d196e7ce226b5a86fe5c69b938fbe755ea62219c"
+    },
+    "schedule_episode_seed_binding_sha256": "e1558bf6e67ed6a35e9a6046c82c106d26c5b046bef0dbbad665341dac371027",
+    "global_allocation_permitted_operations": [
+      "dataset_generation"
+    ],
+    "operation_is_seed_reservation_not_authorization": true,
+    "formal_seed_values_sha256": "31d2ea25fd446c6e3899964ece1a5d97f8455cc85b69e9fdb545485844cf6639",
+    "formal_seed_overlap_count": 0,
+    "formal_seed_payload_read_allowed": false
+  },
+  "schema_contract": {
+    "request_schema_version": "d3_a1_source_independent_v3_development_data_request_v1",
+    "generation_schedule_schema_version": "d3_a1_source_independent_v3_generation_schedule_v1",
+    "main_allocation_schema_version": "d3_a1_source_independent_v3_main_seed_registry_v1",
+    "global_registry_schema_version": "scalable3d-global-seed-registry-v1",
+    "data_contract_schema_version": "d3_a1_source_independent_v3_data_contract_v1",
+    "online_frame_schema_version": "d3_a1_source_independent_v3_online_frame_v1",
+    "offline_label_schema_version": "d3_a1_source_independent_v3_offline_label_v1",
+    "training_feature_schema_version": "d3_a1_source_independent_v3_training_features_v1",
+    "training_target_schema_version": "d3_a1_source_independent_v3_training_target_v1",
+    "sidecar_classification_policy_schema_version": "d3_a1_v3_sidecar_classification_policy_v1",
+    "sidecar_classification_schema_version": "d3_a1_v3_derived_sidecar_classification_v1",
+    "split_policy_version": "d3_a1_source_independent_v3_whole_seed_60_20_20_v1"
+  },
+  "producer_capability": {
+    "deterministic_sidecar_classifier_available": true,
+    "continuous_anonymous_frame_classification_required": true,
+    "caller_sidecar_classification_override_allowed": false,
+    "writer_quota_gate_fail_closed": true,
+    "deterministically_emitted_action_change_types": [
+      "keep_exact_r0",
+      "m_to_n_demand_decrease",
+      "m_to_n_demand_increase",
+      "multi_target_cycle",
+      "resource_failure_reassignment",
+      "resource_recovery_reassignment",
+      "single_target_rebind_with_resource_release",
+      "target_appearance_assignment",
+      "target_loss_release",
+      "two_target_pair_swap"
+    ],
+    "deterministically_emitted_hard_negative_types": [
+      "binding_change_boundary_exceeded",
+      "coverage_degrading_reassignment",
+      "incomplete_m_to_n_coalition",
+      "near_tie_but_teacher_keeps_r0",
+      "resource_capacity_conflict",
+      "rule_cost_difference_boundary_exceeded",
+      "stale_or_expired_plan_candidate"
+    ],
+    "rejected_underived_taxonomy": [
+      "lower_learned_score_on_hard_forbidden_edge",
+      "primary_reserve_role_change"
+    ],
+    "unsupported_taxonomy_is_rejected": true,
+    "frozen_runtime_quota_probe": {
+      "probe_date": "2026-08-02",
+      "duration_s": 10.0,
+      "audited_cell_count": 15,
+      "audited_recipe_count": 15,
+      "required_per_episode": {
+        "positive_frame_count": 3,
+        "negative_frame_count": 3,
+        "hard_negative_frame_count": 2
+      },
+      "passing_runtime_to_writer_recipe_ids": [
+        "a1-v3-cell-00-train-00",
+        "a1-v3-cell-01-train-00",
+        "a1-v3-cell-02-train-00",
+        "a1-v3-cell-03-train-00",
+        "a1-v3-cell-04-train-00",
+        "a1-v3-cell-05-train-00",
+        "a1-v3-cell-06-train-00",
+        "a1-v3-cell-07-train-00",
+        "a1-v3-cell-08-train-00",
+        "a1-v3-cell-09-train-00",
+        "a1-v3-cell-10-train-00",
+        "a1-v3-cell-11-train-00",
+        "a1-v3-cell-12-train-00",
+        "a1-v3-cell-13-train-00",
+        "a1-v3-cell-14-train-00"
+      ],
+      "blocking_cell_ids": [],
+      "runtime_results": [
+        {
+          "cell_id": "nominal-balanced-5t5r",
+          "episode_id": "a1-v3-cell-00-train-00",
+          "seed": 23000,
+          "frame_count": 10,
+          "positive_frame_count": 3,
+          "negative_frame_count": 7,
+          "hard_negative_frame_count": 3,
+          "quota_met": true,
+          "writer_staged": true,
+          "reason_codes": []
+        },
+        {
+          "cell_id": "dense-crossing-20t20r",
+          "episode_id": "a1-v3-cell-01-train-00",
+          "seed": 23012,
+          "frame_count": 10,
+          "positive_frame_count": 3,
+          "negative_frame_count": 7,
+          "hard_negative_frame_count": 6,
+          "quota_met": true,
+          "writer_staged": true,
+          "reason_codes": []
+        },
+        {
+          "cell_id": "dense-crossing-50t50r",
+          "episode_id": "a1-v3-cell-02-train-00",
+          "seed": 23024,
+          "frame_count": 10,
+          "positive_frame_count": 7,
+          "negative_frame_count": 3,
+          "hard_negative_frame_count": 3,
+          "quota_met": true,
+          "writer_staged": true,
+          "reason_codes": []
+        },
+        {
+          "cell_id": "formation-split-50t50r",
+          "episode_id": "a1-v3-cell-03-train-00",
+          "seed": 23036,
+          "frame_count": 10,
+          "positive_frame_count": 4,
+          "negative_frame_count": 6,
+          "hard_negative_frame_count": 6,
+          "quota_met": true,
+          "writer_staged": true,
+          "reason_codes": []
+        },
+        {
+          "cell_id": "evasive-multilevel-100t100r",
+          "episode_id": "a1-v3-cell-04-train-00",
+          "seed": 23048,
+          "frame_count": 10,
+          "positive_frame_count": 6,
+          "negative_frame_count": 4,
+          "hard_negative_frame_count": 4,
+          "quota_met": true,
+          "writer_staged": true,
+          "reason_codes": []
+        },
+        {
+          "cell_id": "delayed-noisy-200t200r",
+          "episode_id": "a1-v3-cell-05-train-00",
+          "seed": 23060,
+          "frame_count": 9,
+          "positive_frame_count": 3,
+          "negative_frame_count": 6,
+          "hard_negative_frame_count": 6,
+          "quota_met": true,
+          "writer_staged": true,
+          "reason_codes": []
+        },
+        {
+          "cell_id": "communication-degraded-5t5r",
+          "episode_id": "a1-v3-cell-06-train-00",
+          "seed": 23072,
+          "frame_count": 10,
+          "positive_frame_count": 3,
+          "negative_frame_count": 7,
+          "hard_negative_frame_count": 5,
+          "quota_met": true,
+          "writer_staged": true,
+          "reason_codes": []
+        },
+        {
+          "cell_id": "center-failure-20t20r",
+          "episode_id": "a1-v3-cell-07-train-00",
+          "seed": 23084,
+          "frame_count": 10,
+          "positive_frame_count": 3,
+          "negative_frame_count": 7,
+          "hard_negative_frame_count": 5,
+          "quota_met": true,
+          "writer_staged": true,
+          "reason_codes": []
+        },
+        {
+          "cell_id": "secondary-failure-50t50r",
+          "episode_id": "a1-v3-cell-08-train-00",
+          "seed": 23096,
+          "frame_count": 10,
+          "positive_frame_count": 3,
+          "negative_frame_count": 7,
+          "hard_negative_frame_count": 7,
+          "quota_met": true,
+          "writer_staged": true,
+          "reason_codes": []
+        },
+        {
+          "cell_id": "high-threat-m-to-n-100t100r",
+          "episode_id": "a1-v3-cell-09-train-00",
+          "seed": 23108,
+          "frame_count": 10,
+          "positive_frame_count": 5,
+          "negative_frame_count": 5,
+          "hard_negative_frame_count": 5,
+          "quota_met": true,
+          "writer_staged": true,
+          "reason_codes": []
+        },
+        {
+          "cell_id": "high-threat-m-to-n-200t200r",
+          "episode_id": "a1-v3-cell-10-train-00",
+          "seed": 23120,
+          "frame_count": 10,
+          "positive_frame_count": 5,
+          "negative_frame_count": 5,
+          "hard_negative_frame_count": 5,
+          "quota_met": true,
+          "writer_staged": true,
+          "reason_codes": []
+        },
+        {
+          "cell_id": "resource-surplus-20t30r",
+          "episode_id": "a1-v3-cell-11-train-00",
+          "seed": 23132,
+          "frame_count": 10,
+          "positive_frame_count": 3,
+          "negative_frame_count": 7,
+          "hard_negative_frame_count": 6,
+          "quota_met": true,
+          "writer_staged": true,
+          "reason_codes": []
+        },
+        {
+          "cell_id": "resource-shortage-30t20r",
+          "episode_id": "a1-v3-cell-12-train-00",
+          "seed": 23144,
+          "frame_count": 10,
+          "positive_frame_count": 3,
+          "negative_frame_count": 7,
+          "hard_negative_frame_count": 3,
+          "quota_met": true,
+          "writer_staged": true,
+          "reason_codes": []
+        },
+        {
+          "cell_id": "dynamic-add-drop-100t80r",
+          "episode_id": "a1-v3-cell-13-train-00",
+          "seed": 23156,
+          "frame_count": 10,
+          "positive_frame_count": 7,
+          "negative_frame_count": 3,
+          "hard_negative_frame_count": 3,
+          "quota_met": true,
+          "writer_staged": true,
+          "reason_codes": []
+        },
+        {
+          "cell_id": "near-tie-hard-negative-50t50r",
+          "episode_id": "a1-v3-cell-14-train-00",
+          "seed": 23168,
+          "frame_count": 10,
+          "positive_frame_count": 3,
+          "negative_frame_count": 7,
+          "hard_negative_frame_count": 7,
+          "quota_met": true,
+          "writer_staged": true,
+          "reason_codes": []
+        }
+      ],
+      "main_anonymous_external_event_contract_observed": true,
+      "caller_classification_override_used": false,
+      "classifier_error_count": 0,
+      "writer_staged_cell_count": 15,
+      "all_frozen_cells_quota_ready": true,
+      "online_truth_use_count": 0,
+      "blocker_codes": []
+    }
+  },
+  "permissions": {
+    "source_generation_request": true,
+    "source_generation": false,
+    "episode_generation": false,
+    "dataset_artifact_write": false,
+    "validation_payload_read": false,
+    "formal_seed_payload_read": false,
+    "training": false,
+    "optimizer": false,
+    "checkpoint_selection": false,
+    "normalization_refit": false,
+    "threshold_adjustment": false,
+    "shadow": false,
+    "assist": false,
+    "authority": false,
+    "assignment": false,
+    "plan": false,
+    "runtime": false,
+    "physical": false,
+    "control": false,
+    "formal_admission": false,
+    "production_admission": false
+  },
+  "content_sha256": "de5ba2bbab91022967da30c36ef1b179e6c795f24e856e13878656c2bb1f90ce"
+}

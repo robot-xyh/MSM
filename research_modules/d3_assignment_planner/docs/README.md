@@ -1,5 +1,11 @@
 # D3 文档索引
 
+2026-08-02，A1 v3 的 15 个首个 10 秒 TRAIN recipe 全部通过严格 writer/classifier 的
+`3/3/2` 配额，在线真值使用为 0。`source_generation_request_ready=true`，但来源生成、
+数据写入、验证读取、训练、运行和控制仍未授权。逐 cell 计数与墙钟见
+`EXPERIMENT_REPORT.md`，门控语义见 `ALGORITHM_AND_IMPLEMENTATION.md`，下一步见
+`../PLAN.md`。
+
 2026-08-01，D3 完成冻结 A1 v2 的失败归因和 v3 开发来源需求冻结。test 正类教师完全
 匹配为 `0/25`；9 帧为明确 OOD 回退，16 帧为非 OOD 候选动作不匹配，投影单独阻断正确
 候选为 0。候选可达性、逐边模型排序和需求槽结构因 v2 字段不足保持 `unavailable`。

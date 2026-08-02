@@ -1,0 +1,378 @@
+{
+  "schema_version": "d3_a1_v3_sidecar_classification_policy_v1",
+  "policy_id": "d3-a1-v3-sidecar-classification-policy-20260801-v1",
+  "status": "frozen_deterministic_classification_only",
+  "bindings": {
+    "frozen_request": {
+      "path": "research_modules/d3_assignment_planner/configs/a1_source_independent_v3_development_data_request_v1.json",
+      "schema_version": "d3_a1_source_independent_v3_development_data_request_v1",
+      "request_id": "d3-a1-source-independent-v3-development-data-request-20260801-v1",
+      "file_sha256": "6800fd622fbc7dd27a7411f3419fb92729b195bd8fc6880dcda4c5f8637043e2"
+    },
+    "near_tie_boundary": {
+      "path": "research_modules/d3_assignment_planner/configs/a1_source_independent_v3_near_tie_boundary_v1.json",
+      "schema_version": "d3_a1_v3_rule_cost_near_tie_boundary_v1",
+      "boundary_id": "d3-a1-v3-rule-cost-near-tie-boundary-v1",
+      "file_sha256": "ed8c9a958e5ec65c7d52af0122a2ec4eb90608e8dee0370517b0c4c2a10dc25d"
+    }
+  },
+  "sequence_contract": {
+    "frame_order": "strict_contiguous_frame_index",
+    "baseline_frame_class": "initial_nonempty_teacher_plan_is_positive",
+    "positive_source": "initial_teacher_or_auditable_anonymous_assignment_transition",
+    "negative_source": "no_auditable_anonymous_assignment_transition",
+    "caller_classification_override_allowed": false,
+    "unsupported_taxonomy_is_rejected": true,
+    "quota_failure_mode": "fail_closed_before_stage_write"
+  },
+  "boundaries": {
+    "binding_change_maximum_changed_target_count": 1,
+    "target_roster_demand_multiset_coupling_required": true,
+    "target_roster_precedes_simultaneous_active_resource_change": true,
+    "active_resource_source": "candidate_mask_resource_columns",
+    "delayed_target_appearance_requires_pending_deficit_closure": true,
+    "single_resource_release_assignment_chain_allowed": true,
+    "structural_hard_negative_requires_candidate_teacher_difference": true,
+    "near_tie_hard_negative_requires_candidate_teacher_difference": false,
+    "hard_negative_requires_effective_teacher_match": true
+  },
+  "cell_intents": [
+    {
+      "cell_id": "nominal-balanced-5t5r",
+      "scenario_family": "nominal_balanced",
+      "allowed_positive_action_change_types": [
+        "m_to_n_demand_decrease",
+        "m_to_n_demand_increase",
+        "multi_target_cycle",
+        "resource_failure_reassignment",
+        "resource_recovery_reassignment",
+        "single_target_rebind_with_resource_release",
+        "target_appearance_assignment",
+        "target_loss_release",
+        "two_target_pair_swap"
+      ],
+      "hard_negative_priority": [
+        "near_tie_but_teacher_keeps_r0",
+        "coverage_degrading_reassignment",
+        "binding_change_boundary_exceeded",
+        "rule_cost_difference_boundary_exceeded"
+      ]
+    },
+    {
+      "cell_id": "dense-crossing-20t20r",
+      "scenario_family": "dense_crossing",
+      "allowed_positive_action_change_types": [
+        "m_to_n_demand_decrease",
+        "m_to_n_demand_increase",
+        "multi_target_cycle",
+        "resource_failure_reassignment",
+        "resource_recovery_reassignment",
+        "single_target_rebind_with_resource_release",
+        "target_appearance_assignment",
+        "target_loss_release",
+        "two_target_pair_swap"
+      ],
+      "hard_negative_priority": [
+        "binding_change_boundary_exceeded",
+        "resource_capacity_conflict",
+        "coverage_degrading_reassignment",
+        "rule_cost_difference_boundary_exceeded",
+        "near_tie_but_teacher_keeps_r0"
+      ]
+    },
+    {
+      "cell_id": "dense-crossing-50t50r",
+      "scenario_family": "dense_crossing",
+      "allowed_positive_action_change_types": [
+        "m_to_n_demand_decrease",
+        "m_to_n_demand_increase",
+        "multi_target_cycle",
+        "resource_failure_reassignment",
+        "resource_recovery_reassignment",
+        "single_target_rebind_with_resource_release",
+        "target_appearance_assignment",
+        "target_loss_release",
+        "two_target_pair_swap"
+      ],
+      "hard_negative_priority": [
+        "binding_change_boundary_exceeded",
+        "resource_capacity_conflict",
+        "coverage_degrading_reassignment",
+        "rule_cost_difference_boundary_exceeded",
+        "near_tie_but_teacher_keeps_r0"
+      ]
+    },
+    {
+      "cell_id": "formation-split-50t50r",
+      "scenario_family": "formation_split",
+      "allowed_positive_action_change_types": [
+        "m_to_n_demand_decrease",
+        "m_to_n_demand_increase",
+        "multi_target_cycle",
+        "resource_failure_reassignment",
+        "resource_recovery_reassignment",
+        "single_target_rebind_with_resource_release",
+        "target_appearance_assignment",
+        "target_loss_release",
+        "two_target_pair_swap"
+      ],
+      "hard_negative_priority": [
+        "coverage_degrading_reassignment",
+        "binding_change_boundary_exceeded",
+        "rule_cost_difference_boundary_exceeded",
+        "near_tie_but_teacher_keeps_r0"
+      ]
+    },
+    {
+      "cell_id": "evasive-multilevel-100t100r",
+      "scenario_family": "evasive_multilevel",
+      "allowed_positive_action_change_types": [
+        "m_to_n_demand_decrease",
+        "m_to_n_demand_increase",
+        "multi_target_cycle",
+        "resource_failure_reassignment",
+        "resource_recovery_reassignment",
+        "single_target_rebind_with_resource_release",
+        "target_appearance_assignment",
+        "target_loss_release",
+        "two_target_pair_swap"
+      ],
+      "hard_negative_priority": [
+        "rule_cost_difference_boundary_exceeded",
+        "binding_change_boundary_exceeded",
+        "coverage_degrading_reassignment",
+        "near_tie_but_teacher_keeps_r0"
+      ]
+    },
+    {
+      "cell_id": "delayed-noisy-200t200r",
+      "scenario_family": "delayed_noisy",
+      "allowed_positive_action_change_types": [
+        "m_to_n_demand_decrease",
+        "m_to_n_demand_increase",
+        "multi_target_cycle",
+        "resource_failure_reassignment",
+        "resource_recovery_reassignment",
+        "single_target_rebind_with_resource_release",
+        "target_appearance_assignment",
+        "target_loss_release",
+        "two_target_pair_swap"
+      ],
+      "hard_negative_priority": [
+        "stale_or_expired_plan_candidate",
+        "rule_cost_difference_boundary_exceeded",
+        "coverage_degrading_reassignment",
+        "binding_change_boundary_exceeded",
+        "near_tie_but_teacher_keeps_r0"
+      ]
+    },
+    {
+      "cell_id": "communication-degraded-5t5r",
+      "scenario_family": "communication_degraded",
+      "allowed_positive_action_change_types": [
+        "m_to_n_demand_decrease",
+        "m_to_n_demand_increase",
+        "multi_target_cycle",
+        "resource_failure_reassignment",
+        "resource_recovery_reassignment",
+        "single_target_rebind_with_resource_release",
+        "target_appearance_assignment",
+        "target_loss_release",
+        "two_target_pair_swap"
+      ],
+      "hard_negative_priority": [
+        "stale_or_expired_plan_candidate",
+        "coverage_degrading_reassignment",
+        "binding_change_boundary_exceeded",
+        "near_tie_but_teacher_keeps_r0"
+      ]
+    },
+    {
+      "cell_id": "center-failure-20t20r",
+      "scenario_family": "center_failure",
+      "allowed_positive_action_change_types": [
+        "m_to_n_demand_decrease",
+        "m_to_n_demand_increase",
+        "multi_target_cycle",
+        "resource_failure_reassignment",
+        "resource_recovery_reassignment",
+        "single_target_rebind_with_resource_release",
+        "target_appearance_assignment",
+        "target_loss_release",
+        "two_target_pair_swap"
+      ],
+      "hard_negative_priority": [
+        "stale_or_expired_plan_candidate",
+        "binding_change_boundary_exceeded",
+        "coverage_degrading_reassignment",
+        "near_tie_but_teacher_keeps_r0"
+      ]
+    },
+    {
+      "cell_id": "secondary-failure-50t50r",
+      "scenario_family": "secondary_failure",
+      "allowed_positive_action_change_types": [
+        "m_to_n_demand_decrease",
+        "m_to_n_demand_increase",
+        "multi_target_cycle",
+        "resource_failure_reassignment",
+        "resource_recovery_reassignment",
+        "single_target_rebind_with_resource_release",
+        "target_appearance_assignment",
+        "target_loss_release",
+        "two_target_pair_swap"
+      ],
+      "hard_negative_priority": [
+        "stale_or_expired_plan_candidate",
+        "binding_change_boundary_exceeded",
+        "coverage_degrading_reassignment",
+        "near_tie_but_teacher_keeps_r0"
+      ]
+    },
+    {
+      "cell_id": "high-threat-m-to-n-100t100r",
+      "scenario_family": "high_threat_m_to_n",
+      "allowed_positive_action_change_types": [
+        "m_to_n_demand_decrease",
+        "m_to_n_demand_increase",
+        "multi_target_cycle",
+        "resource_failure_reassignment",
+        "resource_recovery_reassignment",
+        "single_target_rebind_with_resource_release",
+        "target_appearance_assignment",
+        "target_loss_release",
+        "two_target_pair_swap"
+      ],
+      "hard_negative_priority": [
+        "incomplete_m_to_n_coalition",
+        "resource_capacity_conflict",
+        "coverage_degrading_reassignment",
+        "binding_change_boundary_exceeded",
+        "near_tie_but_teacher_keeps_r0"
+      ]
+    },
+    {
+      "cell_id": "high-threat-m-to-n-200t200r",
+      "scenario_family": "high_threat_m_to_n",
+      "allowed_positive_action_change_types": [
+        "m_to_n_demand_decrease",
+        "m_to_n_demand_increase",
+        "multi_target_cycle",
+        "resource_failure_reassignment",
+        "resource_recovery_reassignment",
+        "single_target_rebind_with_resource_release",
+        "target_appearance_assignment",
+        "target_loss_release",
+        "two_target_pair_swap"
+      ],
+      "hard_negative_priority": [
+        "incomplete_m_to_n_coalition",
+        "resource_capacity_conflict",
+        "coverage_degrading_reassignment",
+        "binding_change_boundary_exceeded",
+        "near_tie_but_teacher_keeps_r0"
+      ]
+    },
+    {
+      "cell_id": "resource-surplus-20t30r",
+      "scenario_family": "resource_surplus",
+      "allowed_positive_action_change_types": [
+        "m_to_n_demand_decrease",
+        "m_to_n_demand_increase",
+        "multi_target_cycle",
+        "resource_failure_reassignment",
+        "resource_recovery_reassignment",
+        "single_target_rebind_with_resource_release",
+        "target_appearance_assignment",
+        "target_loss_release",
+        "two_target_pair_swap"
+      ],
+      "hard_negative_priority": [
+        "near_tie_but_teacher_keeps_r0",
+        "resource_capacity_conflict",
+        "binding_change_boundary_exceeded",
+        "coverage_degrading_reassignment"
+      ]
+    },
+    {
+      "cell_id": "resource-shortage-30t20r",
+      "scenario_family": "resource_shortage",
+      "allowed_positive_action_change_types": [
+        "m_to_n_demand_decrease",
+        "m_to_n_demand_increase",
+        "multi_target_cycle",
+        "resource_failure_reassignment",
+        "resource_recovery_reassignment",
+        "single_target_rebind_with_resource_release",
+        "target_appearance_assignment",
+        "target_loss_release",
+        "two_target_pair_swap"
+      ],
+      "hard_negative_priority": [
+        "coverage_degrading_reassignment",
+        "incomplete_m_to_n_coalition",
+        "resource_capacity_conflict",
+        "binding_change_boundary_exceeded",
+        "near_tie_but_teacher_keeps_r0"
+      ]
+    },
+    {
+      "cell_id": "dynamic-add-drop-100t80r",
+      "scenario_family": "dynamic_add_drop",
+      "allowed_positive_action_change_types": [
+        "m_to_n_demand_decrease",
+        "m_to_n_demand_increase",
+        "multi_target_cycle",
+        "resource_failure_reassignment",
+        "resource_recovery_reassignment",
+        "single_target_rebind_with_resource_release",
+        "target_appearance_assignment",
+        "target_loss_release",
+        "two_target_pair_swap"
+      ],
+      "hard_negative_priority": [
+        "coverage_degrading_reassignment",
+        "resource_capacity_conflict",
+        "binding_change_boundary_exceeded",
+        "stale_or_expired_plan_candidate",
+        "near_tie_but_teacher_keeps_r0"
+      ]
+    },
+    {
+      "cell_id": "near-tie-hard-negative-50t50r",
+      "scenario_family": "near_tie_hard_negative",
+      "allowed_positive_action_change_types": [
+        "m_to_n_demand_decrease",
+        "m_to_n_demand_increase",
+        "multi_target_cycle",
+        "resource_failure_reassignment",
+        "resource_recovery_reassignment",
+        "single_target_rebind_with_resource_release",
+        "target_appearance_assignment",
+        "target_loss_release",
+        "two_target_pair_swap"
+      ],
+      "hard_negative_priority": [
+        "near_tie_but_teacher_keeps_r0"
+      ]
+    }
+  ],
+  "permissions": {
+    "generation": false,
+    "training": false,
+    "optimizer": false,
+    "checkpoint_selection": false,
+    "normalization_refit": false,
+    "threshold_adjustment": false,
+    "runtime": false,
+    "assist": false,
+    "authority": false,
+    "assignment": false,
+    "plan": false,
+    "control": false,
+    "physical": false,
+    "formal_admission": false,
+    "production_admission": false
+  },
+  "content_sha256": "9efafd96fd915f1aec471ce81c0c9a29a21bd6c66495f96f5c732646294bf70b"
+}

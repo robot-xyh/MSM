@@ -1,10 +1,85 @@
 # D3 集中式资源-目标分配算法与实施方案
 
-> 状态基线：2026-08-01。
+> 状态基线：2026-08-02。
 >
 > 本文依据本模块当前源码、测试、`README.md`、`PLAN.md`、
 > `docs/MODULE_PRINCIPLES_CN.md` 和根目录系统汇总同步编写。本文区分默认主线、
 > 已实现辅助能力、可选离线对照和未实现能力，不把计划项写成已完成能力。
+
+## A1 v3 来源生成请求与 producer viability 算法
+
+### 独立请求门
+
+`a1_source_independent_v3_source_generation_request_readiness_v1.json` 是生成授权之前的独立
+输入，不是 authorization。loader 先完成原 request/exclusion/contract、generator config、
+global allocation、D3 registry 和固定 schedule 验证，再验证该 artifact 的 canonical
+content SHA-256。artifact 必须精确绑定四个冻结计划输入的仓库相对路径和文件 SHA-256、
+数据合同、sidecar policy、classifier source、split/schema 摘要及 producer capability。
+
+权限对象采用 exact-key 比较。当前 runtime quota probe 为 15/15 通过，因此 artifact 只把
+`source_generation_request` 置为 true。来源生成、数据写入、验证读取、训练和运行权限仍为
+false。报告顶层和 `producer_capability` 同时发布稳定的
+`source_generation_request_path`、`source_generation_request_sha256`、
+`source_generation_request_ready=true`。路径固定为仓库相对路径，reason codes 为空；该状态
+只允许 main 提交独立生成授权请求，不启动生成器。
+
+### 确定性 sidecar 分类
+
+设相邻匿名规划帧为 (F_{k-1},F_k)。目标数变化时，分类器比较前后 demand slot multiset；
+只有新增/删除 multiset 项数与 target delta 完全一致，才把 target+demand 视为一个 roster
+事件。活动资源集合定义为 candidate mask 中出现的资源列，不使用固定矩阵列宽。target roster
+与活动资源同帧变化时 target 事件优先；稳定 target 下独立 demand/resource 同变、demand 混合
+增减、资源集合同帧替换或不守恒 teacher 变化全部失败关闭。
+
+首帧非空 teacher 表示从空 episode 基线建立 `target_appearance_assignment`。若 target 出现先
+增加 coverage deficit，后续 teacher edge 增加并闭合同一 pending deficit，则闭合帧也是可审计
+的延迟 appearance 正类。稳定 roster/demand/resource 下，若 teacher edge 净减 1、coverage
+deficit 净增 1、旧新资源 multiset 仅净释放 1 个资源且没有获取资源，则匿名对称差形成一个
+开放重分配链，归入 `single_target_rebind_with_resource_release`。其余稳定帧按一目标重绑、
+pair swap 或 resource-preserving cycle 分类；多资源释放或不闭合变化仍拒绝，无变化帧为
+`keep_exact_r0` 负类。
+
+near-tie 困难负类要求当前帧为负类、至少一个规则成本 margin 通过冻结边界且 effective edge
+集等于 teacher；不要求 caller 提供不同 challenger。coalition、coverage、binding、stale 和
+capacity 等结构困难负类仍要求 candidate 不等于 teacher。writer 对完整 episode 重算签名，
+caller sidecar 只可提供离线 identity labels。当前不可由这些字段推导的
+`primary_reserve_role_change` 与 `lower_learned_score_on_hard_forbidden_edge` 明确拒绝。
+
+### 可达性与 main recipe 合同
+
+main recipe v2 已实现 episode-seeded 匿名 target/resource deactivate-reactivate 和不复制帧的
+稳定运动/观测窗口。D3 使用现有 schedule 的 15 个首个 TRAIN recipe、seed `23000-23168`、
+每个 10 秒完成实际 runtime-to-writer 审计，在线 truth 使用为 0。计数如下：
+
+| Cell | 正/负/困难负 | Writer |
+| --- | ---: | --- |
+| nominal-balanced-5t5r | 3/7/3 | stage |
+| dense-crossing-20t20r | 3/7/6 | stage |
+| dense-crossing-50t50r | 7/3/3 | stage |
+| formation-split-50t50r | 4/6/6 | stage |
+| evasive-multilevel-100t100r | 6/4/4 | stage |
+| delayed-noisy-200t200r | 3/6/6 | stage |
+| communication-degraded-5t5r | 3/7/5 | stage |
+| center-failure-20t20r | 3/7/5 | stage |
+| secondary-failure-50t50r | 3/7/7 | stage |
+| high-threat-m-to-n-100t100r | 5/5/5 | stage |
+| high-threat-m-to-n-200t200r | 5/5/5 | stage |
+| resource-surplus-20t30r | 3/7/6 | stage |
+| resource-shortage-30t20r | 3/7/3 | stage |
+| dynamic-add-drop-100t80r | 7/3/3 | stage |
+| near-tie-hard-negative-50t50r | 3/7/7 | stage |
+
+三个原阻塞 cell 通过预注册稳定运动、无随机扰动重生成量测和既有匿名分类规则形成自然
+正负样本。事件在 episode 前冻结，分类器没有读取结果反向选择窗口。15/15 writer stage
+成功后 `source_generation_request_ready=true`。该状态仍不构成 generation authorization。
+
+### 跨进程暂存前缀
+
+`staged_episode_indices` 每次调用先校验全部绑定来源，再重新扫描并严格解析 staged episode
+文件。只有排序 index 等于 `(0, ..., n-1)` 才返回；`staged_episode_ids` 由同一已验证 index
+映射冻结 schedule，不读取或返回帧 payload。旧进程因此可以看到另一 writer 进程刚写入的
+连续前缀；缺口、文件篡改、权限提升或 source hash 漂移全部停止。该只读 inventory 不授予
+生成、分配或运行权限。
 
 ## A1 v3 数据生成接口
 
@@ -39,9 +114,10 @@ main 对每个 D3 规划帧构造 `A1V3AdapterFrameEvidence`。输入包括双�
 ### 暂存与收口
 
 `A1V3DatasetWriter.stage_episode(...)` 的输入是冻结 `A1V3ScheduledEpisode`、该 episode
-全部在线 evidence 和同帧离线 sidecar。writer 使用 schedule 的 episode_id、cell_id、
-scenario_family、seed、split 与配置 M/N，不调用 split hash。帧号必须从 0 连续，双时间
-戳分别单调，在线/离线键和 SHA-256 一致，四类最低配额在 episode 文件创建前通过。
+全部在线 evidence 和可选的同帧离线 identity sidecar。writer 先由在线序列生成分类；若
+调用方提供 sidecar，其分类签名必须逐帧完全一致。writer 使用 schedule 的 episode_id、
+cell_id、scenario_family、seed、split 与配置 M/N，不调用 split hash。帧号必须从 0 连续，
+双时间戳分别单调，在线/离线键和 SHA-256 一致，四类最低配额在 episode 文件创建前通过。
 
 暂存目录保存规范 JSON episode 文件和固定会话。会话绑定 request、contract、registry、
 schedule、near-tie 边界、schedule inventory 及所有来源文件 SHA-256。重新打开 writer
@@ -61,9 +137,11 @@ schedule、near-tie 边界、schedule inventory 及所有来源文件 SHA-256。
 离线四类身份标签全部齐备才标为 `complete`；部分存在标为 `partial`；全部为空标为
 `unavailable`。
 
-当前专项以 300 个 schedule 条目和 2700 个合成匿名帧验证完整 finalize，未调用 main 三维
-runtime。main 仍需实现动态增删和真实 near-tie treatment，随后重新冻结 source/hash 并
-单独授权生成。该接口不改变默认规则代价、Hungarian、需求槽 Hungarian 或计划迟滞。
+完整 finalize 专项仍使用 300 个 schedule 条目和 2700 个合成匿名帧。2026-08-02 的独立
+15-cell 审计已调用 main 三维 runtime，并实际覆盖 dynamic roster、基于真实三维规则成本的
+near-tie treatment 和 scalable runtime adapter。source-generation request readiness 已闭合；
+main 仍需单独下发来源生成授权，随后按冻结 schedule 生成全部 300 个 episode。该接口不
+改变默认规则代价、Hungarian、需求槽 Hungarian 或计划迟滞。
 
 ## A1 v2 失败归因
 
@@ -4581,17 +4659,23 @@ offline 文件 SHA 和 manifest，仍以 `offline_online_payload_sha256_mismatch
 
 ### 77.1 冻结输入
 
-生成前门控读取五类输入：冻结 request、冻结数据合同、D3 旧 seed 排除表、main 全局 seed
-登记表，以及 D3 generator config。generator config 固定 main source commit、四类文件
-绑定、15-cell 规模、最低帧配额和全 false 权限。D3 allocation registry 再绑定 generator
-文件 SHA-256、全局 registry id、内容 SHA-256、文件 SHA-256 与 allocation id。
+生成前门控读取冻结 request、数据合同、D3 旧 seed 排除表、main 全局 seed 登记表、D3
+generator config/allocation/schedule，以及独立 source-generation request readiness artifact
+和 sidecar 分类策略。generator config 固定 main source commit、四类文件绑定、15-cell
+规模、最低帧配额和全 false 权限。D3 allocation registry 再绑定 generator 文件 SHA-256、
+全局 registry id、内容 SHA-256、文件 SHA-256 与 allocation id。request artifact 最后绑定
+全部计划输入、分类器源码、schema/seed 摘要、runtime quota probe 和全 false 请求权限。
 
-当前三个新增文件的 SHA-256 为：
+当前相关冻结/请求文件的 SHA-256 为：
 
 ```text
 generator config  463463699cb3233cccc431458fa66336e3523ed219cae19ccc08a5da02e562b9
 D3 registry       9014cba4510a033b307a28b8f8a11ca09650367b040d35c73aeb2f3a420391b7
 schedule          0eac8bcfeb09e1e706c31c2532fab82296028e95c5e384ac11c4e81cb7cb05ba
+sidecar policy    3fbcd97dbd27e73888f81b2d0b05653cc47998af52d0dee5b93843681762e7ac
+classifier source b04cbbcb9d696c01875032bf3a2d2ad2e2309160000e25bc16bd772f62c6edaf
+request artifact  e80046cb6bbaef29f5d36434268c85994049845c724f2770a0496daa36f9cd90
+artifact content  82cb66ea8d4f2988d20e470830b4cd64423221e12a332df7a2aafdcf4800d5d5
 ```
 
 全局登记表不由 D3 修改。loader 先复算移除 `content_sha256` 字段后的规范 JSON 哈希，再
@@ -4625,13 +4709,15 @@ request/exclusion/data contract
   -> global registry self-hash, file hash and exact allocation
   -> D3 forbidden union and whole-seed split
   -> fixed 15-cell x 20-episode schedule
-  -> all permissions false
-  -> ready(plan_only)
+  -> deterministic sidecar policy and classifier source hashes
+  -> source-generation request artifact schema/seed/bindings
+  -> exact runtime quota probe
+  -> request permission only; generation and execution permissions false
+  -> ready(request only)
 ```
 
-`ready(plan_only)` 不调用数据生成器，也不创建 manifest。API 调用方显式不提供 main
-registry 时仍得到 `request_only`；默认 CLI 使用冻结计划文件并返回退出码 0。任一输入不
-完整或漂移均返回 `fail_closed` 和稳定原因码。
-
-2026-08-01 专项 64 项全部通过，D3 全量 742 项为 `741 passed, 1 skipped`。验证没有读取
-正式 episode payload 或既有 v2 test payload，没有生成数据或训练权重。
+当前门不调用正式数据生成器，也不创建 manifest。它输出
+`source_generation_request_ready=true` 并固定 `generation_authorized=false`。API 调用方显式
+不提供 main registry 时仍得到 `request_only`；默认 CLI 使用冻结计划文件并返回 ready。
+输入漂移继续使用各自稳定原因码并失败关闭。本轮验证没有读取正式 episode payload 或既有
+v2 test payload，没有生成正式数据或训练权重。

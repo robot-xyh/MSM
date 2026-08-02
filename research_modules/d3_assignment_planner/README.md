@@ -1,5 +1,43 @@
 # D3 Assignment Planner
 
+## 2026-08-02 A1 v3 15-cell 来源请求收敛
+
+main 的匿名外部事件合同已被真实 producer 消费。formation-split 使用
+episode-seeded 匿名目标停用/恢复，resource surplus/shortage 使用匿名 interceptor
+停用/恢复，三个原阻塞场景使用预注册稳定运动/观测窗口。输入没有
+truth ID、`global_track_id`、frame class 或 teacher override，窗口内重新量测且不复制帧。
+
+分类器继续用 demand multiset 证明 target/demand roster 耦合，并从 candidate mask 推导活动
+资源。本轮新增的匿名可推导修复只接受单一开放重分配链：稳定 roster/demand/resource 下，
+teacher 净减少 1 条边、coverage deficit 净增加 1、仅释放 1 个资源且不获取资源时，归入
+`single_target_rebind_with_resource_release`。多资源释放、资源替换和其他不守恒变化仍拒绝。
+near-tie 仍必须由规则成本重算，caller sidecar 分类覆盖继续禁止。
+
+2026-08-02，15 个 10 秒首个 TRAIN recipe 已逐一经过 main runtime、
+`adapt_d3_a1_runtime_frame`、确定性分类器和严格 writer。正类/负类/困难负类计数依次为：
+nominal `3/7/3`、dense-20 `3/7/6`、
+dense-50 `7/3/3`、formation-split `4/6/6`、evasive-100 `6/4/4`、delayed-noisy-200
+`3/6/6`、communication-degraded `3/7/5`、center-failure `3/7/5`、secondary-failure
+`3/7/7`、high-threat-100 `5/5/5`、high-threat-200 `5/5/5`、surplus `3/7/6`、shortage
+`3/7/3`、dynamic roster `7/3/3`、near-tie `3/7/7`。在线 truth 使用总数为 0。
+
+`15/15` 均满足逐 episode `positive>=3`、`negative>=3`、`hard-negative>=2` 并实际 stage。
+delayed-noisy-200 在稳定窗口内形成 9 个可观测规划帧，仍高于冻结最小值；其他 cell 为
+10 帧。审计没有降低配额、复制帧、伪造 sidecar 或使用 caller 分类。
+
+因此 `source_generation_request_ready=true`，reason codes 为空。readiness artifact
+content SHA-256 为 `de5ba2bbab91022967da30c36ef1b179e6c795f24e856e13878656c2bb1f90ce`，
+文件 SHA-256 为 `11008b9240bf0219aa14c5fb724332d0061469ab85e048721af5f349804b68a6`；sidecar policy 和
+classifier SHA-256 分别为 `3fbcd97dbd27e73888f81b2d0b05653cc47998af52d0dee5b93843681762e7ac`
+和 `b04cbbcb9d696c01875032bf3a2d2ad2e2309160000e25bc16bd772f62c6edaf`。只有
+`source_generation_request` permission 为 true；`source_generation`、episode/dataset 写入、
+validation/formal payload 读取、training、runtime、assignment、control 和准入权限仍为
+false。这是可提交请求，不是生成授权。冻结 request、schedule、generator config、allocation
+和 global registry 未修改，默认 Hungarian 主线未改变。
+
+本轮 D3 全量收集 797 项，结果为 `796 passed, 1 skipped, 1 warning`。跳过项为可选
+OR-Tools 路径；告警为既有 Matplotlib `Axes3D` 环境提示。
+
 ## 2026-08-01 A1 v3 producer 证据与专用 writer
 
 D3 已实现供 main 三维规模化 producer 调用的 A1 v3 数据接口。入口位于
@@ -19,27 +57,26 @@ D3 已实现供 main 三维规模化 producer 调用的 A1 v3 数据接口。入
 配额。
 
 `A1V3DatasetWriter` 按冻结 `A1V3ScheduledEpisode` 逐 episode 原子暂存。会话绑定 request、
-contract、registry、schedule、near-tie 边界及各文件 SHA-256；恢复时重新校验全部绑定和
-已暂存 episode。episode_id、cell_id、seed、split、配置目标数和资源数直接取 schedule，
-不重新散列 split。每个 episode 在写入前检查连续帧号、双时间戳、在线/离线载荷摘要和
-observable/positive/negative/hard-negative 最低配额。300 个 episode、15 个 cell 和 300
-个唯一 seed 全部暂存后，finalizer 才按规范顺序生成 `online_frames.jsonl`、
+contract、registry、schedule、near-tie 边界、sidecar 分类策略/源码及各文件 SHA-256；
+恢复时重新校验全部绑定和已暂存 episode。episode_id、cell_id、seed、split、配置目标数和
+资源数直接取 schedule，不重新散列 split。每个 episode 在写入前从连续匿名帧重算分类，
+再检查双时间戳、在线/离线载荷摘要和 observable/positive/negative/hard-negative 最低配额。
+300 个 episode、15 个 cell 和 300 个唯一 seed 全部暂存后，finalizer 才按规范顺序生成
+`online_frames.jsonl`、
 `offline_labels.jsonl` 和 `dataset_manifest.json`。三个文件使用规范 JSON 字节和 SHA-256。
 权限、在线真值使用、学习路径创建或改写 `global_track_id` 的计数必须为 0。
 
 离线身份数组允许为空。manifest 以 `complete/partial/unavailable` 记录审计可用性，并列出
-完整、部分和空标签帧数；空标签不能声明为完整身份审计。专项新增 `7 passed`，A1 v3
-合同与 writer 组合为 `71 passed`。完整 15-cell/300-episode/2700-frame 测试使用合成
+完整、部分和空标签帧数；空标签不能声明为完整身份审计。writer 专项当前为 `12 passed`。
+完整 15-cell/300-episode/2700-frame 测试使用合成
 1 目标、2 资源匿名帧，只证明 writer 合同和配额逻辑，不是 main 三维 episode 数据。
-2026-08-01 D3 全量回归收集 749 项，结果为 `748 passed, 1 skipped, 1 warning`；跳过项
+2026-08-01 D3 全量回归收集 781 项，结果为 `780 passed, 1 skipped, 1 warning`；跳过项
 仍是可选 OR-Tools，告警仍是既有 Matplotlib `Axes3D` 导入环境问题。
 
-当前未实现 main 的 `dynamic_add_drop` roster treatment 和
-`near_tie_hard_negative` 三维成本边界 treatment，也未生成 300 个真实 episode。冻结
-generator config 仍为 plan-only，源提交和文件绑定需由 main 在 producer adapter 完成后
-重新冻结并单独授权。因此 `producer_adapter_complete` 和 source generation readiness
-不得改为 true。D3 默认规则代价、Hungarian/需求槽 Hungarian、版本迟滞和所有运行权限
-均未改变。
+main adapter、dynamic roster 和 near-tie treatment 已被上述真实回归调用，但 300 个真实
+episode 尚未生成。冻结 generator config 仍为 plan-only；
+`source_generation_request_ready=true`，`source_generation` 和 `generation_authorized` 均为 false。
+D3 默认规则代价、Hungarian/需求槽 Hungarian、版本迟滞和所有运行权限均未改变。
 
 ## 2026-08-01 A1 v2 失败归因与 v3 开发来源请求
 
@@ -2434,12 +2471,15 @@ schedule。每个 cell 固定使用 12 个 TRAIN、4 个 VALIDATION 和 4 个 TE
 全局 180/60/60 与单 cell 分布混淆。D3 forbidden union 精确包含 658 个全局 protected
 seed 和 428 个 D4/D5 allocation seed，共 1086 个；只包含旧 D3 排除表会失败关闭。
 
-默认命令现返回 `status=ready`、`plan_only=true`、15 cells、300 episodes、300 seeds 和
-最低帧数 `2700/900/900/450`。该状态只证明计划输入完整，不授予生成权限。generator、
-registry、schedule 的 generation/training/runtime/assignment/control 等权限仍全部为
-false。没有生成 episode、online frame、offline label、manifest、bundle 或权重，没有
-读取正式 `1000-1019` payload 或既有 v2 test payload，也没有修改 v2 bundle 和阈值。
+默认命令现返回 `status=ready`、`plan_only=true`、
+`source_generation_request_ready=true` 和空 reason codes，同时
+保留 15 cells、300 episodes、300 seeds 与最低帧数 `2700/900/900/450` 的计划摘要。
+只有 request permission 为 true；generation/training/runtime/assignment/control 等权限均为
+false。没有生成
+正式 episode、online frame、offline label、manifest、
+bundle 或权重，没有读取正式 `1000-1019` payload 或既有 v2 test payload，也没有修改
+v2 bundle 和阈值。
 
-专项 64 项全部通过；D3 全量 742 项为 `741 passed, 1 skipped`。唯一 skip 为可选
-OR-Tools。新增负例覆盖全局登记表文件或内容漂移、generator 来源漂移、allocation seed、
-forbidden union、whole-seed split、cell 映射及三份计划文件的全部权限字段漂移。
+负例覆盖请求/策略缺失、内容和绑定 hash 漂移、schema、allocation seed、whole-seed split、
+cell 映射、producer quota probe 和全部越权 permission。当前全量结果以本文顶部本轮验证
+记录为准。

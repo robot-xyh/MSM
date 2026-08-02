@@ -1,5 +1,37 @@
 # D3 集中式资源-目标分配实验报告
 
+## A1 v3 15-cell 来源请求审计（2026-08-02）
+
+本批使用 15 个冻结 cell 的首个 TRAIN recipe，每个配置时长为 10 秒。运行链路依次经过
+三维质点 runtime、D3 adapter、确定性 sidecar 分类器和严格 writer。每个 cell 均实际调用
+`stage_episode`，没有读取正式种子 `1000-1019`，在线真值使用为 0。
+
+| Cell | Episode | Seed | 帧数 | 正类 | 负类 | 困难负类 | 墙钟/s | Writer |
+| --- | --- | ---: | ---: | ---: | ---: | ---: | ---: | --- |
+| nominal-balanced-5t5r | a1-v3-cell-00-train-00 | 23000 | 10 | 3 | 7 | 3 | 2.199 | stage |
+| dense-crossing-20t20r | a1-v3-cell-01-train-00 | 23012 | 10 | 3 | 7 | 6 | 7.399 | stage |
+| dense-crossing-50t50r | a1-v3-cell-02-train-00 | 23024 | 10 | 7 | 3 | 3 | 20.726 | stage |
+| formation-split-50t50r | a1-v3-cell-03-train-00 | 23036 | 10 | 4 | 6 | 6 | 18.223 | stage |
+| evasive-multilevel-100t100r | a1-v3-cell-04-train-00 | 23048 | 10 | 6 | 4 | 4 | 43.306 | stage |
+| delayed-noisy-200t200r | a1-v3-cell-05-train-00 | 23060 | 9 | 3 | 6 | 6 | 72.292 | stage |
+| communication-degraded-5t5r | a1-v3-cell-06-train-00 | 23072 | 10 | 3 | 7 | 5 | 1.813 | stage |
+| center-failure-20t20r | a1-v3-cell-07-train-00 | 23084 | 10 | 3 | 7 | 5 | 7.169 | stage |
+| secondary-failure-50t50r | a1-v3-cell-08-train-00 | 23096 | 10 | 3 | 7 | 7 | 18.935 | stage |
+| high-threat-m-to-n-100t100r | a1-v3-cell-09-train-00 | 23108 | 10 | 5 | 5 | 5 | 41.810 | stage |
+| high-threat-m-to-n-200t200r | a1-v3-cell-10-train-00 | 23120 | 10 | 5 | 5 | 5 | 102.887 | stage |
+| resource-surplus-20t30r | a1-v3-cell-11-train-00 | 23132 | 10 | 3 | 7 | 6 | 9.050 | stage |
+| resource-shortage-30t20r | a1-v3-cell-12-train-00 | 23144 | 10 | 3 | 7 | 3 | 9.061 | stage |
+| dynamic-add-drop-100t80r | a1-v3-cell-13-train-00 | 23156 | 10 | 7 | 3 | 3 | 36.886 | stage |
+| near-tie-hard-negative-50t50r | a1-v3-cell-14-train-00 | 23168 | 10 | 3 | 7 | 7 | 20.977 | stage |
+
+15/15 均满足 `positive>=3`、`negative>=3`、`hard-negative>=2`。总墙钟为 412.733 秒；该值
+用于记录本机软件审计耗时，不作为实时性能指标。delayed-noisy-200 形成 9 个规划帧，仍
+满足冻结的最低可观测帧数。结果只证明来源请求可提交，尚未生成 300-episode 数据集，也
+没有授权训练、运行或控制。
+
+D3 全量收集 797 项，结果为 `796 passed, 1 skipped, 1 warning`。跳过项为可选
+OR-Tools，告警为既有 Matplotlib `Axes3D` 环境提示，不影响 readiness 结论。
+
 ## A1 v2 失败归因（2026-08-01）
 
 本次试验没有运行模型或重新求解评价数据。输入固定为唯一 v2 结果目录、v2 合同、冻结

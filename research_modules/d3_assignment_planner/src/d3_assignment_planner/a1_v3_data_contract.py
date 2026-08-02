@@ -51,6 +51,16 @@ A1_V3_READINESS_REPORT_SCHEMA_V1 = (
 A1_V3_REQUEST_SCHEMA_V1 = (
     "d3_a1_source_independent_v3_development_data_request_v1"
 )
+A1_V3_SOURCE_GENERATION_REQUEST_SCHEMA_V1 = (
+    "d3_a1_source_independent_v3_source_generation_request_readiness_v1"
+)
+A1_V3_SOURCE_GENERATION_REQUEST_ID = (
+    "d3-a1-v3-source-generation-request-20260801-v1"
+)
+A1_V3_SOURCE_GENERATION_REQUEST_LOGICAL_PATH = (
+    "research_modules/d3_assignment_planner/configs/"
+    "a1_source_independent_v3_source_generation_request_readiness_v1.json"
+)
 A1_V3_EXCLUSION_REGISTRY_SCHEMA_V1 = (
     "d3_a1_source_independent_v3_seed_exclusion_registry_v1"
 )
@@ -107,6 +117,29 @@ A1_V3_PERMISSION_FIELDS = (
     "formal_admission",
     "production_admission",
 )
+A1_V3_SOURCE_GENERATION_REQUEST_PERMISSION_FIELDS = (
+    "source_generation_request",
+    "source_generation",
+    "episode_generation",
+    "dataset_artifact_write",
+    "validation_payload_read",
+    "formal_seed_payload_read",
+    "training",
+    "optimizer",
+    "checkpoint_selection",
+    "normalization_refit",
+    "threshold_adjustment",
+    "shadow",
+    "assist",
+    "authority",
+    "assignment",
+    "plan",
+    "runtime",
+    "physical",
+    "control",
+    "formal_admission",
+    "production_admission",
+)
 A1_V3_EXCLUSION_PERMISSION_FIELDS = tuple(
     name
     for name in A1_V3_PERMISSION_FIELDS
@@ -152,6 +185,15 @@ DEFAULT_A1_V3_GLOBAL_SEED_REGISTRY_PATH = (
     REPOSITORY_ROOT
     / "research_modules/scalable_3d_simulation/configs/"
     "scalable_learning_global_seed_registry_v1.json"
+)
+DEFAULT_A1_V3_SOURCE_GENERATION_REQUEST_PATH = (
+    MODULE_ROOT
+    / "configs/"
+    "a1_source_independent_v3_source_generation_request_readiness_v1.json"
+)
+DEFAULT_A1_V3_SIDECAR_CLASSIFICATION_POLICY_PATH = (
+    MODULE_ROOT
+    / "configs/a1_source_independent_v3_sidecar_classification_policy_v1.json"
 )
 
 _REASON_CODE = re.compile(r"^[a-z][a-z0-9_]{0,127}$")
@@ -1382,6 +1424,10 @@ class A1V3ReadinessReport:
     allocation_id: str | None
     generator_config_id: str | None
     schedule_id: str | None
+    source_generation_request_id: str | None
+    source_generation_request_path: str
+    source_generation_request_sha256: str | None
+    source_generation_request_ready: bool
     cell_count: int
     episode_count: int
     unique_seed_count: int
@@ -1391,6 +1437,9 @@ class A1V3ReadinessReport:
     minimum_hard_negative_frame_count: int
 
     def to_dict(self) -> dict[str, Any]:
+        request_permissions = _source_generation_request_permissions(
+            self.source_generation_request_ready
+        )
         return {
             "schema_version": A1_V3_READINESS_REPORT_SCHEMA_V1,
             "status": self.status,
@@ -1402,6 +1451,14 @@ class A1V3ReadinessReport:
             "allocation_id": self.allocation_id,
             "generator_config_id": self.generator_config_id,
             "schedule_id": self.schedule_id,
+            "source_generation_request_id": self.source_generation_request_id,
+            "source_generation_request_path": self.source_generation_request_path,
+            "source_generation_request_sha256": (
+                self.source_generation_request_sha256
+            ),
+            "source_generation_request_ready": (
+                self.source_generation_request_ready
+            ),
             "cell_count": self.cell_count,
             "episode_count": self.episode_count,
             "unique_seed_count": self.unique_seed_count,
@@ -1414,8 +1471,27 @@ class A1V3ReadinessReport:
             "data_generated": False,
             "model_trained": False,
             "plan_only": True,
+            "request_readiness_only": True,
+            "generation_authorized": False,
+            "validation_payload_read": False,
+            "formal_seed_payload_read": False,
             "v2_bundle_or_threshold_changed": False,
             "permissions": _false_permissions(),
+            "request_permissions": request_permissions,
+            "producer_capability": {
+                "source_generation_request_path": (
+                    self.source_generation_request_path
+                ),
+                "source_generation_request_sha256": (
+                    self.source_generation_request_sha256
+                ),
+                "source_generation_request_ready": (
+                    self.source_generation_request_ready
+                ),
+                "deterministic_sidecar_classification_required": True,
+                "caller_sidecar_classification_override_allowed": False,
+                "generation_authorized": False,
+            },
         }
 
 
@@ -2863,8 +2939,14 @@ def validate_a1_v3_pre_generation_readiness(
     global_registry_path: str | Path | None = None,
     registry_path: str | Path | None = None,
     schedule_path: str | Path | None = None,
+    source_generation_request_path: str | Path = (
+        DEFAULT_A1_V3_SOURCE_GENERATION_REQUEST_PATH
+    ),
+    sidecar_classification_policy_path: str | Path = (
+        DEFAULT_A1_V3_SIDECAR_CLASSIFICATION_POLICY_PATH
+    ),
 ) -> A1V3ReadinessReport:
-    """Validate main's future registry/schedule without allocating or generating.
+    """Validate the source-generation request without authorizing generation.
 
     Missing main-owned inputs are represented as ``request_only``.  Any
     malformed, partially supplied, or inconsistent input is ``fail_closed``.
@@ -2874,6 +2956,7 @@ def validate_a1_v3_pre_generation_readiness(
     request: A1V3FrozenRequest | None = None
     registry: A1V3SeedRegistry | None = None
     schedule: A1V3GenerationSchedule | None = None
+    source_generation_request: Any | None = None
     try:
         request = load_a1_v3_frozen_request(request_path)
         forbidden, exclusion_sha = load_a1_v3_exclusion_registry(
@@ -2894,6 +2977,7 @@ def validate_a1_v3_pre_generation_readiness(
                 request=request,
                 registry=None,
                 schedule=None,
+                source_generation_request=None,
             )
         if generator_config_path is None:
             _fail("generator_config_missing")
@@ -2925,6 +3009,7 @@ def validate_a1_v3_pre_generation_readiness(
                 request=request,
                 registry=None,
                 schedule=None,
+                source_generation_request=None,
             )
         registry = load_a1_v3_main_seed_registry(
             registry_path,
@@ -2942,6 +3027,33 @@ def validate_a1_v3_pre_generation_readiness(
             descriptor=descriptor,
             registry=registry,
         )
+        from .a1_v3_source_generation_request import (
+            load_a1_v3_source_generation_request_artifact,
+        )
+
+        source_generation_request = (
+            load_a1_v3_source_generation_request_artifact(
+                source_generation_request_path,
+                request=request,
+                descriptor=descriptor,
+                global_allocation=global_allocation,
+                registry=registry,
+                schedule=schedule,
+                sidecar_classification_policy_path=(
+                    sidecar_classification_policy_path
+                ),
+            )
+        )
+        if not source_generation_request.ready:
+            return _readiness_report(
+                status="fail_closed",
+                ready=False,
+                reason_codes=source_generation_request.reason_codes,
+                request=request,
+                registry=registry,
+                schedule=schedule,
+                source_generation_request=source_generation_request,
+            )
         return _readiness_report(
             status="ready",
             ready=True,
@@ -2949,6 +3061,7 @@ def validate_a1_v3_pre_generation_readiness(
             request=request,
             registry=registry,
             schedule=schedule,
+            source_generation_request=source_generation_request,
         )
     except A1V3DataContractError as exc:
         return _readiness_report(
@@ -2958,6 +3071,7 @@ def validate_a1_v3_pre_generation_readiness(
             request=request,
             registry=registry,
             schedule=schedule,
+            source_generation_request=None,
         )
 
 
@@ -3670,6 +3784,7 @@ def _readiness_report(
     request: A1V3FrozenRequest | None,
     registry: A1V3SeedRegistry | None,
     schedule: A1V3GenerationSchedule | None,
+    source_generation_request: Any | None,
 ) -> A1V3ReadinessReport:
     return A1V3ReadinessReport(
         status=status,
@@ -3685,6 +3800,22 @@ def _readiness_report(
             None if registry is None else registry.generator_config_id
         ),
         schedule_id=None if schedule is None else schedule.schedule_id,
+        source_generation_request_id=(
+            None
+            if source_generation_request is None
+            else source_generation_request.request_id
+        ),
+        source_generation_request_path=(
+            A1_V3_SOURCE_GENERATION_REQUEST_LOGICAL_PATH
+        ),
+        source_generation_request_sha256=(
+            None
+            if source_generation_request is None
+            else source_generation_request.file_sha256
+        ),
+        source_generation_request_ready=(
+            ready and source_generation_request is not None
+        ),
         cell_count=0 if schedule is None else len({item.cell_id for item in schedule.episodes}),
         episode_count=0 if schedule is None else len(schedule.episodes),
         unique_seed_count=(
@@ -3707,6 +3838,13 @@ def _readiness_report(
 
 def _false_permissions() -> dict[str, bool]:
     return {name: False for name in A1_V3_PERMISSION_FIELDS}
+
+
+def _source_generation_request_permissions(ready: bool) -> dict[str, bool]:
+    return {
+        name: bool(ready and name == "source_generation_request")
+        for name in A1_V3_SOURCE_GENERATION_REQUEST_PERMISSION_FIELDS
+    }
 
 
 def _offline_identity_audit_counts(
@@ -4058,11 +4196,15 @@ def _fail(code: str, message: str = "") -> None:
 
 def build_a1_v3_contract_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
-        description="Validate D3 A1 v3 generation readiness or generated data"
+        description=(
+            "Validate D3 A1 v3 source-generation request readiness or "
+            "generated data"
+        )
     )
     subparsers = parser.add_subparsers(dest="command", required=True)
     readiness = subparsers.add_parser(
-        "readiness", help="validate main seed registry and generation schedule"
+        "readiness",
+        help="validate the frozen plan and request-readiness artifact",
     )
     _add_common_contract_arguments(readiness)
     readiness.add_argument(
@@ -4080,6 +4222,16 @@ def build_a1_v3_contract_parser() -> argparse.ArgumentParser:
     )
     readiness.add_argument(
         "--schedule", type=Path, default=DEFAULT_A1_V3_GENERATION_SCHEDULE_PATH
+    )
+    readiness.add_argument(
+        "--source-generation-request",
+        type=Path,
+        default=DEFAULT_A1_V3_SOURCE_GENERATION_REQUEST_PATH,
+    )
+    readiness.add_argument(
+        "--sidecar-classification-policy",
+        type=Path,
+        default=DEFAULT_A1_V3_SIDECAR_CLASSIFICATION_POLICY_PATH,
     )
     dataset = subparsers.add_parser(
         "validate-dataset", help="strictly load generated online/offline artifacts"
@@ -4114,6 +4266,10 @@ def main(argv: Sequence[str] | None = None) -> int:
             global_registry_path=args.global_registry,
             registry_path=args.registry,
             schedule_path=args.schedule,
+            source_generation_request_path=args.source_generation_request,
+            sidecar_classification_policy_path=(
+                args.sidecar_classification_policy
+            ),
         )
         print(json.dumps(report.to_dict(), ensure_ascii=True, indent=2, sort_keys=True))
         if report.ready:

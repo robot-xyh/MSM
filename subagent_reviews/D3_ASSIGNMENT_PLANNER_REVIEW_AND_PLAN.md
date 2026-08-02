@@ -1,5 +1,32 @@
 # D3 中心化资源-目标分配综述及子方案
 
+## 2026-08-02 A1 v3 producer viability 收敛复核
+
+D3 分类只使用连续匿名 planning evidence：demand multiset 证明 target roster 耦合，
+candidate-mask 列定义活动资源，near-tie 从冻结规则成本边界重算。本轮补充单一开放
+assignment chain：稳定 roster/demand/resource 下仅净释放一个资源、teacher edge 净减 1、
+coverage deficit 净增 1 时归入已有 release action。多资源释放、资源替换、caller 分类、
+truth、复制帧和降低逐 episode `3/3/2` 均不允许。
+
+main 的匿名 target/resource 事件与稳定观测窗口已由实际 runtime 消费。15 个 10 秒首
+recipe 全部成功 stage；完整计数见 GAP 表。三个原失败项现为 delayed-noisy-200 `3/6/6`、
+communication-degraded `3/7/5`、high-threat-100 `5/5/5`，顺序为正类/负类/困难负类。
+在线 truth 使用总数为 0，全部分类错误计数为 0。
+
+readiness artifact content/file SHA-256 已重冻结为
+`de5ba2bb...f90ce` / `11008b92...8a6`，输出
+`source_generation_request_ready=true` 和空 reason codes。sidecar policy/
+classifier SHA 分别为 `3fbcd97d...e7ac`、`b04cbbcb...edaf`。冻结 request、schedule、
+generator config、allocation 和 global registry 未改。只有请求 permission 为 true；生成、
+验证读取、训练、运行、分配和控制权限均为 false。
+
+producer 首 recipe 配额 blocker 已关闭。下一步由 main 在独立授权后生成 300 episode，
+再由 D3/D6 审计 split、配额、双时间戳、标签隔离和内容摘要。request ready 不允许直接训练
+或进入运行路径；默认 Hungarian 不变。
+
+D3 全量收集 797 项，结果为 `796 passed, 1 skipped, 1 warning`。唯一跳过为可选
+OR-Tools；告警为既有 Matplotlib `Axes3D` 环境提示。
+
 ## 2026-08-01 A1 v3 writer/evidence 复核
 
 D3 已补齐 main scalable producer 所需的模块接口。在线 builder 接收双时间戳、匿名规模、
@@ -16,12 +43,10 @@ writer 使用隐藏 staging 会话逐 episode 原子写入，支持中断后重�
 episode、300 seed 全覆盖及逐 episode 配额通过后生成三个规范文件。离线身份为空时，
 manifest 明确报告 `unavailable`，不宣称身份审计完整。
 
-新增 7 项专项和 2700 帧合成合同夹具通过；A1 v3 合同与 writer 组合 `71 passed`，D3
-全量为 `748 passed, 1 skipped, 1 warning`。该结果
-没有运行 main 三维场景，没有实现 dynamic roster 或 near-tie runtime treatment，也没有
-生成真实 300-episode 数据。generator config、训练、辅助、分配、计划、控制、物理和
-正式准入权限继续关闭。main 完成 adapter/treatment 后还需重新冻结 source/hash 并单独
-授权，D3 当前不得自报 producer complete。
+writer 专项当前 `12 passed`；request/data-contract 专项也已通过。真实 runtime 回归现覆盖
+15 个 cell 且全部可 stage，但没有生成正式 300-episode 数据。generator config、
+训练、辅助、分配、计划、控制、物理和正式准入权限继续关闭；最终全量回归记录见本节后续
+同步结果。
 
 ## 2026-08-01 来源独立失败归因复核
 
@@ -2060,10 +2085,10 @@ VALIDATION 和 TEST，全局为 180/60/60。loader 根据冻结 request、cell �
 重新推导全部 300 条预期记录，因此交换 seed、split、cell、规模或最小帧配额均不能只靠
 重写外层哈希通过。
 
-实测默认 readiness 返回 `ready`，但报告同时固定 `plan_only=true`、
-`data_generated=false`、`model_trained=false` 和全 false 权限。全局 registry 的
-`dataset_generation` 仅表示 seed reservation 可用于该操作，不等于 D3 当前授予生成、
-训练、分配或控制权限。
+独立 source-generation request artifact 接入并通过 15-cell probe 后，当前默认 readiness
+返回 `ready`、`source_generation_request_ready=true`，同时固定 `plan_only=true`、
+`data_generated=false`、`model_trained=false`。只有 request permission 为 true；全局
+registry 的 `dataset_generation` 仅表示 seed reservation，不等于生成授权。
 
 专项 64 项与 D3 全量 742 项已执行，结果分别为全通过和
 `741 passed, 1 skipped`。当前仍待 main 后续明确启动数据生成，并由 D6 独立审计生成物；

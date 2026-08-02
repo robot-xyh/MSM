@@ -459,15 +459,25 @@ def test_api_can_report_request_only_while_default_cli_uses_frozen_plan(
     assert contract_main(["readiness"]) == 0
     output = json.loads(capsys.readouterr().out)
     assert output["status"] == "ready"
+    assert output["reason_codes"] == []
+    assert output["source_generation_request_ready"] is True
+    assert output["request_permissions"]["source_generation_request"] is True
+    assert not any(
+        value
+        for name, value in output["request_permissions"].items()
+        if name != "source_generation_request"
+    )
     assert output["plan_only"] is True
     assert output["data_generated"] is False
     assert output["permissions"] == _permissions()
 
 
-def test_readiness_accepts_exact_global_allocation_and_fixed_schedule() -> None:
+def test_readiness_binds_exact_plan_and_passes_runtime_quota_probe() -> None:
     report = _validate_frozen_readiness()
     assert report.status == "ready"
     assert report.ready is True
+    assert report.reason_codes == ()
+    assert report.source_generation_request_ready is True
     assert (report.cell_count, report.episode_count, report.unique_seed_count) == (
         15,
         300,

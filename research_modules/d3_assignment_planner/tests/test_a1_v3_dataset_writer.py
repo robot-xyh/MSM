@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from collections import Counter
 from copy import deepcopy
 from dataclasses import replace
 from hashlib import sha256
@@ -24,6 +25,7 @@ from d3_assignment_planner.a1_v3_dataset_writer import (
     A1V3OfflineFrameSidecar,
     build_a1_v3_offline_label,
     build_a1_v3_online_frame,
+    derive_a1_v3_offline_sidecars,
     load_a1_v3_writer_contract,
 )
 
@@ -63,6 +65,10 @@ def _evidence(
     measurement_timestamp_s: float | None = None,
     arrival_timestamp_s: float | None = None,
     near_tie: bool = True,
+    teacher_resource: int = 0,
+    candidate_resource: int | None = None,
+    effective_resource: int | None = None,
+    pre_projection_reason_codes: tuple[str, ...] = ("candidate_available",),
 ) -> A1V3AdapterFrameEvidence:
     measurement = (
         frame_index * 0.1
@@ -71,6 +77,8 @@ def _evidence(
     )
     arrival = measurement + 0.01 if arrival_timestamp_s is None else arrival_timestamp_s
     second_cost = 1.001 if near_tie else 1.5
+    candidate = teacher_resource if candidate_resource is None else candidate_resource
+    effective = teacher_resource if effective_resource is None else effective_resource
     return A1V3AdapterFrameEvidence(
         frame_index=frame_index,
         measurement_timestamp_s=measurement,
@@ -80,14 +88,49 @@ def _evidence(
         candidate_mask_shape=(1, 2),
         candidate_mask_true_edges=((0, 0), (0, 1)),
         rule_cost_matrix=((1.0, second_cost),),
-        teacher_edges=((0, 0),),
-        candidate_selected_edges=((0, 0),),
-        effective_selected_edges=((0, 0),),
+        teacher_edges=((0, teacher_resource),),
+        candidate_selected_edges=((0, candidate),),
+        effective_selected_edges=((0, effective),),
         residual_ranking=(
             A1V3EdgeResidualRank(edge=(0, 0), residual=0.0, rank=1),
             A1V3EdgeResidualRank(edge=(0, 1), residual=0.5, rank=2),
         ),
         target_demand_slots=(1,),
+        pre_projection_reason_codes=pre_projection_reason_codes,
+        post_projection_reason_codes=("candidate_accepted",),
+    )
+
+
+def _matrix_evidence(
+    frame_index: int,
+    teacher_edges: tuple[tuple[int, int], ...],
+) -> A1V3AdapterFrameEvidence:
+    candidate_edges = tuple(
+        (target, resource)
+        for target in range(3)
+        for resource in range(3)
+    )
+    return A1V3AdapterFrameEvidence(
+        frame_index=frame_index,
+        measurement_timestamp_s=frame_index * 0.1,
+        arrival_timestamp_s=frame_index * 0.1 + 0.01,
+        observed_target_count=3,
+        observed_resource_count=3,
+        candidate_mask_shape=(3, 3),
+        candidate_mask_true_edges=candidate_edges,
+        rule_cost_matrix=(
+            (1.0, 1.5, 2.0),
+            (1.1, 1.6, 2.1),
+            (1.2, 1.7, 2.2),
+        ),
+        teacher_edges=teacher_edges,
+        candidate_selected_edges=teacher_edges,
+        effective_selected_edges=teacher_edges,
+        residual_ranking=tuple(
+            A1V3EdgeResidualRank(edge=edge, residual=0.0, rank=rank)
+            for rank, edge in enumerate(candidate_edges, start=1)
+        ),
+        target_demand_slots=(1, 1, 1),
         pre_projection_reason_codes=("candidate_available",),
         post_projection_reason_codes=("candidate_accepted",),
     )
@@ -118,25 +161,28 @@ def _sidecar(
     )
 
 
-def _complete_episode_rows(episode) -> tuple[list, list]:
+def _complete_episode_rows(episode, contract) -> tuple[list, list]:
     hard_count = episode.minimum_hard_negative_frames
-    evidence = [_evidence(index) for index in range(9)]
-    sidecars = []
-    for index in range(9):
-        if index < 3:
-            sidecars.append(_sidecar(index, frame_class="positive"))
-        else:
-            hard = 3 <= index < 3 + hard_count
-            sidecars.append(
-                _sidecar(
-                    index,
-                    frame_class="negative",
-                    hard_negative=hard,
-                    hard_negative_type=(
-                        "near_tie_but_teacher_keeps_r0" if hard else None
-                    ),
-                )
-            )
+    teacher_resources = (0, 1, 0, 0, 0, 0, 0, 0, 0)
+    hard_frames = set(range(3, 3 + hard_count))
+    evidence = [
+        _evidence(
+            index,
+            near_tie=index in hard_frames,
+            teacher_resource=teacher_resources[index],
+            candidate_resource=teacher_resources[index],
+        )
+        for index in range(9)
+    ]
+    online = [build_a1_v3_online_frame(episode, item) for item in evidence]
+    sidecars = list(
+        derive_a1_v3_offline_sidecars(
+            episode,
+            online,
+            request=contract.request,
+            policy=contract.sidecar_classification_policy,
+        )
+    )
     return evidence, sidecars
 
 
@@ -260,12 +306,170 @@ def test_adapter_mapping_rejects_missing_fields_and_online_identity() -> None:
         build_a1_v3_online_frame(contract.schedule.episodes[0], value_leak)
 
 
+def test_sequence_classifier_derives_labels_and_rejects_forged_sidecar_quota(
+    tmp_path: Path,
+) -> None:
+    contract = load_a1_v3_writer_contract()
+    episode = contract.schedule.episodes[0]
+    evidence, sidecars = _complete_episode_rows(episode, contract)
+    assert [item.frame_index for item in sidecars if item.frame_class == "positive"] == [
+        0,
+        1,
+        2,
+    ]
+    assert Counter(item.action_change_type for item in sidecars) == {
+        "keep_exact_r0": 6,
+        "target_appearance_assignment": 1,
+        "single_target_rebind_with_resource_release": 2,
+    }
+    assert sum(item.hard_negative for item in sidecars) == (
+        episode.minimum_hard_negative_frames
+    )
+    assert all(
+        item.hard_negative_type == "near_tie_but_teacher_keeps_r0"
+        for item in sidecars
+        if item.hard_negative
+    )
+
+    forged = list(sidecars)
+    forged[5] = replace(
+        forged[5],
+        frame_class="positive",
+        action_change_type="single_target_rebind_with_resource_release",
+    )
+    writer = A1V3DatasetWriter(
+        tmp_path / "forged",
+        dataset_id="a1-v3-writer-forged-sidecar",
+        contract=contract,
+    )
+    with pytest.raises(
+        A1V3DataContractError,
+        match="offline_sidecar_classification_mismatch",
+    ):
+        writer.stage_episode(episode, evidence, forged)
+    assert writer.staged_episode_count == 0
+
+    forged_hard = list(sidecars)
+    forged_hard[5] = replace(
+        forged_hard[5],
+        hard_negative=True,
+        hard_negative_type="lower_learned_score_on_hard_forbidden_edge",
+    )
+    with pytest.raises(
+        A1V3DataContractError,
+        match="offline_sidecar_classification_mismatch",
+    ):
+        writer.stage_episode(episode, evidence, forged_hard)
+    assert writer.staged_episode_count == 0
+
+    flat_evidence = [_evidence(index) for index in range(9)]
+    quota_writer = A1V3DatasetWriter(
+        tmp_path / "natural-quota",
+        dataset_id="a1-v3-writer-natural-quota",
+        contract=contract,
+    )
+    with pytest.raises(A1V3DataContractError, match="minimum_not_met"):
+        quota_writer.stage_episode(episode, flat_evidence)
+    assert quota_writer.staged_episode_count == 0
+
+
+def test_single_net_release_assignment_chain_is_auditable_and_multi_release_fails() -> None:
+    contract = load_a1_v3_writer_contract()
+    episode = contract.schedule.episodes[0]
+    baseline = _matrix_evidence(0, ((0, 0), (1, 1), (2, 2)))
+    one_release_chain = _matrix_evidence(1, ((0, 1), (1, 2)))
+    online = tuple(
+        build_a1_v3_online_frame(episode, item)
+        for item in (baseline, one_release_chain)
+    )
+    sidecars = derive_a1_v3_offline_sidecars(
+        episode,
+        online,
+        request=contract.request,
+        policy=contract.sidecar_classification_policy,
+    )
+    assert sidecars[1].frame_class == "positive"
+    assert sidecars[1].action_change_type == (
+        "single_target_rebind_with_resource_release"
+    )
+
+    two_releases = _matrix_evidence(1, ((0, 2),))
+    with pytest.raises(A1V3DataContractError, match="teacher_change_unclassifiable"):
+        derive_a1_v3_offline_sidecars(
+            episode,
+            (
+                build_a1_v3_online_frame(episode, baseline),
+                build_a1_v3_online_frame(episode, two_releases),
+            ),
+            request=contract.request,
+            policy=contract.sidecar_classification_policy,
+        )
+
+
+def test_hard_negative_uses_computed_boundary_and_frozen_scenario_priority(
+    tmp_path: Path,
+) -> None:
+    contract = load_a1_v3_writer_contract()
+    delayed = next(
+        item
+        for item in contract.schedule.episodes
+        if item.scenario_family == "delayed_noisy"
+    )
+    stale_frames = tuple(
+        build_a1_v3_online_frame(delayed, item)
+        for item in (
+            _evidence(0),
+            _evidence(
+                1,
+                candidate_resource=1,
+                pre_projection_reason_codes=("stale_plan_candidate",),
+            ),
+        )
+    )
+    stale_sidecar = derive_a1_v3_offline_sidecars(
+        delayed,
+        stale_frames,
+        request=contract.request,
+        policy=contract.sidecar_classification_policy,
+    )[1]
+    assert stale_sidecar.hard_negative is True
+    assert stale_sidecar.hard_negative_type == "stale_or_expired_plan_candidate"
+
+    near_tie_episode = next(
+        item
+        for item in contract.schedule.episodes
+        if item.scenario_family == "near_tie_hard_negative"
+    )
+    teacher_resources = (0, 1, 0, 1, 1, 1, 1, 1, 1)
+    evidence = [
+        _evidence(
+            index,
+            near_tie=False,
+            teacher_resource=teacher_resources[index],
+            candidate_resource=(
+                1 - teacher_resources[index]
+                if index in {0, 4}
+                else teacher_resources[index]
+            ),
+        )
+        for index in range(9)
+    ]
+    writer = A1V3DatasetWriter(
+        tmp_path / "no-near-tie",
+        dataset_id="a1-v3-writer-no-near-tie",
+        contract=contract,
+    )
+    with pytest.raises(A1V3DataContractError, match="minimum_not_met"):
+        writer.stage_episode(near_tie_episode, evidence)
+    assert writer.staged_episode_count == 0
+
+
 def test_stager_preserves_schedule_split_and_rejects_quota_or_duplicates(
     tmp_path: Path,
 ) -> None:
     contract = load_a1_v3_writer_contract()
     episode = contract.schedule.episodes[0]
-    evidence, sidecars = _complete_episode_rows(episode)
+    evidence, sidecars = _complete_episode_rows(episode, contract)
     writer = A1V3DatasetWriter(
         tmp_path / "valid",
         dataset_id="a1-v3-writer-unit-valid",
@@ -316,7 +520,7 @@ def test_stager_preserves_schedule_split_and_rejects_quota_or_duplicates(
 def test_resume_validates_stage_and_bound_source_hashes(tmp_path: Path) -> None:
     contract = load_a1_v3_writer_contract()
     episode = contract.schedule.episodes[0]
-    evidence, sidecars = _complete_episode_rows(episode)
+    evidence, sidecars = _complete_episode_rows(episode, contract)
     output = tmp_path / "resume"
     writer = A1V3DatasetWriter(
         output,
@@ -330,6 +534,8 @@ def test_resume_validates_stage_and_bound_source_hashes(tmp_path: Path) -> None:
         contract=contract,
     )
     assert resumed.staged_episode_count == 1
+    assert resumed.staged_episode_indices == (0,)
+    assert resumed.staged_episode_ids == (episode.episode_id,)
 
     drifted_schedule = replace(
         contract.schedule,
@@ -369,6 +575,54 @@ def test_resume_validates_stage_and_bound_source_hashes(tmp_path: Path) -> None:
         )
 
 
+def test_public_staged_inventory_requires_a_deterministic_prefix(
+    tmp_path: Path,
+) -> None:
+    contract = load_a1_v3_writer_contract()
+    second = contract.schedule.episodes[1]
+    evidence, sidecars = _complete_episode_rows(second, contract)
+    writer = A1V3DatasetWriter(
+        tmp_path / "non-prefix",
+        dataset_id="a1-v3-writer-non-prefix",
+        contract=contract,
+    )
+    writer.stage_episode(second, evidence, sidecars)
+    with pytest.raises(A1V3DataContractError, match="inventory_not_prefix"):
+        _ = writer.staged_episode_indices
+    with pytest.raises(A1V3DataContractError, match="inventory_not_prefix"):
+        _ = writer.staged_episode_ids
+
+
+def test_public_staged_inventory_refreshes_across_writer_instances(
+    tmp_path: Path,
+) -> None:
+    contract = load_a1_v3_writer_contract()
+    episode = contract.schedule.episodes[0]
+    evidence, sidecars = _complete_episode_rows(episode, contract)
+    output = tmp_path / "cross-process-prefix"
+    observer = A1V3DatasetWriter(
+        output,
+        dataset_id="a1-v3-writer-cross-process-prefix",
+        contract=contract,
+    )
+    producer = A1V3DatasetWriter(
+        output,
+        dataset_id="a1-v3-writer-cross-process-prefix",
+        contract=contract,
+    )
+    assert observer.staged_episode_indices == ()
+    producer.stage_episode(episode, evidence, sidecars)
+    assert observer.staged_episode_indices == (0,)
+    assert observer.staged_episode_ids == (episode.episode_id,)
+
+    stage_path = output / ".a1_v3_staging/episodes/episode-000.json"
+    payload = json.loads(stage_path.read_text(encoding="ascii"))
+    payload["permissions"]["assignment"] = True
+    stage_path.write_bytes(canonical_json_line(payload))
+    with pytest.raises(A1V3DataContractError, match="permission_violation"):
+        _ = observer.staged_episode_indices
+
+
 @pytest.mark.parametrize("tamper_kind", ("permission", "identity_rewrite"))
 def test_resume_rejects_permission_or_identity_provenance_tamper(
     tmp_path: Path,
@@ -376,7 +630,7 @@ def test_resume_rejects_permission_or_identity_provenance_tamper(
 ) -> None:
     contract = load_a1_v3_writer_contract()
     episode = contract.schedule.episodes[0]
-    evidence, sidecars = _complete_episode_rows(episode)
+    evidence, sidecars = _complete_episode_rows(episode, contract)
     output = tmp_path / tamper_kind
     writer = A1V3DatasetWriter(
         output,
@@ -412,7 +666,7 @@ def test_full_synthetic_inventory_finalizes_canonical_fixed_split_dataset(
         contract=contract,
     )
     for episode in contract.schedule.episodes:
-        evidence, sidecars = _complete_episode_rows(episode)
+        evidence, sidecars = _complete_episode_rows(episode, contract)
         writer.stage_episode(episode, evidence, sidecars)
     result = writer.finalize()
     assert result.episode_count == 300
