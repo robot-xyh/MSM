@@ -2679,8 +2679,9 @@ main 新增 `run_learning_source_preflight.py`，统一调用三个模块的只�
 拓扑、通信条件、正反转移及困难无转移负样本；D5 已执行四段意图窗口、相机角色、五类困难
 混淆和窗口配额检查。三个严格 writer 均有单 episode staging smoke。
 
-当前三个来源生成请求仍为 false，工作树也不干净，所以
-`execution_plan_ready=false`、`execution_authorized=false`，执行命令保持为空。本轮没有形成
-300/324/104 episode 来源清单，没有训练，也不开放 shadow、assist、运行或控制权限。完整
-状态见
+从干净 detached worktree `f0819e0` 复跑后，预检状态收敛为
+`blocked_by_source_generation_request`，适配器与预检专项为 `9 passed`。当前三个来源生成
+请求仍为 false，所以 `execution_plan_ready=false`、`execution_authorized=false`，执行命令
+保持为空。本轮没有形成 300/324/104 episode 来源清单，没有训练，也不开放 shadow、
+assist、运行或控制权限。完整状态见
 [学习来源预生成检查](docs/SCALABLE_3D_LEARNING_SOURCE_PREFLIGHT_20260801_CN.md)。

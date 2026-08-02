@@ -2052,5 +2052,7 @@ GAP、算法文档和系统总报告。
    在线/离线 episode DTO 与 staging smoke 已通过。
 8. [x] D3/D4/D5 owner 已更新本模块 writer、readiness、README、PLAN、GAP 和算法文档；main
    自检分别覆盖 `1/1`、`3/9` 和 `5/493` 个 episode/帧，在线真值使用为 0。
-9. [ ] 由 main 单独审查来源生成请求，并从干净提交重跑预检。只有三个 request 与工作树门
-   同时通过后才能形成非空执行命令；当前不得生成 300/324/104 episode 清单或训练模型。
+9. [x] 从干净 detached worktree `f0819e0` 重跑预检和适配器专项，结果为 `9 passed`，
+   `source_worktree_clean=true`，状态收敛为 `blocked_by_source_generation_request`。
+10. [ ] 由 main 单独审查三个来源生成请求。request 获批后仍需在新的干净提交上再次预检，
+    才能形成非空执行命令；当前不得生成 300/324/104 episode 清单或训练模型。

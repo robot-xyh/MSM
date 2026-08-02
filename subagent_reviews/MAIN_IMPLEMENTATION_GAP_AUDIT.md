@@ -3394,11 +3394,9 @@ D6 独立只读审计确认 644 个当前多成员联盟目标闭合，100/100 �
 
 1. 三个来源生成请求仍为 false，main 尚未形成明确的全量执行授权。该门不能由 adapter
    readiness 自动打开。
-2. 当前工作树包含未提交改动，不能作为正式来源生成基线。需要完成分批审查和提交后，从
-   干净提交重跑预检。
-3. 300/324/104 episode 的正式分区目录、manifest 和 D6 来源审计尚不存在。D5
+2. 300/324/104 episode 的正式分区目录、manifest 和 D6 来源审计尚不存在。D5
    future-held-out 仍保持一次性读取，D4 validation/test 仍未分配。
-4. R0 `450/900`、shards 0-9 和禁止运行 shards 10-19 的边界保持不变。本轮内存 probe
+3. R0 `450/900`、shards 0-9 和禁止运行 shards 10-19 的边界保持不变。本轮内存 probe
    不构成模型训练、候选准入或运行权限证据。
 
 ## 2026-08-01 学习来源跨模块预生成门
@@ -3407,10 +3405,10 @@ main 新增只读聚合器，直接消费 D3 A1 v3、D4 A2 v8 和 D5 A3 v3 readi
 验证全局登记表的 658 个保护 seed、728 个新分配 seed、全部来源文件 SHA-256 和模块精确
 seed 集。它不读取 episode/sample payload，不生成数据，不训练，也不授予任何权限。
 
-当前结果为 `blocked_by_source_generation_request_and_dirty_worktree`。模块计划和 producer
-adapter 均为 `3/3` 完整，但三个生成请求保持 false，工作树门也未通过。执行计划、生成授权、
-训练、影子、辅助、运行和控制权限全部为 false，执行命令为空。
+从干净 detached worktree `f0819e0` 重跑后，当前结果为
+`blocked_by_source_generation_request`。模块计划和 producer adapter 均为 `3/3` 完整，
+`source_worktree_clean=true`；三个生成请求仍保持 false。执行计划、生成授权、训练、影子、
+辅助、运行和控制权限全部为 false，执行命令为空。适配器与预检专项为 `9 passed`。
 
-当前没有新增运行级 P0。剩余 P1 已从“生产器无法执行冻结计划”收敛为“正式生成治理尚未
-批准”：先完成干净提交，再由 main 审查三个 request；两道门均通过后仍需单独给出非空执行
-授权。本轮不得创建正式来源清单。
+当前没有新增运行级 P0。剩余 P1 已收敛为“正式生成治理尚未批准”：main 审查三个 request
+后，还需从新的干净提交再次预检并单独给出非空执行授权。本轮不得创建正式来源清单。
