@@ -1,5 +1,64 @@
 # D4 分布式协同与降级接管计划
 
+## 2026-08-01 A2 v8 实际运行证据构造器收口
+
+### 本轮完成
+
+- [x] 新增 `V8RuntimeEpisodeEvidenceBuilder`，按连续 frame index 接收真实
+  `RegionResourceSnapshot`、实际规则输出、匿名候选 proposal 和实际确定性投影结果，
+  生成可直接传给现有 writer 的在线帧与独立离线标签。
+- [x] 每帧重新运行 `RuleRegionResourcePolicy.recommend()` 和
+  `DeterministicResourceProjector.project()`，提交结果不一致即拒绝；场景名称和 recipe
+  名称不参与在线特征、动作或类别成立判定。
+- [x] 将 snapshot tuple 顺序固定为区域索引；真实边按双向标志展开并与规范拓扑逐项对账。
+  ring 8/12 必须具备双向有向边，漏边、额外边和重复方向均失败关闭。
+- [x] 从实际 DTO 计算加权需求、备用下限、源区余量、边容量、端点通信时延/丢包、分区、
+  机动和 owner/version/epoch/lease/ACK/fault fence；正类和困难负类均按实际投影核验数量。
+- [x] 在线身份/标签泄漏、错误资源数、不可无损表达的 projector clipping、伪场景名、错序
+  frame 和 projection/result 漂移失败关闭；权限 DTO 保持全 false。
+- [x] 专项 9/9、D4 全量 964/964、`py_compile` 和 `git diff --check` 作为本轮验收口径；
+  全量仅有既有 Matplotlib `Axes3D` 环境警告。
+
+### 后续门
+
+- [ ] main 在 owned scalable 3D producer 中按冻结 324-entry registry 生成实际 snapshot、
+  rule result、匿名候选和 projection result，再调用本构造器及既有 writer；D4 不越界实现
+  main recipe。
+- [ ] 同一冻结 episode 的 `target_class` 不能跨帧变化。要表达“同一候选分区时阻断、恢复
+  后转为正类”，需后续修订冻结 label 合同或拆为两个 recipe；当前
+  `partition_then_recovery` 正类只能让非所选边经历分区恢复，不能伪造类别切换。
+- [ ] 324 个真实 episode 完整写出并独立审计前，readiness 仍不是 producer complete；
+  actor 训练、validation/test、注册和 runtime 权限继续后置。
+
+## 2026-08-01 A2 v8 TRAIN writer 收口
+
+### 本轮完成
+
+- [x] 新增纯 D4 增量 writer。构造器复载冻结 request/registry，固定 clean source
+  metadata、dataset/schedule 身份和输出边界；不构造 main runtime treatment。
+- [x] `stage_episode()` 严格按冻结 registry 顺序接收在线 DTO 与独立离线标签，使用既有
+  episode loader 重验 frame 连续性、同一 identity、内容 SHA、供需/通信条件、目标类别、
+  owner/version/epoch/lease 和全 false 权限后再写盘。
+- [x] generation schedule 原样保留 topology、communication condition、target class、
+  transfer count 和 seed/episode 映射；场景名不能替代帧内分区恢复或实际转移证据。
+- [x] 所有 JSON/JSONL 使用 `canonical_v8_json_line()`；在线与标签分目录，路径由 writer
+  按 schedule index/seed 生成，重复 seed/episode/frame/path 和 source 漂移失败关闭。
+- [x] `finalize()` 仅在 324 项完整时构造 schedule/manifest，保持 TRAIN-only、空
+  validation/test、零 training/checkpoint/registration/runtime 计数，并在原子发布前后调用
+  完整严格 loader round-trip。dataset root 不接收日志或 schedule。
+- [x] 受控完整矩阵和失败关闭专项 8/8、D4 全量 955/955 通过；只有既有 Matplotlib
+  `Axes3D` 环境警告。未生成真实 episode、未训练、未注册、未运行 AirSim。
+
+### 后续门
+
+- [ ] main 仍需实现 scalable 3D producer recipe adapter，把 8/9/12/16 区域拓扑、三类
+  通信、三类供需、1/2/3 资源正反向转移和困难负样本映射为真实 DTO，再逐项调用 writer。
+- [ ] writer 完成不改变 readiness 为 producer complete。只有 324 个真实 episode 经本
+  writer 收口并由 D4/D6 独立内容审计后，才能讨论 TRAIN 来源可用性。
+- [ ] v8 actor、validation/test 新来源、训练、选模、校准、注册、preflight 和运行准入
+  继续后置；不得从 writer 存在推导 assignment、degradation、coalition、takeover、D3、
+  D7 或 control 权限。
+
 ## 2026-08-01 A2 v8 main allocation pre-generation 绑定
 
 ### 本轮完成

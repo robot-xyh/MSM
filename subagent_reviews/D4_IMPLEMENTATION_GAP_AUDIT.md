@@ -1,5 +1,62 @@
 # D4 实现差距审计：分布式协同与降级接管
 
+## 2026-08-01 A2 v8 实际证据构造缺口复核
+
+### 已关闭的 D4-owned P1
+
+1. **真实 DTO 转换接口已实现。** 构造器接收真值隔离区域快照、实际规则结果、匿名候选
+   proposal 和实际 projector 结果，重新执行规则与投影后才生成 v8 frame/label。
+2. **规范拓扑与状态映射已实现。** snapshot tuple 决定索引，真实双向边展开后与 8/9/12/16
+   规范有向边清单逐项比较；ring 必须包含两个方向。供需、通信、容量、机动和权属代次均
+   从实际 DTO 形成，不读取场景名称。
+3. **类别事实门已实现。** 正向/反向正类要求实际安全投影及精确 1/2/3 资源数；困难负类
+   要求真实候选、空投影和可由实际状态解释的拒绝原因。错误数量、裁剪、伪类别、身份或
+   标签泄漏均拒绝。
+4. **writer 接口已闭合。** 构造结果可直接进入 `V8TrainDatasetWriter.stage_episode()`，
+   单 episode 已通过既有 strict loader round-trip；全部权限仍为 false。
+
+### 仍开放的跨模块 P1
+
+1. main scalable 3D producer 尚未把冻结 324 项 recipe 接到该构造器，真实 TRAIN 来源仍为
+   0 episode；本轮没有生成 runtime treatment、模型或运行准入证据。
+2. 冻结 schema 对同一 episode 使用单一 transfer class，不能表达同一候选由分区负类跨帧
+   变为恢复后正类。当前可验证分区阻断和恢复允许的实际机制，但类别跃迁需拆分 recipe 或
+   另行版本化合同。
+3. 完整数据写出后仍需 D4/D6 独立审计 108 cells x 3、来源清洁性、在线真值隔离和类别
+   覆盖，才能启动 v8 actor 的后续研究。
+
+2026-08-01 专项 9/9、D4 全量 964/964 通过；仅有既有 Matplotlib `Axes3D` 环境警告。
+当前无新增 D4-owned P0。
+
+## 2026-08-01 A2 v8 数据集 writer 缺口复核
+
+### 已关闭的 D4-owned P1
+
+1. **增量写出接口已实现。** main 可按冻结顺序调用 `V8TrainDatasetWriter.stage_episode()`，
+   提交在线帧、独立离线标签和 clean source metadata。D4 writer 不接收或推断仿真真值，
+   不生成场景处理。
+2. **完整性收口已实现。** writer 控制 online/labels 路径，使用规范 JSON line，拒绝重复
+   episode/seed/frame、错序、非连续帧、在线/离线错配、来源漂移和缺项。finalizer 构造
+   完整 schedule/manifest，并通过既有严格 loader 做发布前后 round-trip。
+3. **处理证据映射已固定。** schedule 保留冻结 topology、communication condition、target
+   class、transfer count 和 seed/episode；loader 使用帧内边状态、分区恢复和实际转移重验，
+   不接受场景名作为处理证据。
+4. **权限和生命周期未提升。** validation/test 为空，训练、checkpoint、注册和 runtime
+   计数为零，全部权限 false。writer 不改变确定性 R0、投影器、owner/version/epoch/lease、
+   联盟 ACK 或 readiness 语义。
+
+### 保持开放的跨模块 P1
+
+1. **main recipe adapter 尚未实现。** scalable 3D producer 还需把冻结 8/9/12/16 区域
+   拓扑、三类供需、三类通信、正向/反向 1/2/3 资源转移和困难负样本构造成真实 DTO。
+2. **真实 TRAIN 来源仍不存在。** 本轮完整 324 项仅为单元测试中的受控构造，用于证明
+   writer/loader 可闭环；没有形成可训练的 324 个真实 episode，也没有数据内容独立审计。
+3. **后续模型链仍未开始。** actor、独立 validation/test、训练、checkpoint、校准、注册、
+   runtime preflight 和 D6 来源审计均保持开放，不能标记 producer complete 或 model ready。
+
+2026-08-01 writer 专项 8/8、D4 全量 955/955 通过；只有既有 Matplotlib `Axes3D`
+环境警告。当前无新增 D4-owned P0。
+
 ## 2026-08-01 A2 v8 main allocation pre-generation 复核
 
 ### 已关闭的 D4-owned 前置缺口

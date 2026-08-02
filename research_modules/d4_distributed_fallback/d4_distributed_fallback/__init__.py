@@ -626,6 +626,21 @@ from .region_resource_curriculum import (
     build_region_action_coverage_frames,
     generate_region_action_coverage_curriculum,
 )
+from .region_resource_v8_dataset_writer import (
+    RegionResourceV8DatasetWriterError,
+    V8CleanSourceMetadata,
+    V8DatasetWriteResult,
+    V8StagedEpisode,
+    V8TrainDatasetWriter,
+)
+from .region_resource_v8_runtime_evidence import (
+    V8_RUNTIME_EVIDENCE_LABEL_SOURCE,
+    RegionResourceV8RuntimeEvidenceError,
+    V8AnonymousCandidateEvidence,
+    V8BuiltRuntimeEpisodeEvidence,
+    V8RuntimeEpisodeEvidenceBuilder,
+    V8RuntimeFrameEvidence,
+)
 
 __all__ = [
     "ActiveDegradationArbiter",
@@ -1129,4 +1144,15 @@ __all__ = [
     "audit_region_action_coverage_curriculum",
     "build_region_action_coverage_frames",
     "generate_region_action_coverage_curriculum",
+    "RegionResourceV8DatasetWriterError",
+    "V8CleanSourceMetadata",
+    "V8DatasetWriteResult",
+    "V8StagedEpisode",
+    "V8TrainDatasetWriter",
+    "V8_RUNTIME_EVIDENCE_LABEL_SOURCE",
+    "RegionResourceV8RuntimeEvidenceError",
+    "V8AnonymousCandidateEvidence",
+    "V8BuiltRuntimeEpisodeEvidence",
+    "V8RuntimeEpisodeEvidenceBuilder",
+    "V8RuntimeFrameEvidence",
 ]

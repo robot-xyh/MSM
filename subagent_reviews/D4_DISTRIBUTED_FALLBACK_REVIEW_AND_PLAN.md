@@ -1,5 +1,44 @@
 # D4 分布式协同与降级接管综述及子方案
 
+## 2026-08-01 A2 v8 实际运行证据构造评审
+
+D4 已完成 writer 前一层的真实证据适配接口。新构造器不接受“按 recipe 直接合成在线
+帧”的捷径。每帧必须携带实际区域快照、实际规则输出、匿名候选和实际安全投影结果；D4
+会在内部重新运行相同规则策略和投影器，只有结果一致才继续。场景名称只保留在来源 DTO
+中，不参与 forward、reverse 或 hard-negative 分类。
+
+拓扑索引按快照 region tuple 固定。真实 `RegionResourceEdge` 根据 `bidirectional` 展开，
+展开结果必须等于冻结规范有向边库存。该规则明确关闭 ring 只有一个方向仍被接受的风险。
+供需余量使用实际资源、承诺量、确定性备用下限和规则加权需求；通信证据使用实际边状态与
+端点时延/丢包，权属证据使用 owner/plan/version/epoch/lease/ACK/fault fence。正类要求
+实际安全转移及精确资源数，困难负类要求候选真实存在、投影为空且拒绝原因能由这些 DTO
+重建。身份和离线标签进入在线来源会失败关闭。
+
+专项 9/9 和 D4 全量 964/964 通过，含 writer 单 episode strict round-trip。评审结论为
+“D4 writer 与实际证据构造器已具备，main recipe adapter 未完成”。本轮没有修改 D4 运行
+算法，没有生成 324 个真实 episode，也没有授予 assignment、degradation、coalition、
+takeover、D3、D7 或 control 权限。AirSim 接口和既有实验结论未变化。
+
+## 2026-08-01 A2 v8 TRAIN writer 评审
+
+D4 已完成模块所有权范围内的数据集写出接口。writer 将冻结 registry 顺序作为唯一调度
+依据，每个 episode 只接受严格在线 DTO、独立标签 DTO 和与构造时完全一致的 clean source
+metadata。写盘前复用既有 episode loader 检查供需、通信、类别、时序、摘要和安全代次；
+收齐 324 项后生成完整 schedule/manifest，并由完整 dataset loader 在发布前后复验。
+schedule 中的 topology、communication condition、target class、transfer count 与
+seed/episode 映射逐项等于冻结 registry。评审负例确认，来源场景名即使声称“分区恢复”或
+“两资源转移”，缺少帧内真实状态变化或实际 projected transfer 时仍被拒绝。
+
+评审确认该实现没有增加策略权限。它不选择 8/9/12/16 区域的场景参数，不制造分区或
+恢复过程，不生成正反向或困难负标签，也不调用 D4 在线降级算法。单元测试中的 324 项是
+受控合同夹具，不能作为训练来源、AirSim 结果或 runtime treatment 证据。writer 存在也
+不能把 readiness 改为 producer complete。
+
+main 后续需单独实现 scalable 3D recipe adapter，并使用真实 clean source 逐项调用本接口。
+真实来源完成后，D4 先审计类别/拓扑/通信/供需覆盖和真值隔离，D6 再做独立来源检查。
+通过前，训练、validation/test、注册、D3/D7 和所有执行权限继续关闭。专项 8/8、D4 全量
+955/955 通过；唯一警告为既有 Matplotlib `Axes3D` 环境问题。
+
 ## 2026-08-01 A2 v8 main seed allocation binding 复核
 
 D4 已新增只读 pre-generation gate，把 main 全局 registry 的固定身份、内容/文件 SHA-256

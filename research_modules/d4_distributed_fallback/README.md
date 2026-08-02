@@ -1,5 +1,62 @@
 # D4 分布式协同与降级接管
 
+## 2026-08-01 A2 v8 实际运行证据构造器
+
+D4 已新增 `region_resource_v8_runtime_evidence.py`。main 可为冻结 registry 中的一个
+episode 创建 `V8RuntimeEpisodeEvidenceBuilder`，再逐帧提交
+`V8RuntimeFrameEvidence`。输入必须包含真值隔离的 `RegionResourceSnapshot`、实际
+`RuleRegionResourcePolicy` 输出、匿名候选 proposal 和同快照
+`DeterministicResourceProjector` 实际结果。构造器会重新执行规则策略和投影器，并与提交
+结果逐字段核对；`scenario_id`、recipe 名或 `requested_target_class` 不能替代实际动作、
+通信和资源证据。
+
+快照中的 region tuple 顺序是唯一索引顺序。真实边按 `bidirectional` 展开后必须与冻结
+拓扑完整一致；8/12 区域 ring 因而必须形成双向有向边，不能只提供单向环。区域供需由
+实际可用/已承诺资源、确定性 projector 备用下限和规则加权需求计算；边容量、分区、通信
+可用性、机动状态以及端点时延/丢包均来自实际 DTO。owner、plan、version、epoch、lease、
+coalition ACK 和 fault fence 原样进入在线帧。投影裁剪因 v8 action key 无法无损表达而
+失败关闭。
+
+正向或反向正类必须存在实际安全投影转移，方向和总资源数与冻结 recipe 完全一致，且无
+投影拒绝。困难负类必须存在指定资源数的真实匿名候选、实际投影为空，并由通信、容量、
+机动、源区余量或权属代次事实形成 allowlist 原因。在线源中的 `global_track_id`、真值身份
+或离线标签键会在转换前拒绝；输出权限仍全部为 false。
+
+main 调用顺序为 `stage_frame(0..N-1) -> finalize() ->
+V8TrainDatasetWriter.stage_episode()`。专项 9/9、D4 全量 964/964 通过；仅有既有
+Matplotlib `Axes3D` 环境警告。当前只关闭 D4 构造接口缺口，main scalable 3D recipe
+adapter 尚未接线，324 个真实 episode 尚未生成，训练、注册、运行准入和控制权限均未改变。
+
+## 2026-08-01 A2 v8 TRAIN 数据集写出器
+
+D4 已新增 `region_resource_v8_dataset_writer.py`，供 main 的 scalable 3D producer 在完成
+场景构造后调用。`V8TrainDatasetWriter` 只接收已经构造好的
+`V8OnlineRegionResourceFrame` 和独立 `V8OfflineTransferLabel`，不推导拓扑处理、通信
+处理、供需状态或监督标签。构造器严格复载冻结 request/registry，并冻结 clean commit、
+场景版本和配置 SHA-256；每次 `stage_episode()` 必须按 registry 下一项顺序提交相同来源
+元数据。重复 episode/seed/frame、错序、非连续帧、在线/离线身份或摘要错配、脏来源和
+来源漂移均失败关闭。
+
+在线帧和离线标签分别使用 `canonical_v8_json_line()` 写入隐藏暂存目录的 `online/` 与
+`labels/`。只有 324 项全部齐备后，`finalize()` 才构造完整
+`V8MainGenerationSchedule` 和 `V8TrainDatasetManifest`，保持 TRAIN-only、空
+validation/test、零训练/注册/运行计数和全 false 权限。finalizer 在发布前、发布后均调用
+既有 `load_v8_development_train_dataset()` 做完整 round-trip；最终 dataset root 只允许
+`manifest.json` 和 324 对 JSONL，generation schedule 位于 dataset root 外部。
+
+schedule entry 逐项保留 registry 的 `topology_id`、`communication_condition`、
+`requested_target_class`、正类转移数或困难负类候选数以及 seed/episode 映射。严格 loader
+根据帧内有向边、分区后恢复序列和实际 projected transfer 重验这些条件；
+`source_scenario_id` 只是来源谱系，不能替代通信或转移证据。
+
+专项测试使用受控轻量 DTO 覆盖完整 108 cells x 3 replicates，并验证规范字节、文件隔离、
+重复项、非连续帧、标签错配、在线真值泄漏、旧/脏来源、缺 episode 和“仅场景名声明处理”
+拒绝，结果 8/8；D4 全量为 955/955，通过时只有既有 Matplotlib `Axes3D` 环境警告。
+本轮没有运行 main 场景配方，没有生成 324 个真实 episode，没有训练、注册或连接运行
+策略。readiness 仍是生成前置条件状态，不能标记为 producer complete。main 仍需实现
+8/9/12/16 区域、三类通信、
+三类供需和正反向/困难负样本的 runtime recipe adapter。
+
 ## 2026-08-01 A2 v8 main 全局种子分配绑定
 
 D4 已在既有 v8 TRAIN-only 请求外增加版本化 sidecar

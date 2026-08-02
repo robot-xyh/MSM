@@ -1,5 +1,121 @@
 # D4 分布式协同与降级接管算法及实施方案
 
+## A2 v8 实际运行证据构造器（2026-08-01）
+
+### main 调用接口
+
+```python
+builder = V8RuntimeEpisodeEvidenceBuilder(
+    episode_id=episode_id,
+    recipe=frozen_schedule_entry,
+    rule_policy=rule_policy,
+)
+builder.stage_frame(
+    frame_index=0,
+    evidence=V8RuntimeFrameEvidence(
+        snapshot=actual_snapshot,
+        r0_recommendation=actual_r0,
+        raw_actor_proposal=anonymous_raw_proposal,
+        projected_actor_recommendation=actual_projection,
+        anonymous_candidates=anonymous_candidates,
+        arrival_timestamp=arrival_timestamp,
+    ),
+)
+episode = builder.finalize()
+writer.stage_episode(
+    schedule_index=schedule_index,
+    episode_id=episode.episode_id,
+    frames=episode.frames,
+    labels=episode.labels,
+    source_metadata=clean_source_metadata,
+)
+```
+
+`frame_index` 必须从 0 连续递增，快照时间作为 measurement timestamp，arrival timestamp
+不得早于快照时间且跨帧单调。构造器规范化输入 DTO 前先递归检查在线身份和标签键。
+`global_track_id`、actor/target/truth identity 或 `target_class` 等离线字段一旦出现在在线
+来源中即拒绝。
+
+### 转换顺序
+
+1. 用同一 `RuleRegionResourcePolicy` 重新计算 R0，并与 main 提交结果比较。
+2. 用同一 `DeterministicResourceProjector` 重新投影匿名 proposal，并与实际投影结果比较。
+3. 按 snapshot region tuple 建立匿名索引；将实际双向边展开为两个方向，与冻结规范边表
+   完整比较。ring 8/12 分别要求 16/24 条有向边。
+4. 从实际区域资源、规则加权需求和 projector 备用配置计算 region state；从实际边及端点
+   摘要计算 directed edge state。R0 action/transfer、匿名候选和 projected transfer 均通过
+   同一实际边映射。
+5. 正类检查方向、资源数、通信/机动、源区余量和权属代次；困难负类将实际阻断事实映射为
+   v8 allowlist 原因。场景名称和 recipe 名称不进入这些判断。
+6. 构造在线帧、计算规范 SHA-256，再构造独立离线标签。`finalize()` 复核该 episode 实际
+   观察到冻结供需和通信条件，返回可直接传给 writer 的 DTO tuple。
+
+projector 若把候选资源数部分裁剪，投影动作不再与匿名候选 action key 完全一致，当前 v8
+无法无损表达，构造器直接失败关闭。冻结 episode 也只允许一种 target class；同一候选由
+分区负类跨帧变成恢复正类需拆分 recipe 或未来升级合同，不能在当前标签中伪造。
+
+专项 9/9 覆盖真实正向、反向、困难负类、分区阻断/恢复、双向 ring、错误资源数、场景名
+伪证据、在线身份/标签泄漏、连续 frame 和 writer 单 episode strict round-trip。D4 全量
+964/964 通过，仅有既有 Matplotlib `Axes3D` 环境警告。main scalable 3D recipe adapter、
+324 个真实 episode、训练、注册和 runtime admission 仍未完成。
+
+## A2 v8 TRAIN 数据集 writer（2026-08-01）
+
+### 接口
+
+`V8TrainDatasetWriter.from_contract_files()` 接收 dataset root、位于 root 外的 main schedule
+路径、冻结 request/registry、期望 clean source metadata 及 dataset/schedule ID。入口先用
+`load_v8_frozen_request()` 复载 324 项 registry，拒绝过时或被改写的 frozen request。
+main 对每个 episode 调用：
+
+```python
+writer.stage_episode(
+    schedule_index=index,
+    episode_id=episode_id,
+    frames=online_frames,
+    labels=offline_labels,
+    source_metadata=clean_source_metadata,
+)
+result = writer.finalize()
+```
+
+`frames` 和 `labels` 必须已经是 v8 DTO。writer 会先执行 DTO 序列化/反序列化，因而未知
+键、在线 truth/identity 或标签泄漏不能借对象接口绕过。随后把规范 JSON line 写入两个
+临时文件，并调用 `load_v8_episode_pair()` 重验 frame/label identity、在线内容 SHA、连续
+index、时间单调性、请求拓扑/供需/通信、目标类别、转移数量和 owner/version/epoch/lease。
+通过后才将文件移入隐藏暂存目录。
+
+每个 schedule entry 从冻结 registry 直接复制 `topology_id`、`communication_condition`、
+`requested_target_class`、`requested_transfer_resource_count`、困难负类候选数和 seed，
+episode ID 再与 manifest 和实际 JSONL 绑定。通信验收读取逐边状态及分区后的恢复帧；转移
+验收读取 projected transfer 和离线标签数量。`source_scenario_id` 不参与处理成立判定。
+
+### 收口
+
+每次 stage 只允许当前 `next_schedule_index`，相对路径固定为
+`online/{index}_{seed}.jsonl` 与 `labels/{index}_{seed}.jsonl`。完整 324 项到齐后，finalizer
+按相同顺序构造 `V8MainGenerationScheduleEntry` 和 `V8EpisodeManifestEntry`，计算文件摘要、
+episode inventory 摘要、schedule 内容摘要和 manifest 内容摘要。validation/test 列表为空，
+训练、checkpoint、模型注册和 runtime connection 计数均为零，权限 DTO 全 false。
+
+schedule 写在 dataset root 外。manifest 写入暂存 root 后，finalizer 调用
+`load_v8_development_train_dataset()` 完整加载一次；通过后发布最终目录和 schedule，再从
+最终路径完整加载并把 `LoadedV8TrainDataset` 随结果返回。最终 root 中多文件、符号链接、
+路径逃逸、摘要变化或 schedule/manifest/registry 错位都会由严格 loader 拒绝。
+
+### 验证与边界
+
+专项测试用程序化受控夹具遍历 108 cells x 3 replicates，覆盖 8/9/12/16 区域、三类供需、
+三类通信和三类 transfer class。完整 round-trip、规范字节和目录隔离通过；重复项、错序、
+非连续帧、摘要错配、在线真值泄漏、旧/脏来源和缺项均失败关闭。两个额外反例分别用场景名
+声称分区恢复和两资源转移，但删除帧内证据，均被严格 loader 拒绝。结果为专项 8/8、D4
+全量 955/955；仅有既有 Matplotlib `Axes3D` 环境警告。
+
+本实现不包含 scalable 3D runtime recipe，不生成实际 topology/communication treatment，
+也没有生成 324 个真实 episode。它不改变 D4 降级、联盟或区域资源运行算法，不训练模型，
+不授予 assignment、degradation、coalition、takeover、D3、D7 或 control 权限。main recipe
+adapter 仍是下一项跨模块 P1。
+
 ## A2 v8 main allocation pre-generation validator（2026-08-01）
 
 ### 输入
@@ -50,8 +166,8 @@ takeover 或 D7 控制链。
   transfer 为空、匿名候选总资源数为 1/2/3 且携带 allowlist 拒绝原因；
 - `V8MainGenerationSchedule` 将 main 后续 producer 的 episode、来源 commit/config SHA、
   在线/离线相对路径逐项绑定到冻结 registry；`V8TrainDatasetManifest` 再绑定 schedule、
-  每对文件 SHA、frame 数和完整 324-episode inventory。两者当前仅有 schema/loader，
-  没有制品。
+  每对文件 SHA、frame 数和完整 324-episode inventory。两者已有 schema、writer 和严格
+  loader，但当前没有真实生成制品。
 
 规范拓扑由 `expected_v8_directed_edges()` 唯一生成。8/12 环、3x3 网格和 16-node complete
 directed mesh 的边数为 16/24/24/240；frame validator 比较连续 edge index 和完整端点
