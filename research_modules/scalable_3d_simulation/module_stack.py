@@ -179,7 +179,12 @@ from research_modules.d7_proportional_guidance.d7_proportional_guidance import (
 from .active_vision_collection import (
     ACTIVE_VISION_OPERATIONAL_PROFILE_V1,
     ActiveVisionCollectionTreatment,
+    bind_active_vision_recipe_treatment,
     resolve_active_vision_collection_treatment,
+)
+from .episode_treatments import (
+    build_d4_region_graph_treatment,
+    build_d4_supply_demand_treatment,
 )
 from .models import CameraFrameEvent, OnlineSensorBatch, ScenarioConfig
 from .runtime_ports import (
@@ -997,6 +1002,16 @@ def _initial_d1_global_track_materialization_diagnostics(
 
 
 @dataclass(frozen=True)
+class D3PlanningLearningFrame:
+    """One D3 planning frame with transport and measurement time separated."""
+
+    frame_index: int
+    measurement_timestamp_s: float
+    arrival_timestamp_s: float
+    planning_evidence: Any
+
+
+@dataclass(frozen=True)
 class D4RegionLearningFrame:
     """One truth-free regional snapshot and its formal D4 source evidence."""
 
@@ -1037,6 +1052,7 @@ class IntegratedLearningArtifacts:
     d4_region_frames: tuple[D4RegionLearningFrame, ...]
     d5_graph_frames: tuple[D5GraphLearningFrame, ...]
     d5_active_vision_frames: tuple[D5ActiveVisionLearningFrame, ...] = ()
+    d3_a1_source_frames: tuple[D3PlanningLearningFrame, ...] = ()
 
 
 class IntegratedScalableModuleStack:
@@ -1194,6 +1210,7 @@ class IntegratedScalableModuleStack:
         self._d4_communication_event_evaluation_count = 0
         self._d4_vetted_secondary_by_region: dict[str, str] = {}
         self._d3_learning_frames: list[Any] = []
+        self._d3_a1_source_frames: list[D3PlanningLearningFrame] = []
         self._d4_learning_frames: list[D4RegionLearningFrame] = []
         self._d5_learning_frames: list[D5GraphLearningFrame] = []
         self._d5_shadow_scoring_frame_count = 0
@@ -1438,6 +1455,14 @@ class IntegratedScalableModuleStack:
             implementation=self.stack_config.d1_scan_input_implementation,
         )
         profile["d1_scan_input_execution_config"] = organizer.execution_config()
+        profile["d5_active_vision_collection_treatment"] = dict(
+            bind_active_vision_recipe_treatment(
+                resolve_active_vision_collection_treatment(
+                    self.stack_config.d5_active_vision_collection_profile
+                ),
+                config,
+            ).to_dict()
+        )
         return profile
 
     def active_vision_collection_treatment(
@@ -1445,9 +1470,12 @@ class IntegratedScalableModuleStack:
     ) -> ActiveVisionCollectionTreatment:
         """Return the immutable main-owned camera/cue collection treatment."""
 
-        return resolve_active_vision_collection_treatment(
+        treatment = resolve_active_vision_collection_treatment(
             self.stack_config.d5_active_vision_collection_profile
         )
+        if self.config is None:
+            return treatment
+        return bind_active_vision_recipe_treatment(treatment, self.config)
 
     def reset(self, config: ScenarioConfig) -> None:
         self.config = config
@@ -1700,6 +1728,7 @@ class IntegratedScalableModuleStack:
         self._d4_communication_event_evaluation_count = 0
         self._d4_vetted_secondary_by_region.clear()
         self._d3_learning_frames.clear()
+        self._d3_a1_source_frames.clear()
         self._d4_learning_frames.clear()
         self._d5_learning_frames.clear()
         self._d5_shadow_scoring_frame_count = 0
@@ -1933,6 +1962,21 @@ class IntegratedScalableModuleStack:
                 and self.d3.latest_planning_evidence is not None
             ):
                 self._d3_learning_frames.append(self.d3.latest_planning_evidence)
+                measurement_timestamp = max(
+                    (
+                        float(track.timestamp)
+                        for track in self.latest_d2_tracks
+                    ),
+                    default=now,
+                )
+                self._d3_a1_source_frames.append(
+                    D3PlanningLearningFrame(
+                        frame_index=len(self._d3_a1_source_frames),
+                        measurement_timestamp_s=measurement_timestamp,
+                        arrival_timestamp_s=now,
+                        planning_evidence=self.d3.latest_planning_evidence,
+                    )
+                )
             if self.latest_plan is not None:
                 authoritative_publication = (
                     self._d3_authoritative_publication_if_required(now)
@@ -3604,6 +3648,7 @@ class IntegratedScalableModuleStack:
             d5_active_vision_frames=tuple(
                 self._d5_active_vision_learning_frames
             ),
+            d3_a1_source_frames=tuple(self._d3_a1_source_frames),
         )
 
     def record_assignment_plan_runtime_ack(
@@ -5639,9 +5684,8 @@ class IntegratedScalableModuleStack:
             camera_by_resource=camera_by_resource,
         )
         assignments = interceptor_assignments + recon_assignments
-        suppress_recon_projections = (
-            self.active_vision_collection_treatment().recon_cue_suppressed(now)
-        )
+        treatment = self.active_vision_collection_treatment()
+        suppress_recon_projections = treatment.recon_cue_suppressed(now)
         self.latest_active_vision_recon_projection_suppressed_count = (
             len(recon_assignments) if suppress_recon_projections else 0
         )
@@ -5657,25 +5701,21 @@ class IntegratedScalableModuleStack:
             )
         )
         cameras = tuple(
-            self._active_vision_camera_state(camera)
+            self._active_vision_camera_state(
+                camera,
+                now=now,
+                treatment=treatment,
+            )
             for camera in sorted(step_input.cameras, key=lambda item: item.camera_id)
         )
-        projections = tuple(
-            self._active_vision_projection(
-                resource_id=assignment.resource_id,
-                target_id=assignment.global_track_id,
-                camera=camera_by_resource[assignment.resource_id],
-                track=track_by_id[assignment.global_track_id],
-                step_input=step_input,
-                now=now,
-            )
-            for assignment in assignments
-            if assignment.resource_id in camera_by_resource
-            and assignment.global_track_id in track_by_id
-            and not (
-                suppress_recon_projections
-                and camera_by_resource[assignment.resource_id].platform_kind == "recon"
-            )
+        projections = self._active_vision_treated_projections(
+            assignments,
+            camera_by_resource=camera_by_resource,
+            track_by_id=track_by_id,
+            step_input=step_input,
+            now=now,
+            treatment=treatment,
+            suppress_recon_projections=suppress_recon_projections,
         )
         snapshot = ActiveVisionSnapshotV1(
             snapshot_timestamp=now,
@@ -5865,6 +5905,9 @@ class IntegratedScalableModuleStack:
     def _active_vision_camera_state(
         self,
         camera: CameraRuntimeState,
+        *,
+        now: float | None = None,
+        treatment: ActiveVisionCollectionTreatment | None = None,
     ) -> ActiveVisionCameraState:
         config = self._require_ready()
         wide_fov = (
@@ -5876,6 +5919,34 @@ class IntegratedScalableModuleStack:
             float(self.stack_config.d5_active_vision_zoom_fov_deg),
             float(wide_fov) * 0.75,
         )
+        action_in_progress_until = camera.action_in_progress_until
+        slew_available = camera.slew_available
+        intent_window = (
+            None
+            if treatment is None or now is None
+            else treatment.intent_window(
+                now,
+                camera_role=camera.platform_kind,
+            )
+        )
+        if intent_window is not None and intent_window.intent != "hold":
+            # Collection windows deliberately expose an available actuator to
+            # the existing deterministic policy. The actual camera state and
+            # ACK remain in the separately captured feedback record.
+            action_in_progress_until = None
+            slew_available = True
+        if (
+            treatment is not None
+            and now is not None
+            and treatment.camera_forced_busy(
+                now,
+                camera_role=camera.platform_kind,
+            )
+        ):
+            action_in_progress_until = max(
+                float(action_in_progress_until or now),
+                now + max(treatment.camera_minimum_settle_s, 1.0e-6),
+            )
         return ActiveVisionCameraState(
             camera_id=camera.camera_id,
             resource_id=camera.resource_id,
@@ -5892,8 +5963,199 @@ class IntegratedScalableModuleStack:
             current_fov_mode=ActiveVisionFovMode(camera.fov_mode),
             wide_horizontal_fov_deg=float(wide_fov),
             zoom_horizontal_fov_deg=float(zoom_fov),
-            slew_available=camera.slew_available,
-            action_in_progress_until=camera.action_in_progress_until,
+            slew_available=slew_available,
+            action_in_progress_until=action_in_progress_until,
+        )
+
+    def _active_vision_treated_projections(
+        self,
+        assignments: tuple[ActiveVisionAssignmentReference, ...],
+        *,
+        camera_by_resource: Mapping[str, CameraRuntimeState],
+        track_by_id: Mapping[str, Any],
+        step_input: RuntimeStepInput,
+        now: float,
+        treatment: ActiveVisionCollectionTreatment,
+        suppress_recon_projections: bool,
+    ) -> tuple[ActiveVisionProjectionEvidence, ...]:
+        """Apply truth-free source treatments to already bound projections."""
+
+        selected_by_camera: set[str] = set()
+        projections: list[ActiveVisionProjectionEvidence] = []
+        for assignment in sorted(
+            assignments,
+            key=lambda item: (
+                item.camera_id,
+                item.global_track_id,
+                item.resource_id,
+            ),
+        ):
+            camera = camera_by_resource.get(assignment.resource_id)
+            track = track_by_id.get(assignment.global_track_id)
+            if camera is None or track is None:
+                continue
+            mode = treatment.projection_mode(
+                now,
+                camera_role=camera.platform_kind,
+            )
+            if mode == "suppressed" or (
+                suppress_recon_projections
+                and camera.platform_kind == "recon"
+            ):
+                continue
+            if mode in {"stable_single", "outside_boundary_single"}:
+                if camera.camera_id in selected_by_camera:
+                    continue
+                selected_by_camera.add(camera.camera_id)
+            projection = self._active_vision_projection(
+                resource_id=assignment.resource_id,
+                target_id=assignment.global_track_id,
+                camera=camera,
+                track=track,
+                step_input=step_input,
+                now=now,
+            )
+            if mode == "stable_single":
+                projection = self._active_vision_stable_projection(
+                    projection,
+                    camera=camera,
+                    now=now,
+                )
+            elif mode == "outside_boundary_single":
+                projection = self._active_vision_boundary_projection(
+                    projection,
+                    camera=camera,
+                    now=now,
+                )
+            projections.append(projection)
+            if treatment.near_tie_candidates_required(
+                now,
+                camera_role=camera.platform_kind,
+            ):
+                alternate_target_id = next(
+                    (
+                        candidate_id
+                        for candidate_id in sorted(track_by_id)
+                        if candidate_id != assignment.global_track_id
+                    ),
+                    None,
+                )
+                if alternate_target_id is not None:
+                    alternate = self._active_vision_projection(
+                        resource_id=assignment.resource_id,
+                        target_id=alternate_target_id,
+                        camera=camera,
+                        track=track_by_id[alternate_target_id],
+                        step_input=step_input,
+                        now=now,
+                    )
+                    projections.append(
+                        self._active_vision_near_tie_projection(
+                            alternate,
+                            reference=projection,
+                            camera=camera,
+                            now=now,
+                        )
+                    )
+        return tuple(projections)
+
+    def _active_vision_near_tie_projection(
+        self,
+        projection: ActiveVisionProjectionEvidence,
+        *,
+        reference: ActiveVisionProjectionEvidence,
+        camera: CameraRuntimeState,
+        now: float,
+    ) -> ActiveVisionProjectionEvidence:
+        """Retain a second center-owned candidate at the frozen quality boundary."""
+
+        yaw_offset = 0.25 if reference.yaw_error_deg <= 0.0 else -0.25
+        return replace(
+            projection,
+            measurement_timestamp=now,
+            arrival_timestamp=now,
+            yaw_error_deg=float(
+                np.clip(
+                    reference.yaw_error_deg + yaw_offset,
+                    -0.5 * camera.horizontal_fov_deg,
+                    0.5 * camera.horizontal_fov_deg,
+                )
+            ),
+            pitch_error_deg=reference.pitch_error_deg,
+            visibility_probability=reference.visibility_probability,
+            occlusion_fraction=reference.occlusion_fraction,
+            association_confidence=reference.association_confidence,
+            in_fov=reference.in_fov,
+        )
+
+    def _active_vision_stable_projection(
+        self,
+        projection: ActiveVisionProjectionEvidence,
+        *,
+        camera: CameraRuntimeState,
+        now: float,
+    ) -> ActiveVisionProjectionEvidence:
+        """Place one assigned track inside the usable camera boundary."""
+
+        vertical_fov = _vertical_fov_deg(
+            camera.horizontal_fov_deg,
+            platform_kind=camera.platform_kind,
+            config=self._require_ready(),
+        )
+        return replace(
+            projection,
+            measurement_timestamp=now,
+            arrival_timestamp=now,
+            yaw_error_deg=float(
+                np.clip(
+                    projection.yaw_error_deg,
+                    -0.35 * camera.horizontal_fov_deg,
+                    0.35 * camera.horizontal_fov_deg,
+                )
+            ),
+            pitch_error_deg=float(
+                np.clip(
+                    projection.pitch_error_deg,
+                    -0.35 * vertical_fov,
+                    0.35 * vertical_fov,
+                )
+            ),
+            visibility_probability=max(
+                0.95,
+                projection.visibility_probability,
+            ),
+            occlusion_fraction=0.0,
+            association_confidence=max(
+                0.95,
+                projection.association_confidence,
+            ),
+            in_fov=True,
+        )
+
+    def _active_vision_boundary_projection(
+        self,
+        projection: ActiveVisionProjectionEvidence,
+        *,
+        camera: CameraRuntimeState,
+        now: float,
+    ) -> ActiveVisionProjectionEvidence:
+        """Retain one assigned track just outside the recoverable FOV boundary."""
+
+        sign = -1.0 if projection.yaw_error_deg < 0.0 else 1.0
+        return replace(
+            projection,
+            measurement_timestamp=now,
+            arrival_timestamp=now,
+            yaw_error_deg=sign * (0.5 * camera.horizontal_fov_deg + 0.5),
+            visibility_probability=max(
+                0.50,
+                projection.visibility_probability,
+            ),
+            association_confidence=max(
+                0.75,
+                projection.association_confidence,
+            ),
+            in_fov=False,
         )
 
     def _active_vision_projection(
@@ -6171,9 +6433,14 @@ class IntegratedScalableModuleStack:
                 ),
             }
 
+        supply_treatment = build_d4_supply_demand_treatment(config)
+        if supply_treatment is not None:
+            region_signals = supply_treatment.apply(region_ids, region_signals)
+
         edges = self._d4_region_resource_edges(
             region_ids,
             region_signals,
+            timestamp_s=now,
         )
         return RegionResourceSnapshot.from_regional_decision(
             formal_decision,
@@ -6192,30 +6459,56 @@ class IntegratedScalableModuleStack:
         self,
         region_ids: tuple[str, ...],
         region_signals: Mapping[str, Mapping[str, Any]],
+        *,
+        timestamp_s: float,
     ) -> tuple[RegionResourceEdge, ...]:
         config = self._require_ready()
         if len(region_ids) <= 1:
             return ()
-        arc_distance = 2.0 * math.pi * config.protected_radius_m / len(region_ids)
-        transfer_time = arc_distance / config.interceptor_speed_mps
         bandwidth_mbps = (
             config.communication_bandwidth_bytes_per_s * 8.0 / 1_000_000.0
             if config.communication_enabled
             else 0.0
         )
-        directed_pairs: set[tuple[str, str]] = set()
-        for index, source in enumerate(region_ids):
-            directed_pairs.add((source, region_ids[(index + 1) % len(region_ids)]))
-            directed_pairs.add((source, region_ids[(index - 1) % len(region_ids)]))
+        treatment = build_d4_region_graph_treatment(config)
+        if treatment is None:
+            directed_pairs = {
+                (source, region_ids[(index + offset) % len(region_ids)])
+                for index, source in enumerate(region_ids)
+                for offset in (-1, 1)
+            }
+            partitioned_pairs: frozenset[tuple[str, str]] = frozenset()
+        else:
+            directed_pairs = set(treatment.directed_pairs(region_ids))
+            partitioned_pairs = treatment.partitioned_pairs(
+                region_ids,
+                timestamp_s=timestamp_s,
+            )
+        region_index = {region_id: index for index, region_id in enumerate(region_ids)}
         edges: list[RegionResourceEdge] = []
         for source, target in sorted(directed_pairs):
             signal = region_signals[source]
+            source_index = region_index[source]
+            target_index = region_index[target]
+            step_count = min(
+                (source_index - target_index) % len(region_ids),
+                (target_index - source_index) % len(region_ids),
+            )
+            arc_distance = (
+                2.0
+                * math.pi
+                * config.protected_radius_m
+                * max(1, step_count)
+                / len(region_ids)
+            )
+            transfer_time = arc_distance / config.interceptor_speed_mps
             transferable = max(
                 0,
                 int(signal["available_resources"])
                 - int(signal["reserve_resources"])
                 - int(signal["committed_resources"]),
             )
+            partitioned = (source, target) in partitioned_pairs
             edges.append(
                 RegionResourceEdge(
                     source_region_id=source,
@@ -6224,10 +6517,13 @@ class IntegratedScalableModuleStack:
                     distance_m=arc_distance,
                     transfer_time_s=transfer_time,
                     bandwidth_mbps=bandwidth_mbps,
-                    communication_available=config.communication_enabled,
+                    communication_available=(
+                        config.communication_enabled and not partitioned
+                    ),
                     maneuver_available=True,
-                    partitioned=(
-                        not config.communication_enabled
+                    partitioned=bool(
+                        partitioned
+                        or not config.communication_enabled
                         or config.communication_drop_probability >= 1.0
                     ),
                     bidirectional=False,
@@ -8106,7 +8402,15 @@ class IntegratedScalableModuleStack:
         config = self._require_ready()
         plan = self.latest_plan
         scenario = RegionalScenarioMetadata.from_scalable_scenario(config.to_dict())
-        regions = _region_definitions(scenario.region_ids)
+        graph_treatment = build_d4_region_graph_treatment(config)
+        regions = _region_definitions(
+            scenario.region_ids,
+            directed_pairs=(
+                None
+                if graph_treatment is None
+                else graph_treatment.directed_pairs(scenario.region_ids)
+            ),
+        )
         lease_duration_s = max(
             config.assignment_period_s * self.stack_config.assignment_lease_multiplier,
             config.region_policy_period_s,
@@ -11387,17 +11691,41 @@ def _region_for_position(position_ned: np.ndarray, region_count: int) -> str:
     return _region_ids(region_count)[index]
 
 
-def _region_definitions(region_ids: tuple[str, ...]) -> tuple[RegionDefinition, ...]:
+def _region_definitions(
+    region_ids: tuple[str, ...],
+    *,
+    directed_pairs: tuple[tuple[str, str], ...] | None = None,
+) -> tuple[RegionDefinition, ...]:
     if len(region_ids) == 1:
         return (RegionDefinition(region_ids[0], "sector-000"),)
+    if directed_pairs is None:
+        neighbors = {
+            source: (
+                region_ids[(index - 1) % len(region_ids)],
+                region_ids[(index + 1) % len(region_ids)],
+            )
+            for index, source in enumerate(region_ids)
+        }
+    else:
+        inventory = set(region_ids)
+        if any(
+            source not in inventory or target not in inventory or source == target
+            for source, target in directed_pairs
+        ):
+            raise ValueError("region topology contains an invalid directed edge")
+        neighbors = {
+            source: tuple(
+                sorted(target for edge_source, target in directed_pairs if edge_source == source)
+            )
+            for source in region_ids
+        }
+        if any(not value for value in neighbors.values()):
+            raise ValueError("each region must have at least one outgoing neighbor")
     return tuple(
         RegionDefinition(
             region_id=region_id,
             coverage_cell=f"sector-{index:03d}",
-            neighbor_region_ids=(
-                region_ids[(index - 1) % len(region_ids)],
-                region_ids[(index + 1) % len(region_ids)],
-            ),
+            neighbor_region_ids=neighbors[region_id],
         )
         for index, region_id in enumerate(region_ids)
     )

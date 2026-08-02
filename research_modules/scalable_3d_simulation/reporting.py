@@ -13,6 +13,7 @@ from typing import Any, Iterable
 import numpy as np
 
 from .episode_bus import jsonable
+from .episode_treatments import EPISODE_TREATMENT_AUDIT_SCHEMA_VERSION
 from .offline_evaluation import PrewrittenIdentityRecordPaths
 from .orchestrator import EpisodeResult
 
@@ -49,6 +50,22 @@ def write_episode_outputs(
         output_dir / "scenario_config.json", result.config.to_dict()
     )
     paths["summary"] = _write_json(output_dir / "summary.json", result.summary)
+    if result.episode_treatment_audit_records:
+        treatment_payload = {
+            "schema_version": EPISODE_TREATMENT_AUDIT_SCHEMA_VERSION,
+            "episode_id": result.manifest.episode_id,
+            "records": [
+                record.to_dict()
+                for record in result.episode_treatment_audit_records
+            ],
+        }
+        treatment_payload["content_sha256"] = _canonical_sha256(
+            treatment_payload
+        )
+        paths["episode_treatment_audit"] = _write_json(
+            output_dir / "offline_episode_treatment_audit.json",
+            treatment_payload,
+        )
     if result.observation_governance_audit is not None:
         paths["observation_governance_audit"] = _write_json(
             output_dir / "observation_governance_audit.json",
@@ -399,6 +416,8 @@ def _write_truth_state_npz(path: Path, result: EpisodeResult) -> Path:
         interceptor_state=result.interceptor_state_history,
         recon_state=result.recon_state_history,
         intruder_active=result.intruder_active_history,
+        interceptor_active=result.interceptor_active_history,
+        recon_active=result.recon_active_history,
     )
     return path
 

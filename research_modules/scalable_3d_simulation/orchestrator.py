@@ -24,6 +24,10 @@ from .active_vision_collection import (
     resolve_active_vision_collection_treatment,
 )
 from .communication import DeterministicCommunicationNetwork, LinkProfile
+from .episode_treatments import (
+    EpisodeTreatmentAuditRecord,
+    build_episode_treatment_executor,
+)
 from .episode_bus import (
     EpisodeManifest,
     InMemoryEpisodeBus,
@@ -91,6 +95,9 @@ class EpisodeResult:
     interceptor_state_history: np.ndarray
     recon_state_history: np.ndarray
     intruder_active_history: np.ndarray
+    interceptor_active_history: np.ndarray
+    recon_active_history: np.ndarray
+    episode_treatment_audit_records: tuple[EpisodeTreatmentAuditRecord, ...]
     intruder_ids: tuple[str, ...]
     proximity_intercepts: tuple[ProximityInterceptEvent, ...]
     online_messages: tuple[VersionedEnvelope, ...]
@@ -267,6 +274,14 @@ class Scalable3DEpisodeRunner:
         intruder_active_history = np.empty(
             (step_count, self.config.target_count), dtype=bool
         )
+        interceptor_active_history = np.empty(
+            (step_count, self.config.resource_count), dtype=bool
+        )
+        recon_active_history = np.empty(
+            (step_count, self.config.recon_count), dtype=bool
+        )
+        treatment_executor = build_episode_treatment_executor(self.config)
+        episode_treatment_audit_records: list[EpisodeTreatmentAuditRecord] = []
         next_radar_time = 0.0
         next_acoustic_time = 0.0
         next_visual_time = 0.0
@@ -306,6 +321,12 @@ class Scalable3DEpisodeRunner:
         d4_terminal_drain_final_timestamp = float(timestamps[-1])
 
         for step_index in range(step_count):
+            episode_treatment_audit_records.extend(
+                treatment_executor.apply_due(
+                    self.world,
+                    timestamp_s=float(self.world.timestamp),
+                )
+            )
             snapshot = self.world.snapshot()
             current_time = snapshot.timestamp
             _refresh_camera_runtime_states(
@@ -318,6 +339,8 @@ class Scalable3DEpisodeRunner:
             interceptor_history[step_index] = snapshot.interceptors.state
             recon_history[step_index] = snapshot.recon.state
             intruder_active_history[step_index] = snapshot.intruders.active
+            interceptor_active_history[step_index] = snapshot.interceptors.active
+            recon_active_history[step_index] = snapshot.recon.active
 
             if self.config.radar_enabled and current_time + 1.0e-12 >= next_radar_time:
                 started = time.perf_counter()
@@ -1070,6 +1093,11 @@ class Scalable3DEpisodeRunner:
                 isinstance(message.payload, OnlineSensorBatch) for message in messages
             ),
             "offline_truth_label_count": len(offline_labels),
+            "episode_treatment_event_count": treatment_executor.event_count,
+            "episode_treatment_applied_count": len(
+                episode_treatment_audit_records
+            ),
+            "episode_treatment_complete": treatment_executor.complete,
             "pending_after_episode_count": (
                 len(pending) + len(pending_camera_frames)
             ),
@@ -1309,6 +1337,11 @@ class Scalable3DEpisodeRunner:
             interceptor_state_history=interceptor_history,
             recon_state_history=recon_history,
             intruder_active_history=intruder_active_history,
+            interceptor_active_history=interceptor_active_history,
+            recon_active_history=recon_active_history,
+            episode_treatment_audit_records=tuple(
+                episode_treatment_audit_records
+            ),
             intruder_ids=tuple(self.world.intruder_ids),
             proximity_intercepts=tuple(proximity_intercepts),
             online_messages=messages,
@@ -1396,6 +1429,11 @@ def run_episode(
         interceptor_state_history=result.interceptor_state_history,
         recon_state_history=result.recon_state_history,
         intruder_active_history=result.intruder_active_history,
+        interceptor_active_history=result.interceptor_active_history,
+        recon_active_history=result.recon_active_history,
+        episode_treatment_audit_records=(
+            result.episode_treatment_audit_records
+        ),
         intruder_ids=result.intruder_ids,
         proximity_intercepts=result.proximity_intercepts,
         online_messages=result.online_messages,

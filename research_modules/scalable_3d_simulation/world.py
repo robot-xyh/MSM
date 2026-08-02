@@ -379,6 +379,51 @@ class VectorizedPointMassWorld:
         delta = self.interceptor_state[:, None, :3] - self.intruder_state[None, :, :3]
         return np.linalg.norm(delta, axis=2)
 
+    def apply_roster_event(
+        self,
+        *,
+        entity_kind: str,
+        action: str,
+        ordinal_start: int,
+        ordinal_count: int,
+    ) -> tuple[int, int]:
+        """Apply one deterministic scenario-only active-mask transition.
+
+        The method addresses entities only by an ordinal range and returns
+        aggregate active counts.  It deliberately exposes no entity identity
+        and is intended for main-owned simulation treatments, not online
+        module control.
+        """
+
+        kind = str(entity_kind).strip().lower()
+        transition = str(action).strip().lower()
+        if kind == "intruder":
+            active = self.intruder_active
+        elif kind == "interceptor":
+            active = self.interceptor_active
+        else:
+            raise ValueError("roster event entity_kind must be intruder or interceptor")
+        if transition not in {"activate", "deactivate"}:
+            raise ValueError("roster event action must be activate or deactivate")
+        start = int(ordinal_start)
+        count = int(ordinal_count)
+        if (
+            isinstance(ordinal_start, bool)
+            or isinstance(ordinal_count, bool)
+            or start < 0
+            or count <= 0
+            or start + count > active.size
+        ):
+            raise ValueError("roster event ordinal range is outside the inventory")
+        before = int(np.count_nonzero(active))
+        active[start : start + count] = transition == "activate"
+        if kind == "intruder" and transition == "activate":
+            self.intercepted_target_indices.difference_update(
+                range(start, start + count)
+            )
+        after = int(np.count_nonzero(active))
+        return before, after
+
     def register_proximity_intercepts(self) -> tuple[ProximityInterceptEvent, ...]:
         """Register unique physical contacts inside the configured 3D radius."""
 
