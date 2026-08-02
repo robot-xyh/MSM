@@ -1,6 +1,35 @@
 # 200 对 200 三维质点仿真实施计划
 
-## 2026-08-01 当前计划
+## 2026-08-02 学习来源生成前置收敛
+
+1. [x] D3 完成 15 个冻结 cell 的首配方真实 runtime-to-writer 审计。15/15 均满足
+   正类/负类/困难负类 `3/3/2`，在线真值使用为 0；动态增删、匿名资源事件、near-tie
+   和稳定量测窗口已由实际状态机调用。
+2. [x] D4 完成 324/324 配方、972 帧来源可行性审计，并以 sequence 0/1 验证跨进程
+   suspend/resume。来源请求仅开放 `source_generation_request`，正式生成、训练、降级、
+   联盟和控制权限保持关闭。
+3. [x] D5 完成 104/104 配方容量审计。五个探针产生 693 帧；main generation API 的
+   两次调用在临时目录完成 `1 -> 2` 前缀恢复，future-held-out payload 读取为 0，
+   `global_track_id` 创建和写入为 0。
+4. [x] main 统一预检已确认模块计划、生产器适配和来源请求均为 `3/3`。当前唯一 blocker
+   是待提交工作区，状态为 `blocked_by_dirty_generation_worktree`；执行命令、正式授权、
+   generation started 和 training started 均为空或 false。
+5. [x] 回归完成：main 前置链 `25 passed`，三维世界/传感器/配方链 `89 passed`，
+   scalable 全量 `509 passed`；D3 全量退出码为 0，D4 `1013 passed`，D5
+   `877 passed`。全量回归发现并修复 generation plan 元组/JSON 列表导致的 resume
+   误报。现有告警来自 Matplotlib/NVML 环境，不改变来源合同结论。
+6. [ ] 按 main、D3、D4、D5、文档分批提交，在 detached clean worktree 重跑统一预检，
+   将请求路径、SHA-256、当前 commit 和全 false 权限写入只读报告。
+7. [ ] 只有 clean preflight 通过后，签发一次
+   `AUTHORIZE D3 D4 D5 SOURCE GENERATION ONLY`。授权只允许 `dataset_generation=true`，
+   不授予训练、验证消费、held-out 消费、运行、分配、降级、相机命令或控制权限。
+8. [ ] 按 D3 300、D4 324、D5 104 的顺序运行 bounded 生成。每次调用使用
+   `--max-episodes-per-run` 和磁盘余量门，支持中断恢复；不得运行正式 seed `1000-1019`
+   或 R0 shard 10-19。
+9. [ ] 来源生成完成后交 D6 独立审计 seed/split、样本唯一性、双时间戳、协方差、在线
+   真值、身份隔离、清单和 SHA-256。D6 通过前不申请任何训练授权。
+
+## 2026-08-01 当前计划（历史阶段）
 
 1. [x] D1 完成默认关闭的完整 `GlobalTrack` 物化批量质量摘要候选。7 对 fresh process
    局部测试全部更快；D6 进一步完成 10 对 200 对 200 完整 episode 配对，外生输入和

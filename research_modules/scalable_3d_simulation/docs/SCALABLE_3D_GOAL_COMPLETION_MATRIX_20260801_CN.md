@@ -2,9 +2,13 @@
 
 ## 审计口径
 
-本文件是 2026-08-01 的阶段快照，已同步 clean `f0819e0` 的生产器预检。审计继续区分
+本文件已更新至 2026-08-02。审计继续区分
 代码存在、单元测试通过、来源独立数据有效、模型质量通过、运行授权和物理结果。任一学习
 候选缺少后续层级时，确定性规则仍是唯一在线路径。
+
+D3、D4、D5 当前来源请求均已就绪，计划数分别为 300、324 和 104。共享工作区因待提交
+变更仍为 `blocked_by_dirty_generation_worktree`；这不等同于执行授权。正式来源生成数仍为
+0，训练、验证消费、运行和控制权限仍为 false。
 
 正式规则基线继续绑定生产提交
 `80e55eb43bc4a5feeac9c9af0d718d461a46401f` 和执行计划 SHA-256
@@ -19,9 +23,9 @@ R0 的 `450/900` 状态。
 | R0 规则基线 | 正式执行 50% | 无新增正式运行；450/900 状态冻结 | shard 10-19、20 片合并、D6 完整后验和 100/200 规模实时性 |
 | D1 发布性能 | 完整 episode 候选语义通过，默认关闭 | 10 对 200 对 200 配对的外生输入和 D1/D2 业务均一致；墙钟与 D1 包含式计时中位改善 1.05%/2.04% | 候选更快比例和收益未过描述性门，且总线时序存在漂移；仍缺更大独立批次与系统实时性证据 |
 | G1 跨视角图网络 | 合成证据合格，运行未授权 | 无新增运行证据 | 代表性相机域、中心 binding 隔离评价、物理闭环和受批作用域 |
-| A1 分配代价修正 | v2 未准入；v3 计划与 adapter 完成、未生成 | 300 条配方、非等量规模、13 个场景族和 A1 v3 writer 已通过 smoke | 生成请求、正式来源、训练、独立验证和运行授权 |
-| A2 区域资源策略 | v7 失败关闭；v8 TRAIN 计划与 adapter 完成、未生成 | 324 条配方、区域拓扑、通信、三类转移边界和 v8 writer 已通过 smoke | TRAIN 生成请求与来源；actor 冻结后另配 validation/test |
-| A3 主动视觉策略 | v2 模型质量失败；v3 计划与 adapter 完成、未生成 | 104 条配方、四段意图窗口、相机角色、五类困难混淆和配额 writer 已通过 smoke | 三 split 生成请求、正式来源、训练、一次性留出和运行授权 |
+| A1 分配代价修正 | v2 未准入；v3 来源请求就绪、未生成 | 15/15 首配方满足 `3/3/2` 并实际 stage；动态增删、near-tie 和稳定窗口已进入真实 runtime | clean main 授权、300 条正式来源、D6 审计、训练和运行准入 |
+| A2 区域资源策略 | v7 失败关闭；v8 TRAIN 来源请求就绪、未生成 | 324/324 配方、972 帧和 sequence 0/1 跨进程恢复通过 | clean main 授权、324 条 TRAIN 来源；actor 冻结后另配 validation/test |
+| A3 主动视觉策略 | v2 模型质量失败；v3 来源请求就绪、未生成 | 104/104 配方通过；五个探针 693 帧，双调用前缀 `1 -> 2` | clean main 授权、104 条正式来源、D6 审计、训练、一次性留出和运行准入 |
 | C1 学习组合 | 未执行 | 组合失败关闭框架保留 | G1/A1/A2/A3 分别获准后才能组合 |
 | F1 完整体系 | 规则链已开发验证，学习链未执行 | D1-D7 总线和安全门保持可用 | 获准模型、完整故障矩阵、同键 R0、正式物理结果和综合后验 |
 
@@ -73,14 +77,15 @@ v2 没有保存逐边候选集合、逐边模型排序和匿名需求槽映射�
 结构三类原因不能继续拆分，保持 unavailable。94 个拒绝帧全部恢复 exact R0，正式 seed
 读取为 0，运行、分配、计划、控制和生产权限均为 false。
 
-v3 已完成计划层接线。15 个场景规模单元各含 20 个 episode，总计 300 个；全局登记表分配
+v3 已完成计划和来源请求接线。15 个场景规模单元各含 20 个 episode，总计 300 个；全局登记表分配
 seed `23000-23299`。每个单元固定 12 个 train、4 个 validation 和 4 个 test，总计
-`180/60/60`。readiness 为 `ready(plan_only)`，数据、训练、验证、运行和控制权限均为
-false。
+`180/60/60`。2026-08-02 的 15-cell 首配方审计全部满足正类/负类/困难负类
+`3/3/2`，在线真值使用为 0；来源请求已就绪。数据、训练、验证、运行和控制权限仍为 false。
 
 main producer 已逐 episode 映射目标/资源数量、13 个场景族、匿名候选边、逐边残差排序、
-需求槽和投影前后原因，A1 v3 writer 已通过单 episode staging smoke。当前阻断转为来源
-生成请求尚未获批；300 episode、正式 manifest、训练和独立评价均未执行。
+需求槽和投影前后原因。动态增删、匿名资源事件、真实规则成本 near-tie 和稳定量测窗口已由
+实际三维状态机调用。300 episode、正式 manifest、训练和独立评价均未执行；下一道门是
+clean commit 上的 main generation-only 授权。
 
 ## A2 区域资源策略
 
@@ -98,8 +103,9 @@ v8 的 108 个 TRAIN 单元各固定 3 次重复，seed 范围为 `28100-28423`�
 TRAIN 来源冻结后另选全新来源。
 
 main producer 已映射 8/9/12/16 区域拓扑、三类通信条件、供需状态、正反转移和对应困难
-负样本，v8 在线/离线 writer 已通过单 episode staging/abort smoke。324 个 TRAIN episode
-仍未获批生成；区域转移、降级、联盟和控制权限继续为 false。
+负样本。D4 对全部 324 个配方、972 帧完成来源可行性审计，失败数和在线真值使用均为 0；
+sequence 0/1 在同一 staging 上完成跨进程恢复。324 个 TRAIN episode 仍未正式生成；区域
+转移、降级、联盟和控制权限继续为 false。
 
 ## A3 主动视觉策略
 
@@ -132,10 +138,10 @@ validation 24、future-held-out 32，seed 分别为 `24000-24047`、`24048-24071
 `24072-24103`。计划样本下限为 `4608/2304/3072`，每条配方均包含四段意图窗口、相机
 角色和困难混淆处理。future-held-out 仍受一次性访问门约束。
 
-readiness 当前为 `plan_and_producer_adapter_ready_generation_not_authorized`。producer 已
-执行逐 episode 意图窗口、投影边界、线索丢失、云台忙、角色匹配和近似并列目标处理，并
-在 writer 中检查最低唯一样本配额。104 episode 正式来源、训练和一次性 future-held-out
-仍未执行；相机命令和运行权限均为 false。
+readiness 当前为 `source_generation_request_ready_generation_only`。104/104 配方均通过
+字段、配置和容量审计，五个非正式探针产生 693 帧；临时双调用 generation API 完成前缀
+`1 -> 2`，future-held-out payload 读取为 0。104 episode 正式来源、训练和一次性
+future-held-out 仍未执行；相机命令、运行权限和 `global_track_id` 写权限均为 false。
 
 ## 学习来源预生成门
 
@@ -143,12 +149,16 @@ main 已实现 D3、D4、D5 的跨模块只读预检。全局登记表保护 658
 新 seed：D3 300 个、D4 324 个、D5 104 个。三组分配互斥，来源文件路径和 SHA-256 均已
 核对。
 
-clean `f0819e0` 的预检结果为 `blocked_by_source_generation_request`。模块计划和 producer
-adapter 完整性均为 `3/3`，`source_worktree_clean=true`；D3/D4/D5 内存 probe 分别覆盖
-`1/1`、`3/9` 和 `5/493` 个 episode/帧，专项 `9 passed`。三个来源生成请求、执行计划和
-生成授权均为 false，命令为空。预检不读取已有 episode 或 held-out payload，不生成正式
-来源，不训练，也不授予任何 assignment、degradation、camera command、control 或
-`global_track_id` 权限。
+2026-08-02 当前预检结果为 `blocked_by_dirty_generation_worktree`。模块计划、producer
+adapter 和来源请求均为 `3/3`；D3、D4、D5 请求文件 SHA-256 分别为
+`11008b9240bf0219aa14c5fb724332d0061469ab85e048721af5f349804b68a6`、
+`18b595057197dda06b8b2a1ec2a357f1f4d652d2512752be83db2f1e979df1e2` 与
+`157166b8188ded72d7b317161242b904914f083686cdaf76cd4f3a92c94f80b3`。
+前置专项为 `25 passed`，scalable 全量为 `509 passed`。全量回归已修复旧 generation
+plan 中元组写入 JSON 后变为列表所造成的 resume 误报；episode 内容和权限没有变化。
+当前唯一 blocker 是待提交工作区；执行计划、main 生成授权和生成命令仍为空。预检不读取
+正式 episode 或 held-out payload，不训练，也不授予任何
+assignment、degradation、camera command、control 或 `global_track_id` 权限。
 
 ## C1 与 F1
 
@@ -161,13 +171,14 @@ C1 需要 G1、A1、A2 和 A3 在独立来源上分别满足准入。F1 还需�
 
 ## 后续顺序
 
-1. main 单独审查 D3、D4、D5 的来源生成请求，readiness 不得自动改变 request 状态。
-2. 三个 request 获批后，从新的干净提交再次预检并形成逐模块、非空、可审计执行命令。
-3. 正式来源生成后由 D6 独立核对 seed、split、样本唯一性、双时间戳、在线真值和来源哈希。
-4. 只有来源审计、训练和独立评价通过后，模块 owner 才能另行申请 shadow 或 assist；控制权限继续独立审批。
-5. D1 候选继续 default-off。后续独立批次须分离纯 A95 物化计时和总线时序漂移，并满足性能门后才讨论接线。
-6. 正式 R0 后半批继续等待存储和删除授权，不与学习开发制品混用。
-7. 只有单模型变体分别获准后，才启动 C1/F1 组合和正式物理比较。
+1. 分批提交 main、D3、D4、D5 和文档变更，从新的干净提交再次运行只读预检。
+2. clean preflight 通过后签发一次 generation-only main 授权；授权不得包含训练、验证消费、运行或控制。
+3. 使用 bounded resume 依次生成 D3 300、D4 324、D5 104 条来源。
+4. 正式来源生成后由 D6 独立核对 seed、split、样本唯一性、双时间戳、在线真值和来源哈希。
+5. 只有来源审计、训练和独立评价通过后，模块 owner 才能另行申请 shadow 或 assist；控制权限继续独立审批。
+6. D1 候选继续 default-off。后续独立批次须分离纯 A95 物化计时和总线时序漂移，并满足性能门后才讨论接线。
+7. 正式 R0 后半批继续等待存储和删除授权，不与学习开发制品混用。
+8. 只有单模型变体分别获准后，才启动 C1/F1 组合和正式物理比较。
 
 ## 保护边界
 
