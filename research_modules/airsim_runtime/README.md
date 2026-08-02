@@ -525,6 +525,7 @@ python3 research_modules/airsim_runtime/run_blocks_sequence.py \
   --sequence-id p1_terminal_closure_001 \
   --batch-seeds 1,2,3,4,5,6,7,8,9,10 \
   --p1-dropout-frames 1,2,3,4,5 \
+  --p1-controlled-ttc-disturbances bbox_area_jump,bbox_clipping \
   --control-dt 0.1 \
   --no-lidar \
   --blocks-arg=-windowed \
@@ -533,6 +534,27 @@ python3 research_modules/airsim_runtime/run_blocks_sequence.py \
   --blocks-arg=-NoVSync \
   --blocks-arg=-NoHMD \
   --blocks-arg=-NoSound
+```
+
+The version-4 suite adds two post-lock `png_ttc` cases per seed. Main freezes
+the current D3 binding, then injects one bbox area jump or edge clipping into
+the D7 observation after D5 has produced a locked association. Each injected
+sample must persist the planned disturbance, expected and assigned
+`global_track_id`, TTC rejection, effective control state, and executed law.
+The acceptance row passes only when D7 reports the expected rejection, blocks
+effective visual control, falls back to `radar_pn`, and preserves identity.
+This hook does not change the PNG, LOS-filter, extrapolation, D3/D4/D5 gate, or
+assignment logic.
+
+Run only the two controlled cases when checking this boundary:
+
+```bash
+python3 research_modules/airsim_runtime/run_blocks_sequence.py \
+  --p1-terminal-closure-sweep \
+  --p1-terminal-closure-controlled-ttc-only \
+  --sequence-id p1_terminal_controlled_ttc_seed001 \
+  --batch-seeds 1 \
+  --no-lidar
 ```
 
 The M5N2 baseline/candidate cases use the same `z=-30 m`, 35-second

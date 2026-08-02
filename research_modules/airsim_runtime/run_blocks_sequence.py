@@ -72,6 +72,7 @@ from airsim_runtime.sequence import (
 )
 from d6_evaluation_metrics import (
     AirSimCalibrationReportGenerator,
+    CASE_AWARE_SUITE_TIMING_MODE,
     CooperativeClosureInputs,
     CooperativeClosureReportGenerator,
     GuidanceLawComparisonReportGenerator,
@@ -327,6 +328,14 @@ def parse_args() -> argparse.Namespace:
         ),
     )
     parser.add_argument(
+        "--p1-terminal-closure-controlled-ttc-only",
+        action="store_true",
+        help=(
+            "Limit --p1-terminal-closure-sweep to the post-lock area-jump and "
+            "bbox-clipping cases."
+        ),
+    )
+    parser.add_argument(
         "--p1-cooperative-closure-sweep",
         action="store_true",
         help=(
@@ -351,6 +360,14 @@ def parse_args() -> argparse.Namespace:
         type=float,
         default=0.8,
         help="Locked-dropout injection start time for the terminal closure suite.",
+    )
+    parser.add_argument(
+        "--p1-controlled-ttc-disturbances",
+        default="bbox_area_jump,bbox_clipping",
+        help=(
+            "Comma-separated post-lock TTC disturbances for the terminal closure "
+            "suite. Use an empty value to omit controlled disturbance cases."
+        ),
     )
     parser.add_argument(
         "--p1-secondary-heights",
@@ -1878,10 +1895,18 @@ def _run_p1_terminal_closure_sweep(args: argparse.Namespace) -> int:
         dropout_frames=dropout_frames,
         control_dt_s=float(args.control_dt),
         dropout_start_s=float(args.p1_dropout_start),
+        controlled_ttc_disturbances=tuple(
+            item.strip()
+            for item in str(args.p1_controlled_ttc_disturbances).split(",")
+            if item.strip()
+        ),
     )
     cases = _select_terminal_closure_cases(
         cases,
         m5n2_only=bool(args.p1_terminal_closure_m5n2_only),
+        controlled_ttc_only=bool(
+            args.p1_terminal_closure_controlled_ttc_only
+        ),
     )
     output_dir = Path(args.output_root) / args.sequence_id
     output_dir.mkdir(parents=True, exist_ok=True)
@@ -1923,6 +1948,7 @@ def _run_p1_terminal_closure_sweep(args: argparse.Namespace) -> int:
             main_terminal_closure=paths["json"],
             main_stage_timings=main_stage_timings,
             control_tick_stage_timings=control_tick_stage_timings,
+            stage_timing_input_mode=CASE_AWARE_SUITE_TIMING_MODE,
         ),
         title="P1 末端闭环统一验收报告",
     )
@@ -1957,7 +1983,16 @@ def _select_terminal_closure_cases(
     cases: tuple[TerminalClosureCase, ...],
     *,
     m5n2_only: bool,
+    controlled_ttc_only: bool = False,
 ) -> tuple[TerminalClosureCase, ...]:
+    if m5n2_only and controlled_ttc_only:
+        raise SystemExit(
+            "terminal closure m5n2-only and controlled-ttc-only are mutually exclusive"
+        )
+    if controlled_ttc_only:
+        return tuple(
+            case for case in cases if case.terminal_visual_disturbance_type
+        )
     if not m5n2_only:
         return cases
     return tuple(case for case in cases if case.family == "m5n2_paired")
@@ -2053,6 +2088,9 @@ def _build_terminal_closure_run(
     )
     base_config = replace(
         base_config,
+        intercept_terminal_visual_disturbance_type=(
+            case.terminal_visual_disturbance_type
+        ),
         metadata={**base_config.metadata, **case.metadata()},
     )
     return base_config, selected_sequence_id, episode_specs
@@ -2165,6 +2203,9 @@ def _terminal_closure_result_row(
         "clock_speed": (summary.get("parameters", {}) or {}).get("clock_speed"),
         "guidance_law": case.guidance_law,
         "dropout_frames": case.dropout_frames,
+        "terminal_visual_disturbance_type": (
+            case.terminal_visual_disturbance_type
+        ),
         "connected": bool(getattr(result, "connected", False)),
         "pair_opportunity_count": pair_opportunity_count,
         "pair_success_count": d6_metrics.get("pair_physical_success_count"),
@@ -2271,6 +2312,11 @@ def _terminal_closure_command_counts(path: object) -> dict[str, int]:
         "ttc_bbox_clipping_reject_count": 0,
         "ttc_not_expanding_reject_count": 0,
         "ttc_out_of_range_reject_count": 0,
+        "controlled_disturbance_applied_count": 0,
+        "controlled_disturbance_compliant_count": 0,
+        "controlled_disturbance_identity_mismatch_count": 0,
+        "controlled_disturbance_control_violation_count": 0,
+        "controlled_disturbance_fallback_violation_count": 0,
     }
     if path is None or not Path(path).exists():
         return counts
@@ -2329,6 +2375,50 @@ def _terminal_closure_command_counts(path: object) -> dict[str, int]:
                 counts["ttc_not_expanding_reject_count"] += 1
             if "out_of_range" in reason or "max_ttc" in reason:
                 counts["ttc_out_of_range_reject_count"] += 1
+            if _csv_bool(row.get("disturbance_applied")):
+                counts["controlled_disturbance_applied_count"] += 1
+                disturbance_type = str(row.get("disturbance_type") or "")
+                reason_matches = (
+                    reason == "bbox_area_jump"
+                    if disturbance_type == "bbox_area_jump"
+                    else disturbance_type == "bbox_clipping"
+                    and "clip" in reason
+                )
+                control_blocked = not _csv_bool(
+                    row.get("effective_control_authorized")
+                )
+                radar_fallback = str(
+                    row.get("executed_guidance_law") or ""
+                ) in {"radar_pn", "pn"}
+                expected_global_track_id = str(
+                    row.get("expected_global_track_id") or ""
+                )
+                assigned_global_track_id = str(
+                    row.get("assigned_global_track_id") or ""
+                )
+                identity_preserved = bool(
+                    expected_global_track_id
+                    and expected_global_track_id == assigned_global_track_id
+                )
+                if not identity_preserved:
+                    counts[
+                        "controlled_disturbance_identity_mismatch_count"
+                    ] += 1
+                if not control_blocked:
+                    counts[
+                        "controlled_disturbance_control_violation_count"
+                    ] += 1
+                if not radar_fallback:
+                    counts[
+                        "controlled_disturbance_fallback_violation_count"
+                    ] += 1
+                if (
+                    reason_matches
+                    and control_blocked
+                    and radar_fallback
+                    and identity_preserved
+                ):
+                    counts["controlled_disturbance_compliant_count"] += 1
     return counts
 
 

@@ -114,6 +114,11 @@ class InterceptPair:
     terminal_acquisition_timeout_active: bool = False
     terminal_acquisition_timeout_count: int = 0
     terminal_acquisition_timeout_action: str = ""
+    terminal_visual_disturbance_applied: bool = False
+    terminal_visual_disturbance_applied_count: int = 0
+    terminal_visual_disturbance_type: str = ""
+    terminal_visual_disturbance_expected_global_track_id: str = ""
+    terminal_visual_disturbance_assigned_global_track_id: str = ""
 
 
 @dataclass
@@ -158,6 +163,7 @@ class InterceptCommandRecord:
     detection_seen: bool
     guidance_law: str
     configured_guidance_law: str
+    configured_terminal_guidance_law: str
     candidate_guidance_law: str
     executed_guidance_law: str
     terminal_acquisition_timed_out: bool
@@ -185,6 +191,10 @@ class InterceptCommandRecord:
     ttc_filtered_area_px2: float | None
     ttc_area_dot_px2_s: float | None
     ttc_reject_reason: str
+    disturbance_applied: bool
+    disturbance_type: str
+    expected_global_track_id: str
+    assigned_global_track_id: str
     terminal_delivery_profile: str
     visual_reacquisition: bool
     terminal_visual_lost_after_coast: bool
@@ -319,6 +329,8 @@ def run_controlled_intercept_episode(
                             _apply_online_control_evidence(pairs, control_evidence)
                         for pair in pairs:
                             _reset_midcourse_selector_for_binding_change(pair)
+
+                _apply_terminal_visual_disturbance(config, frame, pairs)
 
                 if pairs:
                     with timing.measure("guidance_and_control_rpc"):
@@ -822,6 +834,23 @@ def _pn_velocity_command(
         pair.terminal_switch_reject_reason = visual_command.quality.reject_reason
         if visual_command.quality.terminal_switch_allowed:
             pair.terminal_locked = True
+        else:
+            command.metadata.update(
+                {
+                    "terminal_contract_allowed": bool(contract.allowed),
+                    "terminal_contract_reject_reason": contract.reject_reason,
+                    "terminal_contract_coast_exception": transient_visual_loss,
+                    "d4_action": contract.d4_action,
+                    "d5_decision_state": contract.d5_decision_state,
+                    "plan_id": contract.plan_id,
+                    "plan_version": contract.plan_version,
+                    "track_version": contract.track_version,
+                    "mode_override": GuidanceMode.RADAR_MIDCOURSE.value,
+                    "guidance_law": "radar_pn",
+                    **_visual_metadata(visual_command),
+                }
+            )
+            return _midcourse_velocity(config, command), command
         if pair.terminal_locked:
             command.metadata.update(
                 {
@@ -2354,6 +2383,158 @@ def _apply_intercept_detection_dropout(
     )
 
 
+def _apply_terminal_visual_disturbance(
+    config: BlocksSmokeConfig,
+    frame: AirSimFrame,
+    pairs: list[InterceptPair],
+) -> None:
+    """Inject one post-lock bbox fault into the D7 observation only.
+
+    D5 has already produced a locked, version-consistent association for the
+    frame.  This controlled hook exercises D7's fail-closed quality gate
+    without changing the assignment or canonical global-track identity.
+    """
+
+    disturbance_type = str(
+        config.intercept_terminal_visual_disturbance_type or ""
+    ).strip()
+    if disturbance_type not in {"", "bbox_area_jump", "bbox_clipping"}:
+        raise ValueError(
+            f"unsupported terminal visual disturbance: {disturbance_type}"
+        )
+    application_limit = int(
+        config.intercept_terminal_visual_disturbance_application_limit
+    )
+    if application_limit < 0:
+        raise ValueError(
+            "intercept_terminal_visual_disturbance_application_limit "
+            "must be non-negative"
+        )
+    for pair in pairs:
+        pair.terminal_visual_disturbance_applied = False
+        pair.terminal_visual_disturbance_type = disturbance_type
+        pair.terminal_visual_disturbance_expected_global_track_id = ""
+        pair.terminal_visual_disturbance_assigned_global_track_id = ""
+        if (
+            not disturbance_type
+            or not pair.active
+            or not pair.terminal_locked
+            or not pair.terminal_handover_pending
+            or application_limit == 0
+            or pair.terminal_visual_disturbance_applied_count >= application_limit
+        ):
+            continue
+        observation = pair.terminal_visual_observation
+        if observation is None:
+            detection = _assigned_detection(frame, pair)
+            if detection is None:
+                continue
+            observation = _vision_observation_from_detection(
+                frame_timestamp=float(frame.timestamp),
+                pair=pair,
+                detection=detection,
+                camera_info=_camera_info_for_pair(frame, pair),
+            )
+        expected_global_track_id = str(
+            pair.assigned_global_track_id
+            or (
+                pair.guidance_binding.assigned_global_track_id
+                if pair.guidance_binding is not None
+                else pair.target_id
+            )
+        )
+        observed_global_track_id = str(
+            observation.assigned_global_track_id or ""
+        )
+        if observed_global_track_id != expected_global_track_id:
+            continue
+        camera_info = _camera_info_for_pair(frame, pair)
+        width_px, height_px, _ = _terminal_camera_intrinsics(camera_info)
+        disturbed_bbox = _controlled_disturbance_bbox(
+            observation.bbox_xyxy,
+            disturbance_type=disturbance_type,
+            image_width_px=width_px,
+            image_height_px=height_px,
+            area_jump_linear_scale=float(
+                config.intercept_terminal_visual_area_jump_linear_scale
+            ),
+        )
+        if disturbed_bbox is None:
+            continue
+        pair.terminal_visual_observation = replace(
+            observation,
+            bbox_xyxy=disturbed_bbox,
+            metadata={
+                **observation.metadata,
+                "controlled_terminal_visual_disturbance": {
+                    "type": disturbance_type,
+                    "scope": "post_d5_locked_observation_before_d7_delivery",
+                    "original_bbox_xyxy": list(observation.bbox_xyxy),
+                    "disturbed_bbox_xyxy": list(disturbed_bbox),
+                    "expected_global_track_id": expected_global_track_id,
+                },
+            },
+        )
+        pair.terminal_visual_disturbance_applied = True
+        pair.terminal_visual_disturbance_applied_count += 1
+        pair.terminal_visual_disturbance_expected_global_track_id = (
+            expected_global_track_id
+        )
+        pair.terminal_visual_disturbance_assigned_global_track_id = (
+            observed_global_track_id
+        )
+
+
+def _controlled_disturbance_bbox(
+    bbox_xyxy: tuple[float, float, float, float],
+    *,
+    disturbance_type: str,
+    image_width_px: int,
+    image_height_px: int,
+    area_jump_linear_scale: float,
+) -> tuple[float, float, float, float] | None:
+    x1, y1, x2, y2 = (float(value) for value in bbox_xyxy)
+    center_x = 0.5 * (x1 + x2)
+    center_y = 0.5 * (y1 + y2)
+    width = x2 - x1
+    height = y2 - y1
+    if width <= 0.0 or height <= 0.0:
+        return None
+    if disturbance_type == "bbox_clipping":
+        if center_x <= 0.5 * float(image_width_px):
+            return (0.0, y1, min(float(image_width_px), 2.0 * center_x), y2)
+        return (
+            max(0.0, 2.0 * center_x - float(image_width_px)),
+            y1,
+            float(image_width_px),
+            y2,
+        )
+    if disturbance_type != "bbox_area_jump":
+        return None
+    if area_jump_linear_scale <= 1.0:
+        raise ValueError(
+            "intercept_terminal_visual_area_jump_linear_scale must exceed one"
+        )
+    margin_px = 2.0
+    max_scale_x = 2.0 * min(
+        center_x - margin_px,
+        float(image_width_px) - margin_px - center_x,
+    ) / width
+    max_scale_y = 2.0 * min(
+        center_y - margin_px,
+        float(image_height_px) - margin_px - center_y,
+    ) / height
+    scale = min(area_jump_linear_scale, max_scale_x, max_scale_y)
+    if scale * scale <= 2.5:
+        return None
+    half_width = 0.5 * width * scale
+    half_height = 0.5 * height * scale
+    return (
+        center_x - half_width,
+        center_y - half_height,
+        center_x + half_width,
+        center_y + half_height,
+    )
 def _record_command(
     config: BlocksSmokeConfig,
     timestamp: float,
@@ -2475,6 +2656,9 @@ def _record_command(
             configured_guidance_law=str(
                 _command_metadata(pn_command, "configured_guidance_law", "") or ""
             ),
+            configured_terminal_guidance_law=str(
+                _command_metadata(pn_command, "configured_guidance_law", "") or ""
+            ),
             candidate_guidance_law=str(
                 _command_metadata(pn_command, "candidate_guidance_law", "") or ""
             ),
@@ -2584,6 +2768,18 @@ def _record_command(
             ),
             ttc_reject_reason=str(
                 _command_metadata(pn_command, "ttc_reject_reason", "") or ""
+            ),
+            disturbance_applied=bool(
+                pair.terminal_visual_disturbance_applied
+            ),
+            disturbance_type=str(
+                pair.terminal_visual_disturbance_type
+            ),
+            expected_global_track_id=str(
+                pair.terminal_visual_disturbance_expected_global_track_id
+            ),
+            assigned_global_track_id=str(
+                pair.terminal_visual_disturbance_assigned_global_track_id
             ),
             terminal_delivery_profile=str(
                 _command_metadata(
@@ -2903,6 +3099,12 @@ def _write_intercept_outputs(
             ),
             "detection_dropout_start_s": config.intercept_detection_dropout_start_s,
             "detection_dropout_end_s": config.intercept_detection_dropout_end_s,
+            "terminal_visual_disturbance_type": (
+                config.intercept_terminal_visual_disturbance_type
+            ),
+            "terminal_visual_disturbance_application_limit": (
+                config.intercept_terminal_visual_disturbance_application_limit
+            ),
             "terminal_delivery_profile": _terminal_delivery_profile(config),
             "terminal_soft_prediction_enabled": (
                 config.intercept_terminal_soft_prediction_enabled

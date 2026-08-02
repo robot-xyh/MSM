@@ -112,6 +112,9 @@ class BlocksSmokeConfig:
     intercept_min_maneuver_margin: float = 0.15
     intercept_detection_dropout_start_s: float | None = None
     intercept_detection_dropout_end_s: float | None = None
+    intercept_terminal_visual_disturbance_type: str | None = None
+    intercept_terminal_visual_disturbance_application_limit: int = 1
+    intercept_terminal_visual_area_jump_linear_scale: float = 2.0
     intercept_terminal_soft_prediction_enabled: bool = False
     intercept_terminal_trend_coast_enabled: bool = False
     cooperative_demand_enabled: bool = False

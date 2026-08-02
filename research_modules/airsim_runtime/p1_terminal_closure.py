@@ -10,8 +10,12 @@ from typing import Any, Iterable
 
 
 SUITE_NAME = "p1_terminal_closure"
-SUITE_VERSION = "p1-terminal-closure-v3"
+SUITE_VERSION = "p1-terminal-closure-v4"
 THRESHOLD_VERSION = "p1-terminal-thresholds-v1"
+CONTROLLED_TTC_DISTURBANCE_TYPES = (
+    "bbox_area_jump",
+    "bbox_clipping",
+)
 
 
 @dataclass(frozen=True)
@@ -32,6 +36,7 @@ class TerminalClosureCase:
     dropout_frames: int = 0
     dropout_start_s: float | None = None
     dropout_end_s: float | None = None
+    terminal_visual_disturbance_type: str | None = None
 
     def metadata(self) -> dict[str, Any]:
         return {
@@ -45,6 +50,8 @@ class TerminalClosureCase:
             "scenario_version": (
                 "airsim-m5n2-high-clearance-v1"
                 if self.family == "m5n2_paired"
+                else "airsim-2v2-png-ttc-controlled-v1"
+                if self.terminal_visual_disturbance_type
                 else "airsim-2v2-png-ttc-v2"
                 if self.family == "png_ttc"
                 else "airsim-2v2-locked-dropout-v2"
@@ -60,11 +67,15 @@ def build_terminal_closure_cases(
     dropout_start_s: float = 0.8,
     m5n2_duration_s: float = 35.0,
     dropout_duration_s: float = 8.0,
+    controlled_ttc_disturbances: Iterable[str] = (),
 ) -> tuple[TerminalClosureCase, ...]:
     """Build the frozen M5N2, png_ttc, and locked-dropout matrix."""
 
     normalized_seeds = tuple(dict.fromkeys(int(seed) for seed in seeds))
     normalized_dropout = tuple(dict.fromkeys(int(value) for value in dropout_frames))
+    normalized_disturbances = tuple(
+        dict.fromkeys(str(value).strip() for value in controlled_ttc_disturbances)
+    )
     if not normalized_seeds:
         raise ValueError("at least one seed is required")
     if control_dt_s <= 0.0:
@@ -73,6 +84,14 @@ def build_terminal_closure_cases(
         raise ValueError("dropout_start_s must be non-negative")
     if any(value < 1 for value in normalized_dropout):
         raise ValueError("dropout frame counts must be positive")
+    unsupported_disturbances = set(normalized_disturbances) - set(
+        CONTROLLED_TTC_DISTURBANCE_TYPES
+    )
+    if unsupported_disturbances:
+        raise ValueError(
+            "unsupported controlled TTC disturbances: "
+            + ", ".join(sorted(unsupported_disturbances))
+        )
 
     cases: list[TerminalClosureCase] = []
     for seed in normalized_seeds:
@@ -108,6 +127,23 @@ def build_terminal_closure_cases(
                 guidance_law="png_ttc",
             )
         )
+        for disturbance_type in normalized_disturbances:
+            cases.append(
+                TerminalClosureCase(
+                    case_id=(
+                        f"png_ttc_{disturbance_type}_2v2_seed{seed:03d}"
+                    ),
+                    family="png_ttc",
+                    profile=f"png_ttc_{disturbance_type}",
+                    seed=seed,
+                    resource_count=2,
+                    target_count=2,
+                    duration_s=float(dropout_duration_s),
+                    intercept_altitude_z=-5.0,
+                    guidance_law="png_ttc",
+                    terminal_visual_disturbance_type=disturbance_type,
+                )
+            )
         for frame_count in normalized_dropout:
             cases.append(
                 TerminalClosureCase(
@@ -205,6 +241,7 @@ def summarize_terminal_closure_rows(
         row.get("d7_actual_execution_status") == "available" for row in row_list
     )
     dropout_acceptance = _dropout_acceptance(row_list)
+    controlled_ttc_acceptance = _controlled_ttc_acceptance(case_list, row_list)
     candidate_target_non_degradation = paired.get(
         "candidate_target_non_degradation"
     )
@@ -233,6 +270,7 @@ def summarize_terminal_closure_rows(
             "candidate_target_non_degradation": candidate_target_non_degradation,
             "candidate_pair_non_degradation": candidate_pair_non_degradation,
             "dropout_matrix": dropout_acceptance,
+            "controlled_ttc_disturbances": controlled_ttc_acceptance,
             "overall_acceptance_passed": bool(
                 all_results_present
                 and truth_identity_zero
@@ -242,8 +280,63 @@ def summarize_terminal_closure_rows(
                 and candidate_target_non_degradation is True
                 and candidate_pair_non_degradation is True
                 and dropout_acceptance.get("all_passed") is True
+                and (
+                    controlled_ttc_acceptance.get("expected_case_count") == 0
+                    or controlled_ttc_acceptance.get("all_passed") is True
+                )
             ),
         },
+    }
+
+
+def _controlled_ttc_acceptance(
+    cases: tuple[TerminalClosureCase, ...],
+    rows: list[dict[str, Any]],
+) -> dict[str, Any]:
+    expected = [case for case in cases if case.terminal_visual_disturbance_type]
+    rows_by_case = {str(row.get("case_id")): row for row in rows}
+    results: list[dict[str, Any]] = []
+    for case in expected:
+        row = rows_by_case.get(case.case_id)
+        disturbance_type = str(case.terminal_visual_disturbance_type)
+        reject_key = (
+            "ttc_area_jump_reject_count"
+            if disturbance_type == "bbox_area_jump"
+            else "ttc_bbox_clipping_reject_count"
+        )
+        applied_count = int((row or {}).get("controlled_disturbance_applied_count") or 0)
+        compliant_count = int(
+            (row or {}).get("controlled_disturbance_compliant_count") or 0
+        )
+        reject_count = int((row or {}).get(reject_key) or 0)
+        identity_mismatch_count = int(
+            (row or {}).get("controlled_disturbance_identity_mismatch_count") or 0
+        )
+        passed = bool(
+            row is not None
+            and applied_count > 0
+            and compliant_count == applied_count
+            and reject_count > 0
+            and identity_mismatch_count == 0
+        )
+        results.append(
+            {
+                "case_id": case.case_id,
+                "seed": case.seed,
+                "disturbance_type": disturbance_type,
+                "result_available": row is not None,
+                "applied_count": applied_count,
+                "compliant_count": compliant_count,
+                "reject_count": reject_count,
+                "identity_mismatch_count": identity_mismatch_count,
+                "passed": passed,
+            }
+        )
+    return {
+        "expected_case_count": len(expected),
+        "result_count": sum(item["result_available"] for item in results),
+        "rows": results,
+        "all_passed": bool(results) and all(item["passed"] for item in results),
     }
 
 
@@ -421,6 +514,8 @@ def _markdown(payload: dict[str, Any]) -> str:
             f"- Canonical actual execution available for all cases: `{acceptance.get('actual_execution_all_available')}`",
             f"- All results present: `{acceptance.get('all_results_present')}`",
             f"- Dropout matrix passed: `{acceptance.get('dropout_matrix', {}).get('all_passed')}`",
+            "- Controlled TTC disturbances passed: "
+            f"`{acceptance.get('controlled_ttc_disturbances', {}).get('all_passed')}`",
             f"- Overall acceptance passed: `{acceptance.get('overall_acceptance_passed')}`",
             "",
             "本文件只给出 main 执行索引和基础分层结果；置信区间、失败原因分布和曲线由 D6 bundle 生成。",

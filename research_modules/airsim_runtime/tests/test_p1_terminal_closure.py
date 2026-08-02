@@ -41,6 +41,31 @@ def test_terminal_closure_case_matrix_is_paired_and_versioned() -> None:
     assert (m5n2.duration_s, m5n2.intercept_altitude_z) == (35.0, -30.0)
 
 
+def test_terminal_closure_can_add_controlled_ttc_disturbance_cases() -> None:
+    cases = build_terminal_closure_cases(
+        (1,),
+        dropout_frames=(1,),
+        controlled_ttc_disturbances=("bbox_area_jump", "bbox_clipping"),
+    )
+
+    assert len(cases) == 6
+    controlled = [case for case in cases if case.terminal_visual_disturbance_type]
+    assert {case.terminal_visual_disturbance_type for case in controlled} == {
+        "bbox_area_jump",
+        "bbox_clipping",
+    }
+    assert {case.family for case in controlled} == {"png_ttc"}
+    assert {
+        case.metadata()["scenario_version"] for case in controlled
+    } == {"airsim-2v2-png-ttc-controlled-v1"}
+
+    with pytest.raises(ValueError, match="unsupported controlled TTC"):
+        build_terminal_closure_cases(
+            (1,),
+            controlled_ttc_disturbances=("unknown",),
+        )
+
+
 def test_terminal_closure_m5n2_only_selection_keeps_paired_20_case_scope() -> None:
     cases = build_terminal_closure_cases(range(1, 11))
 
@@ -53,6 +78,28 @@ def test_terminal_closure_m5n2_only_selection_keeps_paired_20_case_scope() -> No
         "baseline",
         "candidate_soft_prediction_trend_coast",
     }
+
+
+def test_terminal_closure_controlled_only_selects_two_cases_per_seed() -> None:
+    cases = build_terminal_closure_cases(
+        (1, 2),
+        controlled_ttc_disturbances=("bbox_area_jump", "bbox_clipping"),
+    )
+
+    selected = _select_terminal_closure_cases(
+        cases,
+        m5n2_only=False,
+        controlled_ttc_only=True,
+    )
+
+    assert len(selected) == 4
+    assert all(case.terminal_visual_disturbance_type for case in selected)
+    with pytest.raises(SystemExit, match="mutually exclusive"):
+        _select_terminal_closure_cases(
+            cases,
+            m5n2_only=True,
+            controlled_ttc_only=True,
+        )
 
 
 def test_terminal_closure_timing_merge_requires_every_case(tmp_path: Path) -> None:
@@ -168,6 +215,12 @@ def test_terminal_closure_command_counts_preserve_ttc_and_truth_semantics(tmp_pa
         "terminal_trend_coast_applied",
         "truth_identity_online_use",
         "ttc_reject_reason",
+        "disturbance_applied",
+        "disturbance_type",
+        "effective_control_authorized",
+        "executed_guidance_law",
+        "expected_global_track_id",
+        "assigned_global_track_id",
     ]
     with path.open("w", encoding="utf-8", newline="") as stream:
         writer = csv.DictWriter(stream, fieldnames=fieldnames)
@@ -207,22 +260,97 @@ def test_terminal_closure_command_counts_preserve_ttc_and_truth_semantics(tmp_pa
                     "truth_identity_online_use": "false",
                     "ttc_reject_reason": "",
                 },
+                {
+                    "terminal_switch_allowed": "false",
+                    "terminal_contract_allowed": "true",
+                    "resource_id": "INT-02",
+                    "mode": "radar_midcourse",
+                    "terminal_delivery_state": "measured",
+                    "terminal_delivery_reason": "terminal_visual_measured",
+                    "terminal_trend_coast_applied": "false",
+                    "truth_identity_online_use": "false",
+                    "ttc_reject_reason": "bbox_area_jump",
+                    "disturbance_applied": "true",
+                    "disturbance_type": "bbox_area_jump",
+                    "effective_control_authorized": "false",
+                    "executed_guidance_law": "radar_pn",
+                    "expected_global_track_id": "G1",
+                    "assigned_global_track_id": "G1",
+                },
             ]
         )
 
     counts = _terminal_closure_command_counts(path)
-    assert counts["command_count"] == 3
+    assert counts["command_count"] == 4
     assert counts["terminal_switch_allowed_count"] == 1
-    assert counts["contract_allowed_count"] == 2
+    assert counts["contract_allowed_count"] == 3
     assert counts["control_allowed_count"] == 1
     assert counts["mode_switched_count"] == 1
     assert counts["terminal_prediction_count"] == 1
     assert counts["terminal_delivery_expired_count"] == 2
     assert counts["terminal_prediction_window_expired_count"] == 1
     assert counts["terminal_trend_coast_count"] == 1
-    assert counts["ttc_area_jump_reject_count"] == 1
+    assert counts["ttc_area_jump_reject_count"] == 2
     assert counts["ttc_out_of_range_reject_count"] == 1
     assert counts["online_truth_use_count"] == 0
+    assert counts["controlled_disturbance_applied_count"] == 1
+    assert counts["controlled_disturbance_compliant_count"] == 1
+    assert counts["controlled_disturbance_identity_mismatch_count"] == 0
+    assert counts["controlled_disturbance_control_violation_count"] == 0
+    assert counts["controlled_disturbance_fallback_violation_count"] == 0
+
+
+def test_terminal_closure_summary_requires_controlled_ttc_compliance() -> None:
+    cases = build_terminal_closure_cases(
+        (3,),
+        dropout_frames=(1,),
+        controlled_ttc_disturbances=("bbox_area_jump", "bbox_clipping"),
+    )
+    rows = []
+    for case in cases:
+        disturbance_type = case.terminal_visual_disturbance_type
+        rows.append(
+            {
+                "case_id": case.case_id,
+                "family": case.family,
+                "profile": case.profile,
+                "seed": case.seed,
+                "connected": True,
+                "pair_opportunity_count": 3,
+                "pair_success_count": 2,
+                "target_opportunity_count": 2,
+                "target_success_count": 2,
+                "coalition_opportunity_count": 1,
+                "coalition_completion_count": 0,
+                "online_truth_use_count": 0,
+                "truth_identity_online_use_count": 0,
+                "truth_state_online_use_count": 0,
+                "physical_metrics_available": True,
+                "d7_actual_execution_status": "available",
+                "terminal_prediction_count": 1,
+                "terminal_prediction_window_expired_count": 0,
+                "controlled_disturbance_applied_count": int(
+                    disturbance_type is not None
+                ),
+                "controlled_disturbance_compliant_count": int(
+                    disturbance_type is not None
+                ),
+                "controlled_disturbance_identity_mismatch_count": 0,
+                "ttc_area_jump_reject_count": int(
+                    disturbance_type == "bbox_area_jump"
+                ),
+                "ttc_bbox_clipping_reject_count": int(
+                    disturbance_type == "bbox_clipping"
+                ),
+            }
+        )
+
+    payload = summarize_terminal_closure_rows(cases, rows)
+
+    controlled = payload["acceptance"]["controlled_ttc_disturbances"]
+    assert controlled["expected_case_count"] == 2
+    assert controlled["result_count"] == 2
+    assert controlled["all_passed"] is True
 
 
 def test_terminal_closure_result_uses_d6_physical_provenance_gate(

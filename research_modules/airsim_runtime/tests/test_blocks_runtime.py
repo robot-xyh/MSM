@@ -42,11 +42,13 @@ from airsim_runtime.intercept import (
     _annotate_active_replan_frame,
     _apply_frame_control_contract_overrides,
     _apply_intercept_detection_dropout,
+    _apply_terminal_visual_disturbance,
     _apply_online_control_evidence,
     _assigned_detection,
     _consume_new_collision_event,
     _initial_pairs,
     _intercept_success_semantics,
+    _pn_velocity_command,
     _refresh_pair_assignments,
     _reset_midcourse_selector_for_binding_change,
     _score_physical_intercepts_offline,
@@ -4782,6 +4784,208 @@ def test_intercept_detection_dropout_removes_online_boxes_only_in_window() -> No
         config,
         replace(frame, timestamp=2.3),
     ).visual_detections == (detection,)
+
+
+@pytest.mark.parametrize(
+    ("disturbance_type", "expected_clip"),
+    (("bbox_area_jump", False), ("bbox_clipping", True)),
+)
+def test_terminal_visual_disturbance_preserves_binding_and_is_single_shot(
+    disturbance_type: str,
+    expected_clip: bool,
+) -> None:
+    detection = AirSimDetectionBox(
+        detection_id="D-1",
+        camera_id="Interceptor:0",
+        object_id="offline-truth-only",
+        local_track_id="L-1",
+        timestamp=2.0,
+        center_px=(320.0, 240.0),
+        bbox_xyxy=(300.0, 220.0, 340.0, 260.0),
+    )
+    camera = AirSimCameraInfo(
+        camera_id="Interceptor:0",
+        owner_id="Interceptor",
+        timestamp=2.0,
+        position_ned=(0.0, 0.0, -5.0),
+    )
+    frame = AirSimFrame(
+        episode_id="controlled-ttc",
+        scenario_name="controlled-ttc",
+        frame_index=20,
+        timestamp=2.0,
+        truth_objects=(),
+        resources=(),
+        cameras=(camera,),
+        visual_detections=(detection,),
+    )
+    pair = InterceptPair(
+        resource_id="R1",
+        vehicle_name="Interceptor",
+        target_id="G1",
+        assigned_global_track_id="G1",
+        terminal_locked=True,
+        terminal_handover_pending=True,
+    )
+    pair.terminal_visual_observation = _vision_observation_from_detection(
+        frame_timestamp=frame.timestamp,
+        pair=pair,
+        detection=detection,
+        camera_info=camera,
+    )
+    original_bbox = pair.terminal_visual_observation.bbox_xyxy
+    config = replace(
+        BlocksSmokeConfig(),
+        intercept_terminal_visual_disturbance_type=disturbance_type,
+    )
+
+    _apply_terminal_visual_disturbance(config, frame, [pair])
+
+    assert pair.terminal_visual_disturbance_applied is True
+    assert pair.terminal_visual_disturbance_applied_count == 1
+    assert pair.terminal_visual_disturbance_expected_global_track_id == "G1"
+    assert pair.terminal_visual_disturbance_assigned_global_track_id == "G1"
+    disturbed = pair.terminal_visual_observation
+    assert disturbed is not None
+    assert disturbed.assigned_global_track_id == "G1"
+    original_center = (
+        0.5 * (original_bbox[0] + original_bbox[2]),
+        0.5 * (original_bbox[1] + original_bbox[3]),
+    )
+    disturbed_center = (
+        0.5 * (disturbed.bbox_xyxy[0] + disturbed.bbox_xyxy[2]),
+        0.5 * (disturbed.bbox_xyxy[1] + disturbed.bbox_xyxy[3]),
+    )
+    assert disturbed_center == pytest.approx(original_center)
+    if expected_clip:
+        assert disturbed.bbox_xyxy[0] == pytest.approx(0.0)
+    else:
+        original_area = (original_bbox[2] - original_bbox[0]) * (
+            original_bbox[3] - original_bbox[1]
+        )
+        disturbed_area = (disturbed.bbox_xyxy[2] - disturbed.bbox_xyxy[0]) * (
+            disturbed.bbox_xyxy[3] - disturbed.bbox_xyxy[1]
+        )
+        assert disturbed_area / original_area > 2.5
+    evidence = disturbed.metadata["controlled_terminal_visual_disturbance"]
+    assert evidence["type"] == disturbance_type
+    assert evidence["expected_global_track_id"] == "G1"
+
+    _apply_terminal_visual_disturbance(config, frame, [pair])
+    assert pair.terminal_visual_disturbance_applied is False
+    assert pair.terminal_visual_disturbance_applied_count == 1
+
+
+def test_rejected_terminal_visual_quality_falls_back_to_radar_pn(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    quality = SimpleNamespace(
+        terminal_switch_allowed=False,
+        reject_reason="bbox_area_jump",
+        camera_quality_gate_passed=True,
+        los_quality_gate_passed=True,
+        maneuver_margin_gate_passed=True,
+        bbox_area_ratio=0.01,
+        los_rate_variance_radps2=0.0,
+        ttc_s=None,
+        ttc_raw_area_px2=6400.0,
+        ttc_filtered_area_px2=None,
+        ttc_area_dot_px2_s=None,
+        ttc_reject_reason="bbox_area_jump",
+        maneuver_margin=1.0,
+        required_turn_rate_radps=0.0,
+        turn_rate_capacity_radps=0.9,
+    )
+    visual_command = SimpleNamespace(
+        guidance_law="png_ttc",
+        velocity_ned=(99.0, 99.0, 0.0),
+        quality=quality,
+        control_saturated=False,
+    )
+    delivery_result = SimpleNamespace(
+        state=SimpleNamespace(value="measured"),
+        reason="terminal_visual_measured",
+        using_extrapolation=False,
+        measurement_age_s=0.0,
+        blind_elapsed_s=0.0,
+        blind_decay=0.0,
+        loss_frame_count=0,
+        filter_audit_state=SimpleNamespace(value="measured"),
+        filter_audit_reason="image_kf_measurement_accepted",
+        lifecycle_reset=False,
+        lifecycle_reset_reason="",
+        image_innovation_norm_rad=0.0,
+        trend_coast_applied=False,
+        trend_coast_velocity_ned=None,
+        command=visual_command,
+    )
+    monkeypatch.setattr(
+        "airsim_runtime.intercept._terminal_delivery_for_pair",
+        lambda *args, **kwargs: SimpleNamespace(
+            png_config=SimpleNamespace(
+                image_width_px=640,
+                image_height_px=480,
+                focal_length_px=320.0,
+            ),
+            evaluate=lambda **evaluate_kwargs: delivery_result
+        ),
+    )
+    monkeypatch.setattr(
+        "airsim_runtime.intercept.evaluate_terminal_png_contract",
+        lambda **kwargs: SimpleNamespace(
+            allowed=True,
+            reject_reason="",
+            d4_action="continue_center",
+            d5_decision_state="locked",
+            plan_id="P1",
+            plan_version=1,
+            track_version=1,
+        ),
+    )
+    pair = InterceptPair(
+        resource_id="R1",
+        vehicle_name="Interceptor",
+        target_id="G1",
+        assigned_global_track_id="G1",
+        terminal_locked=True,
+        terminal_handover_pending=True,
+    )
+    pair.terminal_visual_observation = _vision_observation_from_detection(
+        frame_timestamp=1.0,
+        pair=pair,
+        detection=AirSimDetectionBox(
+            detection_id="D1",
+            camera_id="Interceptor:0",
+            object_id="offline-truth-only",
+            local_track_id="L1",
+            timestamp=1.0,
+            center_px=(320.0, 240.0),
+            bbox_xyxy=(280.0, 200.0, 360.0, 280.0),
+        ),
+    )
+    config = replace(
+        BlocksSmokeConfig(),
+        intercept_guidance_law="png_ttc",
+        intercept_speed_mps=6.0,
+    )
+
+    velocity, command = _pn_velocity_command(
+        config,
+        pair,
+        1.0,
+        np.asarray((0.0, 0.0, -5.0)),
+        np.asarray((6.0, 0.0, 0.0)),
+        np.asarray((20.0, 0.0, -5.0)),
+        np.asarray((0.0, 0.0, 0.0)),
+        None,
+        None,
+    )
+
+    assert velocity != visual_command.velocity_ned
+    assert command.metadata["guidance_law"] == "radar_pn"
+    assert command.metadata["mode_override"] == "radar_midcourse"
+    assert command.metadata["terminal_switch_allowed"] is False
+    assert command.metadata["ttc_reject_reason"] == "bbox_area_jump"
 
 
 @pytest.mark.parametrize(
