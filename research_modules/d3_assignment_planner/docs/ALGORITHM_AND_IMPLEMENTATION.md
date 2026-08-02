@@ -6,6 +6,65 @@
 > `docs/MODULE_PRINCIPLES_CN.md` 和根目录系统汇总同步编写。本文区分默认主线、
 > 已实现辅助能力、可选离线对照和未实现能力，不把计划项写成已完成能力。
 
+## A1 v3 数据生成接口
+
+### 帧构造
+
+main 对每个 D3 规划帧构造 `A1V3AdapterFrameEvidence`。输入包括双时间戳、匿名目标和资源
+数量、规则代价矩阵、候选动作掩码、教师边、学习候选边、安全投影后有效边、逐边残差
+排序、匿名目标需求槽及投影原因。builder 先检查矩阵、掩码和匿名规模的形状一致性，再将
+候选掩码为真的位置转成排序且唯一的匿名边。在线记录不接受真值、Actor、Object、车辆或
+中心航迹身份。
+
+规则矩阵只用于生成匿名合法边成本和 near-tie 诊断，不进入
+`A1V3TrainingFeatures`。训练 loader 仍只暴露匿名规模、候选图和需求槽。教师、候选、有效
+动作、near-tie 诊断和离线分类属于审计或监督信息，不能混入模型输入。
+
+### 近边界计算
+
+对每个至少有两条合法边的匿名目标，按 `(rule_cost, edge)` 排序，选择前两项。绝对差和
+相对差为：
+
+\[
+\Delta=c_2-c_1,\qquad r=\Delta/\max(|c_1|,1.0).
+\]
+
+冻结配置 `a1_source_independent_v3_near_tie_boundary_v1.json` 使用
+`Delta <= 0.10 AND r <= 0.002`。builder 写入所有合法边成本、成本摘要、逐目标前两名、
+差值、是否满足边界和版本化 reason code。parser 从边成本重新计算，不接受调用方直接
+声明的 near-tie 结果。离线 sidecar 若使用
+`near_tie_but_teacher_keeps_r0`，必须存在至少一个满足边界的目标；near-tie cell 的困难
+负例不能改用其他类型绕过配额。
+
+### 暂存与收口
+
+`A1V3DatasetWriter.stage_episode(...)` 的输入是冻结 `A1V3ScheduledEpisode`、该 episode
+全部在线 evidence 和同帧离线 sidecar。writer 使用 schedule 的 episode_id、cell_id、
+scenario_family、seed、split 与配置 M/N，不调用 split hash。帧号必须从 0 连续，双时间
+戳分别单调，在线/离线键和 SHA-256 一致，四类最低配额在 episode 文件创建前通过。
+
+暂存目录保存规范 JSON episode 文件和固定会话。会话绑定 request、contract、registry、
+schedule、near-tie 边界、schedule inventory 及所有来源文件 SHA-256。重新打开 writer
+时逐个解析已暂存文件；重复 episode、文件篡改、权限为真、身份谱系计数非零、schedule
+或来源哈希漂移均停止。
+
+`finalize()` 要求 300 个 schedule index 全覆盖。它按 cell、seed、episode 和 frame 排序，
+生成：
+
+1. `online_frames.jsonl`：匿名在线诊断；
+2. `offline_labels.jsonl`：分类及离线身份 sidecar；
+3. `dataset_manifest.json`：合同绑定、文件摘要、15-cell/300-seed inventory、split、配额和
+   身份审计可用性。
+
+所有 JSONL 行和 manifest 使用排序键、紧凑分隔符、ASCII 及末尾换行的规范字节。在线
+真值、学习路径创建或改写 `global_track_id`、重复 episode/frame 和全部权限计数固定为 0。
+离线四类身份标签全部齐备才标为 `complete`；部分存在标为 `partial`；全部为空标为
+`unavailable`。
+
+当前专项以 300 个 schedule 条目和 2700 个合成匿名帧验证完整 finalize，未调用 main 三维
+runtime。main 仍需实现动态增删和真实 near-tie treatment，随后重新冻结 source/hash 并
+单独授权生成。该接口不改变默认规则代价、Hungarian、需求槽 Hungarian 或计划迟滞。
+
 ## A1 v2 失败归因
 
 ### 输入围栏

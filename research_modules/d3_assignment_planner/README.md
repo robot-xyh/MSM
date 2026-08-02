@@ -1,5 +1,46 @@
 # D3 Assignment Planner
 
+## 2026-08-01 A1 v3 producer 证据与专用 writer
+
+D3 已实现供 main 三维规模化 producer 调用的 A1 v3 数据接口。入口位于
+`d3_assignment_planner.a1_v3_dataset_writer`。`A1V3AdapterFrameEvidence` 显式接收
+量测时间、到达时间、匿名目标/资源数量、候选动作掩码、规则代价矩阵、教师边、投影前
+候选边、投影后有效边、逐边残差排序、匿名需求槽和投影原因。到达时间必须严格晚于量测
+时间，缺少任一字段、把一个时间戳复制到两个字段、矩阵与掩码维度不一致或在线身份字段
+出现时均失败关闭。
+
+近边界困难负类不再由场景名称推断。固定边界文件为
+`configs/a1_source_independent_v3_near_tie_boundary_v1.json`。builder 从实际
+`rule_cost_matrix` 与合法候选掩码中，按目标计算最低和次低规则代价；绝对差不大于
+`0.10` 且相对差不大于 `0.002` 时，生成
+`near_tie_rule_cost_boundary_met_v1`。相对差分母下限固定为 `1.0`。在线记录保存匿名
+合法边代价、逐目标前两名边、绝对/相对差和计算结果。没有满足边界的目标时，离线 sidecar
+不能把该帧标为 `near_tie_but_teacher_keeps_r0`，也不能用于满足近边界 cell 的困难负类
+配额。
+
+`A1V3DatasetWriter` 按冻结 `A1V3ScheduledEpisode` 逐 episode 原子暂存。会话绑定 request、
+contract、registry、schedule、near-tie 边界及各文件 SHA-256；恢复时重新校验全部绑定和
+已暂存 episode。episode_id、cell_id、seed、split、配置目标数和资源数直接取 schedule，
+不重新散列 split。每个 episode 在写入前检查连续帧号、双时间戳、在线/离线载荷摘要和
+observable/positive/negative/hard-negative 最低配额。300 个 episode、15 个 cell 和 300
+个唯一 seed 全部暂存后，finalizer 才按规范顺序生成 `online_frames.jsonl`、
+`offline_labels.jsonl` 和 `dataset_manifest.json`。三个文件使用规范 JSON 字节和 SHA-256。
+权限、在线真值使用、学习路径创建或改写 `global_track_id` 的计数必须为 0。
+
+离线身份数组允许为空。manifest 以 `complete/partial/unavailable` 记录审计可用性，并列出
+完整、部分和空标签帧数；空标签不能声明为完整身份审计。专项新增 `7 passed`，A1 v3
+合同与 writer 组合为 `71 passed`。完整 15-cell/300-episode/2700-frame 测试使用合成
+1 目标、2 资源匿名帧，只证明 writer 合同和配额逻辑，不是 main 三维 episode 数据。
+2026-08-01 D3 全量回归收集 749 项，结果为 `748 passed, 1 skipped, 1 warning`；跳过项
+仍是可选 OR-Tools，告警仍是既有 Matplotlib `Axes3D` 导入环境问题。
+
+当前未实现 main 的 `dynamic_add_drop` roster treatment 和
+`near_tie_hard_negative` 三维成本边界 treatment，也未生成 300 个真实 episode。冻结
+generator config 仍为 plan-only，源提交和文件绑定需由 main 在 producer adapter 完成后
+重新冻结并单独授权。因此 `producer_adapter_complete` 和 source generation readiness
+不得改为 true。D3 默认规则代价、Hungarian/需求槽 Hungarian、版本迟滞和所有运行权限
+均未改变。
+
 ## 2026-08-01 A1 v2 失败归因与 v3 开发来源请求
 
 D3 已对冻结的来源独立评价 v2 做只读复载和失败归因。诊断器固定读取原结果目录、v2

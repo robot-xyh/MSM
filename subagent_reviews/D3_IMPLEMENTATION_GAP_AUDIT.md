@@ -1,5 +1,38 @@
 # D3 实现差距审计
 
+## 2026-08-01 A1 v3 producer 接口 GAP
+
+本轮关闭 D3-owned 的 writer/evidence 接口 P1。D3 已提供严格匿名帧 builder、独立离线
+sidecar、episode 原子暂存、断点绑定检查和全 inventory finalizer。schedule 的
+episode_id、cell_id、seed、split 和配置 M/N 原样进入制品；split 不重新散列。在线/离线
+载荷逐帧以 SHA-256 绑定，15 cell、300 episode、300 唯一 seed 和逐 episode 配额在
+finalize 前重新检查。权限、在线真值使用、学习路径创建/改写 `global_track_id`、重复
+episode 和重复 frame 均必须为 0。
+
+新增 near-tie 证据门关闭“按场景名称伪造困难负类”的接口风险。producer 必须提供实际
+规则代价矩阵与候选动作掩码。D3 在每个目标的合法边中计算最低、次低规则代价，使用冻结
+绝对差 `<=0.10`、相对差 `<=0.002`、分母下限 `1.0` 的 AND 条件。在线记录保存匿名边
+代价、逐目标差值和 `boundary_met/not_met` reason code。没有满足边界的帧不能标为
+`near_tie_but_teacher_keeps_r0`；near-tie cell 也不能用其他困难负类类型绕过该配额。
+
+离线身份 sidecar 可以为空，但 manifest 必须报告 `complete/partial/unavailable` 及三类
+帧数。当前完整合成夹具的 2700 帧身份数组为空，因此审计状态正确为 `unavailable`，不能
+解释为完整身份审计。新增 writer 专项 `7 passed`，A1 v3 合同和 writer 组合
+`71 passed`。D3 全量收集 749 项，结果为 `748 passed, 1 skipped, 1 warning`；skip 为
+可选 OR-Tools，warning 为既有 Matplotlib `Axes3D` 导入环境问题。
+
+仍开放的 P1：
+
+1. main 尚未实现 scalable runtime 到该 DTO 的 adapter；
+2. `dynamic_add_drop` roster treatment 和真实三维 near-tie 成本边界 treatment 尚未实现；
+3. 300 个计划 episode 尚未由真实三维 runtime 生成，当前 2700 帧只是 writer 合同夹具；
+4. 冻结 source commit/hash 仍指向 adapter 实现前版本，main 需在跨模块代码完成后重新冻结；
+5. generator config 仍为 plan-only，缺少独立的 main 生成授权；
+6. D6 尚未对未来正式三文件数据集完成外部身份与配额复核。
+
+本轮不改变 `producer_adapter_complete`、`source_generation_request_ready`、模型准入或运行
+权限。默认规则加 Hungarian、M-to-N 需求槽、迟滞和版本合同保持原样。没有新增 P0。
+
 ## 2026-08-01 A1 v2 失败归因与 v3 来源 GAP
 
 当前没有新增 P0。既有 D6 外部审计已完成，原“D6 尚未复核 v2”的状态缺口关闭。D6 只

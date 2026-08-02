@@ -1,5 +1,28 @@
 # D3 中心化资源-目标分配综述及子方案
 
+## 2026-08-01 A1 v3 writer/evidence 复核
+
+D3 已补齐 main scalable producer 所需的模块接口。在线 builder 接收双时间戳、匿名规模、
+动作掩码、规则代价矩阵、教师/候选/有效边、残差排序、需求槽和投影原因。离线 sidecar
+独立提供分类与身份标签，并由 D3 绑定在线规范载荷 SHA-256。任何在线真值、Actor、
+Object、实体身份或本地 `global_track_id` 字段均被拒绝。
+
+near-tie 分类使用规则成本证据，不使用 `scenario_family` 推断。冻结边界为绝对差
+`0.10`、相对差 `0.002`、相对分母下限 `1.0`，两项同时满足才产生 met reason code。
+stager 对 near-tie 困难负类重新检查计算结果；无满足目标时不能计入 episode 配额。
+
+writer 使用隐藏 staging 会话逐 episode 原子写入，支持中断后重新打开。会话绑定全部冻结
+合同文件、near-tie 边界、schedule inventory 和 SHA-256。finalize 只在 15 cell、300
+episode、300 seed 全覆盖及逐 episode 配额通过后生成三个规范文件。离线身份为空时，
+manifest 明确报告 `unavailable`，不宣称身份审计完整。
+
+新增 7 项专项和 2700 帧合成合同夹具通过；A1 v3 合同与 writer 组合 `71 passed`，D3
+全量为 `748 passed, 1 skipped, 1 warning`。该结果
+没有运行 main 三维场景，没有实现 dynamic roster 或 near-tie runtime treatment，也没有
+生成真实 300-episode 数据。generator config、训练、辅助、分配、计划、控制、物理和
+正式准入权限继续关闭。main 完成 adapter/treatment 后还需重新冻结 source/hash 并单独
+授权，D3 当前不得自报 producer complete。
+
 ## 2026-08-01 来源独立失败归因复核
 
 D3 已在不调用模型、不读取正式 seed 和不修改 v2 的条件下完成只读失败诊断。固定结果的

@@ -1,0 +1,30 @@
+{
+  "boundary_id": "d3-a1-v3-rule-cost-near-tie-boundary-v1",
+  "maximum_absolute_gap": 0.1,
+  "maximum_relative_gap": 0.002,
+  "permissions": {
+    "assist": false,
+    "assignment": false,
+    "authority": false,
+    "checkpoint_selection": false,
+    "control": false,
+    "formal_admission": false,
+    "generation": false,
+    "normalization_refit": false,
+    "optimizer": false,
+    "physical": false,
+    "plan": false,
+    "production_admission": false,
+    "runtime": false,
+    "threshold_adjustment": false,
+    "training": false
+  },
+  "qualification_logic": "absolute_and_relative",
+  "reason_codes": {
+    "boundary_met": "near_tie_rule_cost_boundary_met_v1",
+    "boundary_not_met": "near_tie_rule_cost_boundary_not_met_v1"
+  },
+  "relative_denominator_floor": 1.0,
+  "schema_version": "d3_a1_v3_rule_cost_near_tie_boundary_v1",
+  "status": "frozen_for_a1_v3_generation"
+}

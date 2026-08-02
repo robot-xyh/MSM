@@ -1,5 +1,37 @@
 # D3 集中式 Assignment Planner 计划
 
+## 2026-08-01 A1 v3 writer/evidence 接口
+
+状态：`writer_evidence_interface_implemented_main_runtime_treatments_pending`。
+
+1. [x] 新增 producer-facing `A1V3AdapterFrameEvidence`。强制接收独立
+   `measurement_timestamp_s` 与 `arrival_timestamp_s`、规则代价矩阵、候选掩码、教师/
+   候选/有效边、残差排序、需求槽和投影前后原因；字段缺失或双时间戳不独立时拒绝。
+2. [x] 从实际规则代价矩阵和合法掩码计算每个匿名目标的一二名候选。冻结绝对差边界
+   `0.10`、相对差边界 `0.002` 和分母下限 `1.0`，写入边代价、差值和版本化 reason code。
+   `scenario_family` 只用于 schedule 绑定，不能产生 near-tie 标签。
+3. [x] 新增独立离线 sidecar builder。在线 SHA-256 由 builder 计算并绑定；真值、Actor、
+   Object 和中心航迹标签只存在于离线文件。near-tie 边界未满足时禁止申报对应困难负类。
+4. [x] 新增 episode 级原子 stager 和断点会话。恢复时重验 request/contract/registry/
+   schedule/near-tie 边界文件 SHA、300-entry schedule inventory 和全部已暂存 episode。
+5. [x] finalizer 固定使用 schedule 的 episode、split、cell、seed 和配置 M/N，不重新散列。
+   逐 episode 配额、重复项、错 split、schedule/source 漂移、权限为真、在线真值、
+   `global_track_id` 创建或改写均失败关闭。
+6. [x] 生成规范字节的 `online_frames.jsonl`、`offline_labels.jsonl` 和
+   `dataset_manifest.json`。manifest 明确离线身份审计为完整、部分或不可用；空标签不
+   宣称完整。
+7. [x] 新增 7 项 writer 专项，覆盖最小构造、双时间戳、在线身份泄漏、固定 split、配额、
+   重复/缺项、规范字节、resume、schedule/source hash 漂移及 near-tie 伪配额。A1 v3
+   合同与 writer 组合 `71 passed`；D3 全量 `748 passed, 1 skipped, 1 warning`。
+8. [ ] main 实现 `dynamic_add_drop` roster treatment、基于真实三维规则成本的 near-tie
+   treatment 和 scalable runtime adapter，再重新冻结 source commit/hash 并单独授权生成。
+9. [ ] main 使用真实 runtime 输出逐条 stage 300 个 episode；D3/D6 严格复载三项制品并
+   核对 15 cell、300 seed、2700/900/900/450 最低配额。当前合成测试不能关闭此项。
+
+`docs/AIRSIM_INTEGRATION_PLAN.md` 已检查。本项没有 AirSim DTO、settings、episode 调度或
+控制接口变化，因此无需修改。`docs/EXPERIMENT_REPORT.md` 已检查；本次只有软件合同合成
+测试，没有新增仿真或物理实验结果，因此无需修改。
+
 ## 2026-08-01 A1 v2 失败归因与 v3 来源请求
 
 状态：`v2_failure_attributed_v3_development_source_requested_not_admitted`。

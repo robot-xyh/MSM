@@ -76,6 +76,12 @@ A1_V3_MAIN_REGISTRY_ID = "d3-a1-v3-main-allocation-registry-20260801-v1"
 A1_V3_GENERATION_SCHEDULE_ID = "d3-a1-v3-generation-schedule-20260801-v1"
 A1_V3_MAIN_REGISTRY_STATUS = "allocation_bound_plan_only"
 A1_V3_GENERATOR_CONFIG_STATUS = "frozen_plan_only_not_generated"
+A1_V3_NEAR_TIE_BOUNDARY_ID_V1 = "d3-a1-v3-rule-cost-near-tie-boundary-v1"
+A1_V3_NEAR_TIE_MAXIMUM_ABSOLUTE_GAP = 0.10
+A1_V3_NEAR_TIE_MAXIMUM_RELATIVE_GAP = 0.002
+A1_V3_NEAR_TIE_RELATIVE_DENOMINATOR_FLOOR = 1.0
+A1_V3_NEAR_TIE_REASON_MET = "near_tie_rule_cost_boundary_met_v1"
+A1_V3_NEAR_TIE_REASON_NOT_MET = "near_tie_rule_cost_boundary_not_met_v1"
 
 A1_V3_MANIFEST_FILENAME = "dataset_manifest.json"
 A1_V3_ONLINE_FRAMES_FILENAME = "online_frames.jsonl"
@@ -231,6 +237,30 @@ class A1V3EdgeResidualRank:
 
 
 @dataclass(frozen=True)
+class A1V3NearTieTargetMargin:
+    target_index: int
+    best_edge: tuple[int, int]
+    second_edge: tuple[int, int]
+    best_rule_cost: float
+    second_rule_cost: float
+    absolute_gap: float
+    relative_gap: float
+    qualifies: bool
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "target_index": self.target_index,
+            "best_edge": list(self.best_edge),
+            "second_edge": list(self.second_edge),
+            "best_rule_cost": self.best_rule_cost,
+            "second_rule_cost": self.second_rule_cost,
+            "absolute_gap": self.absolute_gap,
+            "relative_gap": self.relative_gap,
+            "qualifies": self.qualifies,
+        }
+
+
+@dataclass(frozen=True)
 class A1V3OnlineFrame:
     """Identity-free online diagnostic frame used by the learning path."""
 
@@ -249,6 +279,11 @@ class A1V3OnlineFrame:
     action_mask_shape: tuple[int, int]
     action_mask_true_count: int
     action_mask_sha256: str
+    candidate_edge_rule_costs: tuple[float, ...]
+    candidate_edge_rule_costs_sha256: str
+    near_tie_target_margins: tuple[A1V3NearTieTargetMargin, ...]
+    near_tie_qualifying_target_count: int
+    near_tie_reason_code: str
     target_demand_slots: tuple[int, ...]
     target_demand_slots_sha256: str
     pre_projection_reason_codes: tuple[str, ...]
@@ -290,6 +325,35 @@ class A1V3OnlineFrame:
                 "shape": list(self.action_mask_shape),
                 "true_count": self.action_mask_true_count,
                 "content_sha256": self.action_mask_sha256,
+            },
+            "rule_cost_near_tie": {
+                "boundary_id": A1_V3_NEAR_TIE_BOUNDARY_ID_V1,
+                "maximum_absolute_gap": A1_V3_NEAR_TIE_MAXIMUM_ABSOLUTE_GAP,
+                "maximum_relative_gap": A1_V3_NEAR_TIE_MAXIMUM_RELATIVE_GAP,
+                "relative_denominator_floor": (
+                    A1_V3_NEAR_TIE_RELATIVE_DENOMINATOR_FLOOR
+                ),
+                "qualification_logic": "absolute_and_relative",
+                "candidate_edge_costs": [
+                    {
+                        "edge": list(edge),
+                        "rule_cost": cost,
+                    }
+                    for edge, cost in zip(
+                        self.candidate_edges,
+                        self.candidate_edge_rule_costs,
+                        strict=True,
+                    )
+                ],
+                "candidate_edge_costs_sha256": (
+                    self.candidate_edge_rule_costs_sha256
+                ),
+                "evaluated_target_count": len(self.near_tie_target_margins),
+                "qualifying_target_count": self.near_tie_qualifying_target_count,
+                "target_margins": [
+                    item.to_dict() for item in self.near_tie_target_margins
+                ],
+                "reason_code": self.near_tie_reason_code,
             },
             "anonymous_target_demand_slots": list(self.target_demand_slots),
             "target_demand_slots_sha256": self.target_demand_slots_sha256,
@@ -335,6 +399,7 @@ class A1V3OnlineFrame:
                 "teacher_mask_observability",
                 "model_residual_ranking",
                 "action_mask",
+                "rule_cost_near_tie",
                 "anonymous_target_demand_slots",
                 "target_demand_slots_sha256",
                 "selected_edges",
@@ -569,6 +634,170 @@ class A1V3OnlineFrame:
         if action_sha != expected_action_sha:
             _fail("action_mask_sha256_mismatch")
 
+        near_tie = _mapping(
+            payload["rule_cost_near_tie"], "online_frame.rule_cost_near_tie"
+        )
+        _require_exact_keys(
+            near_tie,
+            {
+                "boundary_id",
+                "maximum_absolute_gap",
+                "maximum_relative_gap",
+                "relative_denominator_floor",
+                "qualification_logic",
+                "candidate_edge_costs",
+                "candidate_edge_costs_sha256",
+                "evaluated_target_count",
+                "qualifying_target_count",
+                "target_margins",
+                "reason_code",
+            },
+            "near_tie_fields_mismatch",
+        )
+        if (
+            near_tie["boundary_id"] != A1_V3_NEAR_TIE_BOUNDARY_ID_V1
+            or _finite_number(
+                near_tie["maximum_absolute_gap"], "near_tie.maximum_absolute_gap"
+            )
+            != A1_V3_NEAR_TIE_MAXIMUM_ABSOLUTE_GAP
+            or _finite_number(
+                near_tie["maximum_relative_gap"], "near_tie.maximum_relative_gap"
+            )
+            != A1_V3_NEAR_TIE_MAXIMUM_RELATIVE_GAP
+            or _finite_number(
+                near_tie["relative_denominator_floor"],
+                "near_tie.relative_denominator_floor",
+            )
+            != A1_V3_NEAR_TIE_RELATIVE_DENOMINATOR_FLOOR
+            or near_tie["qualification_logic"] != "absolute_and_relative"
+        ):
+            _fail("near_tie_boundary_mismatch")
+        raw_edge_costs = _list(
+            near_tie["candidate_edge_costs"], "near_tie.candidate_edge_costs"
+        )
+        parsed_cost_edges: list[tuple[int, int]] = []
+        candidate_edge_rule_costs: list[float] = []
+        for index, raw_item in enumerate(raw_edge_costs):
+            item = _mapping(raw_item, f"near_tie.candidate_edge_costs[{index}]")
+            _require_exact_keys(
+                item,
+                {"edge", "rule_cost"},
+                "near_tie_candidate_edge_cost_fields_mismatch",
+            )
+            parsed_cost_edges.append(
+                _edge(
+                    item["edge"],
+                    f"near_tie.candidate_edge_costs[{index}].edge",
+                    target_count=target_count,
+                    resource_count=resource_count,
+                )
+            )
+            candidate_edge_rule_costs.append(
+                _finite_number(
+                    item["rule_cost"],
+                    f"near_tie.candidate_edge_costs[{index}].rule_cost",
+                )
+            )
+        if tuple(parsed_cost_edges) != candidate_edges:
+            _fail("near_tie_candidate_edge_cost_inventory_mismatch")
+        edge_cost_payload = [
+            {"edge": list(edge), "rule_cost": cost}
+            for edge, cost in zip(
+                candidate_edges, candidate_edge_rule_costs, strict=True
+            )
+        ]
+        edge_cost_sha = _sha256_value(
+            near_tie["candidate_edge_costs_sha256"],
+            "near_tie.candidate_edge_costs_sha256",
+        )
+        if canonical_json_sha256(edge_cost_payload) != edge_cost_sha:
+            _fail("near_tie_candidate_edge_cost_sha256_mismatch")
+
+        expected_margins = compute_a1_v3_near_tie_target_margins(
+            candidate_edges,
+            tuple(candidate_edge_rule_costs),
+            target_count=target_count,
+        )
+        raw_margins = _list(near_tie["target_margins"], "near_tie.target_margins")
+        parsed_margins: list[A1V3NearTieTargetMargin] = []
+        for index, raw_item in enumerate(raw_margins):
+            item = _mapping(raw_item, f"near_tie.target_margins[{index}]")
+            _require_exact_keys(
+                item,
+                {
+                    "target_index",
+                    "best_edge",
+                    "second_edge",
+                    "best_rule_cost",
+                    "second_rule_cost",
+                    "absolute_gap",
+                    "relative_gap",
+                    "qualifies",
+                },
+                "near_tie_target_margin_fields_mismatch",
+            )
+            parsed_margins.append(
+                A1V3NearTieTargetMargin(
+                    target_index=_nonnegative_integer(
+                        item["target_index"],
+                        f"near_tie.target_margins[{index}].target_index",
+                    ),
+                    best_edge=_edge(
+                        item["best_edge"],
+                        f"near_tie.target_margins[{index}].best_edge",
+                        target_count=target_count,
+                        resource_count=resource_count,
+                    ),
+                    second_edge=_edge(
+                        item["second_edge"],
+                        f"near_tie.target_margins[{index}].second_edge",
+                        target_count=target_count,
+                        resource_count=resource_count,
+                    ),
+                    best_rule_cost=_finite_number(
+                        item["best_rule_cost"],
+                        f"near_tie.target_margins[{index}].best_rule_cost",
+                    ),
+                    second_rule_cost=_finite_number(
+                        item["second_rule_cost"],
+                        f"near_tie.target_margins[{index}].second_rule_cost",
+                    ),
+                    absolute_gap=_finite_number(
+                        item["absolute_gap"],
+                        f"near_tie.target_margins[{index}].absolute_gap",
+                    ),
+                    relative_gap=_finite_number(
+                        item["relative_gap"],
+                        f"near_tie.target_margins[{index}].relative_gap",
+                    ),
+                    qualifies=_boolean(
+                        item["qualifies"],
+                        f"near_tie.target_margins[{index}].qualifies",
+                    ),
+                )
+            )
+        if tuple(parsed_margins) != expected_margins:
+            _fail("near_tie_target_margin_recomputation_mismatch")
+        evaluated_target_count = _nonnegative_integer(
+            near_tie["evaluated_target_count"], "near_tie.evaluated_target_count"
+        )
+        qualifying_target_count = _nonnegative_integer(
+            near_tie["qualifying_target_count"],
+            "near_tie.qualifying_target_count",
+        )
+        actual_qualifying_count = sum(item.qualifies for item in expected_margins)
+        if evaluated_target_count != len(expected_margins):
+            _fail("near_tie_evaluated_target_count_mismatch")
+        if qualifying_target_count != actual_qualifying_count:
+            _fail("near_tie_qualifying_target_count_mismatch")
+        expected_reason = (
+            A1_V3_NEAR_TIE_REASON_MET
+            if actual_qualifying_count > 0
+            else A1_V3_NEAR_TIE_REASON_NOT_MET
+        )
+        if near_tie["reason_code"] != expected_reason:
+            _fail("near_tie_reason_code_mismatch")
+
         demand_raw = _list(
             payload["anonymous_target_demand_slots"],
             "anonymous_target_demand_slots",
@@ -642,6 +871,11 @@ class A1V3OnlineFrame:
             action_mask_shape=shape,
             action_mask_true_count=true_count,
             action_mask_sha256=action_sha,
+            candidate_edge_rule_costs=tuple(candidate_edge_rule_costs),
+            candidate_edge_rule_costs_sha256=edge_cost_sha,
+            near_tie_target_margins=expected_margins,
+            near_tie_qualifying_target_count=actual_qualifying_count,
+            near_tie_reason_code=expected_reason,
             target_demand_slots=demand_slots,
             target_demand_slots_sha256=demand_sha,
             pre_projection_reason_codes=pre_reasons,
@@ -1129,6 +1363,10 @@ class A1V3DatasetManifest:
     positive_frame_count: int
     negative_frame_count: int
     hard_negative_frame_count: int
+    offline_identity_audit_availability: str
+    complete_identity_label_frame_count: int
+    partial_identity_label_frame_count: int
+    empty_identity_label_frame_count: int
     split_seed_values: Mapping[str, tuple[int, ...]]
     cell_counts: tuple[Mapping[str, Any], ...]
 
@@ -2907,6 +3145,7 @@ def _parse_dataset_manifest(
             "source",
             "artifacts",
             "counts",
+            "offline_identity_audit",
             "split",
             "cell_counts",
             "state",
@@ -3059,6 +3298,60 @@ def _parse_dataset_manifest(
         if parsed_counts[zero_field] != 0:
             _fail("manifest_zero_count_violation", zero_field)
 
+    identity_audit = _mapping(
+        payload["offline_identity_audit"], "manifest.offline_identity_audit"
+    )
+    _require_exact_keys(
+        identity_audit,
+        {
+            "availability",
+            "complete_identity_audit_claimed",
+            "complete_identity_label_frame_count",
+            "partial_identity_label_frame_count",
+            "empty_identity_label_frame_count",
+        },
+        "manifest_offline_identity_audit_fields_mismatch",
+    )
+    identity_availability = _choice(
+        identity_audit["availability"],
+        ("complete", "partial", "unavailable"),
+        "manifest.offline_identity_audit.availability",
+    )
+    complete_identity_count = _nonnegative_integer(
+        identity_audit["complete_identity_label_frame_count"],
+        "manifest.offline_identity_audit.complete_identity_label_frame_count",
+    )
+    partial_identity_count = _nonnegative_integer(
+        identity_audit["partial_identity_label_frame_count"],
+        "manifest.offline_identity_audit.partial_identity_label_frame_count",
+    )
+    empty_identity_count = _nonnegative_integer(
+        identity_audit["empty_identity_label_frame_count"],
+        "manifest.offline_identity_audit.empty_identity_label_frame_count",
+    )
+    complete_claimed = _boolean(
+        identity_audit["complete_identity_audit_claimed"],
+        "manifest.offline_identity_audit.complete_identity_audit_claimed",
+    )
+    if (
+        complete_identity_count + partial_identity_count + empty_identity_count
+        != parsed_counts["frame_count"]
+    ):
+        _fail("manifest_offline_identity_audit_count_mismatch")
+    expected_identity_availability = (
+        "complete"
+        if complete_identity_count == parsed_counts["frame_count"]
+        else (
+            "unavailable"
+            if complete_identity_count == 0 and partial_identity_count == 0
+            else "partial"
+        )
+    )
+    if identity_availability != expected_identity_availability:
+        _fail("manifest_offline_identity_audit_availability_mismatch")
+    if complete_claimed != (identity_availability == "complete"):
+        _fail("manifest_offline_identity_audit_claim_mismatch")
+
     split = _mapping(payload["split"], "manifest.split")
     _require_exact_keys(
         split,
@@ -3176,6 +3469,10 @@ def _parse_dataset_manifest(
         positive_frame_count=parsed_counts["positive_frame_count"],
         negative_frame_count=parsed_counts["negative_frame_count"],
         hard_negative_frame_count=parsed_counts["hard_negative_frame_count"],
+        offline_identity_audit_availability=identity_availability,
+        complete_identity_label_frame_count=complete_identity_count,
+        partial_identity_label_frame_count=partial_identity_count,
+        empty_identity_label_frame_count=empty_identity_count,
         split_seed_values=split_seed_values,
         cell_counts=tuple(cell_counts),
     )
@@ -3223,6 +3520,21 @@ def _validate_generated_records(
     for frame, label in zip(online_frames, offline_labels, strict=True):
         if label.online_payload_sha256 != frame.content_sha256:
             _fail("offline_online_payload_sha256_mismatch")
+        if (
+            label.hard_negative
+            and frame.source.scenario_family == "near_tie_hard_negative"
+            and label.hard_negative_type != "near_tie_but_teacher_keeps_r0"
+        ):
+            _fail("near_tie_cell_hard_negative_type_mismatch")
+        if (
+            label.hard_negative
+            and label.hard_negative_type == "near_tie_but_teacher_keeps_r0"
+            and (
+                frame.near_tie_qualifying_target_count < 1
+                or frame.near_tie_reason_code != A1_V3_NEAR_TIE_REASON_MET
+            )
+        ):
+            _fail("near_tie_hard_negative_boundary_not_met")
         if (
             label.split != frame.source.split
             or label.cell_id != frame.source.cell_id
@@ -3288,6 +3600,13 @@ def _validate_generated_records(
         or hard_count != manifest.hard_negative_frame_count
     ):
         _fail("dataset_label_count_manifest_mismatch")
+    identity_audit_counts = _offline_identity_audit_counts(offline_labels)
+    if identity_audit_counts != {
+        "complete": manifest.complete_identity_label_frame_count,
+        "partial": manifest.partial_identity_label_frame_count,
+        "empty": manifest.empty_identity_label_frame_count,
+    }:
+        _fail("dataset_offline_identity_audit_manifest_mismatch")
     actual_split_seeds = {
         split: tuple(
             sorted(
@@ -3388,6 +3707,71 @@ def _readiness_report(
 
 def _false_permissions() -> dict[str, bool]:
     return {name: False for name in A1_V3_PERMISSION_FIELDS}
+
+
+def _offline_identity_audit_counts(
+    labels: Sequence[A1V3OfflineLabel],
+) -> dict[str, int]:
+    counts = {"complete": 0, "partial": 0, "empty": 0}
+    for label in labels:
+        present = (
+            bool(label.truth_target_labels),
+            bool(label.actor_labels),
+            bool(label.object_labels),
+            bool(label.center_global_track_labels),
+        )
+        if all(present):
+            counts["complete"] += 1
+        elif any(present):
+            counts["partial"] += 1
+        else:
+            counts["empty"] += 1
+    return counts
+
+
+def compute_a1_v3_near_tie_target_margins(
+    candidate_edges: Sequence[tuple[int, int]],
+    candidate_edge_rule_costs: Sequence[float],
+    *,
+    target_count: int,
+) -> tuple[A1V3NearTieTargetMargin, ...]:
+    by_target: dict[int, list[tuple[float, tuple[int, int]]]] = defaultdict(list)
+    for edge, cost in zip(
+        candidate_edges, candidate_edge_rule_costs, strict=True
+    ):
+        by_target[edge[0]].append((float(cost), edge))
+    margins: list[A1V3NearTieTargetMargin] = []
+    for target_index in range(target_count):
+        candidates = sorted(
+            by_target.get(target_index, ()), key=lambda item: (item[0], item[1])
+        )
+        if len(candidates) < 2:
+            continue
+        best_cost, best_edge = candidates[0]
+        second_cost, second_edge = candidates[1]
+        absolute_gap = second_cost - best_cost
+        relative_gap = absolute_gap / max(
+            abs(best_cost), A1_V3_NEAR_TIE_RELATIVE_DENOMINATOR_FLOOR
+        )
+        qualifies = (
+            absolute_gap
+            <= A1_V3_NEAR_TIE_MAXIMUM_ABSOLUTE_GAP + 1.0e-12
+            and relative_gap
+            <= A1_V3_NEAR_TIE_MAXIMUM_RELATIVE_GAP + 1.0e-12
+        )
+        margins.append(
+            A1V3NearTieTargetMargin(
+                target_index=target_index,
+                best_edge=best_edge,
+                second_edge=second_edge,
+                best_rule_cost=best_cost,
+                second_rule_cost=second_cost,
+                absolute_gap=absolute_gap,
+                relative_gap=relative_gap,
+                qualifies=qualifies,
+            )
+        )
+    return tuple(margins)
 
 
 def _validate_permissions(

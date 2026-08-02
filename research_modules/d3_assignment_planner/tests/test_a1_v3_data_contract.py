@@ -11,6 +11,11 @@ import pytest
 from d3_assignment_planner.a1_v3_data_contract import (
     A1_V3_DATASET_MANIFEST_SCHEMA_V1,
     A1_V3_OFFLINE_LABEL_SCHEMA_V1,
+    A1_V3_NEAR_TIE_BOUNDARY_ID_V1,
+    A1_V3_NEAR_TIE_MAXIMUM_ABSOLUTE_GAP,
+    A1_V3_NEAR_TIE_MAXIMUM_RELATIVE_GAP,
+    A1_V3_NEAR_TIE_REASON_MET,
+    A1_V3_NEAR_TIE_RELATIVE_DENOMINATOR_FLOOR,
     A1_V3_ONLINE_FRAME_SCHEMA_V1,
     A1_V3_PERMISSION_FIELDS,
     A1_V3_SPLIT_POLICY_V1,
@@ -86,7 +91,11 @@ def _online_payload(
 ) -> dict:
     if cell is None:
         cell = _json(REQUEST_PATH)["collection_cells"][0]
-    edges = [[0, 0]]
+    edges = [[0, 0], [0, 1]]
+    edge_costs = [
+        {"edge": [0, 0], "rule_cost": 1.0},
+        {"edge": [0, 1], "rule_cost": 1.001},
+    ]
     demand = [1]
     return {
         "schema_version": A1_V3_ONLINE_FRAME_SCHEMA_V1,
@@ -105,7 +114,7 @@ def _online_payload(
         },
         "observed_scale": {
             "anonymous_target_count": 1,
-            "anonymous_resource_count": 1,
+            "anonymous_resource_count": 2,
         },
         "candidate_edge_indices": edges,
         "candidate_edge_indices_sha256": canonical_json_sha256(edges),
@@ -116,12 +125,43 @@ def _online_payload(
         },
         "model_residual_ranking": {
             "rank_direction": "ascending_cost_residual_then_edge",
-            "items": [{"edge": [0, 0], "residual": 0.0, "rank": 1}],
+            "items": [
+                {"edge": [0, 0], "residual": 0.0, "rank": 1},
+                {"edge": [0, 1], "residual": 0.5, "rank": 2},
+            ],
         },
         "action_mask": {
-            "shape": [1, 1],
-            "true_count": 1,
-            "content_sha256": action_mask_content_sha256((1, 1), ((0, 0),)),
+            "shape": [1, 2],
+            "true_count": 2,
+            "content_sha256": action_mask_content_sha256(
+                (1, 2), ((0, 0), (0, 1))
+            ),
+        },
+        "rule_cost_near_tie": {
+            "boundary_id": A1_V3_NEAR_TIE_BOUNDARY_ID_V1,
+            "maximum_absolute_gap": A1_V3_NEAR_TIE_MAXIMUM_ABSOLUTE_GAP,
+            "maximum_relative_gap": A1_V3_NEAR_TIE_MAXIMUM_RELATIVE_GAP,
+            "relative_denominator_floor": (
+                A1_V3_NEAR_TIE_RELATIVE_DENOMINATOR_FLOOR
+            ),
+            "qualification_logic": "absolute_and_relative",
+            "candidate_edge_costs": edge_costs,
+            "candidate_edge_costs_sha256": canonical_json_sha256(edge_costs),
+            "evaluated_target_count": 1,
+            "qualifying_target_count": 1,
+            "target_margins": [
+                {
+                    "target_index": 0,
+                    "best_edge": [0, 0],
+                    "second_edge": [0, 1],
+                    "best_rule_cost": 1.0,
+                    "second_rule_cost": 1.001,
+                    "absolute_gap": 0.0009999999999998899,
+                    "relative_gap": 0.0009999999999998899,
+                    "qualifies": True,
+                }
+            ],
+            "reason_code": A1_V3_NEAR_TIE_REASON_MET,
         },
         "anonymous_target_demand_slots": demand,
         "target_demand_slots_sha256": canonical_json_sha256(demand),
@@ -317,6 +357,13 @@ def _write_dataset(
             "learning_rewritten_global_track_id_count": 0,
             "duplicate_episode_count": 0,
             "duplicate_frame_count": 0,
+        },
+        "offline_identity_audit": {
+            "availability": "unavailable",
+            "complete_identity_audit_claimed": False,
+            "complete_identity_label_frame_count": 0,
+            "partial_identity_label_frame_count": 0,
+            "empty_identity_label_frame_count": 2700,
         },
         "split": registry["split"],
         "cell_counts": [
