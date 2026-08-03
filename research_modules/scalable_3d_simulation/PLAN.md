@@ -2,9 +2,10 @@
 
 ## 2026-08-02 学习来源生成前置收敛
 
-1. [x] D3 完成 15 个冻结 cell 的首配方真实 runtime-to-writer 审计。15/15 均满足
-   正类/负类/困难负类 `3/3/2`，在线真值使用为 0；动态增删、匿名资源事件、near-tie
-   和稳定量测窗口已由实际状态机调用。
+1. [x] D3 完成 15 个冻结 cell、300 个 episode 的 dirty 开发探针。300/300 均满足
+   可观测/正类/负类/困难负类 `9/3/3/2`，实际最低为 `9/3/3/3`；动态增删、匿名资源
+   事件、near-tie 和稳定量测窗口均由实际状态机调用。失败、在线真值、身份写入、重复帧、
+   正式 seed 和 R0 shard 10-19 读取均为 0。该证据保持 `readiness_eligible=false`。
 2. [x] D4 完成 324/324 配方、972 帧来源可行性审计，并以 sequence 0/1 验证跨进程
    suspend/resume。来源请求仅开放 `source_generation_request`，正式生成、训练、降级、
    联盟和控制权限保持关闭。
@@ -14,7 +15,8 @@
 4. [x] main 统一预检已确认模块计划、生产器适配和来源请求均为 `3/3`。当前唯一 blocker
    是待提交工作区，状态为 `blocked_by_dirty_generation_worktree`；执行命令、正式授权、
    generation started 和 training started 均为空或 false。
-5. [x] 回归完成：main 前置链 `25 passed`，三维世界/传感器/配方链 `89 passed`，
+5. [x] 回归完成：更新后三模块来源适配、生成和预检专项 `24 passed`；上一轮 main
+   前置链 `25 passed`，三维世界/传感器/配方链 `89 passed`，
    scalable 全量 `509 passed`；D3 全量退出码为 0，D4 `1013 passed`，D5
    `877 passed`。全量回归发现并修复 generation plan 元组/JSON 列表导致的 resume
    误报。现有告警来自 Matplotlib/NVML 环境，不改变来源合同结论。
