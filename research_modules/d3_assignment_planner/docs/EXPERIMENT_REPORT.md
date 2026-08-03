@@ -1,5 +1,119 @@
 # D3 集中式资源-目标分配实验报告
 
+## A1 v3 300 条最终 dirty 开发探针（2026-08-02）
+
+main 最终探针覆盖冻结 schedule 的 15 个 cell 和 300 个 episode，结果为
+`300/300 exploratory_dirty_pass`。所有 episode 都满足可观测/正类/负类/困难负类
+`9/3/3/2`，实际逐条最低为 `9/3/3/3`，汇总帧数为
+`3086/1313/1773/1771`。
+
+| 审计项 | 结果 |
+| --- | ---: |
+| episode 通过 | 300/300 |
+| 失败 / 探针异常 | 0 / 0 |
+| 在线 truth 读取 | 0 |
+| `global_track_id` 创建 / 改写 | 0 / 0 |
+| 重复帧 | 0 |
+| 正式 seed / R0 shard 10-19 读取 | 0 / 0 |
+
+权威汇总的 content SHA-256 为
+`5a580e19c0ff97c3ef7446ec4e759eb79f50ef1b91e23f8525d1f0473ff8958f`。该运行时
+`repository_dirty=true`，因此 `readiness_eligible=false`、
+`formal_source_generation=false`、`dataset_finalized=false`、`training_started=false`，
+运行和控制权限均为 false。结果只关闭 source-generation request 级配额缺口，
+不是正式数据集或训练准入证据。
+
+D3 readiness 现内嵌完整 300 个 passing recipe ID 和 300 条 runtime result，并通过独立
+inventory 绑定上述 evidence content SHA-256。两组 episode ID 均唯一且精确覆盖冻结
+schedule；runtime result 的 cell/seed、四类计数、writer staged 和空 reason codes 逐条通过。
+聚合 caller classification override、classifier error、online truth 和 blocker 数分别为
+`false/0/0/0`。该修复只补齐 request/readiness 的机器可消费证据，不改变 dirty 状态或任何
+生成、训练、运行、分配、计划和控制权限。
+当前 readiness artifact 文件 SHA-256 为
+`b5685b61acff9f0f1bde504ecc27d17621e0161c8adad95d1789e4d46b74c42f`，inventory 文件 SHA-256
+为 `fb89bfe57431647d1c7f82a6b7ae53ca995bec31e9d885bd0c2a8a6bfb111f55`；summary 与 episodes
+JSONL 的文件 SHA-256 为 `53c2e8a417a926b018d0b491149c2c7f2bf7fd4f17f5fe8035e4b4450508e415` /
+`78da424c51a1b91d7ffcf288af9eeb4c887a8353cae8b125efcb7dbce7a66ad3`。
+
+下节保留修复前失败证据和定向重放，用于说明配方与分类器的收敛过程。
+
+## A1 v3 300 条失败开发证据与定向重放（2026-08-02）
+
+main 在本轮分类修复前完成 300 条全量非正式探针。实际结果为 195 条通过、76 条
+`probe_error`、29 条 `quota_failed`。在线 truth 使用、`global_track_id` 创建/改写和重复帧
+均为 0。center-failure 的 18 条 secondary owner 错误属于 D4/main，不纳入 D3 分类修复。
+
+| 证据阶段 | 通过 | 分类错误 | 配额不足 | 说明 |
+| --- | ---: | ---: | ---: | --- |
+| 旧全量探针实际结果 | 195 | 76 | 29 | 300 条完整运行，失败开发证据 |
+| 非 center-failure 定向重放 | 34 | 2 | 22 | 只重放原 58 条 D3 分类错误 |
+| 新全量预计状态 | 229 | 20 | 51 | 推导值，尚未执行 |
+
+定向重放确认三类匿名合法变化：资源 multiset 守恒的等基数重排、候选容量坍缩驱动的单槽
+覆盖转移，以及 candidate inventory 变化下的一次资源交换开放链。formation-split entry 65
+在一帧内释放和获取 3 个 teacher 资源；evasive entry 94 同时交换 2 个资源。两者超过当前
+可证明的单资源边界，仍返回 `sidecar_teacher_change_unclassifiable`。
+
+旧 29 条配额不足分布为 formation-split 5、evasive 8、secondary-failure 7、
+high-threat-200 1、dynamic-add-drop 1、near-tie 7。定向重放另暴露 22 条：evasive 1、
+high-threat-100 2、high-threat-200 3、dynamic-add-drop 14、near-tie 2。分类修复自然关闭
+原分类错误中的 34 条；其余条目需要真实稳定帧，不能通过扩大 taxonomy 或复制帧满足配额。
+
+main 配方的最小建议是：formation/evasive/near-tie 在 roster 事件后保留稳定观测 tick；
+secondary-failure 在二级失效前产生匿名资源停用/恢复证据；high-threat 延长或前移稳定窗口；
+dynamic-add-drop 提前结束事件或延长时长，留下至少 3 个稳定 tick。固定配额仍为
+observable/positive/negative/hard-negative=`9/3/3/2`。readiness 保持 false，等待 main
+新的 300/300。
+
+dense-crossing 的 entry 41、48、53、58 各运行修复前后两次，共形成 8 条定向记录。修复前
+41、53、58 通过，48 因 `sidecar_teacher_change_unclassifiable` 返回 worker exception；
+修复后四条均通过。四条修复后 observable/positive/negative/hard-negative 依次为
+`10/7/3/3`、`10/5/5/5`、`10/6/4/4`、`10/7/3/3`。
+
+聚焦测试覆盖 sidecar classification、quota probe 和 source-only projection，共 39 项，
+结果为 `39 passed`。runtime-to-writer 专项共 15 项，结果为 `15 passed`。该专项对满足
+配额的 episode 正常 stage；对自然配额不足的 episode 要求 writer 返回
+`writer_episode_minimum_not_met`；center-failure 单独标明由 D4/main 负责。历史 A1 v1/v2
+证据测试改为读取各自不可变 Git 版本，未重写历史工件。D3 全量测试按用户指令在约 17%
+处中止，没有形成新的全量测试计数。
+
+## A1 v3 entry 48 匿名覆盖转移核验（2026-08-02）
+
+entry 48 对应 seed `23032`、`dense-crossing-50t50r`。frame 3 的目标数、需求和活动资源库存
+均未变化。candidate edge 为 `1600 -> 1568`，added/removed 为 `213/245`；匿名目标 2 的
+候选边由 32 降为 0，未覆盖目标由 49 转为 2。teacher 保持 49 条，coverage deficit 保持 1，
+计划资源由 38 退出、25 进入。该帧分类为
+`single_target_rebind_with_resource_release`。
+
+定向复跑得到 observable/positive/negative/hard-negative=`10/5/5/5`，高于固定下限
+`9/3/3/2`。`online_truth_use_count`、`global_track_id` create/rewrite 均为 0。该段原始
+全量运行共收集 836 项，结果为 817 passed、1 skipped、3 failed、15 errors，是修复前的
+中间证据。3 个历史源树漂移和 15 个 runtime-to-writer 错误已按上一节所述处理；当前只报告
+聚焦与 runtime-to-writer 结果，不把未完成的全量回归写成通过。readiness 仍为 false，等待
+main 的 300/300。
+
+## A1 v3 精确 reference 与 coverage taxonomy 软件核验（2026-08-02）
+
+D3 已增加 `exact_safe_reference` post-projection policy，并将 quota probe checkpoint/record
+升级为 v4 合同。seed `23006` 型同覆盖换资源用例要求 candidate/pre reasons 不随 reference
+改变，同时 effective 精确等于安全 reference。sidecar coverage taxonomy 另要求匿名
+candidate-feasibility inventory 与 teacher coverage 同向变化，固定 candidate mask 的多边
+teacher 丢失继续失败关闭，同覆盖三目标 cycle 保持原分类。
+
+seed `23191` 的匿名诊断给出 frame 3 candidate inventory `1600 -> 1521`
+（added `174`、removed `253`）且 teacher `50 -> 48`，frame 8 candidate inventory
+`1587 -> 1600`（added `220`、removed `207`）且 teacher `49 -> 50`。这些数值已写入
+probe 回归期待；frame record 同时保存 before/after、added/removed 和 delta，并校验两种
+差分表达一致。该证据用于收紧 taxonomy，不构成 300-recipe 验收结果。
+
+当前只完成 D3 软件实现和 projection 聚焦核验，尚未形成新的 300-recipe probe 结果。
+main global registry content/file SHA-256 已刷新为 `982f3467...9530c` / `98caa683...f988`，
+D3 generator/allocation/schedule/readiness 文件 SHA-256 已依次重算为
+`423f90d8...1460` / `9856b607...0647` / `a9b494de...bdfa` / `c2e30c90...0273`。
+本次仅刷新绑定，不报告 seed `23006`/`23191` 为 probe pass，也不更新既有配额统计。
+readiness=false，blocker 仍为
+`cross_seed_quota_viability_not_proven`；`3/3/2`、seed/split 和全部权限未改变。
+
 ## A1 v3 15-cell 来源请求审计（2026-08-02）
 
 本批使用 15 个冻结 cell 的首个 TRAIN recipe，每个配置时长为 10 秒。运行链路依次经过
@@ -2235,3 +2349,32 @@ main 接线后，两个 D3 集成测试的旧假设不再成立：旧测试以�
 不发布、不生成 ACK；D3 算法代码未修改。专项 2 项通过。D3 全量收集 655 项，结果为
 `654 passed, 1 skipped`，跳过项是未安装的可选 OR-Tools。Matplotlib `Axes3D` 环境
 告警仍存在，不影响本项。
+
+## 2026-08-02 A1 v3 探索性证据
+
+本轮只整理既有 28 行，不执行剩余旧 300 条 recipe：`5 pass / 23 fail`，seed `23001`
+为 `10/1/9/4`。最低 quota `3/3/2` 未改变，但 cross-seed viability 未证明；dirty
+worktree 下全部为 exploratory/non-formal，formal source `staged=1`、`finalized=0`。
+readiness 为 false，blocker 为 `cross_seed_quota_viability_not_proven`。未读取 formal
+seeds/R0 shards，未使用 truth/teacher override，未复制 frame，未写入 `global_track_id`。
+
+## 2026-08-02 A1 v3 全量开发探针
+
+指定证据包含 summary、300 行 episodes JSONL 和 checkpoint。JSONL 为并行完成顺序，按
+`episode_id` 与 summary 对齐后无内容差异；checkpoint 的 source bindings 与 summary 一致。
+
+| 项目 | 结果 | 门槛 |
+| --- | ---: | ---: |
+| cell | 15 | 15 |
+| episode 通过 | 300/300 | 300/300 |
+| 可观测帧总数 / 逐条最低 | 3086 / 9 | 逐条至少 9 |
+| 正类帧总数 / 逐条最低 | 1313 / 3 | 逐条至少 3 |
+| 负类帧总数 / 逐条最低 | 1773 / 3 | 逐条至少 3 |
+| 困难负类总数 / 逐条最低 | 1771 / 3 | 逐条至少 2 |
+| probe error / duplicate frame | 0 / 0 | 0 / 0 |
+| online truth / ID create / ID rewrite | 0 / 0 / 0 | 0 / 0 / 0 |
+| formal seed / R0 shard 10-19 read | 0 / 0 | 0 / 0 |
+
+状态为 `exploratory_dirty_pass`。工作树为 dirty，未正式生成数据集，未训练，未授予 runtime
+或 control authority。该结果关闭 cross-seed quota viability 的 request-level blocker，只允许
+提交 generation request；正式生成仍需 main 的 clean preflight、显式授权和新输出目录。

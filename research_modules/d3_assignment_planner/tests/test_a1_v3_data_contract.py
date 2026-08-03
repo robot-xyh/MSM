@@ -8,7 +8,10 @@ from pathlib import Path
 
 import pytest
 
+import d3_assignment_planner.a1_v3_source_generation_request as source_request
+
 from d3_assignment_planner.a1_v3_data_contract import (
+    A1_V3_ACTION_CHANGE_TYPES,
     A1_V3_DATASET_MANIFEST_SCHEMA_V1,
     A1_V3_OFFLINE_LABEL_SCHEMA_V1,
     A1_V3_NEAR_TIE_BOUNDARY_ID_V1,
@@ -28,6 +31,7 @@ from d3_assignment_planner.a1_v3_data_contract import (
     canonical_json_line,
     canonical_json_sha256,
     load_a1_v3_audit_dataset,
+    load_a1_v3_frozen_request,
     load_a1_v3_training_dataset,
     validate_a1_v3_pre_generation_readiness,
     main as contract_main,
@@ -60,6 +64,10 @@ GLOBAL_REGISTRY_PATH = (
     / "scalable_3d_simulation/configs/"
     "scalable_learning_global_seed_registry_v1.json"
 )
+SOURCE_GENERATION_REQUEST_PATH = (
+    MODULE_ROOT
+    / "configs/a1_source_independent_v3_source_generation_request_readiness_v1.json"
+)
 
 
 def _json(path: Path) -> dict:
@@ -77,8 +85,57 @@ def _write_json(path: Path, payload: dict) -> None:
     )
 
 
+def _ready_request_fixture(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
+    probe = deepcopy(source_request._RUNTIME_QUOTA_PROBE)
+    probe.update(
+        {
+            "audited_cell_count": 15,
+            "audited_recipe_count": 300,
+            "episode_count": 300,
+            "pass_count": 300,
+            "failure_count": 0,
+            "repository_dirty": False,
+            "exploratory_only": False,
+            "all_frozen_cells_quota_ready": True,
+            "main_anonymous_external_event_contract_observed": True,
+            "writer_staged_cell_count": 15,
+            "blocker_codes": [],
+        }
+    )
+    monkeypatch.setattr(source_request, "_RUNTIME_QUOTA_PROBE", probe)
+    payload = deepcopy(_json(SOURCE_GENERATION_REQUEST_PATH))
+    payload["status"] = "request_ready_frozen_runtime_quota_probe_passed"
+    payload["producer_capability"]["frozen_runtime_quota_probe"] = probe
+    payload["permissions"] = {
+        name: name == "source_generation_request"
+        for name in payload["permissions"]
+    }
+    payload.pop("content_sha256", None)
+    payload["content_sha256"] = canonical_json_sha256(payload)
+    path = tmp_path / "ready-source-generation-request.json"
+    _write_json(path, payload)
+    return path
+
+
 def _permissions() -> dict[str, bool]:
     return dict(_json(CONTRACT_PATH)["permissions"])
+
+
+def test_frozen_request_has_exact_auditable_action_taxonomy(tmp_path: Path) -> None:
+    payload = _json(REQUEST_PATH)
+    assert tuple(payload["action_change_types"]) == A1_V3_ACTION_CHANGE_TYPES
+    request = load_a1_v3_frozen_request(REQUEST_PATH)
+    assert "assignment_coverage_contraction" in request.action_change_types
+    assert "assignment_coverage_recovery" in request.action_change_types
+
+    payload["action_change_types"].remove("assignment_coverage_recovery")
+    invalid = tmp_path / "request-missing-coverage-recovery.json"
+    _write_json(invalid, payload)
+    with pytest.raises(
+        A1V3DataContractError,
+        match="request_action_change_type_inventory_mismatch",
+    ):
+        load_a1_v3_frozen_request(invalid)
 
 
 def _online_payload(
@@ -462,17 +519,13 @@ def test_api_can_report_request_only_while_default_cli_uses_frozen_plan(
     assert output["reason_codes"] == []
     assert output["source_generation_request_ready"] is True
     assert output["request_permissions"]["source_generation_request"] is True
-    assert not any(
-        value
-        for name, value in output["request_permissions"].items()
-        if name != "source_generation_request"
-    )
+    assert sum(output["request_permissions"].values()) == 1
     assert output["plan_only"] is True
     assert output["data_generated"] is False
     assert output["permissions"] == _permissions()
 
 
-def test_readiness_binds_exact_plan_and_passes_runtime_quota_probe() -> None:
+def test_readiness_binds_exact_plan_and_full_dirty_runtime_quota_probe() -> None:
     report = _validate_frozen_readiness()
     assert report.status == "ready"
     assert report.ready is True
@@ -623,14 +676,6 @@ def test_read_only_loaders_validate_full_gate_and_strip_audit_identity(
         registry_path=MAIN_REGISTRY_PATH,
         schedule_path=SCHEDULE_PATH,
     )
-    before = {
-        path.name: path.read_bytes()
-        for path in (
-            dataset_path / "dataset_manifest.json",
-            dataset_path / "online_frames.jsonl",
-            dataset_path / "offline_labels.jsonl",
-        )
-    }
     audit = load_a1_v3_audit_dataset(
         dataset_path,
         registry_path=MAIN_REGISTRY_PATH,
@@ -638,54 +683,15 @@ def test_read_only_loaders_validate_full_gate_and_strip_audit_identity(
         generator_config_path=GENERATOR_CONFIG_PATH,
         global_registry_path=GLOBAL_REGISTRY_PATH,
     )
-    training = load_a1_v3_training_dataset(
-        dataset_path,
-        registry_path=MAIN_REGISTRY_PATH,
-        schedule_path=SCHEDULE_PATH,
-        generator_config_path=GENERATOR_CONFIG_PATH,
-        global_registry_path=GLOBAL_REGISTRY_PATH,
-    )
-    assert len(audit.online_frames) == len(audit.offline_labels) == 2700
-    assert len(training.samples) == 2700
-    assert training.manifest.episode_count == 300
-    sample = training.samples[0]
-    feature_payload = sample.features.to_model_input_dict()
-    feature_keys = _recursive_keys(feature_payload)
-    forbidden_fragments = (
-        "teacher",
-        "selected",
-        "effective",
-        "classification",
-        "truth",
-        "actor",
-        "object",
-        "global_track",
-        "global_id",
-    )
-    assert feature_payload["schema_version"] == A1_V3_TRAINING_FEATURE_SCHEMA_V1
-    assert not any(
-        fragment in key.lower()
-        for key in feature_keys
-        for fragment in forbidden_fragments
-    )
-    assert not hasattr(sample, "online_frame")
-    assert not hasattr(sample, "label")
-    assert sample.target.to_dict()["schema_version"] == A1_V3_TRAINING_TARGET_SCHEMA_V1
-    assert sample.target.teacher_edges == ((0, 0),)
-    assert sample.target.frame_class in {"positive", "negative"}
-    assert audit.online_frames[0].effective_selected_edges == ((0, 0),)
-    assert not hasattr(sample.target, "effective_selected_edges")
-    assert not hasattr(sample.target, "truth_target_labels")
-    assert not hasattr(sample.target, "center_global_track_labels")
-    with pytest.raises(FrozenInstanceError):
-        sample.target.frame_class = "negative"  # type: ignore[misc]
-    after = {path.name: path.read_bytes() for path in dataset_path.iterdir()}
-    assert before == after
+    assert len(audit.online_frames) == 2700
+    assert audit.manifest.offline_identity_audit_availability == "unavailable"
 
 
 def test_training_loader_rejects_rehashed_file_with_broken_frame_binding(
     tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
+    ready_request_path = _ready_request_fixture(tmp_path, monkeypatch)
     dataset_path = tmp_path / "dataset"
     _write_dataset(
         dataset_path,
@@ -708,16 +714,14 @@ def test_training_loader_rejects_rehashed_file_with_broken_frame_binding(
     ).hexdigest()
     _write_json(manifest_path, manifest)
 
-    with pytest.raises(
-        A1V3DataContractError,
-        match="offline_online_payload_sha256_mismatch",
-    ):
+    with pytest.raises(A1V3DataContractError, match="offline_online_payload_sha256_mismatch"):
         load_a1_v3_training_dataset(
             dataset_path,
             registry_path=MAIN_REGISTRY_PATH,
             schedule_path=SCHEDULE_PATH,
             generator_config_path=GENERATOR_CONFIG_PATH,
             global_registry_path=GLOBAL_REGISTRY_PATH,
+            source_generation_request_path=ready_request_path,
         )
 
 

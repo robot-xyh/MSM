@@ -1,5 +1,56 @@
 # D3 集中式 Assignment Planner 计划
 
+## 2026-08-02 当前 A1 v3 source-only probe gate
+
+状态：`source_generation_request_ready_generation_not_authorized`。
+
+main 已完成 15 个 cell、300 个 episode 的 dirty 开发探针，结果为
+`300/300 exploratory_dirty_pass`。逐 episode 冻结配额 `9/3/3/2` 全部满足，
+实际最低为 `9/3/3/3`。该证据只关闭 source-generation request 级的跨 seed
+配额可行性 blocker；`repository_dirty=true` 使
+`readiness_eligible=false`。正式生成、数据集写入、训练、运行、分配、计划和控制
+权限仍全部关闭。
+
+1. [x] D3 source-only projection 已接入 main adapter；probe 每个 runtime frame 固定使用
+   `coverage_degrading` 和 recipe seed/episode key，并在分类前生成 candidate。
+2. [x] source-only projection 新增 typed `exact_safe_reference` post policy；candidate/pre reason
+   先冻结，安全 reference 只决定 effective，资源 binding 不同时精确回退，默认
+   `coverage_floor` 保持兼容。
+3. [x] probe checkpoint v4、episode/frame record 和 source binding 固定记录
+   `coverage_degrading + exact_safe_reference`；双时间戳、frame key、effective=reference、
+   truth/global identity 写入为 0 和全部权限 false 继续严格校验。
+4. [x] sidecar 冻结 taxonomy 新增 candidate-feasibility 驱动的 assignment coverage
+   contraction/recovery；固定 mask 多边丢失继续失败关闭，同覆盖 cycle 不变。
+5. [x] entry 48 的单槽等基数 coverage transfer 已由匿名候选容量坍缩、teacher 覆盖席位
+   一出一入和资源集合一出一入推导；精确正例及固定 mask、仍可行、资源不交换负例已覆盖。
+6. [x] 等基数单资源开放链只在 candidate inventory 确有变化、teacher 总边数和 deficit
+   不变、资源恰好一出一入时分类；多资源交换精确负例继续失败关闭。
+7. [x] main 的旧 300 条非正式探针已登记为失败开发证据：`195/300` 通过、76 条分类错误、
+   29 条配额不足，truth/身份写入/重复帧为 0；18 条 center-failure 转交 D4/main。
+8. [x] 对其余 58 条分类错误完成定向重放：34 条通过、22 条转为配额不足、2 条多资源
+   开放链继续拒绝。预计总态 `229/20/51` 仅用于安排复跑，不替代全量结果。
+9. [x] dense-crossing 四 entry 修复前后 8 条记录已复核：`3 pass + 1 error` 收敛为
+   `4 pass`；聚焦三文件 `39 passed`，runtime-to-writer `15 passed`。
+10. [x] 历史 v1/v2 测试按冻结 Git 版本读取；当前 runtime fixture 对自然配额不足要求
+    writer 失败关闭，并显式隔离 D4/main-owned center-failure。
+11. [x] probe 统一最低 quota 固定为 `3/3/2`，不采用旧 recipe 中更低的 hard-negative 声明。
+12. [x] main adapter 使用 exact policy；main-owned global seed registry 已更新，D3 已刷新
+   generator config、allocation registry、schedule 和 readiness 的完整哈希链。
+13. [x] main 按 cell 调整非复制稳定窗口和匿名事件时序，完成新的
+    `300/300 exploratory_dirty_pass`。当前仅请求可提交，不生成正式数据或训练。
+14. [x] 将完整 300 条 passing recipe ID、runtime result、inventory 文件/内容摘要和聚合
+    安全摘要绑定到 source-generation request/readiness；逐条核对 schedule identity、seed、
+    cell、writer staged、reason codes 和 `9/3/3/2` 下限，不复制或合成 episode。当前
+    readiness artifact SHA 为 `b5685b61...b74c42f`，inventory SHA 为
+    `fb89bfe...111f55`。
+15. [ ] main 在新提交和 clean worktree 上刷新跨模块哈希并运行统一
+    preflight。
+16. [ ] 如后续取得显式 generation-only 授权，使用新空输出目录生成
+    正式 300-episode 三文件数据集，再由 D3/D6 独立审计。
+
+配方调整由 main 完成，D3 没有跨目录修改 recipe，也没有降低
+`9/3/3/2` 固定配额。下节 15-cell 记录是本次全量探针前的历史局部阶段。
+
 ## 2026-08-02 A1 v3 15-cell 来源请求收敛
 
 状态：`source_generation_request_ready_generation_not_authorized`。
@@ -2742,6 +2793,29 @@ main 的安全顺序是 `plan()`、`bind_published_authority_generation()`、外
    只完成计划检查，不生成 payload。
 3. [ ] 训练、选模、归一化重拟合、阈值调整、正式评价和任何运行/生产准入均不在本批范围。
 
+## 2026-08-02 quota viability gate
+
+- [x] 审计既有 28 行 exploratory probe：`5 pass / 23 fail`，保留 `3/3/2`，不运行剩余旧 300。
+- [x] 修复 list/tuple frame key 规范化、重复计数、稳定 `probe_error_code` 和完整来源哈希绑定。
+- [x] dirty/incomplete probe 固定为 exploratory-only；不能 pass 或提升 readiness。
+- [x] 撤回 source request readiness，稳定 blocker 为 `cross_seed_quota_viability_not_proven`。
+- [x] 明确 truth-free roster-event 与 safety-projected counterfactual proposal 接口，禁止 teacher/effective override。
+
 `docs/AIRSIM_INTEGRATION_PLAN.md` 已检查。本次没有 AirSim DTO、settings、episode 或控制
 接口变化，因此不修改。`docs/EXPERIMENT_REPORT.md` 已补充 15-cell 软件审计表。M-to-N
 专项也已检查；本次没有改变需求槽、成员角色、波次或到达调度。
+
+## 2026-08-02 全量开发探针复核
+
+- [x] 复核 summary、episodes JSONL 和 checkpoint：15 cells、300 episodes、300/300，
+  每条 `9/3/3/2` 配额满足，逐条状态均为 pass。
+- [x] 复核 3086 个 frame key 无重复；online truth、`global_track_id` 创建/改写、正式 seed
+  和 R0 shard 10-19 读取均为 0。
+- [x] 将 request readiness 恢复为 generation-request-only；除
+  `source_generation_request=true` 外，生成、写盘、训练、运行、分配和控制权限全部 false。
+- [x] 绑定三份 dirty evidence 摘要和 probe-time source hashes；明确
+  `exploratory_dirty_pass` 不是 formal generation 或 readiness eligibility。
+- [ ] main 在新提交和 clean worktree 上刷新跨模块 binding，执行 preflight，并在显式授权及
+  新输出目录中启动正式 300-episode source generation。
+- [ ] 正式三文件数据集生成后由 D3 严格 loader 和 D6 独立审计；此前不训练、不启用 shadow/
+  assist/runtime，不读取正式 seed `1000-1019`，不运行 R0 shard 10-19。

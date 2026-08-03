@@ -73,10 +73,10 @@ A1_V3_GLOBAL_REGISTRY_ID = (
     "scalable3d-learning-source-allocation-20260801-v1"
 )
 A1_V3_GLOBAL_REGISTRY_CONTENT_SHA256 = (
-    "89d99bf064a8c0e226eead5b675f05daf70ac2d4c6f6139322502da54ab0aea7"
+    "982f34673cdf944c8d8799d2939361ab002130c0cddf8238a83c6e46e299530c"
 )
 A1_V3_GLOBAL_REGISTRY_FILE_SHA256 = (
-    "1c9778e1cbfcd5679956ac2c1fc71a1e780207c4579abdc9b129d162a252c4b6"
+    "98caa683ceae61b89580afc44545875c4345fa1b92bfc05cdc91e232c9f7f988"
 )
 A1_V3_GLOBAL_ALLOCATION_ID = "d3-a1-v3-all-splits"
 A1_V3_GLOBAL_ALLOCATION_CANDIDATE = "d3-a1-v3"
@@ -92,6 +92,21 @@ A1_V3_NEAR_TIE_MAXIMUM_RELATIVE_GAP = 0.002
 A1_V3_NEAR_TIE_RELATIVE_DENOMINATOR_FLOOR = 1.0
 A1_V3_NEAR_TIE_REASON_MET = "near_tie_rule_cost_boundary_met_v1"
 A1_V3_NEAR_TIE_REASON_NOT_MET = "near_tie_rule_cost_boundary_not_met_v1"
+A1_V3_ACTION_CHANGE_TYPES = (
+    "keep_exact_r0",
+    "assignment_coverage_contraction",
+    "assignment_coverage_recovery",
+    "single_target_rebind_with_resource_release",
+    "two_target_pair_swap",
+    "multi_target_cycle",
+    "target_appearance_assignment",
+    "target_loss_release",
+    "resource_failure_reassignment",
+    "resource_recovery_reassignment",
+    "m_to_n_demand_increase",
+    "m_to_n_demand_decrease",
+    "primary_reserve_role_change",
+)
 
 A1_V3_MANIFEST_FILENAME = "dataset_manifest.json"
 A1_V3_ONLINE_FRAMES_FILENAME = "online_frames.jsonl"
@@ -1671,9 +1686,14 @@ def load_a1_v3_frozen_request(
     if sum(cell.minimum_hard_negative_frames for cell in cells) != minimum_hard:
         _fail("request_cell_hard_negative_total_mismatch")
 
-    action_types = frozenset(
-        _unique_string_sequence(payload["action_change_types"], "action_change_types")
+    action_type_sequence = tuple(
+        _unique_string_sequence(
+            payload["action_change_types"], "action_change_types"
+        )
     )
+    if action_type_sequence != A1_V3_ACTION_CHANGE_TYPES:
+        _fail("request_action_change_type_inventory_mismatch")
+    action_types = frozenset(action_type_sequence)
     hard_types = frozenset(
         _unique_string_sequence(payload["hard_negative_types"], "hard_negative_types")
     )
@@ -3085,6 +3105,9 @@ def load_a1_v3_audit_dataset(
     schedule_path: str | Path,
     generator_config_path: str | Path,
     global_registry_path: str | Path,
+    source_generation_request_path: str | Path = (
+        DEFAULT_A1_V3_SOURCE_GENERATION_REQUEST_PATH
+    ),
 ) -> A1V3AuditDataset:
     """Load and fully audit generated v3 artifacts without writing any file."""
 
@@ -3096,6 +3119,7 @@ def load_a1_v3_audit_dataset(
         global_registry_path=global_registry_path,
         registry_path=registry_path,
         schedule_path=schedule_path,
+        source_generation_request_path=source_generation_request_path,
     )
     if not readiness.ready:
         _fail("dataset_load_readiness_not_ready", ",".join(readiness.reason_codes))
@@ -3200,6 +3224,9 @@ def load_a1_v3_training_dataset(
     schedule_path: str | Path,
     generator_config_path: str | Path,
     global_registry_path: str | Path,
+    source_generation_request_path: str | Path = (
+        DEFAULT_A1_V3_SOURCE_GENERATION_REQUEST_PATH
+    ),
 ) -> A1V3TrainingDataset:
     """Return an immutable future-trainer view with audit identities removed."""
 
@@ -3212,6 +3239,7 @@ def load_a1_v3_training_dataset(
         schedule_path=schedule_path,
         generator_config_path=generator_config_path,
         global_registry_path=global_registry_path,
+        source_generation_request_path=source_generation_request_path,
     )
     samples = tuple(
         A1V3TrainingSample(

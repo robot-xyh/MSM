@@ -26,9 +26,12 @@ from d3_assignment_planner import (
 )
 
 from test_a1_assignment_aware_development import _assignment_aware_record
+from frozen_source_test_support import frozen_git_source_tree_sha256
 
 
 MODULE_ROOT = Path(__file__).resolve().parents[1]
+REPOSITORY_ROOT = MODULE_ROOT.parents[1]
+V1_FROZEN_SOURCE_COMMIT = "b6dbb65686fbff6dde381b25e335b0e99ff94a92"
 OFFICIAL_CONTRACT = (
     MODULE_ROOT
     / "configs"
@@ -273,9 +276,11 @@ def test_official_contract_freezes_bundle_source_and_thresholds():
         "minimum_negative_exact_r0_rate": 0.99,
     }
     assert not any(contract.permissions.values())
-    assert source_tree_sha256(
-        MODULE_ROOT,
-        tuple(contract.frozen_source["files"]),
+    assert frozen_git_source_tree_sha256(
+        REPOSITORY_ROOT,
+        module_path="research_modules/d3_assignment_planner",
+        commit=V1_FROZEN_SOURCE_COMMIT,
+        relative_files=tuple(contract.frozen_source["files"]),
     ) == contract.frozen_source["tree_sha256"]
 
 

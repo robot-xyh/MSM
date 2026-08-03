@@ -1,5 +1,83 @@
 # D3 Assignment Planner
 
+## 2026-08-02 当前 A1 v3 source-only probe 状态
+
+main 最新全量开发探针已完成 15 个 cell、300 个 episode，结果为 `300/300`，状态
+`exploratory_dirty_pass`。每个 episode 的冻结门槛为可观测/正类/负类/困难负类
+`9/3/3/2`；实际逐 episode 最低为 `9/3/3/3`，总计 `3086/1313/1773/1771` 帧。
+在线 truth、`global_track_id` 创建/改写、重复帧、正式 seed 读取和 R0 shard 10-19 读取均为
+0。汇总 JSON 与并行 JSONL 按 `episode_id` 对齐后 300 条完全一致，checkpoint 与汇总的
+source bindings 一致。
+
+完整逐 episode 证据现冻结在
+`configs/a1_source_independent_v3_runtime_quota_probe_inventory_v1.json`。readiness artifact
+的 `producer_capability.frozen_runtime_quota_probe` 已绑定 300 个唯一
+`passing_runtime_to_writer_recipe_ids`、300 条 `runtime_results`、inventory 文件/内容摘要，
+以及 caller override=false、classifier error=0、online truth=0、blockers=[] 的聚合安全摘要；
+两份 inventory 都与冻结 schedule 的 episode/cell/seed 和 `9/3/3/2` 下限逐条一致。
+当前 readiness artifact 文件 SHA-256 为
+`b5685b61acff9f0f1bde504ecc27d17621e0161c8adad95d1789e4d46b74c42f`；inventory 文件 SHA-256 为
+`fb89bfe57431647d1c7f82a6b7ae53ca995bec31e9d885bd0c2a8a6bfb111f55`，权威 summary/episodes
+JSONL SHA-256 分别为 `53c2e8a417a926b018d0b491149c2c7f2bf7fd4f17f5fe8035e4b4450508e415` /
+`78da424c51a1b91d7ffcf288af9eeb4c887a8353cae8b125efcb7dbce7a66ad3`。
+
+本证据生成于 dirty worktree，`readiness_eligible=false`、`formal_source_generation=false`、
+`dataset_finalized=false`。D3 现在只恢复 `source_generation_request_ready=true`；只有
+`source_generation_request` permission 为 true。实际 source generation、episode/dataset
+写入、validation/formal payload 读取、training、optimizer、shadow、runtime、assignment、
+plan、control 和全部准入权限仍为 false。下一步由 main 在新提交、clean worktree、显式生成
+授权和新输出目录下运行 preflight；本次 300 条不得作为正式数据集或训练准入证据。
+
+探针绑定 main `learning_source_recipes.py` SHA-256
+`34ced4f02c089b492b2ba58a94220fa319acd98ae65efa276c98fa7e4c8302d9` 与
+`episode_treatments.py` SHA-256
+`135a526ad9591c2fa3a0041d50335db1fcb75e1129e97df60c5739df66b4cf9c`，并保存 adapter、
+orchestrator、D3 分类/投影/探针源码及三份证据文件摘要。后续任一生产源变化都必须重跑
+clean preflight 和正式生成，不得沿用本次 dirty 结论。
+
+以下为本轮收敛过程中保留的算法说明与历史失败证据。
+
+D3 source-only projection 现提供 typed post-projection reference policy。默认
+`coverage_floor` 保持原兼容行为；显式 `exact_safe_reference` 只在 candidate edges 和 pre
+reasons 完全冻结后读取 reference，candidate post edges 与安全 reference 不同时使用
+`effective_reference_plan_stability_fallback_v1` 精确回退。缺失、非法、硬门违规、重复资源
+或 M-to-N 不完整 reference 均稳定失败关闭，全部权限继续为 false。
+
+quota probe checkpoint v4 对每个 runtime frame 固定绑定 `coverage_degrading`、
+`exact_safe_reference` 和 `(recipe.seed, recipe.episode_id)`，并在 source bindings、episode
+及 frame record 中审计 policy。sidecar 新增匿名 `assignment_coverage_contraction` 与
+`assignment_coverage_recovery`：只有 candidate-feasibility inventory 净变化与 teacher
+coverage 同方向且 coverage deficit 反向闭合时才成立；固定 candidate mask 的多边丢失仍
+失败关闭，同覆盖多目标 cycle 保持原分类。
+
+entry 48（seed `23032`）补充一种既有 taxonomy 下的严格单槽覆盖转移：稳定 roster、需求和
+活动资源库存中，一个已覆盖匿名目标因候选容量从可行降为不可行而退出，恰好一个原未覆盖
+目标接管；teacher 边数和总 coverage deficit 不变，teacher 资源集合恰好一出一入。该帧仍归入
+`single_target_rebind_with_resource_release`。固定 mask、候选仍可行或资源交换不闭合时继续拒绝。
+
+同样保持 teacher 边数和总 deficit 不变时，分类器还允许候选可行边确有变化且 teacher
+资源集合只发生一次一出一入的开放链。该链可以跨多个完整需求组重新分布，但不能包含两个
+及以上 teacher 资源交换。资源 multiset 完全守恒的等基数重排仍归入 pair swap 或
+multi-target cycle；多资源开放链继续失败关闭。
+
+main 在本修复前完成的 300 条非正式探针实际结果为 `195 pass / 76 probe_error /
+29 quota_failed`。在线 truth、`global_track_id` 创建/改写和重复帧均为 0。其中
+center-failure 的 18 条 owner 错误属于 D4/main。对其余 58 条分类错误使用当前分类器定向
+重放后，34 条通过，22 条暴露为配额不足，2 条仍因多资源开放链拒绝。后两条分别是
+formation-split entry 65 的 3 出 3 入和 evasive entry 94 的 2 出 2 入。该定向结果只给出
+预计状态 `229 pass / 20 probe_error / 51 quota_failed`，不是新的 300 条全量结果。
+
+dense-crossing 四个 entry 的修复前后共 8 条定向记录已闭合：修复前 entry 41、53、58
+通过，entry 48 为 worker exception；修复后四条全部通过，计数分别为 `10/7/3/3`、
+`10/5/5/5`、`10/6/4/4`、`10/7/3/3`。本轮快速分类/探针/source-only 专项为
+`39 passed`，runtime-to-writer 专项为 `15 passed`。历史 v1/v2 测试固定读取不可变 Git
+版本，当前 runtime fixture 对自然配额不足明确验证 writer 失败关闭，并将 center-failure
+标为 D4/main-owned。D3 全量回归按用户指令在约 17% 处中止，因此没有新的全量通过结论。
+
+上述 `195/300`、定向重放和 28 行结果均为修复过程证据，已被本节 300/300 全量探针取代。
+它们继续保留用于说明分类器和 main 时序修复过程，不代表当前 request readiness，也不能
+替代未来 clean 正式生成。
+
 ## 2026-08-02 A1 v3 15-cell 来源请求收敛
 
 main 的匿名外部事件合同已被真实 producer 消费。formation-split 使用
@@ -2483,3 +2561,14 @@ v2 bundle 和阈值。
 负例覆盖请求/策略缺失、内容和绑定 hash 漂移、schema、allocation seed、whole-seed split、
 cell 映射、producer quota probe 和全部越权 permission。当前全量结果以本文顶部本轮验证
 记录为准。
+
+## 2026-08-02 A1 v3 quota probe 撤回
+
+既有探针仅完成 28 行探索性记录，`5 pass / 23 quota_failed`；seed `23001` 为
+`10/1/9/4`，最低配额仍为 `3/3/2`。当前 worktree dirty，28 行不能取得 pass 或
+readiness；formal source 为 `staged=1/finalized=0`，未运行剩余旧 300 条 recipe。
+探针现规范化 list/tuple frame key、统计规范 key 重复、保留稳定 `probe_error_code`，并
+绑定 commit、dirty 状态及 probe/classifier/writer、main recipes/episode treatments/
+orchestrator、schedule/base config SHA-256。source request readiness=false，blocker 为
+`cross_seed_quota_viability_not_proven`。main 接口要求见
+`reports/D3_MAIN_INTERFACE_REQUIREMENTS_A1_V3_CN.md`。

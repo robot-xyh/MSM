@@ -21,9 +21,13 @@ from d3_assignment_planner.a1_source_independent_evaluation_v2 import (
 from d3_assignment_planner.learning_data import write_learning_dataset
 
 from test_learning_dataset_bundle import _record
+from frozen_source_test_support import frozen_git_source_tree_sha256
 
 
 MODULE_ROOT = Path(__file__).resolve().parents[1]
+REPOSITORY_ROOT = MODULE_ROOT.parents[1]
+V1_FROZEN_SOURCE_COMMIT = "b6dbb65686fbff6dde381b25e335b0e99ff94a92"
+V2_FROZEN_SOURCE_COMMIT = "145ca73f3b65f29178eeff12777c9dbd12d63a51"
 OFFICIAL_V1_CONTRACT = (
     MODULE_ROOT
     / "configs"
@@ -154,9 +158,11 @@ def test_v1_contract_and_source_tree_remain_byte_stable():
     contract = A1SourceIndependentEvaluationContract.from_path(
         OFFICIAL_V1_CONTRACT
     )
-    assert evaluator_v1.source_tree_sha256(
-        MODULE_ROOT,
-        tuple(contract.frozen_source["files"]),
+    assert frozen_git_source_tree_sha256(
+        REPOSITORY_ROOT,
+        module_path="research_modules/d3_assignment_planner",
+        commit=V1_FROZEN_SOURCE_COMMIT,
+        relative_files=tuple(contract.frozen_source["files"]),
     ) == contract.frozen_source["tree_sha256"]
 
 
@@ -179,9 +185,11 @@ def test_official_v2_preserves_v1_bundle_thresholds_permissions_and_source():
         and "target_count" not in cell.to_dict()
         for cell in contract_v2.cells
     )
-    assert evaluator_v1.source_tree_sha256(
-        MODULE_ROOT,
-        tuple(contract_v2.frozen_source["files"]),
+    assert frozen_git_source_tree_sha256(
+        REPOSITORY_ROOT,
+        module_path="research_modules/d3_assignment_planner",
+        commit=V2_FROZEN_SOURCE_COMMIT,
+        relative_files=tuple(contract_v2.frozen_source["files"]),
     ) == contract_v2.frozen_source["tree_sha256"]
 
 

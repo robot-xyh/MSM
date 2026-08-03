@@ -673,3 +673,35 @@ VALIDATION、4 个 TEST seed，并沿用匿名目标需求槽和联盟完整性�
 本轮没有生成这 40 个 episode，没有形成成员 ACK、D4 coalition commit、D7 控制采用或
 物理协同结果。M-to-N 运行闭环缺口保持原状态；不能用 pre-generation `ready` 替代多成员
 执行证据。
+
+## 2026-08-02 A1 v3 source evidence boundary
+
+A1 v3 的 28 行 quota probe 是探索性证据，不是 M-to-N 正式数据：`5/23`，seed `23001`
+为 `10/1/9/4`，formal source `1 staged / 0 finalized`。困难负类必须是 deterministic
+counterfactual candidate proposal 经 safety projection 后的结果；teacher/effective 结果不能
+充当 proposal。该边界不改变 `k_j`、all-or-none 或版本化 plan，source readiness blocker 为
+`cross_seed_quota_viability_not_proven`。
+
+## 2026-08-02 M-to-N 跨 seed 分类与配额复核
+
+旧 300 条非正式探针中，high-threat-100 和 high-threat-200 各有 14 条失败。当前分类器对
+非 center-failure 分类错误定向重放后，high-threat-100 新暴露 2 条配额不足，
+high-threat-200 新暴露 3 条；旧结果中 high-threat-200 另有 1 条配额不足。一次匿名资源
+交换的 M-to-N 完整需求组重排可分类，多资源开放链仍拒绝。
+
+该结果没有证明 M-to-N 运行联盟、成员 ACK 或物理协同。main 应延长或前移 high-threat
+稳定窗口，保留至少三个未受事件影响的观测 tick，再执行全量 300 条探针。D3 不降低
+`9/3/3/2`，不修改 all-or-none、版本、身份或 readiness 门。
+
+## 2026-08-02 M-to-N 全量探针更新
+
+最终 300 条 dirty 开发探针已通过，其中 high-threat-100 与 high-threat-200 各 20 条均满足
+`9/3/3/2`，两个 cell 的逐条最低均为 `10/3/7/7`。这关闭 M-to-N source request 的跨 seed
+配额可行性缺口，但不证明联盟 ACK、D4 commit、D7 多成员执行或物理协同效果。
+
+source-generation request/readiness 现携带完整 300 条 passing/runtime inventories，而不是
+只携带两个 high-threat cell 的聚合数；两组 ID 精确覆盖 schedule，M-to-N result 的 cell、
+seed、计数和 writer staged 逐条绑定。该 inventory 同步不改变需求槽或执行 authority。
+
+需求槽、all-or-none、primary/reserve、版本和身份规则未修改。正式 M-to-N 来源生成仍需
+main clean preflight 和独立授权；训练、运行、分配 authority 与控制权限保持关闭。

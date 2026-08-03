@@ -1,0 +1,9 @@
+{
+  "base_config_sha256": "2279fa380ce2d79d98690b148653b0409a2471bb35d8aab77f9ed5d0f7b97072",
+  "dataset_finalized": false,
+  "formal_source_generation": false,
+  "schedule_sha256": "0eac8bcfeb09e1e706c31c2532fab82296028e95c5e384ac11c4e81cb7cb05ba",
+  "schema_version": "d3-a1-v3-cross-seed-quota-probe-checkpoint-v1",
+  "source_git_commit": "909e7bee3cad6edef0c03991848960f88f616601",
+  "training_started": false
+}

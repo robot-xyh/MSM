@@ -9,13 +9,17 @@ from pathlib import Path
 
 import pytest
 
+import d3_assignment_planner.a1_v3_source_generation_request as source_request
+
 from d3_assignment_planner.a1_v3_data_contract import (
     A1_V3_NEAR_TIE_REASON_MET,
     A1_V3_NEAR_TIE_REASON_NOT_MET,
     A1V3DataContractError,
     A1V3EdgeResidualRank,
+    A1V3ScheduledEpisode,
     canonical_json_line,
     load_a1_v3_audit_dataset,
+    load_a1_v3_frozen_request,
 )
 from d3_assignment_planner.a1_v3_dataset_writer import (
     A1_V3_ADAPTER_EVIDENCE_SCHEMA_V1,
@@ -26,7 +30,12 @@ from d3_assignment_planner.a1_v3_dataset_writer import (
     build_a1_v3_offline_label,
     build_a1_v3_online_frame,
     derive_a1_v3_offline_sidecars,
+    load_a1_v3_near_tie_boundary,
     load_a1_v3_writer_contract,
+)
+from d3_assignment_planner.a1_v3_sidecar_classification import (
+    analyze_a1_v3_anonymous_transition,
+    load_a1_v3_sidecar_classification_policy,
 )
 
 
@@ -57,6 +66,52 @@ GLOBAL_REGISTRY_PATH = (
     / "scalable_3d_simulation/configs/"
     "scalable_learning_global_seed_registry_v1.json"
 )
+SOURCE_GENERATION_REQUEST_PATH = (
+    MODULE_ROOT
+    / "configs/a1_source_independent_v3_source_generation_request_readiness_v1.json"
+)
+
+
+def _ready_request_fixture(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
+    probe = deepcopy(source_request._RUNTIME_QUOTA_PROBE)
+    probe.update(
+        {
+            "audited_cell_count": 15,
+            "audited_recipe_count": 300,
+            "episode_count": 300,
+            "pass_count": 300,
+            "failure_count": 0,
+            "repository_dirty": False,
+            "exploratory_only": False,
+            "all_frozen_cells_quota_ready": True,
+            "main_anonymous_external_event_contract_observed": True,
+            "writer_staged_cell_count": 15,
+            "blocker_codes": [],
+        }
+    )
+    monkeypatch.setattr(source_request, "_RUNTIME_QUOTA_PROBE", probe)
+    payload = json.loads(SOURCE_GENERATION_REQUEST_PATH.read_text(encoding="ascii"))
+    payload["status"] = "request_ready_frozen_runtime_quota_probe_passed"
+    payload["producer_capability"]["frozen_runtime_quota_probe"] = probe
+    payload["permissions"] = {
+        name: name == "source_generation_request"
+        for name in payload["permissions"]
+    }
+    payload.pop("content_sha256", None)
+    payload["content_sha256"] = sha256(
+        json.dumps(
+            payload,
+            ensure_ascii=True,
+            allow_nan=False,
+            separators=(",", ":"),
+            sort_keys=True,
+        ).encode("ascii")
+    ).hexdigest()
+    path = tmp_path / "ready-source-generation-request.json"
+    path.write_text(
+        json.dumps(payload, ensure_ascii=True, indent=2) + "\n", encoding="ascii"
+    )
+    return path
 
 
 def _evidence(
@@ -104,11 +159,16 @@ def _evidence(
 def _matrix_evidence(
     frame_index: int,
     teacher_edges: tuple[tuple[int, int], ...],
+    *,
+    candidate_edges: tuple[tuple[int, int], ...] | None = None,
 ) -> A1V3AdapterFrameEvidence:
-    candidate_edges = tuple(
+    all_candidate_edges = tuple(
         (target, resource)
         for target in range(3)
         for resource in range(3)
+    )
+    feasible_edges = (
+        all_candidate_edges if candidate_edges is None else candidate_edges
     )
     return A1V3AdapterFrameEvidence(
         frame_index=frame_index,
@@ -117,7 +177,7 @@ def _matrix_evidence(
         observed_target_count=3,
         observed_resource_count=3,
         candidate_mask_shape=(3, 3),
-        candidate_mask_true_edges=candidate_edges,
+        candidate_mask_true_edges=feasible_edges,
         rule_cost_matrix=(
             (1.0, 1.5, 2.0),
             (1.1, 1.6, 2.1),
@@ -128,12 +188,36 @@ def _matrix_evidence(
         effective_selected_edges=teacher_edges,
         residual_ranking=tuple(
             A1V3EdgeResidualRank(edge=edge, residual=0.0, rank=rank)
-            for rank, edge in enumerate(candidate_edges, start=1)
+            for rank, edge in enumerate(feasible_edges, start=1)
         ),
         target_demand_slots=(1, 1, 1),
         pre_projection_reason_codes=("candidate_available",),
         post_projection_reason_codes=("candidate_accepted",),
     )
+
+
+def _classification_context():
+    request = load_a1_v3_frozen_request()
+    cell = request.cells[0]
+    episode = A1V3ScheduledEpisode(
+        episode_id="a1-v3-classifier-unit",
+        cell_id=cell.cell_id,
+        scenario_family=cell.scenario_family,
+        seed=99001,
+        split="train",
+        configured_target_count=cell.configured_target_count,
+        configured_resource_count=cell.configured_resource_count,
+        minimum_observable_frames=9,
+        minimum_positive_frames=cell.minimum_positive_frames,
+        minimum_negative_frames=cell.minimum_negative_frames,
+        minimum_hard_negative_frames=cell.minimum_hard_negative_frames,
+    )
+    near_tie = load_a1_v3_near_tie_boundary()
+    policy = load_a1_v3_sidecar_classification_policy(
+        request=request,
+        near_tie_boundary_file_sha256=near_tie.file_sha256,
+    )
+    return request, episode, policy
 
 
 def _sidecar(
@@ -374,8 +458,7 @@ def test_sequence_classifier_derives_labels_and_rejects_forged_sidecar_quota(
 
 
 def test_single_net_release_assignment_chain_is_auditable_and_multi_release_fails() -> None:
-    contract = load_a1_v3_writer_contract()
-    episode = contract.schedule.episodes[0]
+    request, episode, policy = _classification_context()
     baseline = _matrix_evidence(0, ((0, 0), (1, 1), (2, 2)))
     one_release_chain = _matrix_evidence(1, ((0, 1), (1, 2)))
     online = tuple(
@@ -385,8 +468,8 @@ def test_single_net_release_assignment_chain_is_auditable_and_multi_release_fail
     sidecars = derive_a1_v3_offline_sidecars(
         episode,
         online,
-        request=contract.request,
-        policy=contract.sidecar_classification_policy,
+        request=request,
+        policy=policy,
     )
     assert sidecars[1].frame_class == "positive"
     assert sidecars[1].action_change_type == (
@@ -401,9 +484,53 @@ def test_single_net_release_assignment_chain_is_auditable_and_multi_release_fail
                 build_a1_v3_online_frame(episode, baseline),
                 build_a1_v3_online_frame(episode, two_releases),
             ),
-            request=contract.request,
-            policy=contract.sidecar_classification_policy,
+            request=request,
+            policy=policy,
         )
+
+
+def test_candidate_feasibility_drives_coverage_taxonomy_and_preserves_cycle() -> None:
+    request, episode, policy = _classification_context()
+    all_edges = tuple(
+        (target, resource)
+        for target in range(3)
+        for resource in range(3)
+    )
+    contracted_edges = tuple(
+        edge for edge in all_edges if edge not in {(1, 1), (2, 2)}
+    )
+    evidence = (
+        _matrix_evidence(0, ((0, 0), (1, 1), (2, 2))),
+        _matrix_evidence(
+            1,
+            ((0, 0),),
+            candidate_edges=contracted_edges,
+        ),
+        _matrix_evidence(2, ((0, 0), (1, 1), (2, 2))),
+        _matrix_evidence(3, ((0, 1), (1, 2), (2, 0))),
+    )
+    online = tuple(
+        build_a1_v3_online_frame(episode, item) for item in evidence
+    )
+    sidecars = derive_a1_v3_offline_sidecars(
+        episode,
+        online,
+        request=request,
+        policy=policy,
+    )
+
+    assert sidecars[1].action_change_type == "assignment_coverage_contraction"
+    assert sidecars[2].action_change_type == "assignment_coverage_recovery"
+    assert sidecars[3].action_change_type == "multi_target_cycle"
+    contraction = analyze_a1_v3_anonymous_transition(online[0], online[1])
+    recovery = analyze_a1_v3_anonymous_transition(online[1], online[2])
+    assert contraction.candidate_edge_count_delta == -2
+    assert contraction.teacher_edge_count_delta == -2
+    assert contraction.coverage_deficit_delta == 2
+    assert "candidate_feasibility" in contraction.changed_axes
+    assert recovery.candidate_edge_count_delta == 2
+    assert recovery.teacher_edge_count_delta == 2
+    assert recovery.coverage_deficit_delta == -2
 
 
 def test_hard_negative_uses_computed_boundary_and_frozen_scenario_priority(
@@ -657,7 +784,9 @@ def test_resume_rejects_permission_or_identity_provenance_tamper(
 
 def test_full_synthetic_inventory_finalizes_canonical_fixed_split_dataset(
     tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
+    ready_request_path = _ready_request_fixture(tmp_path, monkeypatch)
     contract = load_a1_v3_writer_contract()
     output = tmp_path / "dataset"
     writer = A1V3DatasetWriter(
@@ -705,6 +834,7 @@ def test_full_synthetic_inventory_finalizes_canonical_fixed_split_dataset(
         schedule_path=SCHEDULE_PATH,
         generator_config_path=GENERATOR_CONFIG_PATH,
         global_registry_path=GLOBAL_REGISTRY_PATH,
+        source_generation_request_path=ready_request_path,
     )
     assert audit.manifest.offline_identity_audit_availability == "unavailable"
     assert len(audit.online_frames) == 2700

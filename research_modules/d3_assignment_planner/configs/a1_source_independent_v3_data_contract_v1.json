@@ -5,7 +5,7 @@
   "frozen_request": {
     "path": "configs/a1_source_independent_v3_development_data_request_v1.json",
     "schema_version": "d3_a1_source_independent_v3_development_data_request_v1",
-    "file_sha256": "6800fd622fbc7dd27a7411f3419fb92729b195bd8fc6880dcda4c5f8637043e2"
+    "file_sha256": "5215a09774cae8edbb15ab5cd6254b8aad149a364188b9458a28c8968cd65d07"
   },
   "frozen_seed_exclusion_registry": {
     "path": "configs/a1_source_independent_v3_seed_exclusion_registry_v1.json",

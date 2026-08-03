@@ -4,7 +4,7 @@
   "status": "allocation_bound_plan_only",
   "request_binding": {
     "request_id": "d3-a1-source-independent-v3-development-data-request-20260801-v1",
-    "request_file_sha256": "6800fd622fbc7dd27a7411f3419fb92729b195bd8fc6880dcda4c5f8637043e2",
+    "request_file_sha256": "5215a09774cae8edbb15ab5cd6254b8aad149a364188b9458a28c8968cd65d07",
     "exclusion_registry_file_sha256": "e3fda5d9d8cf6d58692349b5884e91a928ad723e83e7d95d10cf6048ea7f7155"
   },
   "global_registry_binding": {
@@ -12,8 +12,8 @@
     "schema_version": "scalable3d-global-seed-registry-v1",
     "policy_version": "scalable3d-seed-allocation-policy-v1",
     "registry_id": "scalable3d-learning-source-allocation-20260801-v1",
-    "content_sha256": "89d99bf064a8c0e226eead5b675f05daf70ac2d4c6f6139322502da54ab0aea7",
-    "file_sha256": "1c9778e1cbfcd5679956ac2c1fc71a1e780207c4579abdc9b129d162a252c4b6",
+    "content_sha256": "982f34673cdf944c8d8799d2939361ab002130c0cddf8238a83c6e46e299530c",
+    "file_sha256": "98caa683ceae61b89580afc44545875c4345fa1b92bfc05cdc91e232c9f7f988",
     "allocation_id": "d3-a1-v3-all-splits",
     "owner": "D3",
     "candidate_version": "d3-a1-v3",
@@ -30,9 +30,9 @@
     "git_commit": "4166fe8e8ab4a9a14cffb275ba0a9ffa50a43dbb",
     "repository_dirty": false,
     "global_registry_snapshot_path": "research_modules/scalable_3d_simulation/configs/scalable_learning_global_seed_registry_v1.json",
-    "global_registry_snapshot_file_sha256": "1c9778e1cbfcd5679956ac2c1fc71a1e780207c4579abdc9b129d162a252c4b6",
+    "global_registry_snapshot_file_sha256": "98caa683ceae61b89580afc44545875c4345fa1b92bfc05cdc91e232c9f7f988",
     "generator_config_path": "research_modules/d3_assignment_planner/configs/a1_source_independent_v3_generator_config_v1.json",
-    "generator_config_sha256": "463463699cb3233cccc431458fa66336e3523ed219cae19ccc08a5da02e562b9"
+    "generator_config_sha256": "423f90d8d20452605c76c31718f40d146e0426c6f51dbdb212209459545e1460"
   },
   "allocation": {
     "unique_seed_count": 300,

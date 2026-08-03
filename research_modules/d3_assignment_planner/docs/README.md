@@ -1,10 +1,28 @@
 # D3 文档索引
 
-2026-08-02，A1 v3 的 15 个首个 10 秒 TRAIN recipe 全部通过严格 writer/classifier 的
-`3/3/2` 配额，在线真值使用为 0。`source_generation_request_ready=true`，但来源生成、
-数据写入、验证读取、训练、运行和控制仍未授权。逐 cell 计数与墙钟见
-`EXPERIMENT_REPORT.md`，门控语义见 `ALGORITHM_AND_IMPLEMENTATION.md`，下一步见
-`../PLAN.md`。
+2026-08-02 最新状态：A1 v3 全量 dirty 开发探针为 15 cells、`300/300`，逐 episode
+`9/3/3/2` 全部满足，truth、ID 创建/改写、重复帧和禁用来源读取均为 0。当前仅
+`source_generation_request_ready=true`；formal generation、training、runtime、assignment 和
+control 均未开放。证据与门槛见 `EXPERIMENT_REPORT.md`，绑定和权限语义见
+`ALGORITHM_AND_IMPLEMENTATION.md`，clean preflight 待办见 `../PLAN.md`。
+当前 readiness artifact 文件 SHA-256 为
+`b5685b61acff9f0f1bde504ecc27d17621e0161c8adad95d1789e4d46b74c42f`。
+
+2026-08-02 历史收敛记录：A1 v3 source-only projection 已增加 typed
+`exact_safe_reference` 稳定策略，probe v4 固定记录该策略；sidecar 已增加由匿名
+candidate-feasibility inventory 变化约束的 assignment coverage contraction/recovery。
+entry 48 的单槽等基数覆盖转移也已按候选容量坍缩、teacher 覆盖席位转移和资源一出一入进行
+匿名分类；固定 mask 和不闭合变化继续失败关闭。
+当前分类器也接受 candidate inventory 变化下的一次资源交换开放链；两个及以上资源交换
+继续拒绝。main 的旧 300 条非正式探针为 `195/300` 通过。对 58 条非 center-failure 分类
+错误的定向重放为 `34 pass / 22 quota_failed / 2 probe_error`，当时尚未形成新的全量结果。
+dense-crossing 四 entry 的修复前后 8 条记录由 3/4 通过收敛为 4/4；聚焦三文件测试
+`39 passed`，runtime-to-writer `15 passed`。全量回归未完成，不作为 readiness 证据。
+main global allocation binding 与 D3 哈希链当时已刷新，但 300 配方尚未完成。
+该历史 blocker 已由文首 `300/300` 证据关闭为 request 级缺口；当时 15 个首
+TRAIN recipe 的局部通过记录不能单独替代 300/300。接口与本轮证据见
+`../reports/D3_MAIN_INTERFACE_REQUIREMENTS_A1_V3_CN.md`，门控语义见
+`ALGORITHM_AND_IMPLEMENTATION.md`，下一步见 `../PLAN.md`。
 
 2026-08-01，D3 完成冻结 A1 v2 的失败归因和 v3 开发来源需求冻结。test 正类教师完全
 匹配为 `0/25`；9 帧为明确 OOD 回退，16 帧为非 OOD 候选动作不匹配，投影单独阻断正确

@@ -1,5 +1,63 @@
 # D3 实现差距审计
 
+## 当前状态：A1 v3 request-level quota blocker 已关闭（2026-08-02）
+
+最终 dirty 开发探针已覆盖 15 个 cell、300 个 episode，结果为
+`300/300 exploratory_dirty_pass`。冻结配额 `9/3/3/2` 保持不变，所有安全计数为 0。
+因此 `cross_seed_quota_viability_not_proven` 不再阻断 source-generation request，
+但 dirty 工作树使 `readiness_eligible=false`。正式生成、数据写入、训练、运行、
+分配和控制权限仍全部关闭。详细计数和剩余限制见本文第 74 节。
+
+第 74 节证据现已完整绑定到 request/readiness：passing recipe inventory 和 runtime result
+inventory 均为 300 条且精确覆盖 schedule，聚合 caller override/classifier error/online truth/
+blocker 为 `false/0/0/[]`。原 inventory 缺失导致的 main preflight 模块阻断属于绑定缺口，
+现已关闭；不改变 dirty exploratory 分类。
+当前 readiness artifact 文件 SHA-256 为
+`b5685b61acff9f0f1bde504ecc27d17621e0161c8adad95d1789e4d46b74c42f`，inventory 文件 SHA-256 为
+`fb89bfe57431647d1c7f82a6b7ae53ca995bec31e9d885bd0c2a8a6bfb111f55`；权威 summary/episodes JSONL
+摘要为 `53c2e8a...8e415` / `78da424c...66ad3`。
+
+以下内容保留 request-level blocker 关闭前的失败开发证据，不表示当前状态。
+
+D3-owned source-only projection 已增加 typed `exact_safe_reference` 策略：candidate/pre
+reasons 先冻结，reference 仅在 post-projection 校验后决定 effective；同覆盖但资源 binding
+不同也精确回退，缺失/非法/不安全 reference 稳定失败关闭。probe checkpoint v4、record 和
+source bindings 均固定 `coverage_degrading + exact_safe_reference`，3/3/2 不变。
+
+第二个 D3-owned classifier gap 也已实现：稳定 roster/demand/active-resource 下，只有匿名
+candidate-feasibility inventory 与 teacher coverage 同方向变化、coverage deficit 反向闭合，
+才分类为 assignment coverage contraction/recovery。固定 candidate mask 的多边丢失继续
+失败关闭，同覆盖多目标 cycle 保持原分类，不误套 resource failure/recovery。
+
+entry 48 的 `sidecar_teacher_change_unclassifiable` 已做最小修复。frame 3 中 candidate
+`1600 -> 1568`（added `213`、removed `245`），一个已覆盖匿名目标的候选容量降为 0，原未覆盖
+目标接管；teacher 保持 49 条、deficit 保持 1，资源集合一出一入。分类为既有
+`single_target_rebind_with_resource_release`，episode 得到 observable/positive/negative/
+hard-negative=`10/5/5/5`，真值和身份写入均为 0。该单项通过不关闭 300/300 blocker。
+
+main 的旧全量非正式探针是失败开发证据：`195 pass / 76 probe_error /
+29 quota_failed`，truth、身份创建/改写和重复帧均为 0。18 条 center-failure owner 错误由
+D4/main 处理。当前分类器对其余 58 条定向重放得到 34 pass、22 quota_failed、2
+probe_error。两条保留错误是 formation-split entry 65 的 3 出 3 入和 evasive entry 94 的
+2 出 2 入；多资源开放链没有足够匿名业务证据，继续失败关闭。
+
+原 29 条 quota_failed 分布为 formation 5、evasive 8、secondary-failure 7、high-threat-200
+1、dynamic-add-drop 1、near-tie 7。新暴露 22 条分布为 evasive 1、high-threat-100 2、
+high-threat-200 3、dynamic-add-drop 14、near-tie 2。34 条原分类错误可由本轮修复自然闭合；
+其余配额缺口必须由 main 调整稳定窗口和匿名事件时序，不能由 D3 降低配额或扩张标签语义。
+
+dense-crossing 四 entry 的修复前后 8 条记录由 `3 pass + 1 error` 收敛为 `4 pass`。
+sidecar/quota/source-only 聚焦测试 `39 passed`，runtime-to-writer `15 passed`。本轮直接导致的
+旧测试问题已处理：v1/v2 读取不可变 Git 证据；runtime fixture 对自然配额不足断言 writer
+失败关闭；center-failure 明确交由 D4/main。全量回归按用户指令中止，不能据此关闭
+cross-seed quota blocker。
+
+该证据不关闭 cross-seed quota GAP。readiness=false，稳定 blocker 为
+`cross_seed_quota_viability_not_proven`；统一最低 quota 为 `3/3/2`。main 完成 300/300 前，
+下节旧的 15-cell request-ready 结论只作为历史局部证据，不作为当前状态。main-owned global
+allocation 已更新，D3 generator/allocation/schedule/readiness 哈希链已刷新；该绑定同步不等于
+300/300 通过。
+
 ## 2026-08-02 A1 v3 producer viability 收敛
 
 本轮确认 main recipe v2 匿名事件合同已接入，并关闭一个 D3-owned 分类缺口：稳定
@@ -2214,8 +2272,8 @@ main 全局登记表已冻结 D3 allocation `d3-a1-v3-all-splits`，数值 seed 
 schedule 同时绑定以下来源：
 
 - 全局 registry id：`scalable3d-learning-source-allocation-20260801-v1`；
-- content SHA-256：`89d99bf064a8c0e226eead5b675f05daf70ac2d4c6f6139322502da54ab0aea7`；
-- 文件 SHA-256：`1c9778e1cbfcd5679956ac2c1fc71a1e780207c4579abdc9b129d162a252c4b6`；
+- content SHA-256：`982f34673cdf944c8d8799d2939361ab002130c0cddf8238a83c6e46e299530c`；
+- 文件 SHA-256：`98caa683ceae61b89580afc44545875c4345fa1b92bfc05cdc91e232c9f7f988`；
 - source commit：`4166fe8e8ab4a9a14cffb275ba0a9ffa50a43dbb`。
 
 计划固定 15 个 cell、每 cell 20 个 episode，并在每个 cell 内分配 12 个 TRAIN、4 个
@@ -2241,3 +2299,38 @@ OR-Tools。本项没有新增 P0。
 
 AirSim 集成计划、实验报告和 M-to-N 专项已检查。本项没有 AirSim 运行证据，也没有改变
 M-to-N 联盟成员、角色、波次和到达逻辑，因此这些文件不作内容更新。
+
+## 73. A1 v3 cross-seed quota viability reclassification（2026-08-02）
+
+新审计实际只有 28 行，`5/23`，seed `23001` 为 `10/1/9/4`，且 repository dirty；证据
+仅 exploratory/non-formal，formal source `staged=1/finalized=0`。readiness=false，blocker
+为 `cross_seed_quota_viability_not_proven`，`3/3/2` 保持。探针已同步 canonical list/tuple
+frame key、稳定 error code 和 commit/dirty/八类源文件 SHA-256 绑定。未运行旧 300、formal
+seeds、R0 shards；无 truth、复制 frame 或 `global_track_id` 写入。
+
+## 74. A1 v3 300-episode dirty probe 复核（2026-08-02）
+
+### Request-level blocker 已关闭
+
+main 指定的最终探针为 15 cells、300 episodes、`300/300`。全部 episode 满足冻结
+`9/3/3/2` 门槛，实际逐条最低为 `9/3/3/3`；online truth、`global_track_id` 创建/改写、
+重复帧、正式 seed 和 R0 shard 10-19 读取均为 0。summary 与 JSONL 按 episode identity
+一致，checkpoint source bindings 与 summary 一致。
+
+模块内冻结 inventory 进一步保存 300 个唯一 passing recipe ID 和 300 条逐 episode runtime
+result。readiness 精确绑定两组全表、inventory 文件 SHA-256、权威 content SHA-256，以及
+caller override=false、classifier error=0、online truth=0、blockers=[]；schedule identity、
+cell、seed、四类最低配额、writer staged 和空 reason codes 均逐条验证。
+
+因此 `cross_seed_quota_viability_not_proven` 不再阻断 source-generation request。当前只有
+`source_generation_request` permission 为 true，实际 generation、dataset write、training、
+shadow、runtime、assignment、plan、control 和准入权限全部为 false。
+
+### 保持开放
+
+1. 证据状态为 `exploratory_dirty_pass`，`readiness_eligible=false`，不能作为正式来源数据或
+   训练准入。
+2. main 需在新提交、clean worktree 上刷新跨模块 hash，运行 preflight，并单独取得正式生成
+   授权和新输出目录。
+3. 正式 300-episode 三文件数据集尚未生成，D3 loader 与 D6 外部审计尚未执行；训练、运行
+   和控制继续关闭。

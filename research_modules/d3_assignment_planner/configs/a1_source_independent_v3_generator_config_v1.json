@@ -12,13 +12,13 @@
       "path": "research_modules/d3_assignment_planner/configs/a1_source_independent_v3_development_data_request_v1.json",
       "schema_version": "d3_a1_source_independent_v3_development_data_request_v1",
       "identity": "d3-a1-source-independent-v3-development-data-request-20260801-v1",
-      "file_sha256": "6800fd622fbc7dd27a7411f3419fb92729b195bd8fc6880dcda4c5f8637043e2"
+      "file_sha256": "5215a09774cae8edbb15ab5cd6254b8aad149a364188b9458a28c8968cd65d07"
     },
     "data_contract": {
       "path": "research_modules/d3_assignment_planner/configs/a1_source_independent_v3_data_contract_v1.json",
       "schema_version": "d3_a1_source_independent_v3_data_contract_v1",
       "identity": "d3-a1-source-independent-v3-data-contract-20260801-v1",
-      "file_sha256": "5808782256908579fa443fafbc6aade8f78b340aa8bb722d16735ba2847fa60e"
+      "file_sha256": "ff76cd865e00e5914767ba24b7ea520ec7632271eddafd4936fcc88e3dd0b3f9"
     },
     "seed_exclusion_registry": {
       "path": "research_modules/d3_assignment_planner/configs/a1_source_independent_v3_seed_exclusion_registry_v1.json",
@@ -31,8 +31,8 @@
       "schema_version": "scalable3d-global-seed-registry-v1",
       "policy_version": "scalable3d-seed-allocation-policy-v1",
       "registry_id": "scalable3d-learning-source-allocation-20260801-v1",
-      "content_sha256": "89d99bf064a8c0e226eead5b675f05daf70ac2d4c6f6139322502da54ab0aea7",
-      "file_sha256": "1c9778e1cbfcd5679956ac2c1fc71a1e780207c4579abdc9b129d162a252c4b6",
+      "content_sha256": "982f34673cdf944c8d8799d2939361ab002130c0cddf8238a83c6e46e299530c",
+      "file_sha256": "98caa683ceae61b89580afc44545875c4345fa1b92bfc05cdc91e232c9f7f988",
       "allocation_id": "d3-a1-v3-all-splits"
     }
   },

@@ -205,6 +205,8 @@
   ],
   "action_change_types": [
     "keep_exact_r0",
+    "assignment_coverage_contraction",
+    "assignment_coverage_recovery",
     "single_target_rebind_with_resource_release",
     "two_target_pair_swap",
     "multi_target_cycle",

@@ -16,6 +16,7 @@ from pathlib import Path
 from typing import Any
 
 from .a1_v3_data_contract import (
+    A1_V3_ACTION_CHANGE_TYPES,
     A1_V3_NEAR_TIE_MAXIMUM_ABSOLUTE_GAP,
     A1_V3_NEAR_TIE_MAXIMUM_RELATIVE_GAP,
     A1_V3_NEAR_TIE_RELATIVE_DENOMINATOR_FLOOR,
@@ -58,20 +59,10 @@ _NEAR_TIE_LOGICAL_PATH = (
 _NEAR_TIE_SCHEMA = "d3_a1_v3_rule_cost_near_tie_boundary_v1"
 _NEAR_TIE_ID = "d3-a1-v3-rule-cost-near-tie-boundary-v1"
 _KEEP_ACTION = "keep_exact_r0"
-_POSITIVE_ACTIONS = frozenset(
-    {
-        "single_target_rebind_with_resource_release",
-        "two_target_pair_swap",
-        "multi_target_cycle",
-        "target_appearance_assignment",
-        "target_loss_release",
-        "resource_failure_reassignment",
-        "resource_recovery_reassignment",
-        "m_to_n_demand_increase",
-        "m_to_n_demand_decrease",
-    }
+_REQUEST_ACTIONS = frozenset(A1_V3_ACTION_CHANGE_TYPES)
+_POSITIVE_ACTIONS = _REQUEST_ACTIONS.difference(
+    {_KEEP_ACTION, "primary_reserve_role_change"}
 )
-_REQUEST_ACTIONS = _POSITIVE_ACTIONS | {_KEEP_ACTION, "primary_reserve_role_change"}
 _DERIVABLE_HARD_NEGATIVES = frozenset(
     {
         "near_tie_but_teacher_keeps_r0",
@@ -314,6 +305,10 @@ class A1V3AnonymousTransitionEvidence:
     active_resource_added_count: int
     active_resource_removed_count: int
     observed_resource_dimension_delta: int
+    candidate_edge_count_before: int
+    candidate_edge_count_after: int
+    candidate_edge_added_count: int
+    candidate_edge_removed_count: int
     teacher_edge_count_delta: int
     coverage_deficit_before: int
     coverage_deficit_after: int
@@ -322,6 +317,10 @@ class A1V3AnonymousTransitionEvidence:
     @property
     def coverage_deficit_delta(self) -> int:
         return self.coverage_deficit_after - self.coverage_deficit_before
+
+    @property
+    def candidate_edge_count_delta(self) -> int:
+        return self.candidate_edge_count_after - self.candidate_edge_count_before
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -337,6 +336,11 @@ class A1V3AnonymousTransitionEvidence:
             "observed_resource_dimension_delta": (
                 self.observed_resource_dimension_delta
             ),
+            "candidate_edge_count_before": self.candidate_edge_count_before,
+            "candidate_edge_count_after": self.candidate_edge_count_after,
+            "candidate_edge_added_count": self.candidate_edge_added_count,
+            "candidate_edge_removed_count": self.candidate_edge_removed_count,
+            "candidate_edge_count_delta": self.candidate_edge_count_delta,
             "teacher_edge_count_delta": self.teacher_edge_count_delta,
             "coverage_deficit_before": self.coverage_deficit_before,
             "coverage_deficit_after": self.coverage_deficit_after,
@@ -445,6 +449,12 @@ def load_a1_v3_sidecar_classification_policy(
             "active_resource_source",
             "delayed_target_appearance_requires_pending_deficit_closure",
             "single_resource_release_assignment_chain_allowed",
+            "single_slot_coverage_transfer_requires_candidate_capacity_collapse",
+            "single_slot_coverage_transfer_requires_equal_teacher_coverage",
+            "single_slot_coverage_transfer_requires_one_resource_exchange",
+            "assignment_coverage_change_requires_candidate_feasibility_delta",
+            "assignment_coverage_change_requires_candidate_teacher_direction_match",
+            "assignment_coverage_change_requires_teacher_deficit_inverse",
             "structural_hard_negative_requires_candidate_teacher_difference",
             "near_tie_hard_negative_requires_candidate_teacher_difference",
             "hard_negative_requires_effective_teacher_match",
@@ -458,6 +468,12 @@ def load_a1_v3_sidecar_classification_policy(
         "active_resource_source": "candidate_mask_resource_columns",
         "delayed_target_appearance_requires_pending_deficit_closure": True,
         "single_resource_release_assignment_chain_allowed": True,
+        "single_slot_coverage_transfer_requires_candidate_capacity_collapse": True,
+        "single_slot_coverage_transfer_requires_equal_teacher_coverage": True,
+        "single_slot_coverage_transfer_requires_one_resource_exchange": True,
+        "assignment_coverage_change_requires_candidate_feasibility_delta": True,
+        "assignment_coverage_change_requires_candidate_teacher_direction_match": True,
+        "assignment_coverage_change_requires_teacher_deficit_inverse": True,
         "structural_hard_negative_requires_candidate_teacher_difference": True,
         "near_tie_hard_negative_requires_candidate_teacher_difference": False,
         "hard_negative_requires_effective_teacher_match": True,
@@ -657,6 +673,28 @@ def _derive_action_change(
     if not teacher_changed:
         return _KEEP_ACTION, pending_target_appearance_deficit
 
+    teacher_edge_delta = transition.teacher_edge_count_delta
+    candidate_edge_delta = transition.candidate_edge_count_delta
+    coverage_deficit_delta = transition.coverage_deficit_delta
+    if (
+        teacher_edge_delta < 0
+        and candidate_edge_delta < 0
+        and coverage_deficit_delta == -teacher_edge_delta
+    ):
+        return (
+            "assignment_coverage_contraction",
+            pending_target_appearance_deficit,
+        )
+    if (
+        teacher_edge_delta > 0
+        and candidate_edge_delta > 0
+        and coverage_deficit_delta == -teacher_edge_delta
+    ):
+        return (
+            "assignment_coverage_recovery",
+            min(pending_target_appearance_deficit, transition.coverage_deficit_after),
+        )
+
     old_by_target = _edges_by_target(previous.teacher_edges)
     new_by_target = _edges_by_target(current.teacher_edges)
     changed_targets = {
@@ -676,6 +714,31 @@ def _derive_action_change(
     )
     released_resources = old_resources - new_resources
     acquired_resources = new_resources - old_resources
+    if _is_candidate_feasibility_driven_single_slot_coverage_transfer(
+        previous,
+        current,
+        old_by_target=old_by_target,
+        new_by_target=new_by_target,
+        released_resources=released_resources,
+        acquired_resources=acquired_resources,
+    ):
+        # The symmetric difference is an open assignment chain: one target
+        # loses its only feasible slot, one prior deficit is filled, and one
+        # anonymous resource enters while another leaves the teacher plan.
+        return (
+            "single_target_rebind_with_resource_release",
+            pending_target_appearance_deficit,
+        )
+    if _is_candidate_feasibility_driven_single_resource_exchange_chain(
+        previous,
+        current,
+        released_resources=released_resources,
+        acquired_resources=acquired_resources,
+    ):
+        return (
+            "single_target_rebind_with_resource_release",
+            pending_target_appearance_deficit,
+        )
     if (
         transition.teacher_edge_count_delta == -1
         and transition.coverage_deficit_delta == 1
@@ -688,6 +751,8 @@ def _derive_action_change(
             "single_target_rebind_with_resource_release",
             pending_target_appearance_deficit,
         )
+    if transition.teacher_edge_count_delta != 0:
+        _fail("sidecar_teacher_change_unclassifiable")
     if len(changed_targets) == 1:
         return (
             "single_target_rebind_with_resource_release",
@@ -700,6 +765,116 @@ def _derive_action_change(
     _fail("sidecar_teacher_change_unclassifiable")
 
 
+def _is_candidate_feasibility_driven_single_slot_coverage_transfer(
+    previous: A1V3OnlineFrame,
+    current: A1V3OnlineFrame,
+    *,
+    old_by_target: Mapping[int, tuple[int, ...]],
+    new_by_target: Mapping[int, tuple[int, ...]],
+    released_resources: Counter[int],
+    acquired_resources: Counter[int],
+) -> bool:
+    """Recognize one anonymous coverage slot moving after feasibility collapse."""
+
+    if len(previous.teacher_edges) != len(current.teacher_edges):
+        return False
+    if _coverage_deficit(previous) != _coverage_deficit(current):
+        return False
+
+    previous_deficits = tuple(
+        max(demand - len(old_by_target.get(target, ())), 0)
+        for target, demand in enumerate(previous.target_demand_slots)
+    )
+    current_deficits = tuple(
+        max(demand - len(new_by_target.get(target, ())), 0)
+        for target, demand in enumerate(current.target_demand_slots)
+    )
+    lost_slots = tuple(
+        target
+        for target, (before, after) in enumerate(
+            zip(previous_deficits, current_deficits, strict=True)
+        )
+        if after - before == 1
+    )
+    gained_slots = tuple(
+        target
+        for target, (before, after) in enumerate(
+            zip(previous_deficits, current_deficits, strict=True)
+        )
+        if before - after == 1
+    )
+    if (
+        len(lost_slots) != 1
+        or len(gained_slots) != 1
+        or any(
+            abs(after - before) > 1
+            for before, after in zip(
+                previous_deficits,
+                current_deficits,
+                strict=True,
+            )
+        )
+    ):
+        return False
+
+    previous_candidate_counts = Counter(
+        target for target, _ in previous.candidate_edges
+    )
+    current_candidate_counts = Counter(
+        target for target, _ in current.candidate_edges
+    )
+    feasibility_lost = tuple(
+        target
+        for target, demand in enumerate(current.target_demand_slots)
+        if demand > 0
+        and previous_candidate_counts[target] >= demand
+        and current_candidate_counts[target] < demand
+    )
+    feasibility_recovered = tuple(
+        target
+        for target, demand in enumerate(current.target_demand_slots)
+        if demand > 0
+        and previous_candidate_counts[target] < demand
+        and current_candidate_counts[target] >= demand
+    )
+    if feasibility_lost != lost_slots:
+        return False
+    if feasibility_recovered not in ((), gained_slots):
+        return False
+    gained_target = gained_slots[0]
+    if (
+        current_candidate_counts[gained_target]
+        < current.target_demand_slots[gained_target]
+    ):
+        return False
+
+    return (
+        sum(released_resources.values()) == 1
+        and sum(acquired_resources.values()) == 1
+    )
+
+
+def _is_candidate_feasibility_driven_single_resource_exchange_chain(
+    previous: A1V3OnlineFrame,
+    current: A1V3OnlineFrame,
+    *,
+    released_resources: Counter[int],
+    acquired_resources: Counter[int],
+) -> bool:
+    """Recognize one open chain that replaces one anonymous teacher resource."""
+
+    if previous.candidate_edges == current.candidate_edges:
+        return False
+    if len(previous.teacher_edges) != len(current.teacher_edges):
+        return False
+    if _coverage_deficit(previous) != _coverage_deficit(current):
+        return False
+    return (
+        sum(released_resources.values()) == 1
+        and sum(acquired_resources.values()) == 1
+    )
+
+
 def analyze_a1_v3_anonymous_transition(
     previous: A1V3OnlineFrame | None,
     current: A1V3OnlineFrame,
@@ -707,6 +882,7 @@ def analyze_a1_v3_anonymous_transition(
     """Derive change axes without identity, truth labels, or caller classes."""
 
     current_resources = _active_resource_columns(current)
+    current_candidate_edges = frozenset(current.candidate_edges)
     current_deficit = _coverage_deficit(current)
     if previous is None:
         return A1V3AnonymousTransitionEvidence(
@@ -720,6 +896,10 @@ def analyze_a1_v3_anonymous_transition(
             active_resource_added_count=len(current_resources),
             active_resource_removed_count=0,
             observed_resource_dimension_delta=current.observed_resource_count,
+            candidate_edge_count_before=0,
+            candidate_edge_count_after=len(current_candidate_edges),
+            candidate_edge_added_count=len(current_candidate_edges),
+            candidate_edge_removed_count=0,
             teacher_edge_count_delta=len(current.teacher_edges),
             coverage_deficit_before=0,
             coverage_deficit_after=current_deficit,
@@ -727,10 +907,13 @@ def analyze_a1_v3_anonymous_transition(
         )
 
     previous_resources = _active_resource_columns(previous)
+    previous_candidate_edges = frozenset(previous.candidate_edges)
     target_delta = current.observed_target_count - previous.observed_target_count
     demand_delta = sum(current.target_demand_slots) - sum(previous.target_demand_slots)
     added_resources = current_resources - previous_resources
     removed_resources = previous_resources - current_resources
+    added_candidate_edges = current_candidate_edges - previous_candidate_edges
+    removed_candidate_edges = previous_candidate_edges - current_candidate_edges
     demand_changed = current.target_demand_slots != previous.target_demand_slots
     teacher_changed = set(current.teacher_edges) != set(previous.teacher_edges)
     axes: list[str] = []
@@ -740,6 +923,8 @@ def analyze_a1_v3_anonymous_transition(
         axes.append("target_demand")
     if added_resources or removed_resources:
         axes.append("active_resource_inventory")
+    if added_candidate_edges or removed_candidate_edges:
+        axes.append("candidate_feasibility")
     if teacher_changed:
         axes.append("teacher_edges")
     return A1V3AnonymousTransitionEvidence(
@@ -762,6 +947,10 @@ def analyze_a1_v3_anonymous_transition(
         observed_resource_dimension_delta=(
             current.observed_resource_count - previous.observed_resource_count
         ),
+        candidate_edge_count_before=len(previous_candidate_edges),
+        candidate_edge_count_after=len(current_candidate_edges),
+        candidate_edge_added_count=len(added_candidate_edges),
+        candidate_edge_removed_count=len(removed_candidate_edges),
         teacher_edge_count_delta=len(current.teacher_edges) - len(previous.teacher_edges),
         coverage_deficit_before=_coverage_deficit(previous),
         coverage_deficit_after=current_deficit,

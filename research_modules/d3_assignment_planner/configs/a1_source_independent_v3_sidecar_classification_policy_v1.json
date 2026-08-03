@@ -7,7 +7,7 @@
       "path": "research_modules/d3_assignment_planner/configs/a1_source_independent_v3_development_data_request_v1.json",
       "schema_version": "d3_a1_source_independent_v3_development_data_request_v1",
       "request_id": "d3-a1-source-independent-v3-development-data-request-20260801-v1",
-      "file_sha256": "6800fd622fbc7dd27a7411f3419fb92729b195bd8fc6880dcda4c5f8637043e2"
+      "file_sha256": "5215a09774cae8edbb15ab5cd6254b8aad149a364188b9458a28c8968cd65d07"
     },
     "near_tie_boundary": {
       "path": "research_modules/d3_assignment_planner/configs/a1_source_independent_v3_near_tie_boundary_v1.json",
@@ -32,6 +32,12 @@
     "active_resource_source": "candidate_mask_resource_columns",
     "delayed_target_appearance_requires_pending_deficit_closure": true,
     "single_resource_release_assignment_chain_allowed": true,
+    "single_slot_coverage_transfer_requires_candidate_capacity_collapse": true,
+    "single_slot_coverage_transfer_requires_equal_teacher_coverage": true,
+    "single_slot_coverage_transfer_requires_one_resource_exchange": true,
+    "assignment_coverage_change_requires_candidate_feasibility_delta": true,
+    "assignment_coverage_change_requires_candidate_teacher_direction_match": true,
+    "assignment_coverage_change_requires_teacher_deficit_inverse": true,
     "structural_hard_negative_requires_candidate_teacher_difference": true,
     "near_tie_hard_negative_requires_candidate_teacher_difference": false,
     "hard_negative_requires_effective_teacher_match": true
@@ -41,6 +47,8 @@
       "cell_id": "nominal-balanced-5t5r",
       "scenario_family": "nominal_balanced",
       "allowed_positive_action_change_types": [
+        "assignment_coverage_contraction",
+        "assignment_coverage_recovery",
         "m_to_n_demand_decrease",
         "m_to_n_demand_increase",
         "multi_target_cycle",
@@ -62,6 +70,8 @@
       "cell_id": "dense-crossing-20t20r",
       "scenario_family": "dense_crossing",
       "allowed_positive_action_change_types": [
+        "assignment_coverage_contraction",
+        "assignment_coverage_recovery",
         "m_to_n_demand_decrease",
         "m_to_n_demand_increase",
         "multi_target_cycle",
@@ -84,6 +94,8 @@
       "cell_id": "dense-crossing-50t50r",
       "scenario_family": "dense_crossing",
       "allowed_positive_action_change_types": [
+        "assignment_coverage_contraction",
+        "assignment_coverage_recovery",
         "m_to_n_demand_decrease",
         "m_to_n_demand_increase",
         "multi_target_cycle",
@@ -106,6 +118,8 @@
       "cell_id": "formation-split-50t50r",
       "scenario_family": "formation_split",
       "allowed_positive_action_change_types": [
+        "assignment_coverage_contraction",
+        "assignment_coverage_recovery",
         "m_to_n_demand_decrease",
         "m_to_n_demand_increase",
         "multi_target_cycle",
@@ -127,6 +141,8 @@
       "cell_id": "evasive-multilevel-100t100r",
       "scenario_family": "evasive_multilevel",
       "allowed_positive_action_change_types": [
+        "assignment_coverage_contraction",
+        "assignment_coverage_recovery",
         "m_to_n_demand_decrease",
         "m_to_n_demand_increase",
         "multi_target_cycle",
@@ -148,6 +164,8 @@
       "cell_id": "delayed-noisy-200t200r",
       "scenario_family": "delayed_noisy",
       "allowed_positive_action_change_types": [
+        "assignment_coverage_contraction",
+        "assignment_coverage_recovery",
         "m_to_n_demand_decrease",
         "m_to_n_demand_increase",
         "multi_target_cycle",
@@ -170,6 +188,8 @@
       "cell_id": "communication-degraded-5t5r",
       "scenario_family": "communication_degraded",
       "allowed_positive_action_change_types": [
+        "assignment_coverage_contraction",
+        "assignment_coverage_recovery",
         "m_to_n_demand_decrease",
         "m_to_n_demand_increase",
         "multi_target_cycle",
@@ -191,6 +211,8 @@
       "cell_id": "center-failure-20t20r",
       "scenario_family": "center_failure",
       "allowed_positive_action_change_types": [
+        "assignment_coverage_contraction",
+        "assignment_coverage_recovery",
         "m_to_n_demand_decrease",
         "m_to_n_demand_increase",
         "multi_target_cycle",
@@ -212,6 +234,8 @@
       "cell_id": "secondary-failure-50t50r",
       "scenario_family": "secondary_failure",
       "allowed_positive_action_change_types": [
+        "assignment_coverage_contraction",
+        "assignment_coverage_recovery",
         "m_to_n_demand_decrease",
         "m_to_n_demand_increase",
         "multi_target_cycle",
@@ -233,6 +257,8 @@
       "cell_id": "high-threat-m-to-n-100t100r",
       "scenario_family": "high_threat_m_to_n",
       "allowed_positive_action_change_types": [
+        "assignment_coverage_contraction",
+        "assignment_coverage_recovery",
         "m_to_n_demand_decrease",
         "m_to_n_demand_increase",
         "multi_target_cycle",
@@ -255,6 +281,8 @@
       "cell_id": "high-threat-m-to-n-200t200r",
       "scenario_family": "high_threat_m_to_n",
       "allowed_positive_action_change_types": [
+        "assignment_coverage_contraction",
+        "assignment_coverage_recovery",
         "m_to_n_demand_decrease",
         "m_to_n_demand_increase",
         "multi_target_cycle",
@@ -277,6 +305,8 @@
       "cell_id": "resource-surplus-20t30r",
       "scenario_family": "resource_surplus",
       "allowed_positive_action_change_types": [
+        "assignment_coverage_contraction",
+        "assignment_coverage_recovery",
         "m_to_n_demand_decrease",
         "m_to_n_demand_increase",
         "multi_target_cycle",
@@ -298,6 +328,8 @@
       "cell_id": "resource-shortage-30t20r",
       "scenario_family": "resource_shortage",
       "allowed_positive_action_change_types": [
+        "assignment_coverage_contraction",
+        "assignment_coverage_recovery",
         "m_to_n_demand_decrease",
         "m_to_n_demand_increase",
         "multi_target_cycle",
@@ -320,6 +352,8 @@
       "cell_id": "dynamic-add-drop-100t80r",
       "scenario_family": "dynamic_add_drop",
       "allowed_positive_action_change_types": [
+        "assignment_coverage_contraction",
+        "assignment_coverage_recovery",
         "m_to_n_demand_decrease",
         "m_to_n_demand_increase",
         "multi_target_cycle",
@@ -342,6 +376,8 @@
       "cell_id": "near-tie-hard-negative-50t50r",
       "scenario_family": "near_tie_hard_negative",
       "allowed_positive_action_change_types": [
+        "assignment_coverage_contraction",
+        "assignment_coverage_recovery",
         "m_to_n_demand_decrease",
         "m_to_n_demand_increase",
         "multi_target_cycle",
@@ -374,5 +410,5 @@
     "formal_admission": false,
     "production_admission": false
   },
-  "content_sha256": "9efafd96fd915f1aec471ce81c0c9a29a21bd6c66495f96f5c732646294bf70b"
+  "content_sha256": "36788d0a324e5e8855708c2806662f44e86b33393d2096800ccb1395178bc30e"
 }

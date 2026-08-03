@@ -482,6 +482,14 @@ from .a1_assignment_aware_development import (
     train_a1_assignment_aware_candidate,
     write_a1_assignment_aware_development_output,
 )
+from .a1_v3_source_only_projection import (
+    A1V3CounterfactualMode,
+    A1V3PostProjectionReferencePolicy,
+    A1V3SourceOnlyProjectionError,
+    A1V3SourceOnlyProjectionInput,
+    A1V3SourceOnlyProjectionOutput,
+    project_a1_v3_source_only_counterfactual,
+)
 from .a1_source_independent_evaluation import (
     A1_SOURCE_INDEPENDENT_AGGREGATE_SCHEMA_V1,
     A1_SOURCE_INDEPENDENT_CONTRACT_SCHEMA_V1,
@@ -547,6 +555,11 @@ __all__ = [
     "A1AssignmentAwareTeacherFrame",
     "A1AssignmentAwareTrainingResult",
     "A1SafeAssignmentOutcome",
+    "A1V3CounterfactualMode",
+    "A1V3PostProjectionReferencePolicy",
+    "A1V3SourceOnlyProjectionError",
+    "A1V3SourceOnlyProjectionInput",
+    "A1V3SourceOnlyProjectionOutput",
     "A2_ATTRIBUTION_SCOPE",
     "A2_CURRENT_LINEAGE_IDENTITY_SCHEMA_V1",
     "A2_SUCCESSOR_EVIDENCE_BATCH_KIND",
@@ -905,6 +918,7 @@ __all__ = [
     "guidance_bindings_from_assignment_plan",
     "export_cooperative_candidate_plan_metadata",
     "prepare_secondary_takeover_plan",
+    "project_a1_v3_source_only_counterfactual",
     "plan_history_record_from_plan",
     "p1_assignment_fixture_by_id",
     "load_learning_dataset",

@@ -6,6 +6,44 @@
 > `docs/MODULE_PRINCIPLES_CN.md` 和根目录系统汇总同步编写。本文区分默认主线、
 > 已实现辅助能力、可选离线对照和未实现能力，不把计划项写成已完成能力。
 
+## 当前 A1 v3 source-only 修复
+
+`project_a1_v3_source_only_counterfactual(...)` 先使用既有 demand-slot Hungarian 与
+all-or-none projection 生成并冻结 candidate。typed post policy 默认为兼容的
+`coverage_floor`；显式 `exact_safe_reference` 在冻结点之后校验 reference 的索引、hard
+mask、资源唯一性和 M-to-N 原子性。candidate post edges 与安全 reference 不同即返回
+reference，并记录 `effective_reference_plan_stability_fallback_v1`。缺失、非法或不安全
+reference 稳定失败关闭；reference 不进入 candidate/pre-reason 计算。
+
+sidecar transition 现审计匿名 candidate edge inventory 的 before/after、added/removed 和净
+变化。稳定 roster/demand/active-resource 下，candidate inventory 与 teacher coverage 同向
+收缩且 coverage deficit 反向增加时分类为 `assignment_coverage_contraction`；三者反向闭合
+时分类为 `assignment_coverage_recovery`。固定 candidate mask 的多边 teacher 丢失不满足该
+门，继续失败关闭；teacher edge 数不变的 resource-preserving cycle 仍使用原 taxonomy。
+
+等基数变化另设单槽门。前后 teacher 总边数和 deficit 必须相等；恰好一个 demand=1 的已覆盖
+目标失去覆盖，且其候选边数量从满足需求降到不足；恰好一个原未覆盖目标获得覆盖；teacher
+资源 multiset 必须恰好释放一个并取得一个。满足时复用
+`single_target_rebind_with_resource_release`。该判据不使用 truth、实体 ID 或场景名称。
+
+另一个等基数门处理单资源开放链。candidate edge 集必须发生真实变化，teacher 边数和总
+deficit 保持不变，teacher 资源 multiset 恰好一出一入。目标侧可以重排多个完整需求组，
+但资源交换数超过 1 时拒绝。资源 multiset 不变的封闭重排仍由 `two_target_pair_swap` 或
+`multi_target_cycle` 表达，避免把一般重排误报为资源释放。
+
+probe checkpoint v4 固定 `coverage_degrading + exact_safe_reference`、frame key、双时间戳、
+source hashes 和零 truth/identity 写入。最终 dirty 开发探针已取得
+`300/300 exploratory_dirty_pass`，因此 request-level
+`cross_seed_quota_viability_not_proven` 已关闭，`source_generation_request_ready=true`。
+`readiness_eligible=false` 仍保持，不得从该探针推导正式数据、训练或运行准入。
+main global registry 刷新后，D3 仅重算 generator、allocation、schedule 和 readiness 哈希链；
+seed/split、配额、权限和算法字节未因本次绑定刷新而改变。
+
+旧全量非正式探针的实际状态为 `195 pass / 76 probe_error / 29 quota_failed`。后续分类器
+对 58 条非 center-failure 分类错误的定向重放为 `34 pass / 22 quota_failed /
+2 probe_error`。两条保留错误均为多资源开放链；由此推导的 `229/20/51` 只是复跑预期，
+不能写回 readiness。这些中间证据已被后续 300/300 全量探针取代，仅保留用于失败追溯。
+
 ## A1 v3 来源生成请求与 producer viability 算法
 
 ### 独立请求门
@@ -16,12 +54,21 @@ global allocation、D3 registry 和固定 schedule 验证，再验证该 artifac
 content SHA-256。artifact 必须精确绑定四个冻结计划输入的仓库相对路径和文件 SHA-256、
 数据合同、sidecar policy、classifier source、split/schema 摘要及 producer capability。
 
-权限对象采用 exact-key 比较。当前 runtime quota probe 为 15/15 通过，因此 artifact 只把
-`source_generation_request` 置为 true。来源生成、数据写入、验证读取、训练和运行权限仍为
-false。报告顶层和 `producer_capability` 同时发布稳定的
+权限对象采用 exact-key 比较。当前跨 seed quota viability 已由 dirty 300/300 探针证明到
+request 级，只有 `source_generation_request` permission 为 true。来源生成、数据写入、
+验证读取、训练和运行权限仍为 false。报告
+顶层和 `producer_capability` 同时发布稳定的
 `source_generation_request_path`、`source_generation_request_sha256`、
-`source_generation_request_ready=true`。路径固定为仓库相对路径，reason codes 为空；该状态
-只允许 main 提交独立生成授权请求，不启动生成器。
+`source_generation_request_ready=true`。路径固定为仓库相对路径，reason codes 为空。
+请求可提交不启动生成器；实际生成仍需 clean preflight、显式授权和新空输出目录。
+
+quota viability 不是只绑定聚合计数。模块内冻结 inventory 保存 schedule 的 300 个唯一
+episode ID 及 300 条 runtime-to-writer 结果；每条结果都绑定 `episode_id/cell_id/seed`、
+四类计数、`quota_met=true`、`writer_staged=true` 和空 reason codes。request loader 将该
+inventory 作为 `frozen_runtime_quota_probe` 的完整列表，并同时发布 inventory 文件摘要、
+权威 evidence content 摘要、caller override=false、classifier error=0、online truth=0 和
+空 blockers。readiness artifact 与 loader 期待对象采用 exact equality，列表缺失、截断、
+重复或安全摘要漂移均失败关闭。
 
 ### 确定性 sidecar 分类
 
@@ -71,7 +118,8 @@ main recipe v2 已实现 episode-seeded 匿名 target/resource deactivate-reacti
 
 三个原阻塞 cell 通过预注册稳定运动、无随机扰动重生成量测和既有匿名分类规则形成自然
 正负样本。事件在 episode 前冻结，分类器没有读取结果反向选择窗口。15/15 writer stage
-成功后 `source_generation_request_ready=true`。该状态仍不构成 generation authorization。
+是历史局部记录，不能单独替代 300/300。后续全量 dirty 探针已达到
+`300/300`，但同样不构成 generation authorization。
 
 ### 跨进程暂存前缀
 
@@ -4721,3 +4769,31 @@ request/exclusion/data contract
 不提供 main registry 时仍得到 `request_only`；默认 CLI 使用冻结计划文件并返回 ready。
 输入漂移继续使用各自稳定原因码并失败关闭。本轮验证没有读取正式 episode payload 或既有
 v2 test payload，没有生成正式数据或训练权重。
+
+## 2026-08-02 A1 v3 quota probe 与 main 接口
+
+既有 28 行 probe 为 `5 pass / 23 quota_failed`，seed `23001` 为 `10/1/9/4`；dirty
+worktree 使其只能是 exploratory，`readiness_eligible=false`。未运行剩余旧 300、formal
+seeds `1000-1019` 或 R0 shards `10-19`。readiness 已撤回，blocker 为
+`cross_seed_quota_viability_not_proven`，`3/3/2` 不变。匿名 roster events 必须能产生
+positive/negative transitions；hard negative 必须是 deterministic counterfactual candidate
+proposal 经现有 safety projection 后的结果，禁止 teacher/effective override、复制 frame
+和 `global_track_id` 写入。
+
+## 2026-08-02 A1 v3 全量开发探针绑定
+
+最终开发探针使用同一 300 条冻结 schedule，逐条经过 main runtime、source adapter、D3
+source-only projection、确定性 sidecar 分类和 quota probe。汇总 JSON 按 schedule 排序，
+JSONL 按并行完成顺序写入；校验以 `episode_id` 对齐，两者 300 条内容完全一致。checkpoint
+与汇总使用相同 source bindings。
+
+结果为 15 cells、`300/300`，逐 episode 冻结要求 `9/3/3/2`，实际最低 `9/3/3/3`。
+探针绑定 `learning_source_recipes.py`、`episode_treatments.py`、adapter、orchestrator、D3
+分类器、source-only projection、quota runner/source 及合同配置的 SHA-256。summary、JSONL、
+checkpoint 的 SHA-256 也写入 readiness artifact。
+
+loader 的 `ready` 仍只表示 request readiness。权限映射只令
+`source_generation_request=true`；`source_generation`、`episode_generation`、
+`dataset_artifact_write`、training、shadow、runtime、assignment、plan 和 control 均为 false。
+probe 自身保持 `repository_dirty=true`、`readiness_eligible=false`，不能被 dataset loader
+解释为正式生成物。

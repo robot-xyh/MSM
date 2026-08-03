@@ -1,5 +1,59 @@
 # D3 中心化资源-目标分配综述及子方案
 
+## 2026-08-02 当前 A1 v3 复核状态
+
+最终 dirty 开发探针已覆盖 15 个 cell、300 个 episode，结果为
+`300/300 exploratory_dirty_pass`。逐 episode `9/3/3/2` 全部满足，实际最低
+`9/3/3/3`；truth、身份写入、重复帧、正式 seed 和 R0 shard 10-19 读取均为 0。
+当前 `source_generation_request_ready=true`，但 dirty 证据使
+`readiness_eligible=false`。只有 request permission 为 true，正式生成、训练、运行、分配、
+计划和控制权限全部为 false。
+
+本轮已补齐 main preflight 所需的完整机器 inventory：300 个唯一 passing recipe ID 与 300 条
+runtime result 精确覆盖冻结 schedule，并逐条绑定 cell/seed、固定配额、writer staged 和空
+reason codes；caller override=false、classifier error=0、online truth=0、blockers=[]。readiness
+同时绑定 inventory 文件摘要和权威 evidence content 摘要，不再以单一聚合计数替代全表。
+当前 readiness artifact 文件 SHA-256 为
+`b5685b61acff9f0f1bde504ecc27d17621e0161c8adad95d1789e4d46b74c42f`，inventory 文件 SHA-256 为
+`fb89bfe57431647d1c7f82a6b7ae53ca995bec31e9d885bd0c2a8a6bfb111f55`；summary 与 episodes JSONL
+文件摘要分别为 `53c2e8a...8e415` 和 `78da424c...66ad3`。这些摘要对应 300 条完整绑定，
+不改变 dirty exploratory 和全部权限关闭状态。
+
+以下段落保留修复前的分类器与配方收敛证据。
+
+D3 source-only projection 已实现 typed `exact_safe_reference` post policy。candidate edges 与
+pre reasons 在 reference 读取前冻结；同覆盖换资源也回退安全 reference，effective 精确等于
+reference。默认 `coverage_floor` 保持兼容，非法 reference 和所有权限提升失败关闭。probe
+checkpoint v4、episode/frame record 与 source bindings 已固定 exact policy、双时间戳、frame
+key 和零 truth/global identity 写入合同。
+
+sidecar 冻结 taxonomy 已补充 assignment coverage contraction/recovery，但要求匿名
+candidate-feasibility inventory 净方向与 teacher coverage 一致、coverage deficit 反向闭合。
+固定 candidate mask 的多边 teacher 丢失继续失败关闭；同覆盖多目标 cycle 仍保留原分类，
+不把该变化误写成 resource failure/recovery。
+
+entry 48 现按匿名单槽 coverage transfer 处理。只有已覆盖目标跨过候选容量可行阈值、原未覆盖
+目标接管、teacher 总覆盖不变且资源集合恰好一出一入时，才复用
+`single_target_rebind_with_resource_release`；固定 mask、仅删边但仍可行和资源集合不交换均失败
+关闭。seed `23032` 定向复跑为 `10/5/5/5`，在线 truth 和身份写入为 0。
+
+当前分类器还接受 candidate inventory 实际变化下的一次资源交换开放链，并保持资源守恒
+pair/cycle 的原分类。main 旧 300 条探针实际结果为 `195/76/29`（pass/probe_error/
+quota_failed）。排除 18 条 D4/main-owned center-failure 后，58 条定向重放为
+`34/2/22`。entry 65 的三资源交换和 entry 94 的双资源交换继续失败关闭；预计总态
+`229/20/51` 不是新的全量结果。
+
+该阶段当时为 `readiness=false`，blocker=`cross_seed_quota_viability_not_proven`，
+逐 episode 下限保持 `3/3/2`。main-owned global allocation 与 D3 下游哈希链当时已刷新，
+但该阶段不是 300 配方结果。其 blocker 已由本节文首的后续 300/300 证据关闭。
+
+上述配方调整已由 main 完成并通过新 300/300 探针。D3 固定 `9/3/3/2`，
+未修改分类门限或税类语义。后续步骤为 main clean preflight 和单独授权的正式生成。
+
+dense-crossing 四 entry 的前后两轮共 8 条记录现为修复后 4/4 通过。快速聚焦测试为
+`39 passed`，runtime-to-writer 为 `15 passed`。历史冻结证据和当前自然配额失败关闭语义已
+分别测试；本轮未完成新的 D3 全量回归，不能将 readiness 改为 ready。
+
 ## 2026-08-02 A1 v3 producer viability 收敛复核
 
 D3 分类只使用连续匿名 planning evidence：demand multiset 证明 target roster 耦合，
@@ -2093,3 +2147,23 @@ registry 的 `dataset_generation` 仅表示 seed reservation，不等于生成�
 专项 64 项与 D3 全量 742 项已执行，结果分别为全通过和
 `741 passed, 1 skipped`。当前仍待 main 后续明确启动数据生成，并由 D6 独立审计生成物；
 本轮没有 episode、标签、manifest、bundle、权重、AirSim 结果或正式 payload 读取。
+
+## 2026-08-02 A1 v3 source request readiness retraction
+
+新审计将 source request readiness 撤回：既有 probe 只有 `5/23`，seed `23001` 为
+`10/1/9/4`，且 repository dirty。结果仅为 exploratory/non-formal，formal source
+`staged=1/finalized=0`；`3/3/2` 不变，稳定 blocker 为
+`cross_seed_quota_viability_not_proven`。main 后续必须提供 truth-free、按预注册 schedule
+的匿名 roster events；hard negative 只能由 deterministic counterfactual candidate proposal
+通过现有 safety projection 产生，不能用 teacher/effective override 或复制 frame 补 quota。
+
+## 2026-08-02 A1 v3 300 条最终开发探针复核
+
+最终 dirty 探针覆盖冻结 schedule 的 15 个 cell 和 300 个 episode，结果为 `300/300`。
+每条 `9/3/3/2` 配额均满足，实际最低 `9/3/3/3`；truth、身份创建/改写、重复帧和禁用 seed/
+shard 读取均为 0。并行 JSONL 与排序 summary 按 `episode_id` 完全一致。
+
+D3 同意恢复 generation-request-only readiness。该结论只允许提交生成请求，不允许实际生成、
+训练、shadow、runtime、assignment、plan 或 control。dirty evidence 仍为
+`readiness_eligible=false`。main 下一步必须形成新提交和 clean preflight，再决定是否单独
+授权正式来源生成；D3 与 D6 随后审计正式三文件数据集。

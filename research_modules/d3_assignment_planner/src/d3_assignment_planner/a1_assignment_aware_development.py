@@ -16,7 +16,7 @@ import json
 from math import atanh, isfinite
 from pathlib import Path
 import shutil
-from typing import Any, Iterable, Mapping, Sequence
+from typing import Any, Iterable, Mapping, Protocol, Sequence
 
 import numpy as np
 
@@ -203,6 +203,25 @@ class A1SafeAssignmentOutcome:
             + int(self.hard_edge_violation_count)
             + int(self.m_to_n_atomicity_violation_count)
         )
+
+
+class A1SafeAssignmentInput(Protocol):
+    """Minimum anonymous frame surface consumed by the safety projection."""
+
+    action_mask: np.ndarray
+    rule_cost_matrix: np.ndarray
+    target_demand_slots: Sequence[int]
+    target_threat_scores: Sequence[float]
+    unassigned_costs: np.ndarray
+    previous_selected_edges: Sequence[tuple[int, int]]
+
+
+@dataclass(frozen=True, slots=True)
+class A1SafeAssignmentProjection:
+    """First Hungarian proposal plus its all-or-none projected outcome."""
+
+    pre_projection_edges: tuple[tuple[int, int], ...]
+    outcome: A1SafeAssignmentOutcome
 
 
 @dataclass(frozen=True, slots=True)
@@ -545,10 +564,19 @@ def load_a1_development_records(
 
 
 def solve_a1_safe_assignment(
-    record: LearningFrameRecord,
+    record: A1SafeAssignmentInput,
     matrix: np.ndarray,
 ) -> A1SafeAssignmentOutcome:
     """Solve one frame and project every incomplete M-to-N target to zero."""
+
+    return project_a1_safe_assignment(record, matrix).outcome
+
+
+def project_a1_safe_assignment(
+    record: A1SafeAssignmentInput,
+    matrix: np.ndarray,
+) -> A1SafeAssignmentProjection:
+    """Return the initial demand-slot proposal and all-or-none projection."""
 
     candidate_matrix = np.asarray(matrix, dtype=float)
     if candidate_matrix.shape != record.rule_cost_matrix.shape:
@@ -562,6 +590,7 @@ def solve_a1_safe_assignment(
     active_targets = set(range(len(demand)))
     solver = HungarianDemandSlotSolver()
     selected_edges: tuple[tuple[int, int], ...] = ()
+    pre_projection_edges: tuple[tuple[int, int], ...] | None = None
     objective_on_matrix = 0.0
     removed_count = 0
     while active_targets:
@@ -587,6 +616,8 @@ def solve_a1_safe_assignment(
                 }
             )
         )
+        if pre_projection_edges is None:
+            pre_projection_edges = proposed
         assigned_by_target = Counter(row for row, _ in proposed)
         incomplete = [
             target_index
@@ -635,23 +666,28 @@ def solve_a1_safe_assignment(
         for index, score in enumerate(record.target_threat_scores)
         if float(score) >= 0.7
     }
-    return A1SafeAssignmentOutcome(
-        selected_edges=selected_edges,
-        objective_on_matrix=float(objective_on_matrix),
-        objective_on_rule_matrix=float(objective_on_rule),
-        assigned_slot_count=len(selected_edges),
-        high_threat_assigned_slot_count=sum(
-            assigned_by_target[index] for index in high_threat_rows
+    return A1SafeAssignmentProjection(
+        pre_projection_edges=(
+            () if pre_projection_edges is None else pre_projection_edges
         ),
-        duplicate_resource_count=len(resources) - len(set(resources)),
-        hard_edge_violation_count=int(hard_violations),
-        m_to_n_atomicity_violation_count=int(atomicity_violations),
-        churn=len(
-            set(selected_edges).symmetric_difference(
-                record.previous_selected_edges
-            )
+        outcome=A1SafeAssignmentOutcome(
+            selected_edges=selected_edges,
+            objective_on_matrix=float(objective_on_matrix),
+            objective_on_rule_matrix=float(objective_on_rule),
+            assigned_slot_count=len(selected_edges),
+            high_threat_assigned_slot_count=sum(
+                assigned_by_target[index] for index in high_threat_rows
+            ),
+            duplicate_resource_count=len(resources) - len(set(resources)),
+            hard_edge_violation_count=int(hard_violations),
+            m_to_n_atomicity_violation_count=int(atomicity_violations),
+            churn=len(
+                set(selected_edges).symmetric_difference(
+                    record.previous_selected_edges
+                )
+            ),
+            removed_incomplete_target_count=int(removed_count),
         ),
-        removed_incomplete_target_count=int(removed_count),
     )
 
 
