@@ -1,5 +1,27 @@
 # D4 分布式协同与降级接管
 
+## 2026-08-02 最终 main recipe 绑定复核
+
+main 已修复既有 regional owner 被重复送入首次二级接管的问题，并报告全新 dirty 开发探针
+300/300 通过。该结果只说明 D3 A1 v3 开发配方和 main 状态迁移在当前工作树中稳定；它不是
+D4 正式来源、降级性能或运行准入证据。D4 继续把同 owner 续持与首次接管分流，并保持
+owner、version、epoch、lease、完整联盟和零授权候选门不变。
+
+最终 `learning_source_recipes.py` 文件 SHA-256 为
+`34ced4f02c089b492b2ba58a94220fa319acd98ae65efa276c98fa7e4c8302d9`。main adapter、
+treatment 及 D4 allocation binding 未漂移，后者内容/文件摘要仍为
+`8104bb2a388e6e3b319898f7ac6585b5ee97de4ff65b934d0cd051bd6044dcea`、
+`d9d2a1999bba646df0ece2776f09674503ccece07461ed1beb658d5b9214d751`。刷新 recipe 引用后，
+source-generation request 内容/文件 SHA-256 为
+`4c4edd8250bfb9e1bd3a2e23885bd206ab9c8d4f4bd64a2caafa5475a7db811f`、
+`e93e7a79a3bfae055721fc21d9ba1591228c3d46f662922de2c04713076fe808`，readiness 输出内容
+SHA-256 为 `69a3b48785a597e15908fa42a37dfdfebb078b701670f11c7593bfeb25093e8e`。
+
+指定 readiness 与 regional failover 回归为 `76 passed, 1 warning`。正式 D4 TRAIN 来源仍为
+0/324，episode/sample 均为 0；只有 `source_generation_request=true`。数据生成执行、训练、
+降级、接管、联盟、运行、物理和控制权限全部保持 false。以下同日条目保留演进记录，当前
+哈希和状态以本节为准。
+
 ## 2026-08-02 main treatment 冻结哈希修复
 
 main 对 `episode_treatments.py` 增加了 D3 匿名 roster 和稳定观测窗口合同，D4 的

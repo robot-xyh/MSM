@@ -1,5 +1,45 @@
 # D4 分布式协同与降级接管综述及子方案
 
+## 2026-08-02 最终 recipe 绑定评审
+
+main 已修复既有 regional owner 重入首次 secondary takeover 的状态迁移，并报告全新 dirty
+开发探针 300/300 通过。D4 接受该结果作为上游配方稳定通知，不把它计作正式 D4 来源、降级
+性能或运行证据。首次接管、同 owner 续持、严格后继和零授权候选的既有安全语义不变。
+
+D4 将最终 recipe 文件 SHA-256 `34ced4f0...302d9` 绑定到 v8 source-generation request，
+请求内容/文件摘要更新为 `4c4edd82...b811f`、`e93e7a79...fe808`，readiness 输出摘要为
+`69a3b487...3e8e`。指定测试 `76 passed, 1 warning`。正式来源仍为 0/324；生成执行、训练、
+降级、接管、联盟、运行和控制权限均未开放。下一门是 main 在新提交和干净工作树上重跑统一
+preflight，取得显式 generation-only 授权后使用全新目录生成，再由 D4/D6 独立审计。
+
+## 2026-08-02 center-failure owner 续持评审
+
+评审确认 20 条 `center-failure-20t20r` 开发探针中的 18 条异常属于 main-owned 状态迁移
+错误。旧 plan 已是 regional owner `RECON-001`，D4 重申同一 ready node；main 仍按首次
+secondary takeover 处理，并以新的 center candidate 覆盖区域 lineage。D3 的同 owner
+拒绝不得放宽。
+
+建议 main 将状态分为首次接管、既有 regional authority 续持和零授权 generation fence。
+完整 formal authority 走 D3 regional successor；库存或成员证据不完整时围栏后重裁决，
+或保留旧计划失败关闭；不同 owner 只有在 version/epoch 严格前进且 lease 有效时切换。
+D4 新增语义回归，聚焦 `26 passed`。全量 `1004 passed, 11 failed, 1 warning` 中的 11 项
+均为 stale main recipe hash 的预期 readiness 拒绝；不改变算法、recipe binding、readiness
+或任何执行权限。
+
+## 2026-08-02 A2 v8 来源合同绑定刷新评审
+
+评审确认 main 全局 seed registry 的变化只来自 D3 source-contract。D4 allocation 的
+owner、candidate、TRAIN-only split、seed `28100-28423`、冻结 request 和 module schedule
+均未变化，因此不需要新版本算法或 seed。D4 已更新 binding 和 readiness 摘要链，并将
+实际参与 viability 的 main recipe catalog 纳入强制物理文件绑定。
+
+当前请求内容/文件 SHA-256 为 `8c137da2...f2c73`、`409bf831...9d408`。独立 readiness
+输出仍为 `generation_prerequisites_ready_no_data_generated`，324 个 seed、972 帧、空
+validation/test 和零执行权限保持原值。最终 adapter 绑定后的聚焦回归
+`70 passed, 1 warning`；上一轮同算法全量基线为 `1014 passed`，本轮未重复。本轮只恢复
+来源请求的哈希一致性，没有生成新 episode；AirSim、主动/被动降级和 M 对 N 联盟结论
+无需变更。
+
 ## 2026-08-02 frozen-hash repair 评审
 
 评审接受 main treatment 文件的 D3 匿名事件扩展，但不以“D4 类未主动修改”替代回归。

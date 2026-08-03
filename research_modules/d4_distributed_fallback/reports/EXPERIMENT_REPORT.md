@@ -1,5 +1,64 @@
 # D4 分布式降级与接管实验报告
 
+## 2026-08-02 最终 recipe 绑定验证
+
+本轮没有运行新的 D4 episode。main 提供的全新 dirty 开发探针结果为 300/300，通过范围是
+D3 A1 v3 配方和 main 状态迁移；该结果不计入 D4 正式来源。D4 验证最终 recipe 文件摘要为
+`34ced4f0...302d9`，并刷新 source-generation request 下游绑定。
+
+| 验证项 | 当前结果 |
+| --- | --- |
+| D4 allocation binding 内容/文件 SHA-256 | `8104bb2a...4dcea` / `d9d2a199...4d751`，未漂移 |
+| source request 内容/文件 SHA-256 | `4c4edd82...b811f` / `e93e7a79...fe808` |
+| readiness 输出内容 SHA-256 | `69a3b487...3e8e` |
+| 指定回归 | `76 passed, 1 warning` |
+| 正式 D4 TRAIN 来源 | 0/324，episode/sample 均为 0 |
+| 权限 | 仅 source-generation request；执行、训练、降级、接管、联盟、运行和控制关闭 |
+
+唯一警告是既有 Matplotlib `Axes3D` 环境问题。正式 324 项生成仍要求新提交、clean preflight、
+显式授权和全新输出目录，完成后再由 D4 与 D6 独立审计。以下同日结果保留为开发过程记录。
+
+## 2026-08-02 center-failure 区域 owner 续持审计
+
+D3 A1 v3 的 300 条非正式三维 runtime 探针中，`center-failure-20t20r` 共 20 条。18 条为
+worker exception，2 条通过。异常统一为
+`secondary owner must differ from the superseded plan owner`。该批次在线真值读取、
+`global_track_id` 创建和改写均为 0。
+
+代表性失败帧的旧计划为 version 4、regional owner `RECON-001`、source
+`d3_regional_router`；D4 仍选择已就绪的 `RECON-001`。main 构造 version 5 的 center
+candidate 后调用首次二级接管 helper，安全合同因新旧 owner 相同而拒绝。独立诊断复跑
+复现了相同 owner/路径形态；具体触发时刻受当前 dirty development tree 的配方状态影响，
+不作为性能指标。
+
+结论是 main 状态迁移错误，D4 owner 选择和拒绝合同符合设计。同 owner 的区域续持应走
+D3 regional authority 严格后继；authority 不完整时先生成零执行权限代际围栏或保持旧计划
+失败关闭。新 owner 仍必须满足 owner 不同、version/epoch 严格前进、lease 有效和完整联盟
+证据。状态聚焦测试为 `26 passed`。D4 全量为 `1004 passed, 11 failed, 1 warning`；全部
+11 项失败均由 main recipe 实际文件与冻结旧摘要不一致触发。本轮不刷新 stale recipe hash，
+不开放降级、接管、联盟、运行或控制权限。
+
+## 2026-08-02 来源合同绑定复核
+
+本轮属于生成前合同复核，没有运行新的仿真 episode。main 全局 registry 因 D3
+source-contract 更新而改变摘要；D4 allocation、seed `28100-28423`、324 配方、TRAIN-only
+split 和既有 972 帧 viability 口径保持不变。D4 更新 binding 和 readiness 下游摘要，并把
+recipe catalog 补入强制实现绑定。
+
+| 复核项 | 结果 |
+| --- | --- |
+| 全局 registry 内容/文件 SHA-256 | `982f3467...9530c` / `98caa683...f988` |
+| D4 binding 内容/文件 SHA-256 | `8104bb2a...4dcea` / `d9d2a199...4d751` |
+| source request 内容/文件 SHA-256 | `8c137da2...f2c73` / `409bf831...9d408` |
+| readiness 输出内容 SHA-256 | `85275d0f...fda3e` |
+| seed、split、冻结配方 | 324 个 seed，`28100-28423`，TRAIN-only，未变化 |
+| viability 口径 | 324 个冻结配方、972 帧；没有新 episode |
+| 权限 | 仅 `source_generation_request=true`；执行、训练和运行权限关闭 |
+| 回归 | 聚焦 `70 passed, 1 warning`；上一轮同算法全量基线 `1014 passed`，本轮未重复 |
+
+唯一告警来自本机 Matplotlib `Axes3D` 环境冲突。该告警不影响绑定校验，但三维绘图环境仍
+需单独治理。本轮结果不能解释为正式数据集生成、模型训练、AirSim 降级或物理协同证据。
+
 ## 2026-08-02 frozen-hash repair 验证
 
 main treatment 文件加入 D3 匿名事件处理后，D4 preflight 以

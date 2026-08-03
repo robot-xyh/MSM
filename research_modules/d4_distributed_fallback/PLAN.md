@@ -1,5 +1,52 @@
 # D4 分布式协同与降级接管计划
 
+## 2026-08-02 最终 main recipe 绑定与后续门
+
+### 已完成
+
+- [x] 复核 main 已修复同一 regional owner 重入首次 secondary takeover 的状态迁移；main
+  报告全新 dirty 开发探针 300/300 通过，该证据不计入 D4 正式来源。
+- [x] 确认 D4 对同 owner 的同代际重申和严格新代际续持均保持可执行；owner 变化仍要求
+  plan version 与 epoch 同时严格前进，旧代际、过期 lease 和不完整联盟继续失败关闭。
+- [x] 固化 `selected_secondary_id` 在 `hold_for_review` 中只是诊断候选、不能作为执行授权
+  的回归断言。
+- [x] 将最终 main recipe SHA-256 `34ced4f0...302d9` 写入 D4 source-generation request，
+  重算 request 内容/文件摘要并同步 validator 和精确测试断言。
+- [x] 指定 readiness/regional failover 回归 `76 passed, 1 warning`；正式来源保持 0/324，
+  全部生成执行和运行权限保持关闭。
+
+### main 后续 clean preflight 条件
+
+- [ ] main 将稳定的 D3/main 与本次 D4 绑定按子系统提交，在新提交上保持工作树干净，并
+  重跑统一 clean preflight；不得以 dirty 300/300 替代该门。
+- [ ] 正式生成须另行显式授权并使用全新输出目录。生成前再次核对 recipe、adapter、
+  treatment、registry、request 与提交身份无漂移。
+- [ ] 完整写出 324 个 D4 TRAIN episode 后，由 D4 与 D6 分别审计来源、哈希、类别、拓扑、
+  通信和真值隔离；在此之前 training、degradation、takeover、coalition、runtime 和 control
+  继续关闭。
+
+## 2026-08-02 A2 v8 来源合同绑定刷新
+
+### 已完成
+
+- [x] 核对 main 全局 seed registry：仅 D3 source-contract 变化；D4 allocation 仍为
+  `d4-a2-v8-train`，seed `28100-28423`、324 配方和 TRAIN-only split 未改变。
+- [x] 刷新 D4 main allocation binding 中的全局 registry 内容/文件 SHA，并重算 binding
+  自哈希和物理文件哈希。
+- [x] 刷新 source-generation readiness 对 main adapter 和 treatment 的文件绑定；补齐
+  viability 实际使用的 `learning_source_recipes.py` 绑定及独立漂移负例。
+- [x] 重算 readiness 内容/文件 SHA，并同步 validator 常量、复制夹具和预期摘要。
+- [x] 验证 readiness 仍为 ready，324 seed、972 帧、空 validation/test 和仅请求权限保持
+  不变；最终 adapter 绑定后的 readiness/viability/writer 聚焦测试
+  `70 passed, 1 warning`。上一轮同算法全量基线为 `1014 passed`，本轮按指令未重复。
+
+### 后续门
+
+- [ ] 本轮没有新生成 episode；既有 324/972 只作为冻结 viability 重新审计口径。正式
+  324 episode 仍须在 clean commit、main generation-only authorization 和全新输出目录下
+  生成，再由 D4/D6 审计。
+- [ ] 本次不改变区域资源算法、readiness 语义、主动/被动降级、联盟或 AirSim 计划。
+
 ## 2026-08-02 frozen-hash repair
 
 ### 已完成

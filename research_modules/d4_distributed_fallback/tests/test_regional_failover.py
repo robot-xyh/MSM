@@ -447,6 +447,65 @@ def test_center_failure_selects_ready_mobile_recon_by_region_coverage() -> None:
     assert decision.execution_allowed is True
 
 
+def test_existing_secondary_owner_is_reaffirmed_without_a_false_takeover() -> None:
+    coordinator = RegionalFailoverCoordinator()
+    members = _members("INT-1")
+    coordinator.evaluate(
+        _snapshot(
+            now_s=1.0,
+            health=C2Health.NORMAL,
+            plan_version=1,
+            epoch=1,
+            tasks=(_task(),),
+            members=members,
+        )
+    )
+    first = coordinator.evaluate(
+        _snapshot(
+            now_s=2.0,
+            health=C2Health.FAILED,
+            plan_version=2,
+            epoch=2,
+            tasks=(_task(plan_version=2, epoch=2),),
+            secondaries=(_secondary(now_s=2.0, epoch=2),),
+            members=members,
+        )
+    ).region_decisions[0]
+    maintained = coordinator.evaluate(
+        _snapshot(
+            now_s=2.2,
+            health=C2Health.FAILED,
+            plan_version=2,
+            epoch=2,
+            tasks=(_task(plan_version=2, epoch=2),),
+            secondaries=(_secondary(now_s=2.2, epoch=2),),
+            members=members,
+        )
+    ).region_decisions[0]
+    successor = coordinator.evaluate(
+        _snapshot(
+            now_s=3.0,
+            health=C2Health.FAILED,
+            plan_version=3,
+            epoch=3,
+            tasks=(_task(plan_version=3, epoch=3),),
+            secondaries=(_secondary(now_s=3.0, epoch=3),),
+            members=members,
+        )
+    ).region_decisions[0]
+
+    for decision in (first, maintained, successor):
+        assert decision.selected_secondary_id == "RECON-1"
+        assert decision.ownership.owner_id == "RECON-1"
+        assert decision.execution_allowed is True
+        assert decision.fail_closed is False
+        assert decision.rejection_reasons == ()
+    assert maintained.ownership.plan_version == 2
+    assert maintained.ownership.epoch == 2
+    assert successor.ownership.plan_version == 3
+    assert successor.ownership.epoch == 3
+
+
 def test_secondary_failure_enters_distributed_and_k2_requires_atomic_full_ack() -> None:
     coordinator = RegionalFailoverCoordinator()
     members = _members("INT-1", "INT-2")
@@ -919,6 +978,7 @@ def test_secondary_rejects_a_d5_held_assigned_member() -> None:
     ).region_decisions[0]
 
     assert decision.selected_layer == RegionalAuthorityLayer.SECONDARY
+    assert decision.selected_secondary_id == "RECON-1"
     assert decision.action == RegionalAction.HOLD_FOR_REVIEW
     assert decision.execution_allowed is False
     assert "d5_member_hold" in decision.rejection_reasons

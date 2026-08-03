@@ -66,6 +66,7 @@ def _copy_contract_fixture(tmp_path: Path) -> dict[str, Path]:
             "main_runtime_adapter_implementation"
         ]["path"],
         "main_treatment": references["main_treatment_implementation"]["path"],
+        "main_recipe": references["main_recipe_implementation"]["path"],
     }
     copied: dict[str, Path] = {}
     for name, logical in paths.items():
@@ -112,7 +113,7 @@ def test_exact_main_allocation_binding_is_generation_prerequisite_ready() -> Non
         "region_resource_v8_train_source_generation_request_readiness_v1.json"
     )
     assert report.source_generation_request_sha256 == (
-        "18b595057197dda06b8b2a1ec2a357f1f4d652d2512752be83db2f1e979df1e2"
+        "e93e7a79a3bfae055721fc21d9ba1591228c3d46f662922de2c04713076fe808"
     )
     assert report.writer_resume_safety_validated is True
     assert report.source_viability_audit_validated is True
@@ -189,6 +190,9 @@ def test_source_generation_request_artifact_is_machine_valid() -> None:
     }
     assert validated["permissions"]["source_generation_request"] is True
     assert validated["execution_claims"]["main_execution_authorization"] is False
+    assert validated["references"]["main_recipe_implementation"][
+        "file_sha256"
+    ] == "34ced4f02c089b492b2ba58a94220fa319acd98ae65efa276c98fa7e4c8302d9"
 
 
 def test_source_generation_request_physical_hash_drift_fails_closed(
@@ -226,6 +230,7 @@ def test_writer_resume_implementation_hash_drift_fails_closed(
         ("region_resource_policy", "region_resource_policy_implementation"),
         ("main_runtime_adapter", "main_runtime_adapter_implementation"),
         ("main_treatment", "main_treatment_implementation"),
+        ("main_recipe", "main_recipe_implementation"),
     ),
 )
 def test_bound_producer_hash_drift_fails_closed(

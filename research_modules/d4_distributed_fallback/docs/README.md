@@ -1,5 +1,25 @@
 # D4 文档索引
 
+2026-08-02 完成最终 main recipe 下游绑定复核。当前 recipe 文件 SHA-256 为
+`34ced4f0...302d9`，D4 source-generation request 内容/文件摘要为
+`4c4edd82...b811f`、`e93e7a79...fe808`，readiness 输出摘要为 `69a3b487...3e8e`。
+指定测试 `76 passed, 1 warning`。main 的全新 dirty 开发探针 300/300 只用于说明配方稳定，
+不计作 D4 正式证据；正式来源仍为 0/324，所有生成执行和运行权限关闭。以下条目为演进记录。
+
+2026-08-02 完成 D3 A1 v3 center-failure 开发探针审计。20 条中 18 条因 main 把已有
+regional owner `RECON-001` 再次送入首次 secondary takeover helper 而被安全合同拒绝，
+2 条通过。D4 增加同 owner 续持与 hold 候选零授权回归，聚焦 `26 passed`；全量中的
+11 项失败均为 stale recipe hash 的预期失败关闭。模块算法和权限未变化。详细状态
+见 `../README.md`、`../PLAN.md`、`ALGORITHM_AND_IMPLEMENTATION.md`、
+`MODULE_PRINCIPLES_CN.md` 和 `../reports/EXPERIMENT_REPORT.md`。
+
+2026-08-02 完成 A2 v8 来源合同绑定刷新。main 全局 registry 仅变更 D3 source-contract，
+D4 seed、split、配方、证据口径、readiness 和权限不变。D4 readiness 现同时绑定 main 的
+adapter、treatment 与 recipe catalog；当前请求内容/文件 SHA-256 为
+`8c137da2...f2c73`、`409bf831...9d408`。最终 adapter 绑定后的聚焦测试
+`70 passed, 1 warning`；上一轮同算法全量基线为 `1014 passed`，本轮未重复。本轮没有
+生成正式 episode，AirSim 文档和实验结论未变化。
+
 2026-08-01 完成 A2 v8 来源可生成性收口。资源硬预算已与确定性投影器统一为“可用资源减
 已承诺资源和备用下限”，供需差继续作为特征而非额外转移围栏。低成本审计覆盖 324/324
 冻结 episode 和 972 帧；真实 scalable producer 连续证据只覆盖 `sequence=0/1`，正式

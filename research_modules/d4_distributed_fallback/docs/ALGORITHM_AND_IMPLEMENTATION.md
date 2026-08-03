@@ -1,5 +1,61 @@
 # D4 分布式协同与降级接管算法及实施方案
 
+## 最终 recipe 下游绑定（2026-08-02）
+
+main 修复区域 owner 状态迁移并完成全新 dirty 开发探针 300/300 后，D4 对最终
+`learning_source_recipes.py` 重新计算物理摘要 `34ced4f0...302d9`。adapter、treatment 和
+allocation binding 摘要没有变化，因此本轮不改写这些制品，只更新 source-generation
+request 的 recipe 引用。请求移除旧自哈希后按规范 JSON 重算，内容摘要为
+`4c4edd82...b811f`，落盘文件摘要为 `e93e7a79...fe808`；validator 常量和精确回归断言同步
+更新。readiness 输出内容摘要为 `69a3b487...3e8e`。
+
+指定测试为 `76 passed, 1 warning`。测试同时验证 recipe 字节漂移会再次失败关闭，且
+324 个 TRAIN seed、972 帧 viability 口径、空 validation/test 和权限表没有变化。正式
+episode/sample 仍为 0；dirty 300/300 不得转写为 D4 正式来源、降级能力或运行授权。
+
+## 区域 owner 续持与首次接管分流（2026-08-02）
+
+`center-failure-20t20r` 的 20 条开发探针中，18 条在 main 调用首次二级接管 helper 时被
+安全合同拒绝。代表性 source plan 已是 `active_plan_owner=regional`，owner 为
+`RECON-001`；D4 formal decision 仍选择该节点。main 却先构造 source 为 `d3_central` 的
+新 center candidate，再把 `RECON-001` 作为“新” secondary owner，因此触发同 owner
+拒绝。该拒绝是正确行为。
+
+正确实施分流如下：
+
+1. 当前计划为 center owner，D4 首次给出完整 secondary authority 时，main 才调用首次
+   接管路径；新 owner 必须不同，计划 version 和 leader epoch 严格前进，lease 在激活时
+   有效。
+2. 当前计划为 regional owner，D4 formal decision 可执行且覆盖当前任务时，main 将该
+   decision 转换为 `RegionalAuthorityInput`，由 D3 regional planner 发布严格后继。同一
+   owner 可以续持，owner/layer 变化仍要求严格新代际。
+3. 目标库存变化、成员不可执行或 authority adapter 拒绝时，不生成可执行 center plan。
+   main 先发布零执行权限的 generation fence 并重建 D4 snapshot，或保持旧 regional plan
+   由 lease 和 D7 门失败关闭。`selected_secondary_id` 不能替代
+   `execution_allowed/ownership.active`。
+
+新增模块回归覆盖同 owner 的同代际重申、严格新代际续持，以及 hold decision 仍携带候选
+但零授权的语义，聚焦测试 `26 passed`。D4 全量为
+`1004 passed, 11 failed, 1 warning`；11 项均是 main recipe 文件已变化、D4 stale hash
+按设计拒绝，未刷新。算法阈值和安全合同未改变；18/20 结果只作为 dirty development
+集成证据，不构成降级性能或运行授权。
+
+## 来源绑定刷新（2026-08-02）
+
+本轮不改区域资源算法。实现步骤是先校验全局 registry 的 D4 allocation 仍精确等于
+`28100-28423` 和 TRAIN-only 请求，再更新 D4 binding 中的 registry 内容/文件摘要。更新后
+binding 内容/文件摘要为 `8104bb2a...4dcea`、`d9d2a199...4d751`。
+
+生成请求随后绑定当前 `learning_source_adapters.py`、`episode_treatments.py` 和
+`learning_source_recipes.py`。validator 使用固定路径和文件 SHA-256 逐项复算，recipe
+catalog 漂移现在与 adapter/treatment 漂移一样返回稳定失败原因。最后重算请求自哈希和
+物理文件摘要，得到 `8c137da2...f2c73`、`409bf831...9d408`，并同步实现常量和测试夹具。
+
+readiness 复核仍返回 324 个 TRAIN seed、972 帧、空 validation/test、正式 episode/sample
+为 0。仅 `source_generation_request` 为 true，其他权限不变。定向回归为
+`70 passed, 1 warning`。上一轮同算法全量基线为 `1014 passed`，本轮按指令未重复。这组
+结果证明绑定链一致，不是新的来源生成或算法性能实验。
+
 ## 冻结哈希重绑定（2026-08-02）
 
 readiness 对 main treatment 文件使用物理 SHA-256，而不是仅绑定 D4 类名。当前文件因 D3

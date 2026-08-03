@@ -1,5 +1,26 @@
 # D4 M 对 N 分布式联盟形成与降级接管调研
 
+## 2026-08-02 最终 recipe 绑定与联盟边界
+
+最终 recipe 哈希刷新只恢复 A2 v8 TRAIN 来源请求的机器一致性。main 的 dirty 开发探针
+300/300 没有创建 D4 联盟成员、ACK、owner lease、successor plan 或控制许可，也不能代替
+正式 324 episode 的生成和审计。D4 的完整成员 ACK、owner/version/epoch/lease、故障围栏和
+原子提交门没有变化。
+
+正式 D4 来源保持 0/324。只有 `source_generation_request=true`；assignment、degradation、
+takeover、coalition、runtime、physical 和 control 均为 false。后续来源即使通过正式审计，
+仍须独立经过既有 M 对 N 联盟提交和运行准入门。
+
+## 2026-08-02 A2 v8 来源绑定与联盟边界
+
+本轮只刷新区域资源 TRAIN 来源的 registry、binding、adapter、treatment 和 recipe 摘要。
+它没有创建联盟成员、ACK、owner lease、D3 successor plan 或控制许可，也没有改变 M 对 N
+原子提交状态机。324 个 seed 和 972 帧仍是区域来源合同口径，不能解释为联盟规模或新联盟
+episode。
+
+readiness 继续只开放 `source_generation_request`。degradation、takeover、coalition、
+assignment、runtime 和 control 均为 false；本文件既有联盟能力与开放缺口判定不变。
+
 ## 2026-08-01 A2 v8 来源可生成性与联盟边界
 
 资源预算口径修正和 324-cell viability 只作用于区域资源 TRAIN 来源。真实 producer 的

@@ -1,5 +1,57 @@
 # D4 实现差距审计：分布式协同与降级接管
 
+## 2026-08-02 最终 recipe 绑定缺口关闭
+
+- **main-owned 状态迁移断点已完成开发态复核。** main 已修复同一 regional owner 被重复送入
+  首次二级接管 helper 的问题，并报告全新 dirty 开发探针 300/300 通过。该结果不构成 clean
+  formal 或 D4 来源证据。
+- **D4-owned stale binding 已关闭。** 最终 recipe 文件 SHA-256 为
+  `34ced4f02c089b492b2ba58a94220fa319acd98ae65efa276c98fa7e4c8302d9`。请求内容/文件
+  SHA-256 为 `4c4edd8250bfb9e1bd3a2e23885bd206ab9c8d4f4bd64a2caafa5475a7db811f`、
+  `e93e7a79a3bfae055721fc21d9ba1591228c3d46f662922de2c04713076fe808`，readiness 输出摘要为
+  `69a3b48785a597e15908fa42a37dfdfebb078b701670f11c7593bfeb25093e8e`。
+- **回归与权限：** 指定 readiness/regional failover 测试 `76 passed, 1 warning`。正式 D4
+  TRAIN 来源仍为 0/324；source generation execution、training、degradation、takeover、
+  coalition、runtime、physical 和 control 全部为 false。
+- **开放的跨模块 P1：** main 仍需将稳定源码和绑定提交，在 clean worktree 上重跑统一
+  preflight，并取得单独 generation-only 授权。正式 324 episode 必须写入全新目录，再由
+  D4/D6 独立完成来源和真值隔离审计。完成前不得进入训练或任何运行准入阶段。
+
+## 2026-08-02 center-failure 区域续持断点
+
+- **D4-owned P0/P1：无新增。** D4 正确区分候选和授权，允许同一 regional owner 在有效
+  代际内重申，也允许其在严格新 version/epoch 下续持；旧 owner 切换、过期 lease、旧计划
+  和不完整联盟继续失败关闭。
+- **main-owned P1：开放。** 300 条 D3 开发探针中的 center-failure cell 为 18/20
+  worker exception。main 在旧 plan 已为 regional/`RECON-001` 时，把同一 D4 selected
+  secondary 与新的 center candidate 送入首次接管 helper。修复应按 formal authority
+  完整性选择 regional successor、零授权 generation fence 或旧计划 hold，不能放宽 D3
+  owner 不同约束。
+- **验收口径：** main 修复后以新临时输出复跑 center-failure 20/20 和完整 300/300；要求
+  worker exception 为 0，在线真值和全局航迹编号写入为 0，owner/version/epoch/lease 与
+  D4 formal decision 精确一致。D4 stale recipe hash 暂不刷新，所有权限保持关闭。
+- **本轮回归：** 区域状态聚焦 `26 passed`；D4 全量
+  `1004 passed, 11 failed, 1 warning`。11 项全部先被
+  `main_recipe_implementation_file_sha256_mismatch` 阻断，证明 stale binding 正在失败关闭；
+  待 main recipe 稳定后再由 D4 单独刷新并恢复完整绿测。
+
+## 2026-08-02 A2 v8 来源绑定缺口关闭
+
+main 全局 registry 更新 D3 source-contract 后，D4 旧 binding 按设计失败关闭。审计确认
+D4 allocation、324 个 TRAIN seed、冻结请求、972 帧口径、readiness 和权限没有变化。
+D4 已更新 global registry → main allocation binding → source-generation readiness →
+validator 常量与测试的完整摘要链，并补齐 `learning_source_recipes.py` 的实现绑定和漂移
+负例。adapter、treatment 和 recipe 任一字节漂移都会阻断请求。
+
+该 D4-owned 绑定缺口已关闭。当前请求内容/文件 SHA-256 为
+`8c137da299037353e7f42905aa15ebdfdca9504e4f25434c82be234872df2c73`、
+`409bf8316ee2f974b3ab1889e25b4eb988e6e3c7468b77a882bed414dc49d408`。最终 adapter
+绑定后的 readiness 输出内容 SHA-256 为
+`85275d0fc5be34a993efe9ad86fb01757a0bd80b700b11a01f0a00d90e1fda3e`，聚焦测试
+`70 passed, 1 warning`；上一轮同算法全量基线为 `1014 passed`，本轮未重复。没有新增
+D4-owned P0；正式 324 episode 生成、clean-source 审计和 D6 独立审计继续作为跨模块 P1。
+本轮没有新 episode，也没有权限升级。
+
 ## 2026-08-02 main treatment frozen-hash 缺口关闭
 
 main treatment 物理文件因 D3 匿名事件合同变化而漂移，D4 readiness 正确以

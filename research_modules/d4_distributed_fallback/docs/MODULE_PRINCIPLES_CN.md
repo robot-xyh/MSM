@@ -1,5 +1,46 @@
 # 分布式协同与降级接管模块原理（模块编号 D4）
 
+## 最终来源绑定原则（2026-08-02）
+
+上游配方完成开发态复核后，D4 仍必须按文件内容重新确认来源身份，不能继承先前 readiness。
+当前 recipe 文件摘要为 `34ced4f0...302d9`；adapter、treatment、全局 registry 和 D4
+allocation binding 未漂移。D4 只重算 source-generation request 的 recipe 引用、自哈希和
+物理文件摘要，并通过 validator 重验全部引用。指定回归为 `76 passed, 1 warning`。
+
+main 报告的 dirty 开发探针 300/300 不改变证据层级。D4 正式 TRAIN 来源仍为 0/324，只有
+提交来源生成请求的权限为 true；生成执行、训练、降级、接管、联盟、运行和控制权限继续为
+false。正式来源只能在新提交、clean worktree、显式 generation-only 授权和全新输出目录下
+生成，之后仍需 D4/D6 独立审计。
+
+## 区域 owner 续持原则（2026-08-02）
+
+二级节点首次从中心接管和既有区域 owner 的后续续持是两种状态迁移。首次接管要求新 owner
+与被替代 owner 不同；既有 regional plan 再次选中同一二级节点表示 D4 对当前 owner 的
+重申。后者可保持同一已发布代际，也可在新计划需要发布时形成严格更高 version/epoch 的
+regional successor，不应再次调用首次接管合同。
+
+D4 decision 中的 `selected_secondary_id` 同时承担候选诊断用途。只有
+`execution_allowed=true`、`fail_closed=false`、ownership active 且 owner、source plan、
+epoch、lease 和联盟证据完整时，它才构成区域执行授权。`hold_for_review` 即使保留候选节点
+编号，也必须被 main 解释为零授权。目标库存或成员可行性变化造成授权不完整时，系统先形成
+无执行权限的代际围栏并重新裁决，或保留旧计划直至租约到期；不能利用中心候选计划绕过
+区域权属。该语义聚焦回归为 `26 passed`。全量测试中其余失败仅来自冻结 recipe 哈希漂移，
+readiness 正确保持关闭。
+
+## 来源合同完整绑定原则（2026-08-02）
+
+D4 的生成前门必须冻结所有能够改变来源样本的 main-owned 输入。区域来源不仅依赖运行时
+adapter 和 topology/supply treatment，也依赖把 324 个 seed 映射到处理条件的 recipe
+catalog。旧 artifact 未显式绑定 recipe 文件；当前版本已补齐该引用，并为三类 main 文件
+分别执行物理 SHA-256 漂移检查。任何一项发生字节变化，readiness 都失败关闭。
+
+全局 seed registry 因其他模块 source-contract 更新而改变文件摘要时，D4 先确认自己的
+allocation、seed、split 和 source-contract 内容未变，再逐层重算 main allocation binding
+和 source-generation readiness 的规范内容摘要及物理文件摘要。该过程只恢复来源请求身份，
+不能增加生成、训练、降级、联盟、运行或控制权限。本轮没有生成新 episode；324 配方和
+972 帧仍是既有冻结 viability 的重新审计范围。最终 adapter 绑定后的聚焦回归为
+`70 passed, 1 warning`；上一轮同算法全量基线为 `1014 passed`，本轮未重复。
+
 ## 冻结实现重绑定原则（2026-08-02）
 
 D4 的来源请求不仅冻结本模块合同，也冻结 main 中实际构造区域拓扑和供需处理的实现文件。

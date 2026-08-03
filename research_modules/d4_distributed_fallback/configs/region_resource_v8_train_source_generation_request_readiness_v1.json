@@ -24,15 +24,15 @@
       "role": "main_owned_allocation_binding",
       "binding_id": "d4-a2-v8-main-seed-allocation-binding-20260801-v1",
       "path": "research_modules/d4_distributed_fallback/configs/region_resource_v8_main_seed_allocation_binding_v1.json",
-      "content_sha256": "60b42f2be28f3b389cae9a299045a3457e8b549d1525d5a7102c0a3e30533a20",
-      "file_sha256": "d88a8222e383ad18c59111ab6b7f3b7b41f4929f1472ed15fadca8cc4bbdaff7"
+      "content_sha256": "8104bb2a388e6e3b319898f7ac6585b5ee97de4ff65b934d0cd051bd6044dcea",
+      "file_sha256": "d9d2a1999bba646df0ece2776f09674503ccece07461ed1beb658d5b9214d751"
     },
     "global_seed_registry": {
       "role": "main_owned_global_seed_registry",
       "registry_id": "scalable3d-learning-source-allocation-20260801-v1",
       "path": "research_modules/scalable_3d_simulation/configs/scalable_learning_global_seed_registry_v1.json",
-      "content_sha256": "89d99bf064a8c0e226eead5b675f05daf70ac2d4c6f6139322502da54ab0aea7",
-      "file_sha256": "1c9778e1cbfcd5679956ac2c1fc71a1e780207c4579abdc9b129d162a252c4b6"
+      "content_sha256": "982f34673cdf944c8d8799d2939361ab002130c0cddf8238a83c6e46e299530c",
+      "file_sha256": "98caa683ceae61b89580afc44545875c4345fa1b92bfc05cdc91e232c9f7f988"
     },
     "writer_resume_implementation": {
       "role": "d4_train_writer_cross_process_resume_implementation",
@@ -64,12 +64,17 @@
     "main_runtime_adapter_implementation": {
       "role": "main_truth_isolated_d4_runtime_adapter",
       "path": "research_modules/scalable_3d_simulation/learning_source_adapters.py",
-      "file_sha256": "1b409de412dcfd3affb4dde254d7782804b296e013fdbab254e9b8995bfed642"
+      "file_sha256": "7fb1b660ab3dae035d055ed83bb465c4420f465da8e127dbb8f0054af15534da"
     },
     "main_treatment_implementation": {
       "role": "main_frozen_d4_topology_supply_and_communication_treatment",
       "path": "research_modules/scalable_3d_simulation/episode_treatments.py",
-      "file_sha256": "8e77b53dc1f9a5558d4b2f73e10c03f36aa292a298c76c6182169070c5e5ae19"
+      "file_sha256": "135a526ad9591c2fa3a0041d50335db1fcb75e1129e97df60c5739df66b4cf9c"
+    },
+    "main_recipe_implementation": {
+      "role": "main_frozen_d4_source_recipe_catalog",
+      "path": "research_modules/scalable_3d_simulation/learning_source_recipes.py",
+      "file_sha256": "34ced4f02c089b492b2ba58a94220fa319acd98ae65efa276c98fa7e4c8302d9"
     }
   },
   "request_scope": {
@@ -154,5 +159,5 @@
     "model_registration_count": 0,
     "runtime_connection_count": 0
   },
-  "content_sha256": "1d53de5ca23b2de7b06aab6a0be719ffc78c8c977bcc408775e372ad677a10c1"
+  "content_sha256": "4c4edd8250bfb9e1bd3a2e23885bd206ab9c8d4f4bd64a2caafa5475a7db811f"
 }

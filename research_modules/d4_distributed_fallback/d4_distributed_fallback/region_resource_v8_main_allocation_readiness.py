@@ -66,10 +66,10 @@ SOURCE_GENERATION_REQUEST_PATH = (
     "region_resource_v8_train_source_generation_request_readiness_v1.json"
 )
 SOURCE_GENERATION_REQUEST_CONTENT_SHA256 = (
-    "1d53de5ca23b2de7b06aab6a0be719ffc78c8c977bcc408775e372ad677a10c1"
+    "4c4edd8250bfb9e1bd3a2e23885bd206ab9c8d4f4bd64a2caafa5475a7db811f"
 )
 SOURCE_GENERATION_REQUEST_FILE_SHA256 = (
-    "18b595057197dda06b8b2a1ec2a357f1f4d652d2512752be83db2f1e979df1e2"
+    "e93e7a79a3bfae055721fc21d9ba1591228c3d46f662922de2c04713076fe808"
 )
 
 GLOBAL_REGISTRY_PATH = (
@@ -81,10 +81,10 @@ GLOBAL_REGISTRY_POLICY = "scalable3d-seed-allocation-policy-v1"
 GLOBAL_REGISTRY_ID = "scalable3d-learning-source-allocation-20260801-v1"
 GLOBAL_REGISTRY_STATUS = "allocations_reserved_generation_not_started"
 GLOBAL_REGISTRY_CONTENT_SHA256 = (
-    "89d99bf064a8c0e226eead5b675f05daf70ac2d4c6f6139322502da54ab0aea7"
+    "982f34673cdf944c8d8799d2939361ab002130c0cddf8238a83c6e46e299530c"
 )
 GLOBAL_REGISTRY_FILE_SHA256 = (
-    "1c9778e1cbfcd5679956ac2c1fc71a1e780207c4579abdc9b129d162a252c4b6"
+    "98caa683ceae61b89580afc44545875c4345fa1b92bfc05cdc91e232c9f7f988"
 )
 
 ALLOCATION_ID = "d4-a2-v8-train"
@@ -132,10 +132,10 @@ MAIN_ALLOCATION_BINDING_PATH = (
     "region_resource_v8_main_seed_allocation_binding_v1.json"
 )
 MAIN_ALLOCATION_BINDING_CONTENT_SHA256 = (
-    "60b42f2be28f3b389cae9a299045a3457e8b549d1525d5a7102c0a3e30533a20"
+    "8104bb2a388e6e3b319898f7ac6585b5ee97de4ff65b934d0cd051bd6044dcea"
 )
 MAIN_ALLOCATION_BINDING_FILE_SHA256 = (
-    "d88a8222e383ad18c59111ab6b7f3b7b41f4929f1472ed15fadca8cc4bbdaff7"
+    "d9d2a1999bba646df0ece2776f09674503ccece07461ed1beb658d5b9214d751"
 )
 V8_WRITER_RESUME_IMPLEMENTATION_PATH = (
     "research_modules/d4_distributed_fallback/d4_distributed_fallback/"
@@ -176,13 +176,19 @@ V8_MAIN_RUNTIME_ADAPTER_IMPLEMENTATION_PATH = (
     "research_modules/scalable_3d_simulation/learning_source_adapters.py"
 )
 V8_MAIN_RUNTIME_ADAPTER_IMPLEMENTATION_FILE_SHA256 = (
-    "1b409de412dcfd3affb4dde254d7782804b296e013fdbab254e9b8995bfed642"
+    "7fb1b660ab3dae035d055ed83bb465c4420f465da8e127dbb8f0054af15534da"
 )
 V8_MAIN_TREATMENT_IMPLEMENTATION_PATH = (
     "research_modules/scalable_3d_simulation/episode_treatments.py"
 )
 V8_MAIN_TREATMENT_IMPLEMENTATION_FILE_SHA256 = (
-    "8e77b53dc1f9a5558d4b2f73e10c03f36aa292a298c76c6182169070c5e5ae19"
+    "135a526ad9591c2fa3a0041d50335db1fcb75e1129e97df60c5739df66b4cf9c"
+)
+V8_MAIN_RECIPE_IMPLEMENTATION_PATH = (
+    "research_modules/scalable_3d_simulation/learning_source_recipes.py"
+)
+V8_MAIN_RECIPE_IMPLEMENTATION_FILE_SHA256 = (
+    "34ced4f02c089b492b2ba58a94220fa319acd98ae65efa276c98fa7e4c8302d9"
 )
 
 V8_GENERATION_REQUEST_PERMISSION_NAMES = (
@@ -656,6 +662,11 @@ def validate_v8_source_generation_request_payload(
             "path": V8_MAIN_TREATMENT_IMPLEMENTATION_PATH,
             "file_sha256": V8_MAIN_TREATMENT_IMPLEMENTATION_FILE_SHA256,
         },
+        "main_recipe_implementation": {
+            "role": "main_frozen_d4_source_recipe_catalog",
+            "path": V8_MAIN_RECIPE_IMPLEMENTATION_PATH,
+            "file_sha256": V8_MAIN_RECIPE_IMPLEMENTATION_FILE_SHA256,
+        },
     }
     if dict(references) != expected_references:
         raise RegionResourceV8MainAllocationError(
@@ -982,6 +993,7 @@ def validate_v8_main_allocation_pre_generation_readiness(
         "region_resource_policy_implementation",
         "main_runtime_adapter_implementation",
         "main_treatment_implementation",
+        "main_recipe_implementation",
     )
     for reference_name in producer_references:
         reference = _strict_mapping(
