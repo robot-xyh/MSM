@@ -363,6 +363,23 @@ def test_anonymous_roster_selection_is_seeded_and_never_serializes_ordinals() ->
     assert all("ordinal_start" not in item for item in first_records)
 
 
+def test_near_tie_treatment_id_executes_the_same_anonymous_roster_contract() -> None:
+    config = _dynamic_roster_config()
+    metadata = dict(config.metadata)
+    recipe = dict(metadata["learning_source_recipe"])
+    recipe["treatment_id"] = "near_tie_cost_boundary_v1"
+    metadata["learning_source_recipe"] = recipe
+
+    result = run_episode(replace(config, metadata=metadata))
+
+    assert len(result.episode_treatment_audit_records) == 5
+    assert result.summary["episode_treatment_complete"] is True
+    assert all(
+        item.treatment_kind == "anonymous_roster"
+        for item in result.episode_treatment_audit_records
+    )
+
+
 def test_anonymous_treatment_rejects_identity_or_label_inputs() -> None:
     config = _dynamic_roster_config()
     metadata = dict(config.metadata)

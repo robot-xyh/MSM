@@ -158,7 +158,13 @@ class D3A1V3EpisodeRecipe:
             base=base,
         )
         metadata = dict(config.metadata)
-        metadata["learning_source_recipe"] = {
+        fault_schedule_profile = _d3_fault_schedule_profile(
+            self.cell_id,
+            duration_s=self.duration_s,
+        )
+        if fault_schedule_profile is not None:
+            metadata["fault_schedule"] = list(fault_schedule_profile["events"])
+        recipe_metadata = {
             "schema_version": self.schema_version,
             "module": "D3",
             "schedule_sha256": self.lineage.file_sha256,
@@ -193,6 +199,12 @@ class D3A1V3EpisodeRecipe:
             ],
             "permissions": _false_permissions(),
         }
+        if fault_schedule_profile is not None:
+            recipe_metadata["fault_schedule_profile"] = {
+                "profile_id": fault_schedule_profile["profile_id"],
+                "events": list(fault_schedule_profile["events"]),
+            }
+        metadata["learning_source_recipe"] = recipe_metadata
         _validate_stable_window_tick_coverage(
             self.stable_observation_windows,
             duration_s=config.duration_s,
@@ -433,6 +445,7 @@ def load_d3_a1_v3_episode_recipes(
             "minimum_hard_negative_frames",
         }
         _require_exact_keys(raw, required, f"d3_episode_{index}")
+        cell_id = _nonempty(raw["cell_id"], "d3_cell_id")
         family = str(raw["scenario_family"])
         runtime_scenario = _D3_RUNTIME_SCENARIO.get(family)
         if runtime_scenario is None:
@@ -442,7 +455,7 @@ def load_d3_a1_v3_episode_recipes(
             lineage=lineage,
             entry_index=index,
             episode_id=_nonempty(raw["episode_id"], "d3_episode_id"),
-            cell_id=_nonempty(raw["cell_id"], "d3_cell_id"),
+            cell_id=cell_id,
             scenario_family=family,
             runtime_scenario=runtime_scenario,
             seed=_integer(raw["seed"], "d3_seed", minimum=0),
@@ -453,7 +466,10 @@ def load_d3_a1_v3_episode_recipes(
             resource_count=_integer(
                 raw["configured_resource_count"], "d3_resource_count", minimum=1
             ),
-            duration_s=_positive_float(duration_s, "d3_duration_s"),
+            duration_s=_d3_episode_duration_s(
+                cell_id,
+                requested_duration_s=duration_s,
+            ),
             minimum_observable_frames=_integer(
                 raw["minimum_observable_frames"],
                 "d3_minimum_observable_frames",
@@ -475,11 +491,11 @@ def load_d3_a1_v3_episode_recipes(
                 minimum=1,
             ),
             treatment_id=_d3_treatment_id(
-                cell_id=str(raw["cell_id"]),
+                cell_id=cell_id,
                 scenario_family=family,
             ),
             roster_events=_d3_roster_events(
-                cell_id=str(raw["cell_id"]),
+                cell_id=cell_id,
                 target_count=_integer(
                     raw["configured_target_count"],
                     "d3_target_count",
@@ -492,7 +508,7 @@ def load_d3_a1_v3_episode_recipes(
                 ),
             ),
             stable_observation_windows=_d3_stable_observation_windows(
-                cell_id=str(raw["cell_id"]),
+                cell_id=cell_id,
             ),
         )
         recipes.append(recipe)
@@ -798,26 +814,35 @@ def _parse_d5_hard_confusion(
 def _d3_treatment_id(*, cell_id: str, scenario_family: str) -> str | None:
     if scenario_family == "near_tie_hard_negative":
         return _D3_NEAR_TIE_TREATMENT
-    if _d3_roster_events_required(cell_id) or _d3_stable_window_required(cell_id):
-        return _D3_ANONYMOUS_EVENT_TREATMENT
-    return None
+    # Every frozen A1 v3 recipe carries the same source-only anonymous roster
+    # cadence.  Cell-specific treatments are additive and remain preregistered.
+    return _D3_ANONYMOUS_EVENT_TREATMENT
 
 
-def _d3_roster_events_required(cell_id: str) -> bool:
-    return cell_id in {
-        "formation-split-50t50r",
-        "resource-surplus-20t30r",
-        "resource-shortage-30t20r",
-        "dynamic-add-drop-100t80r",
-    }
+def _d3_episode_duration_s(
+    cell_id: str,
+    *,
+    requested_duration_s: float,
+) -> float:
+    duration = _positive_float(requested_duration_s, "d3_duration_s")
+    if cell_id == "dynamic-add-drop-100t80r":
+        return max(duration, 14.0)
+    if cell_id == "evasive-multilevel-100t100r":
+        return max(duration, 12.0)
+    return duration
 
 
 def _d3_stable_window_required(cell_id: str) -> bool:
     return cell_id in {
+        "dense-crossing-50t50r",
         "delayed-noisy-200t200r",
         "communication-degraded-5t5r",
+        "dynamic-add-drop-100t80r",
+        "evasive-multilevel-100t100r",
+        "formation-split-50t50r",
         "high-threat-m-to-n-100t100r",
         "high-threat-m-to-n-200t200r",
+        "near-tie-hard-negative-50t50r",
     }
 
 
@@ -827,34 +852,64 @@ def _d3_roster_events(
     target_count: int,
     resource_count: int,
 ) -> tuple[RosterEventRecipe, ...]:
+    target_key = f"{cell_id}-quota-target-a"
+    if cell_id in {"dynamic-add-drop-100t80r", "formation-split-50t50r"}:
+        universal: tuple[RosterEventRecipe, ...] = ()
+    elif cell_id == "evasive-multilevel-100t100r":
+        universal = (
+            RosterEventRecipe(
+                0.18333333333333332,
+                "intruder",
+                "deactivate",
+                1,
+                target_key,
+            ),
+            RosterEventRecipe(0.4125, "intruder", "activate", 1, target_key),
+        )
+    else:
+        universal = (
+            RosterEventRecipe(0.20, "intruder", "deactivate", 1, target_key),
+            RosterEventRecipe(0.45, "intruder", "activate", 1, target_key),
+        )
+    specialized: tuple[RosterEventRecipe, ...] = ()
     if cell_id == "dynamic-add-drop-100t80r":
         if target_count < 20 or resource_count < 8:
             raise LearningSourceRecipeError("d3_dynamic_roster_inventory_too_small")
-        return (
+        specialized = (
             RosterEventRecipe(0.0, "intruder", "deactivate", 10, "dynamic-target-a"),
-            RosterEventRecipe(0.25, "intruder", "activate", 10, "dynamic-target-a"),
-            RosterEventRecipe(0.50, "intruder", "deactivate", 10, "dynamic-target-b"),
-            RosterEventRecipe(0.625, "interceptor", "deactivate", 8, "dynamic-resource-a"),
-            RosterEventRecipe(0.75, "interceptor", "activate", 8, "dynamic-resource-a"),
+            RosterEventRecipe(0.10, "intruder", "deactivate", 10, "dynamic-target-b"),
+            RosterEventRecipe(0.20, "intruder", "activate", 10, "dynamic-target-a"),
+            RosterEventRecipe(0.30, "interceptor", "deactivate", 8, "dynamic-resource-a"),
+            RosterEventRecipe(0.90, "interceptor", "activate", 8, "dynamic-resource-a"),
         )
     if cell_id == "formation-split-50t50r":
         count = max(5, int(math.ceil(0.10 * target_count)))
         if count >= target_count:
             raise LearningSourceRecipeError("d3_formation_roster_inventory_too_small")
-        return (
+        specialized = (
             RosterEventRecipe(0.20, "intruder", "deactivate", count, "formation-target-a"),
-            RosterEventRecipe(0.65, "intruder", "activate", count, "formation-target-a"),
+            RosterEventRecipe(0.55, "intruder", "activate", count, "formation-target-a"),
         )
     if cell_id in {"resource-surplus-20t30r", "resource-shortage-30t20r"}:
         count = max(3, int(math.ceil(0.15 * resource_count)))
         if count >= resource_count:
             raise LearningSourceRecipeError("d3_resource_roster_inventory_too_small")
         key = "surplus-resource-a" if "surplus" in cell_id else "shortage-resource-a"
-        return (
+        specialized = (
             RosterEventRecipe(0.25, "interceptor", "deactivate", count, key),
             RosterEventRecipe(0.60, "interceptor", "activate", count, key),
         )
-    return ()
+    return tuple(
+        sorted(
+            (*universal, *specialized),
+            key=lambda item: (
+                item.fraction_of_duration,
+                item.entity_kind,
+                item.selection_key,
+                item.action,
+            ),
+        )
+    )
 
 
 def _d3_stable_observation_windows(
@@ -873,6 +928,60 @@ def _d3_stable_observation_windows(
                 observation_mode="radar_only_noiseless_regeneration_v1",
             ),
         )
+    if cell_id == "dense-crossing-50t50r":
+        return (
+            StableObservationWindowRecipe(
+                start_fraction_of_duration=0.55,
+                end_fraction_of_duration=1.0,
+                minimum_assignment_ticks=4,
+                window_key=f"{cell_id}-stable-a",
+                observation_mode="noiseless_regeneration_v1",
+            ),
+        )
+    if cell_id == "dynamic-add-drop-100t80r":
+        return (
+            StableObservationWindowRecipe(
+                start_fraction_of_duration=0.45,
+                end_fraction_of_duration=1.0,
+                minimum_assignment_ticks=4,
+                window_key=f"{cell_id}-stable-a",
+                observation_mode="noiseless_regeneration_v1",
+            ),
+        )
+    if cell_id == "formation-split-50t50r":
+        return (
+            StableObservationWindowRecipe(
+                start_fraction_of_duration=0.0,
+                end_fraction_of_duration=1.0,
+                minimum_assignment_ticks=4,
+                window_key=f"{cell_id}-stable-a",
+                observation_mode="noiseless_regeneration_v1",
+            ),
+        )
+    if cell_id == "evasive-multilevel-100t100r":
+        return (
+            StableObservationWindowRecipe(
+                start_fraction_of_duration=0.4125,
+                end_fraction_of_duration=1.0,
+                minimum_assignment_ticks=4,
+                window_key=f"{cell_id}-stable-a",
+                observation_mode="noiseless_regeneration_v1",
+            ),
+        )
+    if cell_id in {
+        "high-threat-m-to-n-100t100r",
+        "high-threat-m-to-n-200t200r",
+        "near-tie-hard-negative-50t50r",
+    }:
+        return (
+            StableObservationWindowRecipe(
+                start_fraction_of_duration=0.0,
+                end_fraction_of_duration=1.0,
+                minimum_assignment_ticks=4,
+                window_key=f"{cell_id}-stable-a",
+                observation_mode="noiseless_regeneration_v1",
+            ),
+        )
     return (
         StableObservationWindowRecipe(
             start_fraction_of_duration=0.25,
@@ -882,6 +991,42 @@ def _d3_stable_observation_windows(
             observation_mode="noiseless_regeneration_v1",
         ),
     )
+
+
+def _d3_fault_schedule_profile(
+    cell_id: str,
+    *,
+    duration_s: float,
+) -> Mapping[str, Any] | None:
+    duration = _positive_float(duration_s, "d3_fault_schedule_duration_s")
+    if cell_id == "center-failure-20t20r":
+        return {
+            "profile_id": "d3_late_center_failure_after_quota_events_v1",
+            "events": (
+                {
+                    "time_s": 0.70 * duration,
+                    "component": "center",
+                    "action": "failed",
+                },
+            ),
+        }
+    if cell_id == "secondary-failure-50t50r":
+        return {
+            "profile_id": "d3_late_secondary_failure_after_quota_events_v1",
+            "events": (
+                {
+                    "time_s": 0.65 * duration,
+                    "component": "center",
+                    "action": "failed",
+                },
+                {
+                    "time_s": 0.85 * duration,
+                    "component": "secondary",
+                    "action": "failed",
+                },
+            ),
+        }
+    return None
 
 
 def _validate_stable_window_tick_coverage(

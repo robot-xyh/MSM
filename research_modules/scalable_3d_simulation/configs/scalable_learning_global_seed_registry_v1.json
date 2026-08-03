@@ -1048,12 +1048,12 @@
           {
             "role": "data_contract",
             "path": "research_modules/d3_assignment_planner/configs/a1_source_independent_v3_data_contract_v1.json",
-            "sha256": "5808782256908579fa443fafbc6aade8f78b340aa8bb722d16735ba2847fa60e"
+            "sha256": "ff76cd865e00e5914767ba24b7ea520ec7632271eddafd4936fcc88e3dd0b3f9"
           },
           {
             "role": "development_data_request",
             "path": "research_modules/d3_assignment_planner/configs/a1_source_independent_v3_development_data_request_v1.json",
-            "sha256": "6800fd622fbc7dd27a7411f3419fb92729b195bd8fc6880dcda4c5f8637043e2"
+            "sha256": "5215a09774cae8edbb15ab5cd6254b8aad149a364188b9458a28c8968cd65d07"
           },
           {
             "role": "seed_exclusion_registry",
@@ -1640,5 +1640,5 @@
     "formal_seed_payload_read": false,
     "module_readiness_required": true
   },
-  "content_sha256": "89d99bf064a8c0e226eead5b675f05daf70ac2d4c6f6139322502da54ab0aea7"
+  "content_sha256": "982f34673cdf944c8d8799d2939361ab002130c0cddf8238a83c6e46e299530c"
 }

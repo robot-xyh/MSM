@@ -38,6 +38,9 @@ SOURCE_GENERATION_PROGRESS_SCHEMA_VERSION = (
 SOURCE_GENERATION_RESULT_SCHEMA_VERSION = (
     "scalable3d-learning-source-generation-result-v1"
 )
+SOURCE_GENERATION_FAILURE_SCHEMA_VERSION = (
+    "scalable3d-learning-source-generation-failure-v1"
+)
 SOURCE_GENERATION_MODULES = ("D3", "D4", "D5")
 
 REPOSITORY_ROOT = Path(__file__).resolve().parents[2]
@@ -140,6 +143,13 @@ def run_authorized_learning_source_generation(
         repository_root=root,
     )
     _prepare_session(output, expected=session, resume=resume)
+    failure_path = output / "generation_failure.json"
+    if resume and failure_path.exists():
+        if failure_path.is_symlink() or not failure_path.is_file():
+            raise LearningSourceGenerationError(
+                "source_generation_failure_record_unsafe"
+            )
+        raise LearningSourceGenerationError("source_generation_failed_closed")
     _require_free_space(output, free_gb)
 
     invocation_started = time.perf_counter()
@@ -164,17 +174,49 @@ def run_authorized_learning_source_generation(
         "D4": _generate_d4,
         "D5": _generate_d5,
     }[selected]
-    result = runner(
-        output=output,
-        root=root,
-        base_config=base_config,
-        authorization=authorization,
-        authorization_sha256=authorization_sha256,
-        progress_rows=rows,
-        progress_path=progress_path,
-        max_episodes_per_run=max_episodes_per_run,
-        minimum_free_gb=free_gb,
-    )
+    try:
+        result = runner(
+            output=output,
+            root=root,
+            base_config=base_config,
+            authorization=authorization,
+            authorization_sha256=authorization_sha256,
+            progress_rows=rows,
+            progress_path=progress_path,
+            max_episodes_per_run=max_episodes_per_run,
+            minimum_free_gb=free_gb,
+        )
+    except Exception as exc:
+        try:
+            persisted_progress_count = len(
+                _load_progress(progress_path, expected_session=session)
+            )
+        except Exception:
+            persisted_progress_count = -1
+        failure = {
+            "schema_version": SOURCE_GENERATION_FAILURE_SCHEMA_VERSION,
+            "state": "failed_closed",
+            "module": selected,
+            "source_git_commit": authorization.source_git_commit,
+            "authorization_id": authorization.authorization_id,
+            "authorization_sha256": authorization.authorization_file_sha256,
+            "module_request_sha256": authorization.module_request_sha256[selected],
+            "planned_episode_count": authorization.planned_episode_count[selected],
+            "progress_record_count": persisted_progress_count,
+            "exception_type": type(exc).__name__,
+            "error_code": str(exc),
+            "dataset_generation": True,
+            "training_started": False,
+            "runtime_authority_granted": False,
+            "control_authority_granted": False,
+            "formal_seed_payload_read_count": 0,
+            "future_held_out_model_consumption_count": 0,
+            "requires_new_source_commit": True,
+            "requires_new_authorization": True,
+            "requires_new_output_directory": True,
+        }
+        _atomic_json(failure_path, failure)
+        raise
     elapsed = time.perf_counter() - invocation_started
     state = "finalized" if result.finalized else "paused"
     checkpoint = {
@@ -233,6 +275,10 @@ def _generate_d3(
     from research_modules.d3_assignment_planner.src.d3_assignment_planner.a1_v3_dataset_writer import (
         A1V3DatasetWriter,
     )
+    from research_modules.d3_assignment_planner.src.d3_assignment_planner.a1_v3_source_only_projection import (
+        A1V3CounterfactualMode,
+        A1V3PostProjectionReferencePolicy,
+    )
 
     from .learning_source_adapters import adapt_d3_a1_runtime_frame
     from .learning_source_recipes import load_d3_a1_v3_episode_recipes
@@ -280,7 +326,19 @@ def _generate_d3(
         episode_wall_s = time.perf_counter() - episode_started
         _assert_safe_episode(result)
         adapted = tuple(
-            adapt_d3_a1_runtime_frame(frame)
+            adapt_d3_a1_runtime_frame(
+                frame,
+                source_only_counterfactual_mode=(
+                    A1V3CounterfactualMode.COVERAGE_DEGRADING
+                ),
+                source_only_reference_policy=(
+                    A1V3PostProjectionReferencePolicy.EXACT_SAFE_REFERENCE
+                ),
+                source_episode_key=(
+                    recipes[index].seed,
+                    recipes[index].episode_id,
+                ),
+            )
             for frame in stack.learning_artifacts().d3_a1_source_frames
         )
         staging_started = time.perf_counter()

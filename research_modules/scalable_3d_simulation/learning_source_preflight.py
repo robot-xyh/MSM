@@ -477,10 +477,26 @@ def _assess_d3_producer(
         D3_SOURCE_GENERATION_REQUEST_PATH.relative_to(REPOSITORY_ROOT),
     )
     blockers.extend(item for item in request["blockers"] if item not in blockers)
+    request_payload = json.loads(
+        (
+            root
+            / D3_SOURCE_GENERATION_REQUEST_PATH.relative_to(REPOSITORY_ROOT)
+        ).read_text(encoding="ascii")
+    )
+    quota_viability = _assess_d3_full_schedule_quota_viability(
+        request_payload,
+        episodes,
+    )
+    blockers.extend(
+        item for item in quota_viability["blockers"] if item not in blockers
+    )
     adapter_complete = self_check is not None
     return {
         "producer_adapter_complete": adapter_complete,
-        "source_generation_request_ready": request["ready"],
+        "source_generation_request_ready": bool(
+            request["ready"]
+            and quota_viability["full_schedule_quota_viability_proven"]
+        ),
         "source_generation_request_path": request["path"],
         "source_generation_request_sha256": request["sha256"],
         "module_plan_ready": bool(report.get("ready")),
@@ -491,6 +507,114 @@ def _assess_d3_producer(
         "unsupported_scenario_families": [],
         "unequal_target_resource_episode_count": unequal_count,
         "adapter_self_check": self_check,
+        "full_schedule_quota_viability": quota_viability,
+        "blockers": blockers,
+    }
+
+
+def _assess_d3_full_schedule_quota_viability(
+    request_payload: Mapping[str, Any],
+    scheduled_episodes: Any,
+) -> dict[str, Any]:
+    """Require per-recipe runtime-to-writer evidence before D3 authorization."""
+
+    scheduled = tuple(scheduled_episodes)
+    expected_by_id = {
+        str(item["episode_id"]): item
+        for item in scheduled
+        if isinstance(item, Mapping) and "episode_id" in item
+    }
+    blockers: list[str] = []
+    if len(expected_by_id) != len(scheduled):
+        blockers.append("d3_schedule_episode_identity_invalid")
+    capability = request_payload.get("producer_capability")
+    probe = (
+        capability.get("frozen_runtime_quota_probe")
+        if isinstance(capability, Mapping)
+        else None
+    )
+    if not isinstance(probe, Mapping):
+        return {
+            "full_schedule_quota_viability_proven": False,
+            "expected_recipe_count": len(scheduled),
+            "audited_recipe_count": 0,
+            "passing_recipe_count": 0,
+            "blockers": ["d3_full_schedule_quota_probe_missing"],
+        }
+
+    audited_count = probe.get("audited_recipe_count")
+    passing_ids = probe.get("passing_runtime_to_writer_recipe_ids")
+    runtime_results = probe.get("runtime_results")
+    if type(audited_count) is not int or audited_count < 0:
+        blockers.append("d3_audited_recipe_count_invalid")
+        audited_count = 0
+    if not isinstance(passing_ids, list) or any(
+        not isinstance(value, str) or not value for value in passing_ids
+    ):
+        blockers.append("d3_passing_recipe_inventory_invalid")
+        passing_ids = []
+    if not isinstance(runtime_results, list) or any(
+        not isinstance(value, Mapping) for value in runtime_results
+    ):
+        blockers.append("d3_runtime_result_inventory_invalid")
+        runtime_results = []
+
+    expected_ids = set(expected_by_id)
+    result_ids = [str(item.get("episode_id", "")) for item in runtime_results]
+    if audited_count != len(scheduled):
+        blockers.append("d3_full_schedule_recipe_count_not_audited")
+    if len(passing_ids) != len(set(passing_ids)) or set(passing_ids) != expected_ids:
+        blockers.append("d3_passing_recipe_inventory_not_full_schedule")
+    if len(result_ids) != len(set(result_ids)) or set(result_ids) != expected_ids:
+        blockers.append("d3_runtime_result_inventory_not_full_schedule")
+
+    for result in runtime_results:
+        episode_id = str(result.get("episode_id", ""))
+        expected = expected_by_id.get(episode_id)
+        if expected is None:
+            continue
+        checks = (
+            ("seed", "seed"),
+            ("cell_id", "cell_id"),
+        )
+        if any(result.get(actual) != expected.get(source) for actual, source in checks):
+            blockers.append("d3_runtime_result_schedule_binding_mismatch")
+            break
+        quota_fields = (
+            ("frame_count", "minimum_observable_frames"),
+            ("positive_frame_count", "minimum_positive_frames"),
+            ("negative_frame_count", "minimum_negative_frames"),
+            ("hard_negative_frame_count", "minimum_hard_negative_frames"),
+        )
+        if any(
+            type(result.get(actual)) is not int
+            or int(result[actual]) < int(expected[required])
+            for actual, required in quota_fields
+        ):
+            blockers.append("d3_runtime_result_quota_not_met")
+            break
+        if (
+            result.get("quota_met") is not True
+            or result.get("writer_staged") is not True
+            or result.get("reason_codes") != []
+        ):
+            blockers.append("d3_runtime_result_not_strictly_staged")
+            break
+
+    aggregate_checks = {
+        "caller_classification_override_used": False,
+        "classifier_error_count": 0,
+        "online_truth_use_count": 0,
+        "blocker_codes": [],
+    }
+    if any(probe.get(name) != value for name, value in aggregate_checks.items()):
+        blockers.append("d3_quota_probe_safety_summary_invalid")
+    blockers = list(dict.fromkeys(blockers))
+    return {
+        "full_schedule_quota_viability_proven": not blockers,
+        "expected_recipe_count": len(scheduled),
+        "audited_recipe_count": audited_count,
+        "passing_recipe_count": len(passing_ids),
         "blockers": blockers,
     }
 

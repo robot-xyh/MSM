@@ -3129,6 +3129,12 @@ class IntegratedScalableModuleStack:
             current_secondary = str(previous_plan.metadata.get("owner_node_id", ""))
             if selected_secondary != current_secondary:
                 selected_secondary = None
+        elif active_owner == "regional":
+            # A regional plan already carries D4-adjudicated ownership.  A
+            # selected secondary in a later hold/review frame is only a
+            # candidate; continuation requires a complete regional authority
+            # decision and must not re-enter the first-takeover path.
+            selected_secondary = None
         if center_health == C2Health.FAILED:
             if previous_plan is None:
                 # No accepted authority exists from which a fallback generation

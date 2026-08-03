@@ -444,7 +444,12 @@ assignment comparison 可用，不把缺失的运行确认或物理结果补零�
 
 `scalable3d-learning-source-allocation-20260801-v1` 是 D3 A1 v3、D4 A2 v8 和 D5 A3 v3
 新来源的 main-owned 分配版本。登记表本身使用 `scalable3d-global-seed-registry-v1`，内容
-SHA-256 为 `89d99bf064a8c0e226eead5b675f05daf70ac2d4c6f6139322502da54ab0aea7`。
+SHA-256 为 `982f34673cdf944c8d8799d2939361ab002130c0cddf8238a83c6e46e299530c`。
+
+2026-08-02，D3 在正式数据集完成前补充了匿名覆盖收缩/恢复分类和精确参考计划安全
+投影，登记表只更新 D3 source-contract 的文件摘要；seed、split、分配范围和权限均未
+变化。旧摘要关联的失败生成目录保持只读，不能恢复；后续生成必须绑定新的源码提交、
+授权文件和输出目录。
 
 该版本只表示 seed 已保留，不表示模块数据合同已就绪。模块 schedule、dataset manifest、
 模型 bundle 和运行准入仍使用各自独立版本与摘要。后续若任一来源合同文件变化，必须新建

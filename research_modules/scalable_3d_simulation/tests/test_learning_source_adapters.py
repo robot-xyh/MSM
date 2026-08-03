@@ -16,6 +16,10 @@ from research_modules.d3_assignment_planner.src.d3_assignment_planner.a1_v3_data
     build_a1_v3_online_frame,
     load_a1_v3_writer_contract,
 )
+from research_modules.d3_assignment_planner.src.d3_assignment_planner.a1_v3_source_only_projection import (
+    A1V3CounterfactualMode,
+    A1V3PostProjectionReferencePolicy,
+)
 from research_modules.d4_distributed_fallback.d4_distributed_fallback.region_resource_v8_dataset_writer import (
     V8CleanSourceMetadata,
     V8TrainDatasetWriter,
@@ -100,6 +104,47 @@ def test_actual_d3_planning_frame_adapts_with_dual_time_and_demand_slots() -> No
     assert all(value >= 1 for value in adapted.target_demand_slots)
     assert set(adapted.teacher_edges).issubset(
         set(adapted.candidate_mask_true_edges)
+    )
+    assert "TGT-" not in repr(adapted)
+
+
+def test_actual_d3_source_only_counterfactual_is_truth_free_and_fail_closed() -> None:
+    config = ScenarioConfig(
+        scenario_name="d3-source-only-counterfactual-smoke",
+        scenario_version="d3-source-only-counterfactual-smoke-v1",
+        target_count=5,
+        resource_count=5,
+        recon_count=1,
+        region_count=1,
+        duration_s=2.0,
+        seed=31_002,
+        radar_detection_probability=1.0,
+        visual_detection_probability=1.0,
+        visual_false_alarm_rate=0.0,
+    )
+    stack = _stack()
+
+    result = run_episode(config, module_stack=stack)
+    runtime_frame = stack.learning_artifacts().d3_a1_source_frames[0]
+    adapted = adapt_d3_a1_runtime_frame(
+        runtime_frame,
+        source_only_counterfactual_mode=(
+            A1V3CounterfactualMode.COVERAGE_DEGRADING
+        ),
+        source_only_reference_policy=(
+            A1V3PostProjectionReferencePolicy.EXACT_SAFE_REFERENCE
+        ),
+        source_episode_key=(31_002, "d3-source-only-counterfactual-smoke"),
+    )
+
+    assert result.summary["online_truth_use_count"] == 0
+    assert adapted.candidate_selected_edges != adapted.teacher_edges
+    assert adapted.effective_selected_edges == adapted.teacher_edges
+    assert "candidate_coverage_degradation_generated_v1" in (
+        adapted.pre_projection_reason_codes
+    )
+    assert "effective_reference_plan_stability_fallback_v1" in (
+        adapted.post_projection_reason_codes
     )
     assert "TGT-" not in repr(adapted)
 

@@ -9,6 +9,7 @@ import research_modules.scalable_3d_simulation.learning_source_generation as gen
 from research_modules.scalable_3d_simulation.learning_source_generation import (
     LearningSourceGenerationError,
     ModuleGenerationResult,
+    SOURCE_GENERATION_FAILURE_SCHEMA_VERSION,
     SOURCE_GENERATION_PROGRESS_SCHEMA_VERSION,
     run_authorized_learning_source_generation,
 )
@@ -171,6 +172,65 @@ def test_generation_resume_rejects_checkpoint_binding_drift(
     with pytest.raises(
         LearningSourceGenerationError,
         match="generation_checkpoint_binding_mismatch",
+    ):
+        run_authorized_learning_source_generation(**common, resume=True)
+
+
+def test_generation_failure_is_recorded_and_resume_fails_closed(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    authorization = _authorization()
+    monkeypatch.setattr(
+        generation,
+        "load_learning_source_generation_authorization",
+        lambda *args, **kwargs: authorization,
+    )
+
+    def fail_generation(**kwargs):
+        generation._append_progress(
+            kwargs["progress_path"],
+            {
+                "schema_version": SOURCE_GENERATION_PROGRESS_SCHEMA_VERSION,
+                "module": "D3",
+                "source_git_commit": authorization.source_git_commit,
+                "module_request_sha256": authorization.module_request_sha256["D3"],
+            },
+        )
+        raise RuntimeError("writer_episode_minimum_not_met:episode-1")
+
+    monkeypatch.setattr(generation, "_generate_d3", fail_generation)
+    output = tmp_path / "failed-source"
+    common = {
+        "module": "D3",
+        "output_dir": output,
+        "authorization_path": tmp_path / "authorization.json",
+        "authorization_sha256": "a" * 64,
+        "repository_root": ROOT,
+        "minimum_free_gb": 0.0,
+    }
+
+    with pytest.raises(RuntimeError, match="writer_episode_minimum_not_met"):
+        run_authorized_learning_source_generation(**common)
+
+    failure = json.loads(
+        (output / "generation_failure.json").read_text(encoding="utf-8")
+    )
+    assert failure["schema_version"] == SOURCE_GENERATION_FAILURE_SCHEMA_VERSION
+    assert failure["state"] == "failed_closed"
+    assert failure["module"] == "D3"
+    assert failure["progress_record_count"] == 1
+    assert failure["requires_new_source_commit"] is True
+    assert failure["requires_new_authorization"] is True
+    assert failure["requires_new_output_directory"] is True
+    assert failure["training_started"] is False
+    assert failure["runtime_authority_granted"] is False
+    assert failure["control_authority_granted"] is False
+    assert not (output / "generation_checkpoint.json").exists()
+
+    with pytest.raises(
+        LearningSourceGenerationError,
+        match="source_generation_failed_closed",
     ):
         run_authorized_learning_source_generation(**common, resume=True)
 

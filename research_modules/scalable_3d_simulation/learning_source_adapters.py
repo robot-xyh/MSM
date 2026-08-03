@@ -22,6 +22,12 @@ import numpy as np
 from research_modules.d3_assignment_planner.src.d3_assignment_planner.a1_v3_data_contract import (
     A1V3EdgeResidualRank,
 )
+from research_modules.d3_assignment_planner.src.d3_assignment_planner.a1_v3_source_only_projection import (
+    A1V3CounterfactualMode,
+    A1V3PostProjectionReferencePolicy,
+    A1V3SourceOnlyProjectionInput,
+    project_a1_v3_source_only_counterfactual,
+)
 from research_modules.d3_assignment_planner.src.d3_assignment_planner.a1_v3_dataset_writer import (
     A1V3AdapterFrameEvidence,
     load_a1_v3_writer_contract,
@@ -585,7 +591,9 @@ def _self_check_d5_a3_adapter_cached(
 def adapt_d3_a1_runtime_frame(
     frame: D3A1RuntimeFrame,
     *,
-    teacher_edges: Sequence[tuple[int, int]] | None = None,
+    source_only_counterfactual_mode: A1V3CounterfactualMode | None = None,
+    source_only_reference_policy: A1V3PostProjectionReferencePolicy | None = None,
+    source_episode_key: tuple[int, str] | None = None,
 ) -> A1V3AdapterFrameEvidence:
     """Translate one actual planner snapshot into the strict A1 adapter DTO."""
 
@@ -632,8 +640,80 @@ def adapt_d3_a1_runtime_frame(
         raise LearningSourceAdapterError("d3_candidate_mask_empty")
 
     effective_edges = _d3_plan_edges(evidence, rule)
+    teacher = tuple(effective_edges)
     candidate_selected = effective_edges
-    teacher = tuple(effective_edges if teacher_edges is None else teacher_edges)
+    source_projection = None
+    if source_only_counterfactual_mode is not None:
+        if (
+            not isinstance(source_only_counterfactual_mode, A1V3CounterfactualMode)
+            or not isinstance(
+                source_only_reference_policy,
+                A1V3PostProjectionReferencePolicy,
+            )
+            or not isinstance(source_episode_key, tuple)
+            or len(source_episode_key) != 2
+            or isinstance(source_episode_key[0], bool)
+            or not isinstance(source_episode_key[0], int)
+            or source_episode_key[0] < 0
+            or not isinstance(source_episode_key[1], str)
+            or not source_episode_key[1].strip()
+        ):
+            raise LearningSourceAdapterError(
+                "d3_source_only_counterfactual_binding_invalid"
+            )
+        previous_edges = _d3_previous_plan_edges(
+            evidence,
+            rule,
+            candidate_mask=candidate_mask,
+        )
+        try:
+            source_projection = project_a1_v3_source_only_counterfactual(
+                A1V3SourceOnlyProjectionInput(
+                    frame_key=(
+                        source_episode_key[0],
+                        source_episode_key[1].strip(),
+                        validated_frame.frame_index,
+                    ),
+                    measurement_timestamp_s=(
+                        validated_frame.measurement_timestamp_s
+                    ),
+                    arrival_timestamp_s=validated_frame.arrival_timestamp_s,
+                    rule_cost_matrix=rule_matrix,
+                    hard_safe_action_mask=candidate_mask,
+                    target_demand_slots=_d3_target_demand_slots(evidence, rule),
+                    target_threat_scores=tuple(
+                        float(value) for value in rule.target_threat_scores
+                    ),
+                    unassigned_costs=np.asarray(
+                        rule.unassigned_costs, dtype=float
+                    ),
+                    previous_selected_edges=previous_edges,
+                    preregistered_mode=source_only_counterfactual_mode,
+                ),
+                reference_effective_edges=effective_edges,
+                reference_policy=source_only_reference_policy,
+            )
+        except (TypeError, ValueError) as exc:
+            raise LearningSourceAdapterError(
+                "d3_source_only_counterfactual_projection_failed"
+            ) from exc
+        candidate_selected = source_projection.candidate_pre_projection_edges
+        effective_edges = source_projection.effective_post_projection_edges
+        if (
+            source_only_counterfactual_mode
+            is A1V3CounterfactualMode.COVERAGE_DEGRADING
+            and effective_edges != teacher
+        ):
+            raise LearningSourceAdapterError(
+                "d3_source_only_coverage_floor_not_preserved"
+            )
+    elif (
+        source_episode_key is not None
+        or source_only_reference_policy is not None
+    ):
+        raise LearningSourceAdapterError(
+            "d3_source_only_counterfactual_binding_invalid"
+        )
     _validate_index_edges(teacher, rule_matrix.shape, "d3_teacher")
     _validate_index_edges(candidate_selected, rule_matrix.shape, "d3_candidate")
     _validate_index_edges(effective_edges, rule_matrix.shape, "d3_effective")
@@ -655,21 +735,22 @@ def adapt_d3_a1_runtime_frame(
         for rank, (residual, row, column) in enumerate(residual_items, start=1)
     )
     target_demand_slots = _d3_target_demand_slots(evidence, rule)
-    pre_reasons = tuple(
-        sorted(
-            {
-                f"planning_path_{_reason_token(evidence.planning_path)}",
-                f"selection_source_{_reason_token(evidence.selection_source)}",
-                f"learning_state_{_reason_token(evidence.learning_state)}",
-            }
-        )
-    )
+    pre_reason_set = {
+        f"planning_path_{_reason_token(evidence.planning_path)}",
+        f"selection_source_{_reason_token(evidence.selection_source)}",
+        f"learning_state_{_reason_token(evidence.learning_state)}",
+    }
+    if source_projection is not None:
+        pre_reason_set.update(source_projection.pre_projection_reason_codes)
+    pre_reasons = tuple(sorted(pre_reason_set))
     post_reasons = [
         "effective_plan_projected",
         f"solver_{_reason_token(evidence.solver_name or 'unknown')}",
     ]
     if evidence.fallback_reason:
         post_reasons.append("learning_fallback_applied")
+    if source_projection is not None:
+        post_reasons.extend(source_projection.post_projection_reason_codes)
     return A1V3AdapterFrameEvidence(
         frame_index=validated_frame.frame_index,
         measurement_timestamp_s=validated_frame.measurement_timestamp_s,
@@ -1215,6 +1296,39 @@ def _d3_plan_edges(
         edges.append(edge)
     if len(edges) != len(set(edges)):
         raise LearningSourceAdapterError("d3_plan_edge_duplicate")
+    return tuple(sorted(edges))
+
+
+def _d3_previous_plan_edges(
+    evidence: PlanningFrameEvidence,
+    matrix_result: Any,
+    *,
+    candidate_mask: np.ndarray,
+) -> tuple[tuple[int, int], ...]:
+    """Map only still-valid prior-plan edges into the current anonymous frame."""
+
+    if evidence.previous_plan is None:
+        return ()
+    target_index = {
+        str(target_id): index
+        for index, target_id in enumerate(matrix_result.target_ids)
+    }
+    resource_index = {
+        str(resource_id): index
+        for index, resource_id in enumerate(matrix_result.resource_ids)
+    }
+    edges: list[tuple[int, int]] = []
+    for assignment in evidence.previous_plan.assignments:
+        target = target_index.get(str(assignment.target_id))
+        resource = resource_index.get(str(assignment.resource_id))
+        if target is None or resource is None or not candidate_mask[target, resource]:
+            continue
+        edges.append((target, resource))
+    if len(edges) != len(set(edges)):
+        raise LearningSourceAdapterError("d3_previous_plan_edge_duplicate")
+    resources = [resource for _, resource in edges]
+    if len(resources) != len(set(resources)):
+        raise LearningSourceAdapterError("d3_previous_plan_resource_duplicate")
     return tuple(sorted(edges))
 
 

@@ -24,6 +24,7 @@ from research_modules.scalable_3d_simulation.module_stack import (
     IntegratedScalableModuleStack,
     _region_ids,
 )
+from research_modules.scalable_3d_simulation.orchestrator import run_episode
 
 
 ROOT = Path(__file__).resolve().parents[3]
@@ -79,8 +80,9 @@ def test_d3_dynamic_and_near_tie_treatments_are_explicit() -> None:
     )
 
     assert dynamic.runtime_scenario == "nominal"
+    assert dynamic.duration_s == 14.0
     assert dynamic.treatment_id == "anonymous_external_event_schedule_v1"
-    assert [
+    dynamic_events = [
         (
             item.fraction_of_duration,
             item.entity_kind,
@@ -89,16 +91,38 @@ def test_d3_dynamic_and_near_tie_treatments_are_explicit() -> None:
             item.selection_key,
         )
         for item in dynamic.roster_events
+    ]
+    assert not any("-quota-target-" in item[4] for item in dynamic_events)
+    assert [
+        item
+        for item in dynamic_events
+        if item[4].startswith("dynamic-") and "-quota-" not in item[4]
     ] == [
         (0.0, "intruder", "deactivate", 10, "dynamic-target-a"),
-        (0.25, "intruder", "activate", 10, "dynamic-target-a"),
-        (0.5, "intruder", "deactivate", 10, "dynamic-target-b"),
-        (0.625, "interceptor", "deactivate", 8, "dynamic-resource-a"),
-        (0.75, "interceptor", "activate", 8, "dynamic-resource-a"),
+        (0.1, "intruder", "deactivate", 10, "dynamic-target-b"),
+        (0.2, "intruder", "activate", 10, "dynamic-target-a"),
+        (0.3, "interceptor", "deactivate", 8, "dynamic-resource-a"),
+        (0.9, "interceptor", "activate", 8, "dynamic-resource-a"),
     ]
-    assert dynamic.stable_observation_windows == ()
+    assert [
+        (
+            item.start_fraction_of_duration,
+            item.end_fraction_of_duration,
+            item.minimum_assignment_ticks,
+        )
+        for item in dynamic.stable_observation_windows
+    ] == [(0.45, 1.0, 4)]
     assert near_tie.runtime_scenario == "dense_crossing"
     assert near_tie.treatment_id == "near_tie_cost_boundary_v1"
+    assert len(near_tie.roster_events) == 2
+    assert [
+        (
+            item.start_fraction_of_duration,
+            item.end_fraction_of_duration,
+            item.minimum_assignment_ticks,
+        )
+        for item in near_tie.stable_observation_windows
+    ] == [(0.0, 1.0, 4)]
 
 
 def test_d3_problem_cells_receive_preregistered_anonymous_events() -> None:
@@ -107,17 +131,26 @@ def test_d3_problem_cells_receive_preregistered_anonymous_events() -> None:
 
     formation = by_cell["formation-split-50t50r"]
     assert formation.treatment_id == "anonymous_external_event_schedule_v1"
-    assert [(item.entity_kind, item.action) for item in formation.roster_events] == [
+    assert formation.duration_s == 10.0
+    formation_specific = [
+        item
+        for item in formation.roster_events
+        if item.selection_key == "formation-target-a"
+    ]
+    assert [(item.entity_kind, item.action) for item in formation_specific] == [
         ("intruder", "deactivate"),
         ("intruder", "activate"),
     ]
-    assert formation.roster_events[0].selection_key == (
-        formation.roster_events[1].selection_key
-    )
+    assert [item.fraction_of_duration for item in formation_specific] == [0.2, 0.55]
 
     for cell_id in ("resource-surplus-20t30r", "resource-shortage-30t20r"):
         recipe = by_cell[cell_id]
-        assert [(item.entity_kind, item.action) for item in recipe.roster_events] == [
+        specific = [
+            item
+            for item in recipe.roster_events
+            if item.selection_key in {"surplus-resource-a", "shortage-resource-a"}
+        ]
+        assert [(item.entity_kind, item.action) for item in specific] == [
             ("interceptor", "deactivate"),
             ("interceptor", "activate"),
         ]
@@ -128,6 +161,20 @@ def test_d3_problem_cells_receive_preregistered_anonymous_events() -> None:
         assert "truth_id" not in serialized
 
 
+def test_d3_fault_cells_delay_faults_until_after_quota_events() -> None:
+    recipes = load_d3_a1_v3_episode_recipes(D3_SCHEDULE)
+    by_cell = {item.cell_id: item for item in recipes}
+
+    for cell_id in ("center-failure-20t20r", "secondary-failure-50t50r"):
+        recipe = by_cell[cell_id]
+        config = recipe.build_config(ScenarioConfig())
+        raw = config.metadata["learning_source_recipe"]["fault_schedule_profile"]
+        assert raw["profile_id"].startswith("d3_late_")
+        assert raw["events"] == config.metadata["fault_schedule"]
+        assert all(event["time_s"] >= 0.65 * recipe.duration_s for event in raw["events"])
+        assert all(event["time_s"] < recipe.duration_s for event in raw["events"])
+
+
 def test_d3_unstable_cells_receive_noncopying_stable_windows() -> None:
     recipes = load_d3_a1_v3_episode_recipes(D3_SCHEDULE)
     by_cell = {item.cell_id: item for item in recipes}
@@ -135,12 +182,21 @@ def test_d3_unstable_cells_receive_noncopying_stable_windows() -> None:
     for cell_id in (
         "delayed-noisy-200t200r",
         "communication-degraded-5t5r",
+        "dynamic-add-drop-100t80r",
+        "evasive-multilevel-100t100r",
+        "formation-split-50t50r",
         "high-threat-m-to-n-100t100r",
         "high-threat-m-to-n-200t200r",
+        "near-tie-hard-negative-50t50r",
     ):
         recipe = by_cell[cell_id]
-        assert recipe.treatment_id == "anonymous_external_event_schedule_v1"
-        assert recipe.roster_events == ()
+        expected_treatment = (
+            "near_tie_cost_boundary_v1"
+            if cell_id == "near-tie-hard-negative-50t50r"
+            else "anonymous_external_event_schedule_v1"
+        )
+        assert recipe.treatment_id == expected_treatment
+        assert len(recipe.roster_events) >= 2
         assert len(recipe.stable_observation_windows) == 1
         window = recipe.stable_observation_windows[0]
         assert window.minimum_assignment_ticks >= 3
@@ -155,6 +211,111 @@ def test_d3_unstable_cells_receive_noncopying_stable_windows() -> None:
             else "noiseless_regeneration_v1"
         )
         assert raw["observation_mode"] == expected_mode
+
+
+def test_d3_late_stable_windows_preserve_early_scenario_motion() -> None:
+    recipes = load_d3_a1_v3_episode_recipes(D3_SCHEDULE)
+    by_cell = {item.cell_id: item for item in recipes}
+    expected = {
+        "dynamic-add-drop-100t80r": (0.45, 1.0, 4),
+        "evasive-multilevel-100t100r": (0.4125, 1.0, 4),
+        "formation-split-50t50r": (0.0, 1.0, 4),
+        "near-tie-hard-negative-50t50r": (0.0, 1.0, 4),
+        "high-threat-m-to-n-100t100r": (0.0, 1.0, 4),
+        "high-threat-m-to-n-200t200r": (0.0, 1.0, 4),
+    }
+
+    for cell_id, values in expected.items():
+        windows = by_cell[cell_id].stable_observation_windows
+        assert len(windows) == 1
+        window = windows[0]
+        assert (
+            window.start_fraction_of_duration,
+            window.end_fraction_of_duration,
+            window.minimum_assignment_ticks,
+        ) == values
+        assert window.observation_mode == "noiseless_regeneration_v1"
+
+    assert by_cell["evasive-multilevel-100t100r"].duration_s == 12.0
+
+
+def test_d3_dense_50_recipes_use_the_exact_noncopying_stable_window() -> None:
+    recipes = [
+        item
+        for item in load_d3_a1_v3_episode_recipes(D3_SCHEDULE)
+        if item.cell_id == "dense-crossing-50t50r"
+    ]
+
+    assert len(recipes) == 20
+    for recipe in recipes:
+        assert len(recipe.stable_observation_windows) == 1
+        window = recipe.stable_observation_windows[0]
+        assert window.start_fraction_of_duration == 0.55
+        assert window.end_fraction_of_duration == 1.0
+        assert window.minimum_assignment_ticks == 4
+        assert window.observation_mode == "noiseless_regeneration_v1"
+
+        config = recipe.build_config(ScenarioConfig())
+        raw = config.metadata["learning_source_recipe"]
+        assert raw["stable_observation_windows"] == [
+            {
+                "start_fraction_of_duration": 0.55,
+                "end_fraction_of_duration": 1.0,
+                "minimum_assignment_ticks": 4,
+                "window_key": "dense-crossing-50t50r-stable-a",
+                "kinematic_mode": "hold_state_v1",
+                "observation_mode": "noiseless_regeneration_v1",
+                "frame_copying_allowed": False,
+            }
+        ]
+
+
+def test_d3_center_failure_recipe_does_not_retake_the_active_regional_owner() -> None:
+    recipe = next(
+        item
+        for item in load_d3_a1_v3_episode_recipes(D3_SCHEDULE)
+        if item.entry_index == 140
+    )
+    stack = IntegratedScalableModuleStack()
+
+    result = run_episode(recipe.build_config(ScenarioConfig()), module_stack=stack)
+
+    assert result.summary["finite_state"] is True
+    assert result.summary["online_truth_use_count"] == 0
+    assert stack.latest_plan is not None
+    assert stack.latest_plan.metadata["active_plan_owner"] == "regional"
+    assert stack.latest_plan.metadata["owner_node_id"] == "RECON-001"
+
+
+def test_d3_recipes_use_universal_or_specialized_preregistered_roster_cadence() -> None:
+    recipes = load_d3_a1_v3_episode_recipes(D3_SCHEDULE)
+
+    for recipe in recipes:
+        quota_events = [
+            item for item in recipe.roster_events if "-quota-" in item.selection_key
+        ]
+        actual = [
+            (item.fraction_of_duration, item.entity_kind, item.action, item.ordinal_count)
+            for item in quota_events
+        ]
+        if recipe.cell_id in {
+            "dynamic-add-drop-100t80r",
+            "formation-split-50t50r",
+        }:
+            assert actual == []
+            continue
+        if recipe.cell_id == "evasive-multilevel-100t100r":
+            assert actual == [
+                (0.18333333333333332, "intruder", "deactivate", 1),
+                (0.4125, "intruder", "activate", 1),
+            ]
+            assert quota_events[0].selection_key == quota_events[1].selection_key
+            continue
+        assert actual == [
+            (0.20, "intruder", "deactivate", 1),
+            (0.45, "intruder", "activate", 1),
+        ]
+        assert quota_events[0].selection_key == quota_events[1].selection_key
 
 
 def test_d3_recipe_builds_non_authoritative_runtime_config() -> None:

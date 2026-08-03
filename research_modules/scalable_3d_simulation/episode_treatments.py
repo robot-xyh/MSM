@@ -530,10 +530,14 @@ def build_episode_treatment_executor(
         return EpisodeTreatmentExecutor()
     if not isinstance(raw_recipe, Mapping):
         raise ValueError("learning_source_recipe metadata must be a mapping")
-    if raw_recipe.get("module") != "D3" or raw_recipe.get("treatment_id") != (
-        "anonymous_external_event_schedule_v1"
-    ):
+    if raw_recipe.get("module") != "D3":
         return EpisodeTreatmentExecutor()
+    treatment_id = raw_recipe.get("treatment_id")
+    if treatment_id not in {
+        "anonymous_external_event_schedule_v1",
+        "near_tie_cost_boundary_v1",
+    }:
+        raise ValueError("unsupported D3 episode treatment")
     _reject_forbidden_treatment_inputs(raw_recipe)
     raw_roster_events = raw_recipe.get("roster_events")
     raw_stable_windows = raw_recipe.get("stable_observation_windows")

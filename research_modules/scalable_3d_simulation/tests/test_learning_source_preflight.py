@@ -11,12 +11,95 @@ from research_modules.scalable_3d_simulation.learning_source_preflight import (
     LearningSourcePreflightError,
     assemble_learning_source_preflight,
     evaluate_learning_source_preflight,
+    _assess_d3_full_schedule_quota_viability,
     _validated_module_generation_request,
     write_learning_source_preflight_report,
 )
 
 
 ROOT = Path(__file__).resolve().parents[3]
+
+
+def _d3_schedule_row(index: int) -> dict[str, object]:
+    return {
+        "episode_id": f"episode-{index}",
+        "cell_id": "cell-0",
+        "seed": 23000 + index,
+        "minimum_observable_frames": 9,
+        "minimum_positive_frames": 3,
+        "minimum_negative_frames": 3,
+        "minimum_hard_negative_frames": 2,
+    }
+
+
+def _d3_probe_result(index: int) -> dict[str, object]:
+    return {
+        "episode_id": f"episode-{index}",
+        "cell_id": "cell-0",
+        "seed": 23000 + index,
+        "frame_count": 10,
+        "positive_frame_count": 3,
+        "negative_frame_count": 7,
+        "hard_negative_frame_count": 2,
+        "quota_met": True,
+        "writer_staged": True,
+        "reason_codes": [],
+    }
+
+
+def test_d3_full_schedule_quota_gate_rejects_first_recipe_only_evidence() -> None:
+    schedule = [_d3_schedule_row(index) for index in range(3)]
+    payload = {
+        "producer_capability": {
+            "frozen_runtime_quota_probe": {
+                "audited_recipe_count": 1,
+                "passing_runtime_to_writer_recipe_ids": ["episode-0"],
+                "runtime_results": [_d3_probe_result(0)],
+                "caller_classification_override_used": False,
+                "classifier_error_count": 0,
+                "online_truth_use_count": 0,
+                "blocker_codes": [],
+            }
+        }
+    }
+
+    result = _assess_d3_full_schedule_quota_viability(payload, schedule)
+
+    assert result["full_schedule_quota_viability_proven"] is False
+    assert "d3_full_schedule_recipe_count_not_audited" in result["blockers"]
+
+
+def test_d3_full_schedule_quota_gate_accepts_exact_strict_inventory() -> None:
+    schedule = [_d3_schedule_row(index) for index in range(3)]
+    payload = {
+        "producer_capability": {
+            "frozen_runtime_quota_probe": {
+                "audited_recipe_count": 3,
+                "passing_runtime_to_writer_recipe_ids": [
+                    "episode-0",
+                    "episode-1",
+                    "episode-2",
+                ],
+                "runtime_results": [
+                    _d3_probe_result(index) for index in range(3)
+                ],
+                "caller_classification_override_used": False,
+                "classifier_error_count": 0,
+                "online_truth_use_count": 0,
+                "blocker_codes": [],
+            }
+        }
+    }
+
+    result = _assess_d3_full_schedule_quota_viability(payload, schedule)
+
+    assert result == {
+        "full_schedule_quota_viability_proven": True,
+        "expected_recipe_count": 3,
+        "audited_recipe_count": 3,
+        "passing_recipe_count": 3,
+        "blockers": [],
+    }
 
 
 def test_repository_preflight_binds_all_requests_but_still_requires_clean_source() -> None:
