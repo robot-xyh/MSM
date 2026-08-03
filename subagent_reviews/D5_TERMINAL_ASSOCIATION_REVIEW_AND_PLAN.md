@@ -1,6 +1,20 @@
 # D5 末端视觉配准与协同身份认证综述及子方案
 
-## 2026-08-02 A3 v3 producer 谱系复核
+## 2026-08-02 A3 v3 最终上游绑定复核
+
+main 最终 recipe 文件 SHA-256 为 `34ced4f0...302d9`，episode treatment 保持
+`135a526a...cf9c`，区域计划修复后的 module stack 为 `3e184a85...e515`。全局 seed registry
+仍为内容/文件 `982f3467...9530c` / `98caa683...f988`。D5 三个 allocation 的精确 seed
+`24000-24103`、`48/24/32` split、104 条配方、future-held-out 门和权限矩阵均未改变。
+
+最终 allocation、schedule、request 文件 SHA-256 分别为 `29899b7d...2770`、
+`247e0e2c...83ef`、`707fcb62...44bf`。readiness 单文件 `48 passed in 1.13s`，联合专项
+`66 passed, 1 warning in 14.01s`，状态仍为
+`source_generation_request_ready_generation_only`；执行、训练、held-out 读取、shadow、
+assist、相机命令、runtime、control 和中心 ID 写权限保持关闭。正式来源和模型尚未生成。
+main 的 dirty 300/300 探针只证明上游开发配方当前稳定，不属于 D5 正式来源或准入证据。
+
+## 2026-08-02 A3 v3 producer 谱系复核（历史）
 
 main 更新来源配方加载器和 runtime orchestrator 后，D5 的旧 producer 文件哈希按预期失败关闭。
 D5 先用 main 与 D5 两套 loader 同序解析 104 条冻结 entry，再逐条构造当前运行配置。结果覆盖

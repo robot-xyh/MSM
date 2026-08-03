@@ -2,7 +2,21 @@
 
 **状态日期：2026-08-02**
 
-## A3 v3 当前生产器绑定与续跑实现
+## A3 v3 最终上游绑定
+
+全局 seed registry 的本次变化只更新 D3 source-contract。D5 的 104 条 episode 计划、
+`48/24/32` split、seed `24000-24103`、future-held-out one-shot 门和权限没有变化。main
+最终 recipe 文件为 `34ced4f0...302d9`，episode treatment 保持 `135a526a...cf9c`；区域计划
+修复后的 module stack 为 `3e184a85...e515`。D5 仍按 allocation binding、source schedule、
+generation request 三层校验，上游字节变化后先失败关闭，再级联重建哈希链。
+
+刷新后的 allocation、schedule、request 文件 SHA-256 分别为 `29899b7d...2770`、
+`247e0e2c...83ef` 和 `707fcb62...44bf`。该处理只固定实现字节，没有修改 A3 v3 意图、
+相机角色、困难混淆、样本配额或安全门。联合专项 `66 passed, 1 warning in 14.01s`，readiness
+保持 generation-only。正式来源为 `0/104`，future-held-out payload 读取为 0；dirty 300/300
+配方探针未被转换成 D5 正式证据。
+
+## A3 v3 前次生产器绑定与续跑实现（历史）
 
 来源 readiness 采用两层验证。第一层逐项解析 104 条冻结 recipe，并分别用 main 和 D5 loader
 复核 entry index、seed、episode ID、split 与 allocation。每条 recipe 都必须能够构造当前

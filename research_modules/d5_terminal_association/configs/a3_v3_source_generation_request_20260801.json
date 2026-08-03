@@ -12,15 +12,15 @@
     },
     "source_collection_schedule": {
       "path": "research_modules/d5_terminal_association/configs/a3_v3_source_collection_schedule_20260801.json",
-      "sha256": "d14b19d8c2f8051fc10363f8460fd9146ee37da24f6e24ac8014989e3f41082e"
+      "sha256": "247e0e2c0df03edbc228059c3e67b1fc35d6a148947e45b741bd0ea2ac5083ef"
     },
     "global_seed_allocation_binding": {
       "path": "research_modules/d5_terminal_association/configs/a3_v3_global_seed_allocation_binding_20260801.json",
-      "sha256": "a36dab497cc4ca4eeff7704b64ec8964390e94ee7fcf98bbfdf6118248260d72"
+      "sha256": "29899b7d36727857f5fa0a7d7ff576f79e5681fabe231aca178fe579916a2770"
     },
     "global_seed_registry": {
       "path": "research_modules/scalable_3d_simulation/configs/scalable_learning_global_seed_registry_v1.json",
-      "sha256": "1c9778e1cbfcd5679956ac2c1fc71a1e780207c4579abdc9b129d162a252c4b6"
+      "sha256": "98caa683ceae61b89580afc44545875c4345fa1b92bfc05cdc91e232c9f7f988"
     },
     "episode_staging_implementation": {
       "path": "research_modules/d5_terminal_association/src/d5_terminal_association/active_vision_a3_v3_episode_evidence.py",
@@ -141,5 +141,5 @@
     "integrity_verification_is_held_out_consumption": false,
     "future_held_out_payload_read_count": 0
   },
-  "content_sha256": "3b242acdba02d7274cefe05ce0166a9de41ea8d21e12d60b72a4f28964da7560"
+  "content_sha256": "288a4e7fa10eb86a330796f87cd2f7c9bcd5a2a76eb225aba8b160c718a5b0bf"
 }

@@ -2,7 +2,22 @@
 
 **状态日期：2026-08-02**
 
-## 生产器谱系原则
+## 最终上游谱系原则
+
+来源计划绑定的是实际参与预检和生成的文件字节，不能只按文件名或接口名称判断兼容。本次
+全局登记表只改变 D3 来源合同，D5 allocation 本身未变。main 最终 recipe 文件为
+`34ced4f0...302d9`，episode treatment 保持 `135a526a...cf9c`，区域计划修复后的 module stack
+为 `3e184a85...e515`。D5 对实际参与来源生成的 producer 文件逐项校验，任一字节漂移都会拒绝
+readiness。
+
+刷新后 D5 schedule/request 文件 SHA-256 分别为 `247e0e2c...83ef` 和
+`707fcb62...44bf`，状态仍为
+`source_generation_request_ready_generation_only`。seed、split、104 配方、future-held-out 门、
+在线真值隔离和中心只读全局编号规则没有变化。该状态只说明请求可由 main 重新预检，不说明
+已经执行来源生成、训练、模型推理、相机控制或物理任务。main 的 dirty 300/300 探针不属于
+D5 正式来源证据；D5 正式来源保持 `0/104`。
+
+## 前次生产器谱系原则（历史）
 
 D5 的来源计划必须绑定实际执行的 main producer 文件。producer 文件变化后，旧 schedule 和
 request 自动失效，不能仅替换哈希恢复 ready。D5 先验证全部 104 条 recipe 能由当前 loader

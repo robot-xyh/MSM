@@ -1,6 +1,23 @@
 # D5 终端视觉配准与身份认证计划
 
-## 2026-08-02 A3 v3 producer 谱系恢复计划
+## 2026-08-02 A3 v3 最终上游绑定复核计划
+
+- [x] 复核 main 最终配方和全局登记表。D5 三个 allocation 的 seed、split、用途、来源协议和
+  权限保持不变；dirty 300/300 探针不作为 D5 正式证据。
+- [x] 识别并刷新两个实际漂移的 producer 文件：`learning_source_recipes.py` 为
+  `34ced4f0...302d9`，`module_stack.py` 为 `3e184a85...e515`；
+  `episode_treatments.py` 仍为 `135a526a...cf9c`。
+- [x] 级联重算 schedule 与 generation-only request。allocation 文件保持
+  `29899b7d...2770`，schedule 文件更新为 `247e0e2c...83ef`，request 文件更新为
+  `707fcb62...44bf`。
+- [x] 复核 `24000-24103`、`48/24/32`、104 配方、future-held-out 门和全部非生成权限未漂移。
+- [x] readiness 单文件 `48 passed in 1.13s`；联合专项
+  `66 passed, 1 warning in 14.01s`。正式来源仍为 `0/104`，future payload 读取为 0。
+- [ ] main 形成包含最终上游和 D5 绑定的新 commit，在 clean worktree 重新预检，签发绑定
+  `707fcb62...44bf` 的显式 generation-only execution authorization，并使用新的空输出目录。
+  旧 request SHA、旧授权和 dirty 探针均不得用于正式生成。
+
+## 2026-08-02 A3 v3 producer 谱系恢复计划（历史）
 
 - [x] 重新计算并逐项核对 main `learning_source_recipes.py` 与 `orchestrator.py` 的当前文件
   SHA-256；只更新实际发生漂移且已经验证的 producer binding。

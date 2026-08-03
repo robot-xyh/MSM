@@ -14,8 +14,8 @@
     "policy_version": "scalable3d-seed-allocation-policy-v1",
     "registry_id": "scalable3d-learning-source-allocation-20260801-v1",
     "status": "allocations_reserved_generation_not_started",
-    "content_sha256": "89d99bf064a8c0e226eead5b675f05daf70ac2d4c6f6139322502da54ab0aea7",
-    "file_sha256": "1c9778e1cbfcd5679956ac2c1fc71a1e780207c4579abdc9b129d162a252c4b6"
+    "content_sha256": "982f34673cdf944c8d8799d2939361ab002130c0cddf8238a83c6e46e299530c",
+    "file_sha256": "98caa683ceae61b89580afc44545875c4345fa1b92bfc05cdc91e232c9f7f988"
   },
   "split_allocations": {
     "train": {
@@ -179,5 +179,5 @@
     "global_track_id_create": false,
     "global_track_id_write": false
   },
-  "content_sha256": "29148699e3089d15de506fec4f3b1525c408aa4a070adbe7537cf7c44162e640"
+  "content_sha256": "5d44628813a8b5fb932b01743c64fb2c0146e2e3d8ed2607cf4a48a7f4bf2003"
 }

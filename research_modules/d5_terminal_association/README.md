@@ -2,7 +2,24 @@
 
 科研模块，用于把末端相机视场中的本地视觉轨迹保守关联到中心分配的 `global_track_id`。模块可在统一三维 episode 中在线运行；训练标签和真值评分仍保持离线。D5 只输出视觉关联与相机观察意图，不修改、重写或重新分配任何全局轨迹 ID。
 
-## 2026-08-02 A3 v3 producer 谱系复核
+## 2026-08-02 A3 v3 最终上游绑定复核
+
+main 最终 `learning_source_recipes.py` 文件 SHA-256 为 `34ced4f0...302d9`，
+`episode_treatments.py` 保持 `135a526a...cf9c`；区域计划修复同时把 `module_stack.py` 更新为
+`3e184a85...e515`。全局 seed registry 内容/文件 SHA-256 仍为 `982f3467...9530c` /
+`98caa683...f988`。D5 的 `24000-24103`、`48/24/32`、104 条冻结配方、future-held-out
+一次访问门和权限矩阵均未改变。
+
+刷新后的 allocation 内容/文件 SHA-256 为 `5d446288...2003` / `29899b7d...2770`，schedule
+为 `e33631c3...47a8` / `247e0e2c...83ef`，request 为 `288a4e7f...b0bf` /
+`707fcb62...44bf`。readiness 仍为 `source_generation_request_ready_generation_only`；只有
+`source_artifact_generation=true`，执行、训练、验证消费、future-held-out 读取、模型推理、
+paired shadow、assist、相机命令、运行、控制和全局编号写权限均未开启。readiness 单文件为
+`48 passed in 1.13s`；readiness、episode evidence 与真实 producer 联合专项为
+`66 passed, 1 warning in 14.01s`。正式来源仍为 `0/104`，future-held-out payload 读取为 0。
+main 的 dirty 300/300 配方探针只作为上游开发状态，不计入 D5 正式来源或模型证据。
+
+## 2026-08-02 A3 v3 producer 谱系复核（历史）
 
 main 更新来源配方加载器和运行编排器后，D5 重新核对了冻结 schedule 的全部 104 条 entry。
 `48/24/32` 三分区、9 个场景族、5 个规模、416 个意图窗口和 208 个困难混淆分配均能构造

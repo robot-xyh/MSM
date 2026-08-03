@@ -1,6 +1,20 @@
 # D5 实现差距审计
 
-## 2026-08-02 A3 v3 producer 谱系与恢复 GAP
+## 2026-08-02 A3 v3 最终上游绑定 GAP
+
+| 项目 | 当前状态 | 证据与剩余限制 |
+| --- | --- | --- |
+| 全局登记表漂移 | **D5-owned 阻塞已关闭** | 新 registry 只更新 D3 source-contract。D5 allocation 的 `24000-24103`、`48/24/32`、owner、用途、来源协议和权限未变化；D5 已刷新内容/文件双哈希。 |
+| main 实现绑定 | **D5-owned 阻塞已关闭** | 最终 recipe 为 `34ced4f0...302d9`，episode treatment 保持 `135a526a...cf9c`，区域计划修复后的 module stack 为 `3e184a85...e515`；其余 producer 文件逐项复核未漂移。 |
+| 下游哈希链 | **D5-owned 阻塞已关闭** | allocation 内容/文件 SHA 为 `5d446288...2003` / `29899b7d...2770`，schedule 为 `e33631c3...47a8` / `247e0e2c...83ef`，request 为 `288a4e7f...b0bf` / `707fcb62...44bf`。 |
+| 配方与权限非退化 | **已复核** | 104 配方、三 split、future-held-out one-shot 门及在线真值/身份边界未变；唯一 true permission 仍为 `source_artifact_generation`，execution authorization=false。 |
+| 正式来源与训练 | **P1 继续开放** | 正式来源仍为 `0/104`，future payload 读取为 0。main 的 dirty 300/300 只属上游开发探针；正式生成仍需新 commit、clean preflight、绑定新 request SHA 的显式授权和新空输出目录。 |
+
+readiness 单文件为 `48 passed in 1.13s`，联合专项为
+`66 passed, 1 warning in 14.01s`。本轮没有新增 AirSim、真实相机、模型质量或
+物理拦截证据；相关 GAP 状态不变。
+
+## 2026-08-02 A3 v3 producer 谱系与恢复 GAP（历史）
 
 | 项目 | 当前状态 | 证据与剩余限制 |
 | --- | --- | --- |

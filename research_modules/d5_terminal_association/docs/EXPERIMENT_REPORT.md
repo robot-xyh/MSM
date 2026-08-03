@@ -1,6 +1,23 @@
 # D5 末端视觉配准与身份认证实验报告
 
-## 2026-08-02 A3 v3 谱系与续跑验证
+## 2026-08-02 A3 v3 最终上游绑定验证
+
+全局 seed registry 新内容/文件 SHA-256 为 `982f3467...9530c` / `98caa683...f988`。差异只在
+D3 source-contract，D5 三个 allocation 的 seed、split、用途和权限未变化。最终 main recipe、
+episode treatment 和 module stack 文件 SHA-256 分别为 `34ced4f0...302d9`、
+`135a526a...cf9c` 和 `3e184a85...e515`。D5 刷新后得到 allocation 文件 SHA
+`29899b7d...2770`、schedule 文件 SHA `247e0e2c...83ef` 和 request 文件 SHA
+`707fcb62...44bf`。
+
+A3 v3 source readiness 单文件测试为 `48 passed in 1.13s`；加入 episode evidence 和真实
+producer 后合计 `66 passed, 1 warning in 14.01s`，warning 为既有 Matplotlib Axes3D 环境告警。
+测试继续确认 104 条配方、
+`48/24/32`、seed `24000-24103`、future-held-out 门和 generation-only 权限。未生成正式
+104-episode 来源，正式计数为 `0/104`；future-held-out payload 读取计数为 0。训练、paired
+shadow、assist、相机命令、runtime、control 和 `global_track_id` 写权限均为 false。main 的
+dirty 300/300 配方探针不属于本实验的正式来源、模型质量或运行证据。
+
+## 2026-08-02 A3 v3 谱系与续跑验证（历史）
 
 main 来源配方加载器和运行编排器发生变更后，旧 producer binding 按失败关闭策略拒绝 readiness。
 D5 对全部 104 条冻结 entry 重新执行元数据与配置构造审计。结果为 104/104 可构造，split 计数

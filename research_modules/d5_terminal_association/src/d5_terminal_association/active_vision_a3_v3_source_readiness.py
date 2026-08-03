@@ -47,10 +47,10 @@ A3_V3_PROTOCOL_SHA256 = (
     "5a01b9f5f0636a3d22338ac1c3212a242d51944a974263ca7a165909ab3dcb64"
 )
 A3_V3_SOURCE_SCHEDULE_FILE_SHA256 = (
-    "d14b19d8c2f8051fc10363f8460fd9146ee37da24f6e24ac8014989e3f41082e"
+    "247e0e2c0df03edbc228059c3e67b1fc35d6a148947e45b741bd0ea2ac5083ef"
 )
 A3_V3_ALLOCATION_BINDING_FILE_SHA256 = (
-    "a36dab497cc4ca4eeff7704b64ec8964390e94ee7fcf98bbfdf6118248260d72"
+    "29899b7d36727857f5fa0a7d7ff576f79e5681fabe231aca178fe579916a2770"
 )
 A3_V3_EPISODE_STAGING_IMPLEMENTATION_SHA256 = (
     "0951b23083a9ec07241198e98c2f670fcc032086da02fd5609f0a3ca19d5fdc9"
@@ -60,10 +60,10 @@ GLOBAL_REGISTRY_SCHEMA_VERSION = "scalable3d-global-seed-registry-v1"
 GLOBAL_REGISTRY_POLICY_VERSION = "scalable3d-seed-allocation-policy-v1"
 GLOBAL_REGISTRY_ID = "scalable3d-learning-source-allocation-20260801-v1"
 GLOBAL_REGISTRY_CONTENT_SHA256 = (
-    "89d99bf064a8c0e226eead5b675f05daf70ac2d4c6f6139322502da54ab0aea7"
+    "982f34673cdf944c8d8799d2939361ab002130c0cddf8238a83c6e46e299530c"
 )
 GLOBAL_REGISTRY_FILE_SHA256 = (
-    "1c9778e1cbfcd5679956ac2c1fc71a1e780207c4579abdc9b129d162a252c4b6"
+    "98caa683ceae61b89580afc44545875c4345fa1b92bfc05cdc91e232c9f7f988"
 )
 
 MODULE_ROOT = Path(__file__).resolve().parents[2]
@@ -332,7 +332,7 @@ _PRODUCER_SOURCE_BINDINGS = (
             "learning_source_generation.py"
         ),
         "sha256": (
-            "83fb35777699d2a79e562fd80d725ac3c71cd3aba689fa25720a6ee60600c7e6"
+            "9817a4f2137373f2ad1ac283500f66bd55f3b7de5d5f6e0256dfb0ed2dd32663"
         ),
     },
     {
@@ -341,7 +341,7 @@ _PRODUCER_SOURCE_BINDINGS = (
             "research_modules/scalable_3d_simulation/learning_source_recipes.py"
         ),
         "sha256": (
-            "7af7cbcc2585cf79faebe01ea6b231af73d1dd7d2fc8c780a6476201e4d70a44"
+            "34ced4f02c089b492b2ba58a94220fa319acd98ae65efa276c98fa7e4c8302d9"
         ),
     },
     {
@@ -350,14 +350,32 @@ _PRODUCER_SOURCE_BINDINGS = (
             "research_modules/scalable_3d_simulation/learning_source_adapters.py"
         ),
         "sha256": (
-            "1b409de412dcfd3affb4dde254d7782804b296e013fdbab254e9b8995bfed642"
+            "7fb1b660ab3dae035d055ed83bb465c4420f465da8e127dbb8f0054af15534da"
+        ),
+    },
+    {
+        "role": "source_preflight_gate",
+        "path": (
+            "research_modules/scalable_3d_simulation/learning_source_preflight.py"
+        ),
+        "sha256": (
+            "9e0ef338dc831cd63ee5b744e0a1b2d944211f24cc3894b21986f67924bb4852"
+        ),
+    },
+    {
+        "role": "episode_treatment_executor",
+        "path": (
+            "research_modules/scalable_3d_simulation/episode_treatments.py"
+        ),
+        "sha256": (
+            "135a526ad9591c2fa3a0041d50335db1fcb75e1129e97df60c5739df66b4cf9c"
         ),
     },
     {
         "role": "runtime_module_stack",
         "path": "research_modules/scalable_3d_simulation/module_stack.py",
         "sha256": (
-            "936b50f3932cb4ef358f9cb729623858d357124a68c65e08999c9a2c3917b196"
+            "3e184a858ddba1f1f56564035c1f5c26ddc3bedd9c739bafe03d5e24a3a5e515"
         ),
     },
     {

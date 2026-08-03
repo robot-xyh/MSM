@@ -123,6 +123,12 @@ def _copy_metadata_tree(destination: Path) -> dict[str, Path]:
         "producer_adapters": Path(
             "research_modules/scalable_3d_simulation/learning_source_adapters.py"
         ),
+        "producer_preflight": Path(
+            "research_modules/scalable_3d_simulation/learning_source_preflight.py"
+        ),
+        "producer_episode_treatments": Path(
+            "research_modules/scalable_3d_simulation/episode_treatments.py"
+        ),
         "producer_stack": Path(
             "research_modules/scalable_3d_simulation/module_stack.py"
         ),
@@ -205,6 +211,35 @@ def test_actual_generation_only_request_is_ready_with_stable_main_fields() -> No
         "complete_smoke_verified"
     )
     capability = report["producer_capability"]
+    scheduled_capability = _load(SCHEDULE_PATH)["producer_capability_assessment"]
+    main_bindings = {
+        item["role"]: (item["path"], item["sha256"])
+        for item in scheduled_capability["source_bindings"]
+    }
+    assert main_bindings["source_generation_orchestrator"] == (
+        "research_modules/scalable_3d_simulation/learning_source_generation.py",
+        "9817a4f2137373f2ad1ac283500f66bd55f3b7de5d5f6e0256dfb0ed2dd32663",
+    )
+    assert main_bindings["runtime_evidence_adapter"] == (
+        "research_modules/scalable_3d_simulation/learning_source_adapters.py",
+        "7fb1b660ab3dae035d055ed83bb465c4420f465da8e127dbb8f0054af15534da",
+    )
+    assert main_bindings["source_preflight_gate"] == (
+        "research_modules/scalable_3d_simulation/learning_source_preflight.py",
+        "9e0ef338dc831cd63ee5b744e0a1b2d944211f24cc3894b21986f67924bb4852",
+    )
+    assert main_bindings["episode_treatment_executor"] == (
+        "research_modules/scalable_3d_simulation/episode_treatments.py",
+        "135a526ad9591c2fa3a0041d50335db1fcb75e1129e97df60c5739df66b4cf9c",
+    )
+    assert main_bindings["source_recipe_loader"] == (
+        "research_modules/scalable_3d_simulation/learning_source_recipes.py",
+        "34ced4f02c089b492b2ba58a94220fa319acd98ae65efa276c98fa7e4c8302d9",
+    )
+    assert main_bindings["runtime_module_stack"] == (
+        "research_modules/scalable_3d_simulation/module_stack.py",
+        "3e184a858ddba1f1f56564035c1f5c26ddc3bedd9c739bafe03d5e24a3a5e515",
+    )
     assert capability["source_generation_request_path"] == (
         SOURCE_GENERATION_REQUEST_RELATIVE_PATH
     )
