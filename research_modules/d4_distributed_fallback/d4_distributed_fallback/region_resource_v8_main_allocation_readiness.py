@@ -66,10 +66,10 @@ SOURCE_GENERATION_REQUEST_PATH = (
     "region_resource_v8_train_source_generation_request_readiness_v1.json"
 )
 SOURCE_GENERATION_REQUEST_CONTENT_SHA256 = (
-    "4c4edd8250bfb9e1bd3a2e23885bd206ab9c8d4f4bd64a2caafa5475a7db811f"
+    "7e026359115848c81eb426054ce4c4bd4eff0c30a7c9386b1f2ade92b07401cb"
 )
 SOURCE_GENERATION_REQUEST_FILE_SHA256 = (
-    "e93e7a79a3bfae055721fc21d9ba1591228c3d46f662922de2c04713076fe808"
+    "c4f74fb499547cfa9808039d9c2c9f4cd4ff11c1dbe1493b47436c22e80cb019"
 )
 
 GLOBAL_REGISTRY_PATH = (
@@ -172,11 +172,18 @@ V8_REGION_RESOURCE_POLICY_IMPLEMENTATION_PATH = (
 V8_REGION_RESOURCE_POLICY_IMPLEMENTATION_FILE_SHA256 = (
     "1f47de6104f16c563ca6fc8cca3f1540437d77f3d3617225eef7b8b2423a78c2"
 )
+V8_REGIONAL_FAILOVER_IMPLEMENTATION_PATH = (
+    "research_modules/d4_distributed_fallback/d4_distributed_fallback/"
+    "regional_failover.py"
+)
+V8_REGIONAL_FAILOVER_IMPLEMENTATION_FILE_SHA256 = (
+    "22453cfea64cfe6bc7ebe9944a44dd986b272c22304cb370d9ae4f73084b66b6"
+)
 V8_MAIN_RUNTIME_ADAPTER_IMPLEMENTATION_PATH = (
     "research_modules/scalable_3d_simulation/learning_source_adapters.py"
 )
 V8_MAIN_RUNTIME_ADAPTER_IMPLEMENTATION_FILE_SHA256 = (
-    "7fb1b660ab3dae035d055ed83bb465c4420f465da8e127dbb8f0054af15534da"
+    "4c968e4f35f4d3422300e36fd7c207f8962ffefaea08322510cd329747b374be"
 )
 V8_MAIN_TREATMENT_IMPLEMENTATION_PATH = (
     "research_modules/scalable_3d_simulation/episode_treatments.py"
@@ -652,6 +659,11 @@ def validate_v8_source_generation_request_payload(
             "path": V8_REGION_RESOURCE_POLICY_IMPLEMENTATION_PATH,
             "file_sha256": V8_REGION_RESOURCE_POLICY_IMPLEMENTATION_FILE_SHA256,
         },
+        "regional_failover_implementation": {
+            "role": "d4_regional_snapshot_and_failover_contract",
+            "path": V8_REGIONAL_FAILOVER_IMPLEMENTATION_PATH,
+            "file_sha256": V8_REGIONAL_FAILOVER_IMPLEMENTATION_FILE_SHA256,
+        },
         "main_runtime_adapter_implementation": {
             "role": "main_truth_isolated_d4_runtime_adapter",
             "path": V8_MAIN_RUNTIME_ADAPTER_IMPLEMENTATION_PATH,
@@ -991,6 +1003,7 @@ def validate_v8_main_allocation_pre_generation_readiness(
         "runtime_evidence_implementation",
         "source_viability_implementation",
         "region_resource_policy_implementation",
+        "regional_failover_implementation",
         "main_runtime_adapter_implementation",
         "main_treatment_implementation",
         "main_recipe_implementation",

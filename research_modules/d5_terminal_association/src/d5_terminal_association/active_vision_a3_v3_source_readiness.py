@@ -47,7 +47,7 @@ A3_V3_PROTOCOL_SHA256 = (
     "5a01b9f5f0636a3d22338ac1c3212a242d51944a974263ca7a165909ab3dcb64"
 )
 A3_V3_SOURCE_SCHEDULE_FILE_SHA256 = (
-    "247e0e2c0df03edbc228059c3e67b1fc35d6a148947e45b741bd0ea2ac5083ef"
+    "0a999ba5bcf1defb4e15893c00df930fbc6af558d699706930b47fc94538400e"
 )
 A3_V3_ALLOCATION_BINDING_FILE_SHA256 = (
     "29899b7d36727857f5fa0a7d7ff576f79e5681fabe231aca178fe579916a2770"
@@ -350,7 +350,7 @@ _PRODUCER_SOURCE_BINDINGS = (
             "research_modules/scalable_3d_simulation/learning_source_adapters.py"
         ),
         "sha256": (
-            "7fb1b660ab3dae035d055ed83bb465c4420f465da8e127dbb8f0054af15534da"
+            "4c968e4f35f4d3422300e36fd7c207f8962ffefaea08322510cd329747b374be"
         ),
     },
     {

@@ -62,6 +62,9 @@ def _copy_contract_fixture(tmp_path: Path) -> dict[str, Path]:
         "region_resource_policy": references[
             "region_resource_policy_implementation"
         ]["path"],
+        "regional_failover": references["regional_failover_implementation"][
+            "path"
+        ],
         "main_runtime_adapter": references[
             "main_runtime_adapter_implementation"
         ]["path"],
@@ -113,7 +116,7 @@ def test_exact_main_allocation_binding_is_generation_prerequisite_ready() -> Non
         "region_resource_v8_train_source_generation_request_readiness_v1.json"
     )
     assert report.source_generation_request_sha256 == (
-        "e93e7a79a3bfae055721fc21d9ba1591228c3d46f662922de2c04713076fe808"
+        "c4f74fb499547cfa9808039d9c2c9f4cd4ff11c1dbe1493b47436c22e80cb019"
     )
     assert report.writer_resume_safety_validated is True
     assert report.source_viability_audit_validated is True
@@ -193,6 +196,16 @@ def test_source_generation_request_artifact_is_machine_valid() -> None:
     assert validated["references"]["main_recipe_implementation"][
         "file_sha256"
     ] == "34ced4f02c089b492b2ba58a94220fa319acd98ae65efa276c98fa7e4c8302d9"
+    assert validated["references"]["regional_failover_implementation"] == {
+        "role": "d4_regional_snapshot_and_failover_contract",
+        "path": (
+            "research_modules/d4_distributed_fallback/"
+            "d4_distributed_fallback/regional_failover.py"
+        ),
+        "file_sha256": (
+            "22453cfea64cfe6bc7ebe9944a44dd986b272c22304cb370d9ae4f73084b66b6"
+        ),
+    }
 
 
 def test_source_generation_request_physical_hash_drift_fails_closed(
@@ -228,6 +241,7 @@ def test_writer_resume_implementation_hash_drift_fails_closed(
         ("runtime_evidence", "runtime_evidence_implementation"),
         ("source_viability", "source_viability_implementation"),
         ("region_resource_policy", "region_resource_policy_implementation"),
+        ("regional_failover", "regional_failover_implementation"),
         ("main_runtime_adapter", "main_runtime_adapter_implementation"),
         ("main_treatment", "main_treatment_implementation"),
         ("main_recipe", "main_recipe_implementation"),

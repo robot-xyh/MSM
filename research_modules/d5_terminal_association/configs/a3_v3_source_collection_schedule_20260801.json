@@ -58,7 +58,7 @@
       {
         "role": "runtime_evidence_adapter",
         "path": "research_modules/scalable_3d_simulation/learning_source_adapters.py",
-        "sha256": "7fb1b660ab3dae035d055ed83bb465c4420f465da8e127dbb8f0054af15534da"
+        "sha256": "4c968e4f35f4d3422300e36fd7c207f8962ffefaea08322510cd329747b374be"
       },
       {
         "role": "source_preflight_gate",
@@ -14162,5 +14162,5 @@
     "global_track_id_create": false,
     "global_track_id_write": false
   },
-  "content_sha256": "e33631c3f4d5026e3a09110d9f08ae25b39a770d7a7abe0ba086018b6bf447a8"
+  "content_sha256": "e1b8312605dc0d87d020d425f8f23334200da62cfa8b5cbf025789385c17dcb6"
 }

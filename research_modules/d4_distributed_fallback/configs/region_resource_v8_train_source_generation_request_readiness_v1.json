@@ -61,10 +61,15 @@
       "path": "research_modules/d4_distributed_fallback/d4_distributed_fallback/region_resource.py",
       "file_sha256": "1f47de6104f16c563ca6fc8cca3f1540437d77f3d3617225eef7b8b2423a78c2"
     },
+    "regional_failover_implementation": {
+      "role": "d4_regional_snapshot_and_failover_contract",
+      "path": "research_modules/d4_distributed_fallback/d4_distributed_fallback/regional_failover.py",
+      "file_sha256": "22453cfea64cfe6bc7ebe9944a44dd986b272c22304cb370d9ae4f73084b66b6"
+    },
     "main_runtime_adapter_implementation": {
       "role": "main_truth_isolated_d4_runtime_adapter",
       "path": "research_modules/scalable_3d_simulation/learning_source_adapters.py",
-      "file_sha256": "7fb1b660ab3dae035d055ed83bb465c4420f465da8e127dbb8f0054af15534da"
+      "file_sha256": "4c968e4f35f4d3422300e36fd7c207f8962ffefaea08322510cd329747b374be"
     },
     "main_treatment_implementation": {
       "role": "main_frozen_d4_topology_supply_and_communication_treatment",
@@ -159,5 +164,5 @@
     "model_registration_count": 0,
     "runtime_connection_count": 0
   },
-  "content_sha256": "4c4edd8250bfb9e1bd3a2e23885bd206ab9c8d4f4bd64a2caafa5475a7db811f"
+  "content_sha256": "7e026359115848c81eb426054ce4c4bd4eff0c30a7c9386b1f2ade92b07401cb"
 }

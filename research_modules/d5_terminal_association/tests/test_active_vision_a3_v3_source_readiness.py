@@ -222,7 +222,7 @@ def test_actual_generation_only_request_is_ready_with_stable_main_fields() -> No
     )
     assert main_bindings["runtime_evidence_adapter"] == (
         "research_modules/scalable_3d_simulation/learning_source_adapters.py",
-        "7fb1b660ab3dae035d055ed83bb465c4420f465da8e127dbb8f0054af15534da",
+        "4c968e4f35f4d3422300e36fd7c207f8962ffefaea08322510cd329747b374be",
     )
     assert main_bindings["source_preflight_gate"] == (
         "research_modules/scalable_3d_simulation/learning_source_preflight.py",
