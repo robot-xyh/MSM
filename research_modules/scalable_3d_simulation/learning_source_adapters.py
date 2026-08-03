@@ -1192,13 +1192,7 @@ def _d5_runtime_sample(
             "geometry_family": "assigned_camera_track_projection",
         }
     )
-    communication_state = _canonical_sha256(
-        {
-            "healthy": bool(snapshot.communication.healthy),
-            "plan_version": int(snapshot.plan.plan_version),
-            "coalition_version": int(snapshot.plan.coalition_version),
-        }
-    )
+    communication_state = _d5_role_match_communication_state_sha256(snapshot)
     boundary_state = A3V3HardConfusionBoundaryStateV1(
         assignment_reference_sha256=a3_v3_assignment_reference_sha256(recipe),
         geometry_family_sha256=geometry_family,
@@ -1217,6 +1211,17 @@ def _d5_runtime_sample(
         near_tie_maximum_gap=_D5_NEAR_TIE_MAXIMUM_GAP,
     )
     return _D5RuntimeSample(sample=sample, boundary_state=boundary_state)
+
+
+def _d5_role_match_communication_state_sha256(snapshot: Any) -> str:
+    """Hash communication equivalence without volatile planning counters."""
+
+    return _canonical_sha256(
+        {
+            "schema_version": "d5-role-match-communication-equivalence-v1",
+            "healthy": bool(snapshot.communication.healthy),
+        }
+    )
 
 
 def _d5_boundary_pair(

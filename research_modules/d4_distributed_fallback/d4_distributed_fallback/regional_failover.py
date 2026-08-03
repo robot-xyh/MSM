@@ -57,7 +57,11 @@ class D5Consistency(str, Enum):
 
 @dataclass(frozen=True)
 class RegionalScenarioMetadata:
-    """D4 view of the scalable3d scenario contract without a module import."""
+    """D4 view of the scalable3d scenario contract without a module import.
+
+    ``task_count`` is the configured scenario cardinality used for provenance
+    and reporting. It is not an upper bound on online D2/D3 task hypotheses.
+    """
 
     scenario_name: str
     scenario_version: str
@@ -344,8 +348,9 @@ class RegionalFailoverSnapshot:
             raise ValueError("task ids must be unique")
         if len(set(track_ids)) != len(track_ids):
             raise ValueError("global_track_id values must be unique across active tasks")
-        if len(self.tasks) > int(self.scenario.task_count):
-            raise ValueError("active task evidence exceeds scenario task_count")
+        # scenario.task_count is the configured scenario cardinality, not an
+        # online-track capacity. False alarms and dynamic arrivals can produce
+        # more unique D2/D3 task hypotheses without making the evidence invalid.
         if any(task.region_id not in set(region_ids) for task in self.tasks):
             raise ValueError("every task must reference a known region")
 

@@ -4,6 +4,7 @@ from collections import Counter
 from dataclasses import replace
 import json
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 
@@ -36,6 +37,7 @@ from research_modules.d5_terminal_association.src.d5_terminal_association.active
     stage_a3_v3_episode_evidence,
 )
 from research_modules.scalable_3d_simulation.learning_source_adapters import (
+    _d5_role_match_communication_state_sha256,
     adapt_d3_a1_runtime_frame,
     build_d4_v8_runtime_episode,
     build_d5_a3_runtime_episode,
@@ -307,6 +309,61 @@ def test_actual_d5_runtime_covers_all_boundaries_and_window_quotas(
         and pair.right_state.projection_quality_gap <= 0.05
         for pair in near_tie_pairs
     )
+
+
+def test_d5_role_match_communication_equivalence_ignores_version_counters() -> None:
+    def snapshot(*, healthy: bool, plan_version: int, coalition_version: int):
+        return SimpleNamespace(
+            communication=SimpleNamespace(healthy=healthy),
+            plan=SimpleNamespace(
+                plan_version=plan_version,
+                coalition_version=coalition_version,
+            ),
+        )
+
+    before_replan = snapshot(healthy=True, plan_version=3, coalition_version=5)
+    after_replan = snapshot(healthy=True, plan_version=19, coalition_version=23)
+    degraded_link = snapshot(healthy=False, plan_version=19, coalition_version=23)
+
+    assert _d5_role_match_communication_state_sha256(
+        before_replan
+    ) == _d5_role_match_communication_state_sha256(after_replan)
+    assert _d5_role_match_communication_state_sha256(
+        before_replan
+    ) != _d5_role_match_communication_state_sha256(degraded_link)
+
+
+def test_d5_source_entry_13_builds_role_match_boundary_without_truth() -> None:
+    main_recipe = load_d5_a3_v3_episode_recipes(D5_SCHEDULE_PATH)[13]
+    frozen_recipe = load_frozen_a3_v3_episode_recipes(
+        source_schedule_path=D5_SCHEDULE_PATH
+    )[13]
+    base = ScenarioConfig.from_dict(
+        json.loads(
+            (
+                ROOT
+                / "research_modules/scalable_3d_simulation/configs/"
+                "nominal_200v200.json"
+            ).read_text(encoding="utf-8")
+        )
+    )
+    stack = _stack(d5_collection=True)
+
+    result = run_episode(main_recipe.build_config(base), module_stack=stack)
+    online, offline = build_d5_a3_runtime_episode(
+        recipe=frozen_recipe,
+        active_vision_frames=stack.learning_artifacts().d5_active_vision_frames,
+    )
+
+    assert main_recipe.seed == 24_013
+    assert len(online.samples) >= 24 * len(frozen_recipe.intent_windows)
+    assert {item.family for item in offline.boundary_pairs} == {
+        "observe_vs_reacquire_projection_boundary",
+        "role_matched_interceptor_recon_geometry",
+    }
+    assert result.summary["online_truth_use_count"] == 0
+    assert result.summary.get("global_track_id_created_count", 0) == 0
+    assert result.summary.get("global_track_id_rewritten_count", 0) == 0
 
 
 def _d3_smoke_evidence(frame_index: int) -> A1V3AdapterFrameEvidence:

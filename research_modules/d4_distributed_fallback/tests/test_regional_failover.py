@@ -268,6 +268,67 @@ def test_scalable_scenario_metadata_and_center_ownership_cover_all_regions(scale
     )
 
 
+def test_unique_online_task_hypotheses_may_exceed_configured_scenario_count() -> None:
+    scenario = _scenario(task_count=1, resource_count=2)
+    tasks = (
+        _task(task_id="task-1", global_track_id="G-1"),
+        _task(task_id="task-2", global_track_id="G-2"),
+    )
+
+    snapshot = _snapshot(
+        now_s=1.0,
+        health=C2Health.NORMAL,
+        plan_version=1,
+        epoch=1,
+        tasks=tasks,
+        scenario=scenario,
+    )
+    decision = RegionalFailoverCoordinator().evaluate(snapshot)
+
+    assert scenario.task_count == 1
+    assert len(snapshot.tasks) == 2
+    assert decision.task_count == 2
+    assert all(
+        item.action == RegionalAction.CONTINUE_CENTER
+        for item in decision.region_decisions
+    )
+
+
+@pytest.mark.parametrize(
+    "tasks, message",
+    [
+        (
+            (
+                _task(task_id="task-1", global_track_id="G-1"),
+                _task(task_id="task-1", global_track_id="G-2"),
+            ),
+            "task ids must be unique",
+        ),
+        (
+            (
+                _task(task_id="task-1", global_track_id="G-1"),
+                _task(task_id="task-2", global_track_id="G-1"),
+            ),
+            "global_track_id values must be unique across active tasks",
+        ),
+    ],
+)
+def test_excess_online_hypotheses_do_not_relax_identity_uniqueness(
+    tasks: tuple[RegionalTaskEvidence, ...], message: str
+) -> None:
+    scenario = _scenario(task_count=1, resource_count=2)
+
+    with pytest.raises(ValueError, match=message):
+        _snapshot(
+            now_s=1.0,
+            health=C2Health.NORMAL,
+            plan_version=1,
+            epoch=1,
+            tasks=tasks,
+            scenario=scenario,
+        )
+
+
 def test_center_keeps_authority_while_active_d1_d2_evidence_requests_recon_assist() -> None:
     task = _task(
         d1_covariance_trace=3000.0,
