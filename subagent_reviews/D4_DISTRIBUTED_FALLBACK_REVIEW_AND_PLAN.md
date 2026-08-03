@@ -1,5 +1,37 @@
 # D4 分布式协同与降级接管综述及子方案
 
+## 2026-08-03 A2 v8 实现绑定评审
+
+统一 preflight 的 `main_runtime_adapter_implementation_file_sha256_mismatch` 是预期的失败关闭。
+共享 adapter 采用整文件绑定；本轮变化位于 D5 通信等价签名，D4 adapter 代码段未变。D4 不应
+绕过该检查，也不应继续使用绑定旧文件字节的 request。
+
+重冻结通过项目现有 `canonical_v8_sha256()` 完成。除刷新共享 adapter 摘要外，request 新增
+`regional_failover.py` 的直接实现绑定，因为该文件定义 `_d4_snapshot` 使用的区域快照验证
+合同。内容摘要为 `7e026359...01cb`，物理文件 SHA-256 为
+`c4f74fb499547cfa9808039d9c2c9f4cd4ff11c1dbe1493b47436c22e80cb019`。专项 51 项和 v8 聚焦
+94 项测试均通过，统一 preflight 中 D4 无 blocker。
+
+本次只恢复 source request 的实现身份。episode 数量、seed、split、标签、算法门限和授权范围
+没有改变。main 提交稳定修改并完成 clean preflight 前不得生成；旧失败输出不能 resume，训练、
+正式 seed、R0 shard、assignment、degradation、runtime 和 control 均未获授权。
+
+## 2026-08-03 来源生成活动任务合同评审
+
+评审确认根因位于 D4 验证合同，不在 main `_d4_snapshot` 的任务构造。main 按区域化口径
+把当前 D3 航迹与分配目标并集转为一条任务对应一条 `global_track_id` 的证据。seed
+`28203` 的 19 条任务和 19 条全局航迹编号均唯一；把 18 个仿真物理目标用作上限会错误
+拒绝在线虚警或新生目标，并把真值基数带入在线仲裁。
+
+D4 接受取消该基数上限，同时要求身份唯一性、区域引用、plan/version/epoch/lease、联盟
+完整确认和权限门保持不变。新增回归覆盖超出配置基数的唯一在线假设，以及重复 task ID
+和重复 `global_track_id` 的失败关闭。原失败配方通过实际 runtime 和 v8 evidence builder，
+形成 3 帧正类证据，在线真值使用为 0。
+
+旧 generation 输出因 failure artifact 已失效，不能删除错误标记后继续使用。main 必须在
+本修复提交后重新签发 generation-only 授权并使用新目录。该结论不批准训练、降级、联盟、
+assignment、runtime 或 control。
+
 ## 2026-08-02 最终 recipe 绑定评审
 
 main 已修复既有 regional owner 重入首次 secondary takeover 的状态迁移，并报告全新 dirty

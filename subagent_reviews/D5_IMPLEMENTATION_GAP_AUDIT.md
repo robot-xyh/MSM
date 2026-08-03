@@ -1,18 +1,18 @@
 # D5 实现差距审计
 
-## 2026-08-02 A3 v3 最终上游绑定 GAP
+## 2026-08-03 A3 v3 角色匹配适配器绑定 GAP
 
 | 项目 | 当前状态 | 证据与剩余限制 |
 | --- | --- | --- |
-| 全局登记表漂移 | **D5-owned 阻塞已关闭** | 新 registry 只更新 D3 source-contract。D5 allocation 的 `24000-24103`、`48/24/32`、owner、用途、来源协议和权限未变化；D5 已刷新内容/文件双哈希。 |
-| main 实现绑定 | **D5-owned 阻塞已关闭** | 最终 recipe 为 `34ced4f0...302d9`，episode treatment 保持 `135a526a...cf9c`，区域计划修复后的 module stack 为 `3e184a85...e515`；其余 producer 文件逐项复核未漂移。 |
-| 下游哈希链 | **D5-owned 阻塞已关闭** | allocation 内容/文件 SHA 为 `5d446288...2003` / `29899b7d...2770`，schedule 为 `e33631c3...47a8` / `247e0e2c...83ef`，request 为 `288a4e7f...b0bf` / `707fcb62...44bf`。 |
+| 角色匹配失败 | **main 修复、D5 已复核** | seed `24013` 有 18 条跨角色共同中心航迹和 4594 对同目标候选。旧通信哈希混入跨窗口递增的计划/联盟版本。main 改为 schema + communication healthy 后已形成两类冻结边界，online truth=0。 |
+| main 实现绑定 | **D5-owned 阻塞已关闭** | 新 `learning_source_adapters.py` 文件 SHA 为 `4c968e4f...74be`；D5 readiness 和 schedule 已绑定实际文件字节。 |
+| 下游哈希链 | **D5-owned 阻塞已关闭** | allocation 内容/文件 SHA 仍为 `5d446288...2003` / `29899b7d...2770`；schedule 为 `e1b83126...7dcb6` / `0a999ba5...8400e`，request 为 `ad11e238...816ae` / `6c01f905...aa4d0`。 |
 | 配方与权限非退化 | **已复核** | 104 配方、三 split、future-held-out one-shot 门及在线真值/身份边界未变；唯一 true permission 仍为 `source_artifact_generation`，execution authorization=false。 |
-| 正式来源与训练 | **P1 继续开放** | 正式来源仍为 `0/104`，future payload 读取为 0。main 的 dirty 300/300 只属上游开发探针；正式生成仍需新 commit、clean preflight、绑定新 request SHA 的显式授权和新空输出目录。 |
+| 正式来源与训练 | **P1 继续开放** | 旧失败输出不得恢复。正式生成仍需包含 main 修复和 D5 新绑定的 commit、clean preflight、绑定 `6c01f905...aa4d0` 的显式授权和新空输出目录。 |
 
-readiness 单文件为 `48 passed in 1.13s`，联合专项为
-`66 passed, 1 warning in 14.01s`。本轮没有新增 AirSim、真实相机、模型质量或
-物理拦截证据；相关 GAP 状态不变。
+readiness 为 `48 passed in 1.14s`，真实 producer 为 `3 passed, 1 warning in 13.53s`，
+pre-generation/request 专项为 `22 passed, 26 deselected in 1.08s`。本轮没有新增 AirSim、
+真实相机、模型质量或物理拦截证据；相关 GAP 状态不变。
 
 ## 2026-08-02 A3 v3 producer 谱系与恢复 GAP（历史）
 

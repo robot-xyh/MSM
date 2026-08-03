@@ -1,21 +1,20 @@
 # D5 终端视觉配准与身份认证计划
 
-## 2026-08-02 A3 v3 最终上游绑定复核计划
+## 2026-08-03 A3 v3 角色匹配适配器重绑定计划
 
-- [x] 复核 main 最终配方和全局登记表。D5 三个 allocation 的 seed、split、用途、来源协议和
-  权限保持不变；dirty 300/300 探针不作为 D5 正式证据。
-- [x] 识别并刷新两个实际漂移的 producer 文件：`learning_source_recipes.py` 为
-  `34ced4f0...302d9`，`module_stack.py` 为 `3e184a85...e515`；
-  `episode_treatments.py` 仍为 `135a526a...cf9c`。
-- [x] 级联重算 schedule 与 generation-only request。allocation 文件保持
-  `29899b7d...2770`，schedule 文件更新为 `247e0e2c...83ef`，request 文件更新为
-  `707fcb62...44bf`。
-- [x] 复核 `24000-24103`、`48/24/32`、104 配方、future-held-out 门和全部非生成权限未漂移。
-- [x] readiness 单文件 `48 passed in 1.13s`；联合专项
-  `66 passed, 1 warning in 14.01s`。正式来源仍为 `0/104`，future payload 读取为 0。
-- [ ] main 形成包含最终上游和 D5 绑定的新 commit，在 clean worktree 重新预检，签发绑定
-  `707fcb62...44bf` 的显式 generation-only execution authorization，并使用新的空输出目录。
-  旧 request SHA、旧授权和 dirty 探针均不得用于正式生成。
+- [x] 复核 train seed `24013` 的失败边界。跨角色共同中心航迹和通信健康状态均存在，旧适配器
+  因把计划/联盟版本混入通信等价哈希而无法形成 pair；D5 配方和边界谓词无需降低。
+- [x] 绑定 main 修复后的 `learning_source_adapters.py`，文件 SHA-256 为
+  `4c968e4f...74be`。seed `24013` 回放已形成两类冻结边界，在线 truth 使用为 0。
+- [x] 按 producer -> schedule -> request 顺序重算哈希。schedule 内容/文件为
+  `e1b83126...7dcb6` / `0a999ba5...8400e`，request 内容/文件为
+  `ad11e238...816ae` / `6c01f905...aa4d0`。
+- [x] 复核 104 episode、`48/24/32`、seed/split、困难混淆族和配额、future-held-out 隔离及
+  generation-only 权限没有漂移。
+- [x] readiness `48 passed in 1.14s`，真实 producer `3 passed, 1 warning in 13.53s`，
+  pre-generation/request 专项 `22 passed, 26 deselected in 1.08s`。
+- [ ] main 形成包含适配器修复和 D5 新绑定的 commit，重新生成 clean preflight 并签发绑定
+  `6c01f905...aa4d0` 的 generation-only authorization。正式生成必须使用新的空输出目录。
 
 ## 2026-08-02 A3 v3 producer 谱系恢复计划（历史）
 

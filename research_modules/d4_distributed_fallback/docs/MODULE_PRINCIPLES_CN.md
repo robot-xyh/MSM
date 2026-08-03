@@ -1,5 +1,36 @@
 # 分布式协同与降级接管模块原理（模块编号 D4）
 
+## 来源实现绑定原则（2026-08-03）
+
+D4 A2 v8 来源请求同时绑定自身合同实现和 main 真值隔离 adapter 的文件字节。共享文件中即使
+只有 D5 代码段变化，整文件摘要也会改变；D4 preflight 必须失败关闭，直到 request 通过规范
+哈希工具重冻结。不能凭人工判断“D4 代码段未变”跳过实现身份检查。
+
+`regional_failover.py` 定义区域快照和任务证据验证，直接决定 `_d4_snapshot` 能否接受来源帧，
+因此与区域策略、证据构造器、writer 和 main adapter 一并纳入 request 引用。任一引用文件漂移
+都会阻断 readiness。重冻结只更新实现身份，不允许同时改变 seed、split、标签配方、门限、恢复
+规则或授权范围。
+
+当前 request 内容摘要为 `7e026359...01cb`，物理文件 SHA-256 为 `c4f74fb4...b019`。该身份
+通过 51 项 readiness 专项和 94 项 v8 聚焦测试；它只表示请求可进入后续 clean preflight，不
+表示已经获准生成、训练、访问正式 seed 或取得运行控制权限。
+
+## 在线任务基数原则（2026-08-03）
+
+场景配置中的 `target_count` 表示标称物理目标数量。D4 通过
+`RegionalScenarioMetadata.task_count` 保留该值用于来源追溯和结果报告，但不能把它作为
+在线任务容量。在线 D2/D3 可能同时保留真目标航迹、新生假设和虚警假设；动态目标进入也会
+改变任务集合。D4 若按仿真物理数量截断，会引入真值依赖，并可能静默丢弃尚未消歧的威胁。
+
+D4 对在线任务集合采用结构校验：task ID 与 `global_track_id` 分别唯一，每条任务引用已知
+区域，并携带当前 plan ID/version、epoch、lease 和上游不确定性。M 对 N 中的多资源需求
+通过一个任务的联盟字段表达，不能复制同一全局航迹任务。上述规则允许在线假设数量超过
+标称配置数，同时保持身份、权属、租约、联盟和故障围栏失败关闭。
+
+seed `28203` 在 18 个配置目标下形成 19 条唯一任务证据，暴露了旧上限错误。修复后原配方
+形成 3 个在线帧和 3 个离线标签，每帧投影资源数为 2，在线真值使用为 0。该证据只证明来源
+构造链恢复，不授予训练、降级、运行或控制权限。
+
 ## 最终来源绑定原则（2026-08-02）
 
 上游配方完成开发态复核后，D4 仍必须按文件内容重新确认来源身份，不能继承先前 readiness。
@@ -2142,7 +2173,7 @@ scalable3d 区域集合记为 \(\mathcal{R}\)。每个区域只能有一个 acti
 ### 5.5 scalable3d 区域仲裁步骤
 
 1. 从 `scalable3d-scenario-v1` mapping 读取 target/resource/recon/region count，不导入 main 模块。
-2. 校验 schema、scenario 声明数量、region definition、active task、secondary coverage 和 fallback member region scope。
+2. 校验 schema、scenario 配置基数、region definition、active task 身份与区域、secondary coverage 和 fallback member region scope；配置任务数不作为在线航迹假设上限。
 3. 按区域聚合 D1 covariance/age、D2 ambiguity/IDSW/duplicate、D3 plan/version/epoch/lease/current/feasible 和 D5 consistency/binding/friend/duplicate。
 4. 中心未 `failed` 时保留中心 owner；中心 `failed` 时选 valid `mobile_high_recon`；没有有效二级节点时才形成 distributed candidate。
 5. 校验 authority generation 与最早 lease；对中心、二级和 distributed 三层的 \(k>1\) 候选逐成员记录 ACK，并在完整 ACK 后一次性进入 `committed`；分区时三层均闭锁。

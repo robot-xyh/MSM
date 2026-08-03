@@ -1,5 +1,51 @@
 # D4 分布式降级与接管实验报告
 
+## 2026-08-03 A2 v8 request 重冻结验证
+
+本轮没有运行来源生成 episode。验证对象是 D4 request、producer 文件引用和 readiness 合同。
+main 共享 adapter 的文件摘要由旧值变为 `4c968e4f...74be`；D4 request 另增加
+`regional_failover.py` 引用，其摘要为 `22453cfe...66b6`。
+
+| 验证项 | 结果 |
+| --- | --- |
+| request 内容 SHA-256 | `7e026359...01cb` |
+| request 物理文件 SHA-256 | `c4f74fb4...b019` |
+| episode / seed / split | 324 / `28100-28423` / TRAIN-only，未变 |
+| readiness 专项 | `51 passed, 1 warning` |
+| v8 合同聚焦集 | `94 passed, 1 warning` |
+| 统一 preflight D4 blocker | 0 |
+| 全局剩余 blocker | `generation_worktree_dirty` |
+
+统一 preflight 确认 D4 module plan、producer adapter 和 source request ready。当前结果不构成
+执行授权。main 需先提交稳定修改，再对新 source commit 运行 clean preflight 并签发新的
+generation-only 授权。旧 request、旧授权和旧失败输出均不可 resume。
+
+## 2026-08-03 来源生成阻塞复现与修复验证
+
+旧 D4 generation-only 输出在 checkpoint `101/324` 后继续写出 progress sequence
+`101/102`，随后于 sequence `103`、seed `28203` 失败关闭。失败时配置目标数为 18，在线
+活动任务证据为 19；19 个 task ID 和 19 个 `global_track_id` 均唯一。失败来自 D4 把配置
+物理目标数作为在线任务上限。
+
+| 验证项 | 验收要求 | 结果 |
+| --- | --- | --- |
+| 超出标称基数的唯一任务 | 接受且不改写身份 | 19/19 唯一，接受 |
+| 重复 task ID / 全局航迹编号 | 失败关闭 | 2/2 负例拒绝 |
+| 原失败配方在线帧 | 连续且有限 | 3 帧，index `0/1/2` |
+| 离线标签 | 与在线帧一一对应 | 3 条 |
+| 正类投影资源数 | 配方要求 2 | 每帧均为 2 |
+| 在线真值使用 | 0 | 0 |
+| 定向回归 | 0 失败 | `29 passed` |
+| 自包含 D4 回归 | 0 失败 | `974 passed, 12 skipped, 1 deselected` |
+
+规定的 D4 全量命令同时执行，得到 `986 passed, 12 skipped, 5 failed, 15 errors`。失败和
+错误全部指向 clean worktree 中缺失的历史数据集 manifest、候选 bundle、评价 JSONL 或
+D6 审计文件；这些制品未复制到来源生成 worktree。本次改动没有触发其他代码断言失败。
+Matplotlib 仍有既有 `Axes3D` 环境警告。
+
+旧输出含 `failed_closed` artifact，不能原地 resume。该验证没有启动训练、正式 seed、R0、
+AirSim、降级执行或控制。
+
 ## 2026-08-02 最终 recipe 绑定验证
 
 本轮没有运行新的 D4 episode。main 提供的全新 dirty 开发探针结果为 300/300，通过范围是

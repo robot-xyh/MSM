@@ -1,20 +1,19 @@
 # D5 终端视觉配准与身份认证算法原理与实施文档
 
-**状态日期：2026-08-02**
+**状态日期：2026-08-03**
 
-## A3 v3 最终上游绑定
+## A3 v3 角色匹配通信等价
 
-全局 seed registry 的本次变化只更新 D3 source-contract。D5 的 104 条 episode 计划、
-`48/24/32` split、seed `24000-24103`、future-held-out one-shot 门和权限没有变化。main
-最终 recipe 文件为 `34ced4f0...302d9`，episode treatment 保持 `135a526a...cf9c`；区域计划
-修复后的 module stack 为 `3e184a85...e515`。D5 仍按 allocation binding、source schedule、
-generation request 三层校验，上游字节变化后先失败关闭，再级联重建哈希链。
+`role_matched_interceptor_recon_geometry` 的 pair 由状态谓词推导。两侧必须引用同一冻结分配和
+同一中心航迹几何，通信健康等价签名相同，相机角色不同。通信签名采用固定 schema 与
+`communication.healthy`。计划版本、联盟版本和通信更新时间不进入该签名；计划与联盟版本仍在
+在线特征、动作和执行确认链中独立校验。
 
-刷新后的 allocation、schedule、request 文件 SHA-256 分别为 `29899b7d...2770`、
-`247e0e2c...83ef` 和 `707fcb62...44bf`。该处理只固定实现字节，没有修改 A3 v3 意图、
-相机角色、困难混淆、样本配额或安全门。联合专项 `66 passed, 1 warning in 14.01s`，readiness
-保持 generation-only。正式来源为 `0/104`，future-held-out payload 读取为 0；dirty 300/300
-配方探针未被转换成 D5 正式证据。
+旧适配器在签名中加入计划和联盟版本。seed `24013` 存在 18 条跨角色共同中心航迹和 4594 对
+同目标候选，但跨窗口版本递增导致通信签名无一相同。main 修复后该 episode 已形成角色匹配和
+投影边界证据，在线 truth 使用为 0。新适配器文件 SHA-256 为 `4c968e4f...74be`，schedule
+内容/文件 SHA-256 为 `e1b83126...7dcb6` / `0a999ba5...8400e`，request 内容/文件 SHA-256 为
+`ad11e238...816ae` / `6c01f905...aa4d0`。104 条 recipe、配额、分区和权限均未改变。
 
 ## A3 v3 前次生产器绑定与续跑实现（历史）
 

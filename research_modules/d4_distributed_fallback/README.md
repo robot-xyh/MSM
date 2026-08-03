@@ -1,5 +1,47 @@
 # D4 分布式协同与降级接管
 
+## 2026-08-03 A2 v8 实现绑定重冻结
+
+main 的 `learning_source_adapters.py` 只修改 D5 通信等价签名，D4 adapter 代码段未变；D4
+source request 采用整文件 SHA-256 绑定，因此统一 preflight 以
+`main_runtime_adapter_implementation_file_sha256_mismatch` 失败关闭符合设计。共享 adapter
+的新文件 SHA-256 为 `4c968e4f...74be`。
+
+本轮同时把直接影响 `_d4_snapshot` 校验的 `regional_failover.py` 纳入 request 严格引用，
+其文件 SHA-256 为 `22453cfe...66b6`。请求使用 `canonical_v8_sha256()` 重新规范化，自哈希为
+`7e026359...01cb`，物理文件 SHA-256 为 `c4f74fb4...b019`。324 个 episode、seed
+`28100-28423`、TRAIN-only split、108 cells x 3 replicates、标签配方、0.60 门、恢复规则和
+权限表均未变化。
+
+D4 main-allocation/source-request/readiness 专项为 `51 passed, 1 warning`，完整 v8 合同
+聚焦集为 `94 passed, 1 warning`。只读统一 preflight 中 D4 module plan、producer adapter
+和 source request 均 ready，D4 blocker 为空；全局只因当前 generation worktree 未提交而
+保持 `execution_plan_ready=false`。正式数据生成、训练、validation/test、降级、联盟、运行
+和控制权限仍为 false。
+
+## 2026-08-03 A2 v8 来源生成活动任务阻塞修复
+
+generation-only 执行在旧提交 `e7c438c` 的 D4 输出中从 checkpoint `101/324` 恢复后，
+于 schedule index `103`、seed `28203`、`t=2.0 s` 触发
+`active task evidence exceeds scenario task_count`。场景配置包含 18 个物理目标，D2/D3
+在线链路形成 19 条唯一活动任务证据；任务编号和 `global_track_id` 均无重复，计划 version
+和 epoch 均为 2，lease 截止时间为 5.0 秒。
+
+根因是 `RegionalFailoverSnapshot` 把场景配置中的物理目标数量误作在线航迹假设上限。
+虚警、新生目标和动态航迹生命周期都可能使在线唯一假设数短时超过标称数量。使用仿真物理
+数量裁剪在线任务还会引入真值依赖。当前修复仅移除这项无效的基数比较；任务编号与全局航迹
+编号唯一性、区域引用、计划版本、epoch、lease、联盟 ACK、故障围栏和权限门均保持严格。
+
+定向 `test_regional_failover.py` 为 `29 passed`。原失败配方直接复跑得到 3 个在线帧和 3 个
+离线标签，frame index 为 `0/1/2`，每帧投影转移资源数为 2，在线真值使用为 0，状态有限。
+自包含 D4 回归为 `974 passed, 12 skipped, 1 deselected, 1 warning`。规定的全量命令也已
+执行，结果为 `986 passed, 12 skipped, 5 failed, 15 errors, 1 warning`；20 项问题均由
+干净 worktree 不含历史生成数据集、候选 bundle 或评价记录引起，不是本次合同回归。
+
+旧失败输出已写入 `failed_closed` artifact，并明确要求新的 source commit、授权和输出目录，
+不能原地 resume。当前修改不启动训练，不读取正式 seed，不授予 assignment、degradation、
+runtime 或 control 权限。
+
 ## 2026-08-02 最终 main recipe 绑定复核
 
 main 已修复既有 regional owner 被重复送入首次二级接管的问题，并报告全新 dirty 开发探针

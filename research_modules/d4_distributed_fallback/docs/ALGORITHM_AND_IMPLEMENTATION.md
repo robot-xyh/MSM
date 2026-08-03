@@ -1,5 +1,41 @@
 # D4 分布式协同与降级接管算法及实施方案
 
+## A2 v8 实现绑定重冻结（2026-08-03）
+
+source request 的 `references` 用物理文件 SHA-256 锁定来源链。main 共享 adapter 改变后，
+preflight 报 `main_runtime_adapter_implementation_file_sha256_mismatch` 并停止。检查确认变化位于
+D5 通信等价签名，D4 adapter 代码段未变；由于绑定对象是整个文件，仍必须重建 request。
+
+实施过程使用 `canonical_v8_sha256()` 计算去除 `content_sha256` 字段后的规范内容摘要，再对
+最终 JSON 文件计算物理摘要。request 同时新增 `regional_failover_implementation` 引用，固定
+区域快照合同文件；readiness 逐项复算引用文件字节，任一漂移都拒绝。对应负例已加入参数化
+测试。
+
+重冻结后的内容摘要为 `7e026359...01cb`，文件摘要为 `c4f74fb4...b019`。新旧 request 的
+324 个 episode、seed `28100-28423`、TRAIN-only split、标签配方、0.60 门、resume 规则、
+execution claims 和权限表保持一致。该处理不改变区域仲裁、联盟形成或 fail-closed 门限。
+
+## 活动任务基数合同（2026-08-03）
+
+`RegionalFailoverSnapshot.__post_init__()` 原先执行
+`len(tasks) <= scenario.task_count`。该比较把仿真配置中的物理目标数量当成在线任务容量。
+seed `28203` 在 `t=2.0 s` 出现 19 条唯一 D2/D3 任务证据，而配置目标数为 18，因此生成器
+在进入区域资源证据构造前失败。19 条 task ID 和 `global_track_id` 均唯一，计划 version、
+epoch 和 lease 也有效，调用方没有构造重复任务。
+
+实现删除了这项基数比较，并保留以下硬校验：
+
+1. task ID 和 `global_track_id` 分别唯一；
+2. 每条任务引用 scenario 已声明区域；
+3. D3 plan ID/version/epoch/lease 合法；
+4. `k>1` 任务具有 coalition ID/version，成员 ACK 与故障围栏继续由协调器验证；
+5. secondary 和 fallback member 数量仍不得超过各自配置资源库存。
+
+回归测试构造标称 1 个目标和 2 条唯一在线假设，要求中心正常路径完整处理两条任务；另以
+重复 task ID 和重复 `global_track_id` 证明身份门没有放宽。原失败配方随后通过 main runtime
+与 v8 evidence builder，输出 frame `0/1/2`、3 对在线/离线记录和每帧 2 个投影转移资源，
+在线真值使用为 0。旧失败输出不参与恢复；新生成必须使用新提交、新授权和新目录。
+
 ## 最终 recipe 下游绑定（2026-08-02）
 
 main 修复区域 owner 状态迁移并完成全新 dirty 开发探针 300/300 后，D4 对最终

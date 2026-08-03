@@ -1,5 +1,37 @@
 # D4 实现差距审计：分布式协同与降级接管
 
+## 2026-08-03 A2 v8 实现绑定 P0 关闭
+
+- **实现漂移门已恢复。** main 共享 adapter 的 D5 通信等价签名改变后，D4 request 因整文件
+  SHA-256 不一致而失败关闭。D4 adapter 代码段没有变化，失败原因不是 D4 输出合同退化。
+- **直接依赖已补齐。** `regional_failover.py` 直接参与 `_d4_snapshot` 验证，现纳入 producer
+  实现引用和逐文件漂移检查。main adapter 文件摘要更新为 `4c968e4f...74be`，regional
+  failover 文件摘要为 `22453cfe...66b6`。
+- **冻结身份已更新。** request 内容摘要为 `7e026359...01cb`，物理文件 SHA-256 为
+  `c4f74fb499547cfa9808039d9c2c9f4cd4ff11c1dbe1493b47436c22e80cb019`。324 个 episode、
+  seed `28100-28423`、split、标签配方、恢复规则、门限和权限均未改变。
+- **验证证据。** main-allocation/source-request/readiness 专项 `51 passed, 1 warning`；v8
+  合同聚焦集 `94 passed, 1 warning`。统一 preflight 的 D4 blocker 为 0。
+- **剩余执行门。** 当前全局仅由 dirty generation worktree 阻断。main 仍需提交稳定修改、
+  在 clean preflight 上绑定新 source commit 并重新签发 generation-only 授权。旧 request、旧
+  授权和旧失败输出不可 resume；训练、正式 seed、R0 shard、runtime 和 control 仍关闭。
+
+## 2026-08-03 活动任务基数 P0 阻塞关闭
+
+- **D4-owned P0 已关闭。** seed `28203` 在 18 个配置目标下形成 19 条唯一在线任务证据。
+  旧快照把配置目标数误作在线假设上限，造成来源生成失败。该上限依赖仿真物理基数，也不
+  适用于虚警、新生目标和动态 M/N 场景。
+- **安全合同未降低。** 修复只取消错误的物理基数比较。重复 task ID、重复
+  `global_track_id`、未知区域、旧 plan/version/epoch、过期 lease、不完整联盟和故障围栏
+  仍按原规则失败关闭。
+- **验证证据。** 定向 `29 passed`；原失败配方形成 3 个在线帧和 3 个离线标签，每帧投影
+  资源数为 2，在线真值使用为 0。自包含回归 `974 passed, 12 skipped, 1 deselected,
+  1 warning`。全量命令中的 5 个失败和 15 个错误均由本 clean worktree 缺少历史生成制品
+  引起。
+- **开放 P1。** 旧输出已经 `failed_closed`，不可原地 resume。main 需基于新提交重新授权、
+  使用新目录完整生成 324 项，再由 D4/D6 独立审计。训练、正式 seed、R0、runtime 和
+  control 仍未授权。
+
 ## 2026-08-02 最终 recipe 绑定缺口关闭
 
 - **main-owned 状态迁移断点已完成开发态复核。** main 已修复同一 regional owner 被重复送入

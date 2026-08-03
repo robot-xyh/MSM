@@ -1,21 +1,18 @@
 # D5 末端视觉配准与身份认证实验报告
 
-## 2026-08-02 A3 v3 最终上游绑定验证
+## 2026-08-03 A3 v3 角色匹配重绑定验证
 
-全局 seed registry 新内容/文件 SHA-256 为 `982f3467...9530c` / `98caa683...f988`。差异只在
-D3 source-contract，D5 三个 allocation 的 seed、split、用途和权限未变化。最终 main recipe、
-episode treatment 和 module stack 文件 SHA-256 分别为 `34ced4f0...302d9`、
-`135a526a...cf9c` 和 `3e184a85...e515`。D5 刷新后得到 allocation 文件 SHA
-`29899b7d...2770`、schedule 文件 SHA `247e0e2c...83ef` 和 request 文件 SHA
-`707fcb62...44bf`。
+旧 source generation 在 train seed `24013` 的角色匹配边界失败关闭。回放统计包含 69 个主动
+视觉帧、3586 个合格样本、18 条跨角色共同中心航迹和 4594 对同目标候选。通信健康状态一致，
+旧适配器生成的通信哈希匹配数为 0；原因是计划版本和联盟版本在四个时间窗口间递增。
 
-A3 v3 source readiness 单文件测试为 `48 passed in 1.13s`；加入 episode evidence 和真实
-producer 后合计 `66 passed, 1 warning in 14.01s`，warning 为既有 Matplotlib Axes3D 环境告警。
-测试继续确认 104 条配方、
-`48/24/32`、seed `24000-24103`、future-held-out 门和 generation-only 权限。未生成正式
-104-episode 来源，正式计数为 `0/104`；future-held-out payload 读取计数为 0。训练、paired
-shadow、assist、相机命令、runtime、control 和 `global_track_id` 写权限均为 false。main 的
-dirty 300/300 配方探针不属于本实验的正式来源、模型质量或运行证据。
+main 将角色匹配通信等价签名改为固定 schema 加通信健康状态。修复后 `24013` 已形成角色匹配
+和投影边界两类证据，在线 truth 使用为 0。D5 重新冻结后，schedule 内容/文件 SHA-256 为
+`e1b83126...7dcb6` / `0a999ba5...8400e`，request 内容/文件 SHA-256 为
+`ad11e238...816ae` / `6c01f905...aa4d0`。readiness 为 `48 passed in 1.14s`，真实 producer 为
+`3 passed, 1 warning in 13.53s`，pre-generation/request 专项为
+`22 passed, 26 deselected in 1.08s`。104 条配方、seed/split、配额和权限无变化；旧失败输出
+不能恢复，新绑定下未生成正式来源。
 
 ## 2026-08-02 A3 v3 谱系与续跑验证（历史）
 

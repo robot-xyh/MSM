@@ -1,21 +1,19 @@
 # 第五研究模块末端视觉关联（Terminal Association, D5）原理
 
-**状态日期：2026-08-02**
+**状态日期：2026-08-03**
 
-## 最终上游谱系原则
+## 角色匹配通信等价原则
 
-来源计划绑定的是实际参与预检和生成的文件字节，不能只按文件名或接口名称判断兼容。本次
-全局登记表只改变 D3 来源合同，D5 allocation 本身未变。main 最终 recipe 文件为
-`34ced4f0...302d9`，episode treatment 保持 `135a526a...cf9c`，区域计划修复后的 module stack
-为 `3e184a85...e515`。D5 对实际参与来源生成的 producer 文件逐项校验，任一字节漂移都会拒绝
-readiness。
+角色匹配困难混淆要求同一冻结分配、同一中心航迹几何、相同通信健康状态和不同相机角色。
+计划版本与联盟版本属于独立的时序安全门，不属于跨窗口通信等价条件。将递增版本写入通信
+等价哈希会使合法的跨角色样本无法配对，但移除这些版本不改变在线版本检查，也不放宽中心
+只读 `global_track_id` 规则。
 
-刷新后 D5 schedule/request 文件 SHA-256 分别为 `247e0e2c...83ef` 和
-`707fcb62...44bf`，状态仍为
-`source_generation_request_ready_generation_only`。seed、split、104 配方、future-held-out 门、
-在线真值隔离和中心只读全局编号规则没有变化。该状态只说明请求可由 main 重新预检，不说明
-已经执行来源生成、训练、模型推理、相机控制或物理任务。main 的 dirty 300/300 探针不属于
-D5 正式来源证据；D5 正式来源保持 `0/104`。
+main 修复后的适配器 SHA-256 为 `4c968e4f...74be`。seed `24013` 回放已形成角色匹配和投影边界
+证据，在线 truth 使用为 0。D5 重绑定后的 schedule/request 文件 SHA-256 分别为
+`0a999ba5...8400e` 和 `6c01f905...aa4d0`，状态仍为
+`source_generation_request_ready_generation_only`。104 配方、三分区、future-held-out 门和权限
+没有变化；旧失败目录不得继续使用，新绑定的正式来源仍为 `0/104`。
 
 ## 前次生产器谱系原则（历史）
 

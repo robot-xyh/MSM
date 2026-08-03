@@ -1,5 +1,15 @@
 # D4 文档索引
 
+2026-08-03 完成 A2 v8 source request 实现绑定重冻结。新增 `regional_failover.py` 直接绑定，
+刷新 main 共享 adapter 摘要；request 内容/文件 SHA-256 为 `7e026359...01cb`、
+`c4f74fb4...b019`。51 项 readiness 专项和 94 项 v8 聚焦测试通过。当前只剩 dirty worktree、
+新提交和重新授权门，未启动生成或扩大权限。
+
+2026-08-03 修复 A2 v8 来源生成中的活动任务基数误判。配置 `task_count` 现仅作为来源和
+报告基数，不限制唯一在线 D2/D3 航迹假设数量。原失败 seed `28203` 已直接复跑并形成
+3 个在线帧和 3 个离线标签，在线真值使用为 0；旧失败输出不可原地 resume。算法、GAP、
+计划和实验证据已同步，AirSim 接口未变化。
+
 2026-08-02 完成最终 main recipe 下游绑定复核。当前 recipe 文件 SHA-256 为
 `34ced4f0...302d9`，D4 source-generation request 内容/文件摘要为
 `4c4edd82...b811f`、`e93e7a79...fe808`，readiness 输出摘要为 `69a3b487...3e8e`。

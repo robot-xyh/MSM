@@ -1,5 +1,49 @@
 # D4 分布式协同与降级接管计划
 
+## 2026-08-03 A2 v8 实现绑定重冻结
+
+### 已完成
+
+- [x] 复现 D4 preflight 的
+  `main_runtime_adapter_implementation_file_sha256_mismatch`，确认 main 共享文件仅改变 D5
+  通信等价签名，D4 adapter 代码段未变。
+- [x] 使用实际文件字节 SHA 和 D4 `canonical_v8_sha256()` 构造规范请求；请求范围、324
+  seed、TRAIN-only split、标签配方、恢复合同和权限表与旧请求逐字段一致。
+- [x] 将 `regional_failover.py` 加入 source request 的 producer 实现绑定，补充对应文件
+  漂移负例；刷新 main adapter 哈希、request content SHA 和 request file SHA 常量。
+- [x] D4 main-allocation/source-request/readiness `51 passed`；v8 contract/runtime evidence/
+  viability/writer/readiness 聚焦集 `94 passed`。统一 preflight 中 D4 blocker 为 0，只剩
+  `generation_worktree_dirty` 全局阻塞。
+
+### 后续门
+
+- [ ] main 提交 D4 与共享 adapter 的稳定修改后，重新运行 clean preflight。新 D4
+  generation-only 授权必须绑定 request SHA `c4f74fb4...b019` 和新的 source commit。
+- [ ] 旧 `e7c438c` 授权及失败输出继续失效，不得原地 resume。正式生成、训练、正式 seed、
+  R0 shard、runtime 和 control 仍需各自独立授权。
+
+## 2026-08-03 A2 v8 来源生成阻塞修复
+
+### 已完成
+
+- [x] 读取旧 D4 failure、checkpoint、writer pointer 和 103 条 progress 记录，定位失败为
+  schedule index `103`、seed `28203` 的在线活动任务基数校验。
+- [x] 复现 18 个配置目标对应 19 条唯一 D2/D3 活动任务证据；确认任务编号、
+  `global_track_id`、plan version、epoch 和 lease 均满足现有合同。
+- [x] 将 scenario `task_count` 明确为来源和报告用的配置基数，不再作为在线任务假设上限；
+  保留唯一性、区域、版本、代次、租约、联盟、故障围栏和权限校验。
+- [x] 增加“在线假设可超过配置基数”以及重复任务/重复全局航迹仍被拒绝的回归。
+- [x] 原失败配方复跑形成 3 个在线帧和 3 个离线标签，每帧安全转移资源数为 2，在线真值
+  使用为 0。定向测试 `29 passed`，自包含 D4 回归 `974 passed, 12 skipped,
+  1 deselected, 1 warning`。
+
+### main 后续门
+
+- [ ] main 提交本次 D4 修复后，在新 source commit 上重新生成 generation-only 授权，并
+  使用全新输出目录从 schedule 起点生成；旧 `failed_closed` 输出不得原地恢复或拼接。
+- [ ] 新 D4 来源完成 `324/324` 后，由 D4 与 D6 独立核对 seed/split、帧连续性、哈希、
+  真值隔离和权限全 false。训练、正式 seed、R0 shard、运行和控制继续保持关闭。
+
 ## 2026-08-02 最终 main recipe 绑定与后续门
 
 ### 已完成
@@ -2095,7 +2139,7 @@ D4 已完成 fail-closed 与本地 commit 合同：`CoalitionSafetyEvidence` 读
 
 ### 10.2 区域化 200v200 合同
 
-`RegionalScenarioMetadata.from_scalable_scenario()` 消费 scalable3d 场景中的 `target_count`、`resource_count`、`recon_count`、`region_count`、scenario name/version 和 schema version；区域 ID 可由 main 显式传入，缺省只按输入 `region_count` 生成稳定编号。`RegionalFailoverSnapshot` 要求 region definition 与 scenario region 集合一致，active task 数不得超过 scenario target count，节点、区域和任务均按输入列表长度处理。
+`RegionalScenarioMetadata.from_scalable_scenario()` 消费 scalable3d 场景中的 `target_count`、`resource_count`、`recon_count`、`region_count`、scenario name/version 和 schema version；区域 ID 可由 main 显式传入，缺省只按输入 `region_count` 生成稳定编号。scenario `task_count` 是配置基数和来源元数据，不是在线 D2/D3 航迹假设上限。`RegionalFailoverSnapshot` 要求 region definition 与 scenario region 集合一致，并对任务编号、`global_track_id`、区域、计划版本、epoch 和 lease 做严格校验；节点、区域和任务均按输入列表长度处理。
 
 每个 `RegionalTaskEvidence` 保留上游 `global_track_id`，并同时携带 D1 covariance/age、D2 ambiguity/IDSW/duplicate、D3 plan id/version/epoch/lease/current/feasible、D5 consistency/binding/friend/duplicate 和可选 member support/hold/ambiguity。D4 不创建或重绑定 `global_track_id`。输出 `d4-regional-failover-v1` 包含 scenario/node/resource/recon/region/task counts、逐区域 action、selected layer、唯一 ownership、readiness、candidate assignment、coalition commit 和 reject reason，可直接作为 main-owned `VersionedEnvelope.payload` 的 truth-free 数据。
 

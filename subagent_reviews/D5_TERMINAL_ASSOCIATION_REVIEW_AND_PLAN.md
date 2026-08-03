@@ -1,18 +1,17 @@
 # D5 末端视觉配准与协同身份认证综述及子方案
 
-## 2026-08-02 A3 v3 最终上游绑定复核
+## 2026-08-03 A3 v3 角色匹配适配器重绑定
 
-main 最终 recipe 文件 SHA-256 为 `34ced4f0...302d9`，episode treatment 保持
-`135a526a...cf9c`，区域计划修复后的 module stack 为 `3e184a85...e515`。全局 seed registry
-仍为内容/文件 `982f3467...9530c` / `98caa683...f988`。D5 三个 allocation 的精确 seed
-`24000-24103`、`48/24/32` split、104 条配方、future-held-out 门和权限矩阵均未改变。
+train seed `24013` 暴露了 main 适配器的通信等价构造问题。该 episode 有 18 条跨角色共同中心
+航迹和 4594 对同目标候选，通信健康状态一致；旧签名加入计划和联盟版本后，跨窗口哈希匹配数
+为 0。D5 的角色匹配谓词和冻结 recipe 没有缺失。
 
-最终 allocation、schedule、request 文件 SHA-256 分别为 `29899b7d...2770`、
-`247e0e2c...83ef`、`707fcb62...44bf`。readiness 单文件 `48 passed in 1.13s`，联合专项
-`66 passed, 1 warning in 14.01s`，状态仍为
-`source_generation_request_ready_generation_only`；执行、训练、held-out 读取、shadow、
-assist、相机命令、runtime、control 和中心 ID 写权限保持关闭。正式来源和模型尚未生成。
-main 的 dirty 300/300 探针只证明上游开发配方当前稳定，不属于 D5 正式来源或准入证据。
+main 修复后，通信等价签名只包含 schema 和通信健康状态，计划/联盟版本继续由独立时序门控
+检查。`24013` 已形成角色匹配和投影边界证据，在线 truth 使用为 0。新适配器 SHA-256 为
+`4c968e4f...74be`；D5 schedule 内容/文件为 `e1b83126...7dcb6` /
+`0a999ba5...8400e`，generation-only request 内容/文件为 `ad11e238...816ae` /
+`6c01f905...aa4d0`。104 episode、seed/split、hard-confusion family/quota、future-held-out 隔离和
+权限均未变化。readiness、real producer 和 request 专项均零失败，旧失败输出不得继续使用。
 
 ## 2026-08-02 A3 v3 producer 谱系复核（历史）
 
