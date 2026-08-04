@@ -12,9 +12,13 @@
   seed `28100-28423`、split、标签配方、恢复规则、门限和权限均未改变。
 - **验证证据。** main-allocation/source-request/readiness 专项 `51 passed, 1 warning`；v8
   合同聚焦集 `94 passed, 1 warning`。统一 preflight 的 D4 blocker 为 0。
-- **剩余执行门。** 当前全局仅由 dirty generation worktree 阻断。main 仍需提交稳定修改、
-  在 clean preflight 上绑定新 source commit 并重新签发 generation-only 授权。旧 request、旧
-  授权和旧失败输出不可 resume；训练、正式 seed、R0 shard、runtime 和 control 仍关闭。
+- **提交与 preflight 已完成。** main 已完成三批提交，将分支快进并推送到
+  `fcf8525ccf30186655df643196061a642ff36bae`。clean preflight 通过，状态为
+  `ready_for_explicit_main_execution_authorization`；request SHA-256 仍为
+  `c4f74fb499547cfa9808039d9c2c9f4cd4ff11c1dbe1493b47436c22e80cb019`。
+- **剩余授权门。** 本次同步后的最终文档 commit 尚未绑定新的 generation-only 授权。正式
+  D4 来源仍为 0/324，旧授权和旧失败输出不可 resume；训练、正式 seed、R0 shard、runtime
+  和 control 仍关闭。
 
 ## 2026-08-03 活动任务基数 P0 阻塞关闭
 

@@ -12,13 +12,17 @@
 - [x] 将 `regional_failover.py` 加入 source request 的 producer 实现绑定，补充对应文件
   漂移负例；刷新 main adapter 哈希、request content SHA 和 request file SHA 常量。
 - [x] D4 main-allocation/source-request/readiness `51 passed`；v8 contract/runtime evidence/
-  viability/writer/readiness 聚焦集 `94 passed`。统一 preflight 中 D4 blocker 为 0，只剩
-  `generation_worktree_dirty` 全局阻塞。
+  viability/writer/readiness 聚焦集 `94 passed`。首次统一 preflight 中 D4 blocker 为 0，
+  当时只剩 `generation_worktree_dirty` 全局阻塞。
+- [x] main 已完成三批提交，将 `feat/scalable-3d-200v200` 快进并推送到
+  `fcf8525ccf30186655df643196061a642ff36bae`；clean preflight 通过，状态为
+  `ready_for_explicit_main_execution_authorization`。
 
-### 后续门
+### 当前授权门
 
-- [ ] main 提交 D4 与共享 adapter 的稳定修改后，重新运行 clean preflight。新 D4
-  generation-only 授权必须绑定 request SHA `c4f74fb4...b019` 和新的 source commit。
+- [ ] 本次 D4 文档同步形成最终文档 commit 后，main 签发绑定该 commit 和 request SHA
+  `c4f74fb499547cfa9808039d9c2c9f4cd4ff11c1dbe1493b47436c22e80cb019` 的新
+  generation-only 授权。当前尚未签发。
 - [ ] 旧 `e7c438c` 授权及失败输出继续失效，不得原地 resume。正式生成、训练、正式 seed、
   R0 shard、runtime 和 control 仍需各自独立授权。
 
@@ -39,8 +43,10 @@
 
 ### main 后续门
 
-- [ ] main 提交本次 D4 修复后，在新 source commit 上重新生成 generation-only 授权，并
-  使用全新输出目录从 schedule 起点生成；旧 `failed_closed` 输出不得原地恢复或拼接。
+- [x] main 已将 D4 修复与共享 adapter 提交到 `fcf8525...6bae`，并完成 clean preflight；
+  当前状态为 `ready_for_explicit_main_execution_authorization`。
+- [ ] main 在最终文档 commit 上重新签发 generation-only 授权，并使用全新输出目录从
+  schedule 起点生成；旧 `failed_closed` 输出不得原地恢复或拼接。
 - [ ] 新 D4 来源完成 `324/324` 后，由 D4 与 D6 独立核对 seed/split、帧连续性、哈希、
   真值隔离和权限全 false。训练、正式 seed、R0 shard、运行和控制继续保持关闭。
 
@@ -59,12 +65,12 @@
 - [x] 指定 readiness/regional failover 回归 `76 passed, 1 warning`；正式来源保持 0/324，
   全部生成执行和运行权限保持关闭。
 
-### main 后续 clean preflight 条件
+### 当前授权与生成条件
 
-- [ ] main 将稳定的 D3/main 与本次 D4 绑定按子系统提交，在新提交上保持工作树干净，并
-  重跑统一 clean preflight；不得以 dirty 300/300 替代该门。
+- [x] main 已按子系统完成三批提交并在 `fcf8525...6bae` 上通过统一 clean preflight；
+  dirty 300/300 未被用来替代该门。
 - [ ] 正式生成须另行显式授权并使用全新输出目录。生成前再次核对 recipe、adapter、
-  treatment、registry、request 与提交身份无漂移。
+  treatment、registry、request 与最终文档 commit 身份无漂移。
 - [ ] 完整写出 324 个 D4 TRAIN episode 后，由 D4 与 D6 分别审计来源、哈希、类别、拓扑、
   通信和真值隔离；在此之前 training、degradation、takeover、coalition、runtime 和 control
   继续关闭。
@@ -106,7 +112,7 @@
   `1013 passed, 1 warning in 130.68s`。
 - [x] 核对权限：只有 `source_generation_request=true`；正式生成执行、训练、runtime、
   degradation、coalition 和 control 均为 false，正式 episode/sample 计数为 0。
-- [x] 统一只读 preflight 中 D4 blocker 为空；全局仅受
+- [x] 当时统一只读 preflight 中 D4 blocker 为空；全局仅受
   `generation_worktree_dirty` 阻断，未形成执行计划或授权。
 
 ### 后续门

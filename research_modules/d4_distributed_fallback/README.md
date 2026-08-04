@@ -14,10 +14,16 @@ source request 采用整文件 SHA-256 绑定，因此统一 preflight 以
 权限表均未变化。
 
 D4 main-allocation/source-request/readiness 专项为 `51 passed, 1 warning`，完整 v8 合同
-聚焦集为 `94 passed, 1 warning`。只读统一 preflight 中 D4 module plan、producer adapter
-和 source request 均 ready，D4 blocker 为空；全局只因当前 generation worktree 未提交而
-保持 `execution_plan_ready=false`。正式数据生成、训练、validation/test、降级、联盟、运行
-和控制权限仍为 false。
+聚焦集为 `94 passed, 1 warning`。main 随后完成三批提交，将
+`feat/scalable-3d-200v200` 快进并推送到
+`fcf8525ccf30186655df643196061a642ff36bae`；该提交的 clean preflight 通过，状态为
+`ready_for_explicit_main_execution_authorization`。D4 request SHA-256 仍为
+`c4f74fb499547cfa9808039d9c2c9f4cd4ff11c1dbe1493b47436c22e80cb019`。
+
+本次文档同步完成后，main 仍须签发绑定最终文档 commit 和上述 request SHA-256 的新
+generation-only 授权。当前未签发新授权，正式 D4 来源仍为 0/324；旧授权和旧
+`failed_closed` 输出不得 resume。训练、validation/test、降级、联盟、运行和控制权限仍为
+false。
 
 ## 2026-08-03 A2 v8 来源生成活动任务阻塞修复
 

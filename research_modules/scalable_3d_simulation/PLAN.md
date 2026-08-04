@@ -9,8 +9,10 @@
    和联盟门控保持不变。
 3. [x] D5 在 `seed 24013` 失败关闭。main 已把角色匹配通信等价签名收敛为 schema 加通信
    健康状态，排除递增的计划/联盟版本；原 seed 回放形成两类要求边界，在线真值使用为 0。
-4. [ ] 完成 D4、main 适配器和文档回归，分批提交形成新的 clean source commit。
-5. [ ] 在新 commit 上重新运行统一 preflight。旧 D4/D5 failure 输出只作审计证据，不恢复、
+4. [x] 完成 D4、main 适配器和文档回归，并以三批提交形成 clean source commit
+   `fcf8525`；同一提交已普通快进并推送到 `feat/scalable-3d-200v200`，未改写历史。
+5. [x] 在 `fcf8525` 上重新运行统一 preflight，状态为
+   `ready_for_explicit_main_execution_authorization`。旧 D4/D5 failure 输出只作审计证据，不恢复、
    不迁移到正式来源。
 6. [ ] 获得绑定新 commit 的 `AUTHORIZE D3 D4 D5 SOURCE GENERATION ONLY` 授权后，使用
    新输出目录从头生成 D4 `324/324` 和 D5 `104/104`。D3 已封装结果保持原 commit 来源

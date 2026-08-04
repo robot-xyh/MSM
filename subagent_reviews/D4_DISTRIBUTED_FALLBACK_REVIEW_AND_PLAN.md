@@ -13,8 +13,12 @@
 94 项测试均通过，统一 preflight 中 D4 无 blocker。
 
 本次只恢复 source request 的实现身份。episode 数量、seed、split、标签、算法门限和授权范围
-没有改变。main 提交稳定修改并完成 clean preflight 前不得生成；旧失败输出不能 resume，训练、
-正式 seed、R0 shard、assignment、degradation、runtime 和 control 均未获授权。
+没有改变。main 已完成三批提交，将分支快进并推送到
+`fcf8525ccf30186655df643196061a642ff36bae`；clean preflight 通过，状态为
+`ready_for_explicit_main_execution_authorization`。新 generation-only 授权仍须绑定本次同步
+后的最终文档 commit 和 request SHA-256 `c4f74fb4...b019`。正式来源仍为 0/324，旧失败输出
+不能 resume；训练、正式 seed、R0 shard、assignment、degradation、runtime 和 control 均未
+获授权。
 
 ## 2026-08-03 来源生成活动任务合同评审
 

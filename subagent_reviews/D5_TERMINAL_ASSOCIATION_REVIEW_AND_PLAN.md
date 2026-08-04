@@ -13,6 +13,11 @@ main 修复后，通信等价签名只包含 schema 和通信健康状态，计�
 `6c01f905...aa4d0`。104 episode、seed/split、hard-confusion family/quota、future-held-out 隔离和
 权限均未变化。readiness、real producer 和 request 专项均零失败，旧失败输出不得继续使用。
 
+main 已在 `fcf8525ccf30186655df643196061a642ff36bae` 完成三批提交、远端同步和 clean
+preflight，状态为 `ready_for_explicit_main_execution_authorization`。当前等待绑定最终文档
+commit 与 request SHA-256 `6c01f905...aa4d0` 的新 generation-only 授权；授权尚未签发，旧
+failed output 禁止 resume，104 条正式来源仍未生成。
+
 ## 2026-08-02 A3 v3 producer 谱系复核（历史）
 
 main 更新来源配方加载器和 runtime orchestrator 后，D5 的旧 producer 文件哈希按预期失败关闭。

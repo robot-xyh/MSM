@@ -15,6 +15,11 @@
 内容/文件 SHA-256 为 `e1b83126...7dcb6` / `0a999ba5...8400e`，request 内容/文件 SHA-256 为
 `ad11e238...816ae` / `6c01f905...aa4d0`。104 条 recipe、配额、分区和权限均未改变。
 
+main 已在 `fcf8525ccf30186655df643196061a642ff36bae` 完成三批提交、远端同步和 clean
+preflight，状态为 `ready_for_explicit_main_execution_authorization`。新 generation-only 授权
+尚未签发，必须绑定最终文档 commit 和 request SHA-256 `6c01f905...aa4d0`。后续只能从新空
+输出目录生成；旧 failed output 不得 resume，当前正式来源计数仍为 `0/104`。
+
 ## A3 v3 前次生产器绑定与续跑实现（历史）
 
 来源 readiness 采用两层验证。第一层逐项解析 104 条冻结 recipe，并分别用 main 和 D5 loader

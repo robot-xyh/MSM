@@ -15,6 +15,12 @@ D5 通信等价签名，D4 adapter 代码段未变；由于绑定对象是整个
 324 个 episode、seed `28100-28423`、TRAIN-only split、标签配方、0.60 门、resume 规则、
 execution claims 和权限表保持一致。该处理不改变区域仲裁、联盟形成或 fail-closed 门限。
 
+main 已将相关修改分三批提交并推送，`feat/scalable-3d-200v200` 当前位于
+`fcf8525ccf30186655df643196061a642ff36bae`。该提交的 clean preflight 通过，状态为
+`ready_for_explicit_main_execution_authorization`。本次文档同步后仍需签发绑定最终文档
+commit 与 request SHA-256 `c4f74fb4...b019` 的新 generation-only 授权；尚未生成 324 项
+正式来源，旧 `failed_closed` 输出继续禁止恢复。
+
 ## 活动任务基数合同（2026-08-03）
 
 `RegionalFailoverSnapshot.__post_init__()` 原先执行

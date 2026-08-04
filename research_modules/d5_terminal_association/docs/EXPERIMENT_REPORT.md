@@ -14,6 +14,11 @@ main 将角色匹配通信等价签名改为固定 schema 加通信健康状态�
 `22 passed, 26 deselected in 1.08s`。104 条配方、seed/split、配额和权限无变化；旧失败输出
 不能恢复，新绑定下未生成正式来源。
 
+main 随后在 `fcf8525ccf30186655df643196061a642ff36bae` 完成三批提交、远端同步和 clean
+preflight，结果为 `ready_for_explicit_main_execution_authorization`。该结果只证明生成前合同
+就绪。绑定最终文档 commit 与 request SHA-256 `6c01f905...aa4d0` 的新 generation-only 授权
+尚未签发，正式来源仍为 `0/104`，旧 failed output 禁止 resume。
+
 ## 2026-08-02 A3 v3 谱系与续跑验证（历史）
 
 main 来源配方加载器和运行编排器发生变更后，旧 producer binding 按失败关闭策略拒绝 readiness。

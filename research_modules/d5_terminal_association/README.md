@@ -19,6 +19,12 @@ D5 的 `24000-24103`、`48/24/32`、104 条冻结配方、困难混淆族、配�
 `22 passed, 26 deselected in 1.08s`。新绑定的正式来源仍为 `0/104`，future-held-out payload
 读取为 0。
 
+main 已在 `fcf8525ccf30186655df643196061a642ff36bae` 完成三批提交和 clean preflight，分支已
+快进且远端已同步，preflight 状态为 `ready_for_explicit_main_execution_authorization`。当前尚未
+签发新授权；后续 generation-only 授权必须同时绑定本次状态同步后的最终文档 commit 和 D5
+request SHA-256 `6c01f905c3a516f66a28b7601265306b6b8898a616679c8428289cc0013aa4d0`，并使用
+新的空输出目录。旧 failed output 禁止 resume，104 条正式来源仍未生成。
+
 ## 2026-08-02 A3 v3 producer 谱系复核（历史）
 
 main 更新来源配方加载器和运行编排器后，D5 重新核对了冻结 schedule 的全部 104 条 entry。

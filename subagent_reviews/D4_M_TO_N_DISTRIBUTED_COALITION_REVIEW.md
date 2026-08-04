@@ -9,7 +9,9 @@
 
 本次修复只关闭 seed `28203` 的来源生成基数误判，不改变成员 ACK、原子 commit、owner/
 version/epoch/lease、二级接管或完全分布式候选形成。联盟、降级、assignment、runtime 和
-control 权限保持 false，正式 324 项来源仍需从新提交和新输出目录生成。
+control 权限保持 false。main 已在 `fcf8525...6bae` 完成提交和 clean preflight；当前等待
+绑定最终文档 commit 与 request SHA-256 `c4f74fb4...b019` 的新 generation-only 授权。正式
+来源仍为 0/324，后续只能写入新输出目录，旧失败输出不得 resume。
 
 ## 2026-08-02 最终 recipe 绑定与联盟边界
 

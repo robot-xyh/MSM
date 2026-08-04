@@ -12,8 +12,11 @@ D4 A2 v8 来源请求同时绑定自身合同实现和 main 真值隔离 adapter
 规则或授权范围。
 
 当前 request 内容摘要为 `7e026359...01cb`，物理文件 SHA-256 为 `c4f74fb4...b019`。该身份
-通过 51 项 readiness 专项和 94 项 v8 聚焦测试；它只表示请求可进入后续 clean preflight，不
-表示已经获准生成、训练、访问正式 seed 或取得运行控制权限。
+通过 51 项 readiness 专项和 94 项 v8 聚焦测试。main 已在 `fcf8525...6bae` 完成三批提交并
+通过 clean preflight，当前状态为 `ready_for_explicit_main_execution_authorization`。这仍不
+表示已经获准生成、训练、访问正式 seed 或取得运行控制权限；新 generation-only 授权必须绑定
+本次同步后的最终文档 commit 和完整 request SHA-256。正式来源仍为 0/324，旧失败输出不得
+resume。
 
 ## 在线任务基数原则（2026-08-03）
 

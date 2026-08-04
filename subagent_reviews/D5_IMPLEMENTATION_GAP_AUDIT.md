@@ -8,7 +8,7 @@
 | main 实现绑定 | **D5-owned 阻塞已关闭** | 新 `learning_source_adapters.py` 文件 SHA 为 `4c968e4f...74be`；D5 readiness 和 schedule 已绑定实际文件字节。 |
 | 下游哈希链 | **D5-owned 阻塞已关闭** | allocation 内容/文件 SHA 仍为 `5d446288...2003` / `29899b7d...2770`；schedule 为 `e1b83126...7dcb6` / `0a999ba5...8400e`，request 为 `ad11e238...816ae` / `6c01f905...aa4d0`。 |
 | 配方与权限非退化 | **已复核** | 104 配方、三 split、future-held-out one-shot 门及在线真值/身份边界未变；唯一 true permission 仍为 `source_artifact_generation`，execution authorization=false。 |
-| 正式来源与训练 | **P1 继续开放** | 旧失败输出不得恢复。正式生成仍需包含 main 修复和 D5 新绑定的 commit、clean preflight、绑定 `6c01f905...aa4d0` 的显式授权和新空输出目录。 |
+| 正式来源与训练 | **P1 继续开放** | main 已在 `fcf8525ccf30186655df643196061a642ff36bae` 完成三批提交和 clean preflight，分支已快进且远端已同步，preflight 状态为 `ready_for_explicit_main_execution_authorization`。当前只缺绑定最终文档 commit 和 request SHA-256 `6c01f905...aa4d0` 的新 generation-only 授权及新空输出目录；旧 failed output 禁止 resume，正式来源仍为 `0/104`。 |
 
 readiness 为 `48 passed in 1.14s`，真实 producer 为 `3 passed, 1 warning in 13.53s`，
 pre-generation/request 专项为 `22 passed, 26 deselected in 1.08s`。本轮没有新增 AirSim、

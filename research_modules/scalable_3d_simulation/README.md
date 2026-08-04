@@ -18,6 +18,12 @@ D4、D5 的旧输出均保留 `failed_closed` 记录，禁止恢复或作为正�
 clean commit、重新运行 preflight、签发绑定新 commit 的 generation-only 授权，并在新输出
 目录从头生成。训练、验证/测试消费、运行、分配、降级、相机命令和控制仍未授权。
 
+运行修复、冻结请求和文档已分三批提交，`feat/scalable-3d-200v200` 已普通快进并推送到
+`fcf8525`。该 clean commit 的统一 preflight 无 blocker，D3/D4/D5 请求 SHA-256 分别为
+`b5685b61...c42f`、`c4f74fb4...b019`、`6c01f905...a4d0`，状态为
+`ready_for_explicit_main_execution_authorization`。preflight 不等于执行授权；D4/D5 新一轮
+来源生成仍等待绑定最终 source commit 的新 generation-only 授权。
+
 ## 2026-08-02 学习来源生成前置收口
 
 D3、D4、D5 的独立来源请求和 main 生产器已完成重新绑定。当前统一预检结果为：模块计划

@@ -2,8 +2,10 @@
 
 2026-08-03 完成 A2 v8 source request 实现绑定重冻结。新增 `regional_failover.py` 直接绑定，
 刷新 main 共享 adapter 摘要；request 内容/文件 SHA-256 为 `7e026359...01cb`、
-`c4f74fb4...b019`。51 项 readiness 专项和 94 项 v8 聚焦测试通过。当前只剩 dirty worktree、
-新提交和重新授权门，未启动生成或扩大权限。
+`c4f74fb4...b019`。51 项 readiness 专项和 94 项 v8 聚焦测试通过。main 已完成三批提交，
+将分支快进并推送到 `fcf8525...6bae`；clean preflight 通过，状态为
+`ready_for_explicit_main_execution_authorization`。当前只等待绑定最终文档 commit 和完整
+request SHA-256 的新 generation-only 授权，正式来源仍为 0/324，旧失败输出不可 resume。
 
 2026-08-03 修复 A2 v8 来源生成中的活动任务基数误判。配置 `task_count` 现仅作为来源和
 报告基数，不限制唯一在线 D2/D3 航迹假设数量。原失败 seed `28203` 已直接复跑并形成

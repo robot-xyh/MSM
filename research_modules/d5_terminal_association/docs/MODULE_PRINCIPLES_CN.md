@@ -15,6 +15,11 @@ main 修复后的适配器 SHA-256 为 `4c968e4f...74be`。seed `24013` 回放�
 `source_generation_request_ready_generation_only`。104 配方、三分区、future-held-out 门和权限
 没有变化；旧失败目录不得继续使用，新绑定的正式来源仍为 `0/104`。
 
+main 已在 `fcf8525ccf30186655df643196061a642ff36bae` 完成提交、远端同步和 clean preflight，
+preflight 状态为 `ready_for_explicit_main_execution_authorization`。下一步只等待绑定最终文档
+commit 与 request SHA-256 `6c01f905...aa4d0` 的新 generation-only 授权；该授权尚未签发，不能
+恢复旧 failed output，也不能把 readiness 解释为 104 条正式来源已经生成。
+
 ## 前次生产器谱系原则（历史）
 
 D5 的来源计划必须绑定实际执行的 main producer 文件。producer 文件变化后，旧 schedule 和

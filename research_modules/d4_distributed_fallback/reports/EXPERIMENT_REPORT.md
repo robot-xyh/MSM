@@ -14,11 +14,16 @@ main 共享 adapter 的文件摘要由旧值变为 `4c968e4f...74be`；D4 reques
 | readiness 专项 | `51 passed, 1 warning` |
 | v8 合同聚焦集 | `94 passed, 1 warning` |
 | 统一 preflight D4 blocker | 0 |
-| 全局剩余 blocker | `generation_worktree_dirty` |
+| main 提交 | `fcf8525...6bae`，三批提交已推送 |
+| clean preflight | 通过，`ready_for_explicit_main_execution_authorization` |
+| 正式 D4 来源 | 0/324 |
+| 新 generation-only 授权 | 尚未签发 |
 
-统一 preflight 确认 D4 module plan、producer adapter 和 source request ready。当前结果不构成
-执行授权。main 需先提交稳定修改，再对新 source commit 运行 clean preflight 并签发新的
-generation-only 授权。旧 request、旧授权和旧失败输出均不可 resume。
+统一 preflight 已确认 D4 module plan、producer adapter 和 source request ready。request
+物理文件 SHA-256 保持为
+`c4f74fb499547cfa9808039d9c2c9f4cd4ff11c1dbe1493b47436c22e80cb019`。当前结果不构成执行
+授权；main 仍需签发绑定最终文档 commit 和该 request SHA-256 的新 generation-only 授权。
+旧授权和旧失败输出均不可 resume。
 
 ## 2026-08-03 来源生成阻塞复现与修复验证
 

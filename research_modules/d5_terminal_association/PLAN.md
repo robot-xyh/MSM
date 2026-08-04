@@ -13,8 +13,12 @@
   generation-only 权限没有漂移。
 - [x] readiness `48 passed in 1.14s`，真实 producer `3 passed, 1 warning in 13.53s`，
   pre-generation/request 专项 `22 passed, 26 deselected in 1.08s`。
-- [ ] main 形成包含适配器修复和 D5 新绑定的 commit，重新生成 clean preflight 并签发绑定
-  `6c01f905...aa4d0` 的 generation-only authorization。正式生成必须使用新的空输出目录。
+- [x] main 已在 `fcf8525ccf30186655df643196061a642ff36bae` 完成三批提交并快进当前分支，远端
+  已同步；clean preflight 已通过，状态为 `ready_for_explicit_main_execution_authorization`。
+- [ ] 等待绑定本次状态同步后的最终文档 commit 和 request SHA-256
+  `6c01f905c3a516f66a28b7601265306b6b8898a616679c8428289cc0013aa4d0` 的新
+  generation-only authorization。旧 failed output 禁止 resume，正式生成必须使用新的空输出目录；
+  当前仍为 `0/104`。
 
 ## 2026-08-02 A3 v3 producer 谱系恢复计划（历史）
 
