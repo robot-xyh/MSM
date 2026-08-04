@@ -1119,6 +1119,7 @@ class IntegratedScalableModuleStack:
         self.latest_active_vision_decisions: tuple[Any, ...] = ()
         self.latest_active_vision_recon_cue_count = 0
         self.latest_active_vision_recon_projection_suppressed_count = 0
+        self._d5_collection_recon_target_by_camera: dict[str, str] = {}
         self._latest_terminal_by_pair: dict[tuple[str, str], tuple[dict[str, Any], Any]] = {}
         self._track_region_by_id: dict[str, str] = {}
         self._resource_index_by_id: dict[str, int] = {}
@@ -1663,6 +1664,7 @@ class IntegratedScalableModuleStack:
         self.latest_active_vision_decisions = ()
         self.latest_active_vision_recon_cue_count = 0
         self.latest_active_vision_recon_projection_suppressed_count = 0
+        self._d5_collection_recon_target_by_camera.clear()
         self._latest_terminal_by_pair.clear()
         self._track_region_by_id.clear()
         self._resource_index_by_id.clear()
@@ -5684,13 +5686,14 @@ class IntegratedScalableModuleStack:
             if assignment.resource_id in camera_by_resource
             and assignment.target_id in committed_track_by_id
         )
+        treatment = self.active_vision_collection_treatment()
         recon_assignments = self._active_vision_recon_track_cues(
             step_input,
             track_by_id=committed_track_by_id,
             camera_by_resource=camera_by_resource,
+            treatment=treatment,
         )
         assignments = interceptor_assignments + recon_assignments
-        treatment = self.active_vision_collection_treatment()
         suppress_recon_projections = treatment.recon_cue_suppressed(now)
         self.latest_active_vision_recon_projection_suppressed_count = (
             len(recon_assignments) if suppress_recon_projections else 0
@@ -5818,6 +5821,7 @@ class IntegratedScalableModuleStack:
         *,
         track_by_id: Mapping[str, Any],
         camera_by_resource: Mapping[str, CameraRuntimeState],
+        treatment: ActiveVisionCollectionTreatment,
     ) -> tuple[ActiveVisionAssignmentReference, ...]:
         """Select truth-free observation cues for recon cameras.
 
@@ -5848,6 +5852,17 @@ class IntegratedScalableModuleStack:
                 key=lambda item: item.camera_id,
             )
         )
+        retain_collection_bindings = bool(treatment.intent_windows)
+        active_camera_ids = {camera.camera_id for camera in recon_cameras}
+        for camera_id, target_id in tuple(
+            self._d5_collection_recon_target_by_camera.items()
+        ):
+            if (
+                not retain_collection_bindings
+                or camera_id not in active_camera_ids
+                or target_id not in target_ids
+            ):
+                del self._d5_collection_recon_target_by_camera[camera_id]
         if not target_ids or not recon_cameras:
             return ()
 
@@ -5897,7 +5912,19 @@ class IntegratedScalableModuleStack:
                     global_track_id,
                 )
 
-            selected_target_id = min(candidate_ids, key=overlap_offset)
+            retained_target_id = self._d5_collection_recon_target_by_camera.get(
+                camera.camera_id
+            )
+            selected_target_id = (
+                retained_target_id
+                if retain_collection_bindings
+                and retained_target_id in candidate_ids
+                else min(candidate_ids, key=overlap_offset)
+            )
+            if retain_collection_bindings:
+                self._d5_collection_recon_target_by_camera[
+                    camera.camera_id
+                ] = selected_target_id
             unused_target_ids.discard(selected_target_id)
             cues.append(
                 ActiveVisionAssignmentReference(

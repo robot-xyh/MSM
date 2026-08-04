@@ -2,10 +2,14 @@ from __future__ import annotations
 
 from collections import Counter
 from pathlib import Path
+from types import SimpleNamespace
+
+import numpy as np
 
 from research_modules.scalable_3d_simulation.active_vision_collection import (
     ACTIVE_VISION_BALANCED_ACTION_ROLE_PROFILE_V1,
     ACTIVE_VISION_OPERATIONAL_PROFILE_V1,
+    bind_active_vision_recipe_treatment,
     resolve_active_vision_collection_treatment,
 )
 from research_modules.scalable_3d_simulation.models import ScenarioConfig
@@ -48,6 +52,144 @@ def test_collection_treatments_preserve_operational_default_and_bound_busy_time(
         pitch_delta_deg=0.0,
         fov_changed=True,
     ) == 0.0
+
+
+def test_frozen_collection_retains_truth_free_recon_cues_across_geometry_change() -> None:
+    schedule = (
+        Path(__file__).resolve().parents[2]
+        / "d5_terminal_association"
+        / "configs"
+        / "a3_v3_source_collection_schedule_20260801.json"
+    )
+    recipe = load_d5_a3_v3_episode_recipes(schedule)[0]
+    config = recipe.build_config(
+        ScenarioConfig(
+            target_count=4,
+            resource_count=4,
+            recon_count=2,
+            duration_s=recipe.duration_s,
+            seed=recipe.seed,
+        )
+    )
+    collection = bind_active_vision_recipe_treatment(
+        resolve_active_vision_collection_treatment(
+            ACTIVE_VISION_BALANCED_ACTION_ROLE_PROFILE_V1
+        ),
+        config,
+    )
+    stack = IntegratedScalableModuleStack(
+        IntegratedStackConfig(d5_recon_track_cues_enabled=True)
+    )
+    stack.latest_plan = SimpleNamespace(
+        assignments=tuple(
+            SimpleNamespace(resource_id=f"INT-{index:04d}", target_id=target_id)
+            for index, target_id in enumerate(
+                ("GT-001", "GT-002", "GT-003", "GT-004"),
+                start=1,
+            )
+        )
+    )
+    tracks = {
+        target_id: SimpleNamespace(
+            state=np.array([*position, 0.0, 0.0, 0.0]),
+            covariance=np.eye(6),
+            timestamp=0.0,
+        )
+        for target_id, position in {
+            "GT-001": (100.0, 0.0, 0.0),
+            "GT-002": (0.0, 100.0, 0.0),
+            "GT-003": (-100.0, 0.0, 0.0),
+            "GT-004": (0.0, -100.0, 0.0),
+        }.items()
+    }
+
+    def cameras(yaw_deg: float) -> tuple[SimpleNamespace, ...]:
+        return tuple(
+            SimpleNamespace(
+                camera_id=f"CAM-RECON-{index:03d}",
+                resource_id=f"RECON-{index:03d}",
+                platform_kind="recon",
+                yaw_deg=yaw_deg,
+                pitch_deg=0.0,
+            )
+            for index in (1, 2)
+        )
+
+    navigation = SimpleNamespace(
+        platform_ids=("RECON-001", "RECON-002"),
+        active=(True, True),
+        state_ned=np.zeros((2, 6), dtype=float),
+    )
+    first_cameras = cameras(0.0)
+    step_input = SimpleNamespace(
+        timestamp=0.0,
+        recon=navigation,
+        cameras=first_cameras,
+    )
+    first = stack._active_vision_recon_track_cues(
+        step_input,
+        track_by_id=tracks,
+        camera_by_resource={item.resource_id: item for item in first_cameras},
+        treatment=collection,
+    )
+    reversed_cameras = cameras(180.0)
+    step_input.cameras = reversed_cameras
+    retained = stack._active_vision_recon_track_cues(
+        step_input,
+        track_by_id=tracks,
+        camera_by_resource={item.resource_id: item for item in reversed_cameras},
+        treatment=collection,
+    )
+
+    assert {
+        item.camera_id: item.global_track_id for item in retained
+    } == {
+        item.camera_id: item.global_track_id for item in first
+    }
+    assert set(stack._d5_collection_recon_target_by_camera.values()).issubset(
+        tracks
+    )
+
+    removed_target_id = first[0].global_track_id
+    remaining_tracks = {
+        target_id: track
+        for target_id, track in tracks.items()
+        if target_id != removed_target_id
+    }
+    stack.latest_plan = SimpleNamespace(
+        assignments=tuple(
+            assignment
+            for assignment in stack.latest_plan.assignments
+            if assignment.target_id != removed_target_id
+        )
+    )
+    rebound = stack._active_vision_recon_track_cues(
+        step_input,
+        track_by_id=remaining_tracks,
+        camera_by_resource={item.resource_id: item for item in reversed_cameras},
+        treatment=collection,
+    )
+    assert removed_target_id not in {
+        item.global_track_id for item in rebound
+    }
+    assert set(stack._d5_collection_recon_target_by_camera.values()).issubset(
+        remaining_tracks
+    )
+
+    operational = stack._active_vision_recon_track_cues(
+        step_input,
+        track_by_id=remaining_tracks,
+        camera_by_resource={item.resource_id: item for item in reversed_cameras},
+        treatment=resolve_active_vision_collection_treatment(
+            ACTIVE_VISION_OPERATIONAL_PROFILE_V1
+        ),
+    )
+    assert {
+        item.camera_id: item.global_track_id for item in operational
+    } != {
+        item.camera_id: item.global_track_id for item in first
+    }
+    assert stack._d5_collection_recon_target_by_camera == {}
 
 
 def test_balanced_runtime_reaches_missing_action_role_cells_without_truth() -> None:
