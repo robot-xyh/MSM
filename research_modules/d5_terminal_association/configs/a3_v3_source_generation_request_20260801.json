@@ -12,7 +12,7 @@
     },
     "source_collection_schedule": {
       "path": "research_modules/d5_terminal_association/configs/a3_v3_source_collection_schedule_20260801.json",
-      "sha256": "0a999ba5bcf1defb4e15893c00df930fbc6af558d699706930b47fc94538400e"
+      "sha256": "4b4805773540087fccd65a1352ea8dc6a263f4387afe6157c70084edf4aefa1c"
     },
     "global_seed_allocation_binding": {
       "path": "research_modules/d5_terminal_association/configs/a3_v3_global_seed_allocation_binding_20260801.json",
@@ -141,5 +141,5 @@
     "integrity_verification_is_held_out_consumption": false,
     "future_held_out_payload_read_count": 0
   },
-  "content_sha256": "ad11e238ddc9e0e9a1f2d2b4cd681529fd0094b28638397f73e6a39c5e8816ae"
+  "content_sha256": "ba65a2dfb9bf8b26d15ff7048219b15669f14977a5d34f51cc00f8f2b0bab9be"
 }

@@ -47,7 +47,7 @@ A3_V3_PROTOCOL_SHA256 = (
     "5a01b9f5f0636a3d22338ac1c3212a242d51944a974263ca7a165909ab3dcb64"
 )
 A3_V3_SOURCE_SCHEDULE_FILE_SHA256 = (
-    "0a999ba5bcf1defb4e15893c00df930fbc6af558d699706930b47fc94538400e"
+    "4b4805773540087fccd65a1352ea8dc6a263f4387afe6157c70084edf4aefa1c"
 )
 A3_V3_ALLOCATION_BINDING_FILE_SHA256 = (
     "29899b7d36727857f5fa0a7d7ff576f79e5681fabe231aca178fe579916a2770"
@@ -375,7 +375,7 @@ _PRODUCER_SOURCE_BINDINGS = (
         "role": "runtime_module_stack",
         "path": "research_modules/scalable_3d_simulation/module_stack.py",
         "sha256": (
-            "3e184a858ddba1f1f56564035c1f5c26ddc3bedd9c739bafe03d5e24a3a5e515"
+            "e22959f64143ad37ed72672895e0b5c9b1d10edb055ebc869c9297caa711a501"
         ),
     },
     {

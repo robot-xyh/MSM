@@ -238,7 +238,7 @@ def test_actual_generation_only_request_is_ready_with_stable_main_fields() -> No
     )
     assert main_bindings["runtime_module_stack"] == (
         "research_modules/scalable_3d_simulation/module_stack.py",
-        "3e184a858ddba1f1f56564035c1f5c26ddc3bedd9c739bafe03d5e24a3a5e515",
+        "e22959f64143ad37ed72672895e0b5c9b1d10edb055ebc869c9297caa711a501",
     )
     assert capability["source_generation_request_path"] == (
         SOURCE_GENERATION_REQUEST_RELATIVE_PATH
