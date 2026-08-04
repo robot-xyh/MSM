@@ -1,5 +1,25 @@
 # D5 末端视觉配准与协同身份认证综述及子方案
 
+## 2026-08-03 A3 v3 正式来源生成复核
+
+main 已在提交 `64dfc088cf4990304a95b2a362b905136092c70a` 上完成 D5 正式来源生成。
+generation-only 授权 SHA-256 为
+`a803116b5e8b4758b1e2dfd8c55b43dfc5cb93241d7f242cb2c2f0bcf622225a`，D5 request
+SHA-256 为 `9d16ef30180584b3df8a5af82b082d9427172f118c6e438e602d4cd291508dcc`。清单精确覆盖
+sequence `0-103` 和 104 个互异 seed `24000-24103`；development 72 条、future-held-out
+32 条，状态为 `source_generated_not_trained`。
+
+原失败 seed `24097` 已在新来源中完成，形成 1936 个样本。该条和全部 104 条聚合在线 truth
+使用、`global_track_id` 创建及改写均为 `0/0/0`。source、development、future manifest
+SHA-256 分别为 `b3bbdc1b...7978`、`20afdfe3...a7f4` 和 `f9db3912...2489`；制品共 318 个
+文件、355457243 字节，树 SHA-256 为 `e8160ace...a7d1`。
+
+本次复核只采用 main 提供的清单级证据，没有读取 future-held-out payload。正式 seed payload
+读取和 future 模型消费均为 0。训练、validation 消费、模型选择、运行、相机命令和控制未执行；
+D6 独立审计未授权、未执行。旧 `6737b44` failed output 继续失败关闭。后续顺序为 D6 独立来源
+审计、另行授权的 development 训练与 validation、满足冻结门后的 future-held-out 一次性评估；
+任何一步都不能从“来源已生成”自动获得权限。
+
 ## 2026-08-03 A3 v3 角色匹配适配器重绑定
 
 train seed `24013` 暴露了 main 适配器的通信等价构造问题。该 episode 有 18 条跨角色共同中心

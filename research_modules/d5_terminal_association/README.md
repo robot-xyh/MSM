@@ -2,6 +2,32 @@
 
 科研模块，用于把末端相机视场中的本地视觉轨迹保守关联到中心分配的 `global_track_id`。模块可在统一三维 episode 中在线运行；训练标签和真值评分仍保持离线。D5 只输出视觉关联与相机观察意图，不修改、重写或重新分配任何全局轨迹 ID。
 
+## 2026-08-03 A3 v3 正式来源生成完成
+
+main 已在来源提交 `64dfc088cf4990304a95b2a362b905136092c70a` 上，按仅允许 D3/D4/D5
+来源生成的授权完成 D5 A3 v3 正式来源。授权 SHA-256 为
+`a803116b5e8b4758b1e2dfd8c55b43dfc5cb93241d7f242cb2c2f0bcf622225a`，D5 request
+SHA-256 为 `9d16ef30180584b3df8a5af82b082d9427172f118c6e438e602d4cd291508dcc`。
+最终状态为 `source_generated_not_trained`。
+
+来源清单覆盖序号 `0-103`、104 个互异 seed `24000-24103`，共 `104/104` episode。
+development 分区为 72 个 episode，其中 train/validation 计划仍为 `48/24`；future-held-out
+分区为 32 个 episode。原失败 seed `24097` 已完成，形成 1936 个样本，其在线真值使用、
+`global_track_id` 创建和改写计数为 `0/0/0`。104 个 episode 的聚合计数同样为 `0/0/0`。
+
+source、development 和 future manifest SHA-256 分别为
+`b3bbdc1b5635185c1411076939fad92f64889687cef9cad993c8940202ad7978`、
+`20afdfe32d04be2338224bca81a4951a3994e677b3cecfcc26fd5bd86f70a7f4` 和
+`f9db391270f39465846a18ff8ee94aa4a1d0fcb0afe117361ea49e88d2562489`。制品包含 318 个文件、
+355457243 字节，树 SHA-256 为
+`e8160ace3c78e33082eacbf7d2ff42cb275424b4ee8e388261ee76a00bbea7d1`。
+
+本状态只表示冻结来源已经生成和最终化。正式 seed payload 读取计数、future-held-out 模型消费
+计数均为 0；训练、验证消费、运行、相机命令、分配、降级、控制和全局编号写权限均未开启。
+D6 独立来源审计未获授权、未执行。绑定旧提交 `6737b44` 的失败输出继续保持 `failed_closed`，
+禁止恢复、迁移或作为新来源使用。本次文档同步只使用 main 提供的清单级证据，没有打开
+future-held-out 下的 online、offline 或 episode 样本载荷。
+
 ## 2026-08-03 A3 v3 角色匹配适配器重绑定
 
 main 修复了角色匹配通信等价签名。该签名只包含 schema 和通信健康状态，不再混入跨窗口递增

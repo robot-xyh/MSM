@@ -2,6 +2,33 @@
 
 **状态日期：2026-08-03**
 
+## 来源生成与能力准入分离原则
+
+A3 v3 正式来源已由 main 在提交 `64dfc088cf4990304a95b2a362b905136092c70a` 上完成。
+generation-only 授权和 D5 request SHA-256 分别为
+`a803116b5e8b4758b1e2dfd8c55b43dfc5cb93241d7f242cb2c2f0bcf622225a` 和
+`9d16ef30180584b3df8a5af82b082d9427172f118c6e438e602d4cd291508dcc`。状态
+`source_generated_not_trained` 表示来源已经按冻结计划写出和最终化，不表示模型已经训练、
+验证、审计或获得运行权限。
+
+来源覆盖 104 个完整 episode，序号为 `0-103`，seed 为 `24000-24103`，无重复或缺号。
+development 包含 72 个 episode，future-held-out 包含 32 个 episode。原失败 seed `24097`
+已完成 1936 个样本。该 episode 与全部 104 条聚合的在线真值使用、全局航迹编号创建和改写
+计数均为 `0/0/0`。中心 `global_track_id` 所有权和在线真值隔离原则没有因来源生成而变化。
+
+source、development、future 三份 manifest SHA-256 分别为
+`b3bbdc1b5635185c1411076939fad92f64889687cef9cad993c8940202ad7978`、
+`20afdfe32d04be2338224bca81a4951a3994e677b3cecfcc26fd5bd86f70a7f4`、
+`f9db391270f39465846a18ff8ee94aa4a1d0fcb0afe117361ea49e88d2562489`。318 个文件合计
+355457243 字节，树 SHA-256 为
+`e8160ace3c78e33082eacbf7d2ff42cb275424b4ee8e388261ee76a00bbea7d1`。这些哈希证明冻结制品
+边界，不等于独立评价结论。
+
+正式 seed payload 读取和 future-held-out 模型消费计数均为 0。D6 独立审计未获授权且未执行；
+训练、validation 消费、模型选择、future-held-out 一次性评价、shadow、assist、相机命令、
+运行和控制均未执行。旧 `6737b44` 失败输出继续失败关闭，禁止恢复或迁移。本次状态同步只使用
+main 提供的清单级证据，没有打开 future-held-out 样本载荷。
+
 ## 角色匹配通信等价原则
 
 角色匹配困难混淆要求同一冻结分配、同一中心航迹几何、相同通信健康状态和不同相机角色。

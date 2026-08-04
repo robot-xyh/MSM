@@ -1,5 +1,32 @@
 # D5 终端视觉配准与身份认证计划
 
+## 2026-08-03 A3 v3 正式来源生成收口计划
+
+- [x] main 使用来源提交 `64dfc088cf4990304a95b2a362b905136092c70a`、授权 SHA-256
+  `a803116b5e8b4758b1e2dfd8c55b43dfc5cb93241d7f242cb2c2f0bcf622225a` 和 request
+  SHA-256 `9d16ef30180584b3df8a5af82b082d9427172f118c6e438e602d4cd291508dcc`
+  完成 generation-only 执行。
+- [x] 冻结序号精确为 `0-103`，seed 精确为 `24000-24103` 且 104 个 seed 互异；来源完成
+  `104/104`，development/future-held-out 为 `72/32`。
+- [x] 原失败 seed `24097` 已形成 1936 个样本并完成；该 episode 和 104 条聚合在线真值使用、
+  `global_track_id` 创建/改写计数均为 `0/0/0`。
+- [x] 冻结 source/development/future manifest，SHA-256 分别为
+  `b3bbdc1b5635185c1411076939fad92f64889687cef9cad993c8940202ad7978`、
+  `20afdfe32d04be2338224bca81a4951a3994e677b3cecfcc26fd5bd86f70a7f4`、
+  `f9db391270f39465846a18ff8ee94aa4a1d0fcb0afe117361ea49e88d2562489`；318 个文件、
+  355457243 字节，树 SHA-256 为
+  `e8160ace3c78e33082eacbf7d2ff42cb275424b4ee8e388261ee76a00bbea7d1`。
+- [x] 保持状态 `source_generated_not_trained`。正式 seed payload 读取、future-held-out 模型
+  消费、训练、运行、相机命令、控制和全局编号写权限均为 0/false。
+- [x] 保持绑定旧提交 `6737b44` 的失败输出为 `failed_closed`，禁止 resume、迁移或混入新来源。
+- [ ] D6 独立来源审计需由 main 另行授权和下发；当前未执行，不能把 manifest 最终化解释为
+  独立审计通过。
+- [ ] 训练和 validation 消费需使用独立工作包、独立授权及冻结输入；当前不得启动。
+- [ ] future-held-out 继续保持零 payload 读取和零模型消费。只有模型与校准冻结、validation
+  gate 通过并取得另行一次性授权后，才能按既有合同执行一次评估。
+- [ ] shadow、assist、运行、相机命令和控制准入继续开放为后续项；来源生成完成不改变确定性
+  默认路径。
+
 ## 2026-08-03 A3 v3 角色匹配适配器重绑定计划
 
 - [x] 复核 train seed `24013` 的失败边界。跨角色共同中心航迹和通信健康状态均存在，旧适配器

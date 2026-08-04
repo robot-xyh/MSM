@@ -2,6 +2,32 @@
 
 **状态日期：2026-08-03**
 
+## A3 v3 正式来源生成状态
+
+main 以提交 `64dfc088cf4990304a95b2a362b905136092c70a` 为来源代码，使用 SHA-256 为
+`a803116b5e8b4758b1e2dfd8c55b43dfc5cb93241d7f242cb2c2f0bcf622225a` 的 generation-only
+授权执行冻结 request。request SHA-256 为
+`9d16ef30180584b3df8a5af82b082d9427172f118c6e438e602d4cd291508dcc`。生成结束状态为
+`source_generated_not_trained`。
+
+最终 inventory 精确覆盖 sequence `0-103` 和 104 个互异 seed `24000-24103`。development
+分区完成 72 条，future-held-out 分区完成 32 条。原失败 seed `24097` 已在新输出中完成，形成
+1936 个样本。该条的 `online_truth_use_count/global_track_id_created_count/`
+`global_track_id_rewritten_count` 为 `0/0/0`；104 条聚合计数同样为 `0/0/0`。该恢复没有降低
+困难混淆边界、分配引用、几何等价、目标证据保持或云台忙闲谓词。
+
+最终 source manifest SHA-256 为
+`b3bbdc1b5635185c1411076939fad92f64889687cef9cad993c8940202ad7978`，development manifest
+为 `20afdfe32d04be2338224bca81a4951a3994e677b3cecfcc26fd5bd86f70a7f4`，future manifest
+为 `f9db391270f39465846a18ff8ee94aa4a1d0fcb0afe117361ea49e88d2562489`。完整制品为 318 个
+文件、355457243 字节，树 SHA-256 为
+`e8160ace3c78e33082eacbf7d2ff42cb275424b4ee8e388261ee76a00bbea7d1`。
+
+本次执行只产生来源制品。正式 seed payload 读取和 future-held-out 模型消费计数为 0；没有
+运行优化器、validation 消费、模型选择、阈值校准、shadow、assist、相机命令、运行或控制。
+D6 独立来源审计未获授权、未执行。旧 `6737b44` 失败输出保持 `failed_closed`，不能恢复、迁移
+或与本次 manifest 合并。本次文档同步未读取 future-held-out 的 online/offline/episode payload。
+
 ## A3 v3 角色匹配通信等价
 
 `role_matched_interceptor_recon_geometry` 的 pair 由状态谓词推导。两侧必须引用同一冻结分配和

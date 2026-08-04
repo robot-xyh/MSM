@@ -1,5 +1,33 @@
 # D5 末端视觉配准与身份认证实验报告
 
+## 2026-08-03 A3 v3 正式来源生成结果
+
+本节只记录 main 提供的最终清单和授权证据。D5 文档同步没有读取 future-held-out 下的 online、
+offline 或 episode 样本载荷。
+
+| 项目 | 结果 |
+| --- | --- |
+| 来源提交 | `64dfc088cf4990304a95b2a362b905136092c70a` |
+| generation-only 授权 SHA-256 | `a803116b5e8b4758b1e2dfd8c55b43dfc5cb93241d7f242cb2c2f0bcf622225a` |
+| D5 request SHA-256 | `9d16ef30180584b3df8a5af82b082d9427172f118c6e438e602d4cd291508dcc` |
+| 完成度 | `104/104`，sequence `0-103`，104 个互异 seed `24000-24103` |
+| 分区 | development 72，future-held-out 32 |
+| 原失败 seed `24097` | 已完成，1936 个样本，truth/create/rewrite=`0/0/0` |
+| 聚合身份审计 | online truth/create/rewrite=`0/0/0` |
+| source manifest | `b3bbdc1b5635185c1411076939fad92f64889687cef9cad993c8940202ad7978` |
+| development manifest | `20afdfe32d04be2338224bca81a4951a3994e677b3cecfcc26fd5bd86f70a7f4` |
+| future manifest | `f9db391270f39465846a18ff8ee94aa4a1d0fcb0afe117361ea49e88d2562489` |
+| 制品规模 | 318 个文件，355457243 字节 |
+| 制品树 SHA-256 | `e8160ace3c78e33082eacbf7d2ff42cb275424b4ee8e388261ee76a00bbea7d1` |
+| 最终状态 | `source_generated_not_trained` |
+
+正式 seed payload 读取计数和 future-held-out 模型消费计数均为 0。训练、validation 消费、
+运行、相机命令和控制均为 false。D6 独立来源审计没有获得授权，也没有执行。因此，本结果关闭
+“104 条正式来源尚未生成”的缺口，不提供模型质量、独立审计、AirSim、真实相机或运行收益证据。
+
+绑定旧提交 `6737b44` 的 D5 失败输出继续保持 `failed_closed`，禁止 resume、迁移或混入新
+manifest。seed `24097` 的完成只属于本次新来源，不改变旧输出的失败状态。
+
 ## 2026-08-03 A3 v3 角色匹配重绑定验证
 
 旧 source generation 在 train seed `24013` 的角色匹配边界失败关闭。回放统计包含 69 个主动

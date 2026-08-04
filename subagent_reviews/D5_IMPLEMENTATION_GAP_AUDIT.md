@@ -1,5 +1,22 @@
 # D5 实现差距审计
 
+## 2026-08-03 A3 v3 正式来源生成 GAP 收口
+
+| 项目 | 当前状态 | 证据与剩余限制 |
+| --- | --- | --- |
+| 正式来源生成 | **D5 P1 来源缺口已关闭** | main 在提交 `64dfc088...70a` 上按 generation-only 授权完成 `104/104`；sequence `0-103`、seed `24000-24103` 精确且互异，development/future 为 `72/32`。状态为 `source_generated_not_trained`。 |
+| 原失败 seed `24097` | **新来源中已关闭** | 新来源形成 1936 个样本，truth/create/rewrite=`0/0/0`。旧 `6737b44` failed output 仍永久 `failed_closed`，禁止 resume 或迁移。 |
+| 来源完整性与身份隔离 | **清单级证据已关闭** | source/development/future manifest SHA 分别为 `b3bbdc1b...7978`、`20afdfe3...a7f4`、`f9db3912...2489`；318 文件、355457243 字节，tree SHA=`e8160ace...a7d1`。104 条聚合在线 truth/create/rewrite=`0/0/0`。 |
+| D6 独立来源审计 | **P1 开放** | 未获授权、未执行。当前 manifest 和 D5 自身最终化不能替代独立审计。 |
+| 训练与 validation 消费 | **P1 开放且未授权** | 正式 seed payload read=0；没有训练、模型选择、校准或 validation 消费。来源完成不能关闭少数意图模型质量和校准 GAP。 |
+| future-held-out 一次性评估 | **P1 开放且保持封闭** | 模型消费=0；本次文档同步未读取 payload。仍须模型与校准冻结、validation gate 通过和另行一次性授权。 |
+| 运行与控制准入 | **保持开放/关闭权限** | shadow、assist、runtime、camera command、assignment、degradation、control 和 `global_track_id` write 均未授权；确定性默认路径不变。 |
+
+授权 SHA-256 为 `a803116b5e8b4758b1e2dfd8c55b43dfc5cb93241d7f242cb2c2f0bcf622225a`，
+request SHA-256 为 `9d16ef30180584b3df8a5af82b082d9427172f118c6e438e602d4cd291508dcc`。
+本节关闭的是来源实际生成 P1，不关闭 D6 独立审计、训练、验证消费、future-held-out 评估、
+AirSim/真实相机或运行准入。
+
 ## 2026-08-03 A3 v3 角色匹配适配器绑定 GAP
 
 | 项目 | 当前状态 | 证据与剩余限制 |
