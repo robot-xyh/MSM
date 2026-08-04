@@ -17,12 +17,17 @@ D5 首轮运行在序列 97、`seed 24097` 失败关闭。失败前已持久化 
 operational profile 不保留该状态。共同航迹由 1 增至 4，有效边界候选由 240 增至 960，
 在线真值使用仍为 0。D5 owner 确认严格边界合同、配额、身份所有权和失败关闭规则无需放宽。
 
-main 采集处理与测试提交为 `6c8ce0e`，D5 冻结生产者绑定刷新提交为 `d8f072b`。D5 全量
-`877 passed`，main 源生成适配/生成专项 `18 passed`，预检/授权专项 `13 passed`，集成栈
-侦察提示专项 `2 passed`。下一步必须在最终 clean source commit 上重新运行 preflight，
-签发新的 generation-only 授权，并把 D5 从序列 0 写入全新目录。训练、held-out 消费、
-运行、分配、降级、相机命令、控制和全局航迹编号写入仍未授权；D6 独立审计也不在本次授权
-范围内。
+main 采集处理与测试提交为 `6c8ce0e`，D5 冻结生产者绑定刷新提交为 `d8f072b`，最终来源
+提交为 `64dfc08`。D5 全量 `877 passed`，main 源生成适配/生成专项 `18 passed`，预检/
+授权专项 `13 passed`，集成栈侦察提示专项 `2 passed`。clean preflight 通过后签发的新授权
+SHA-256 为 `a803116b...622225a`，仅允许 dataset generation。
+
+D5 已从全新目录和序列 0 完成 `104/104`，development/future-held-out 为 `72/32`，总来源
+清单为 `b3bbdc1b...ad7978`，状态为 `source_generated_not_trained`。104 个唯一 seed 严格
+覆盖 `24000-24103`；在线真值、全局编号创建/改写、正式 seed 读取和保留集模型消费均为 0。
+训练、运行、分配、降级、相机命令、控制和全局航迹编号写入仍未授权；D6 独立审计也不在
+本次授权范围内。完整记录见
+[`docs/SCALABLE_3D_D3_D5_SOURCE_GENERATION_COMPLETION_20260803_CN.md`](docs/SCALABLE_3D_D3_D5_SOURCE_GENERATION_COMPLETION_20260803_CN.md)。
 
 ## 2026-08-02 学习来源生成前置收口
 

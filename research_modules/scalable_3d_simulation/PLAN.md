@@ -17,10 +17,12 @@
 6. [x] main 修复提交 `6c8ce0e`，D5 owner 刷新冻结生产者哈希链并形成提交 `d8f072b`。
    D5 全量 `877 passed`，main 适配/生成 `18 passed`，预检/授权 `13 passed`，集成专项
    `2 passed`。
-7. [ ] 在包含本节文档的最终 clean source commit 上重跑统一 preflight，签发新的
+7. [x] 在包含本节文档的最终 clean source commit `64dfc08` 上重跑统一 preflight，签发新的
    `AUTHORIZE D3 D4 D5 SOURCE GENERATION ONLY` 授权。授权只允许 dataset generation。
-8. [ ] 使用全新 D5 输出目录从序列 0 生成 `104/104`，核对 manifest、split/seed、样本
-   唯一性、双时间戳、在线真值、身份创建/改写和所有禁止权限计数。
+8. [x] 使用全新 D5 输出目录从序列 0 生成 `104/104`。序列 `0-103`、seed
+   `24000-24103`、development/future-held-out `72/32` 均完整；总来源清单为
+   `b3bbdc1b...ad7978`。在线真值、身份创建/改写、正式 seed 读取、保留集模型消费、训练、
+   运行和控制计数均为 0。
 9. [ ] D6 独立审计、训练、held-out 消费、运行和控制需另行授权；本轮不得启动。
 
 ## 2026-08-02 学习来源生成前置收敛
