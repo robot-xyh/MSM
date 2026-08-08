@@ -1,5 +1,77 @@
 # D6 Evaluation Metrics Plan
 
+## 2026-08-03 D3/D4/D5 授权来源载荷审计
+
+### 已完成
+
+- [x] 定义并实现 audit-only 输入，绑定 input contract、metadata preflight、main authorization
+  及三者 SHA-256；权限必须精确等于来源审计白名单，所有非审计权限保持 false。
+- [x] 只按冻结 inventory 读取安全相对路径，拒绝路径穿越、symlink、非普通文件、hard-link
+  路径复用、未列载荷、哈希篡改、重复 JSON key、NaN/Inf 和 schema/count 漂移。
+- [x] 分别审计 D3 的 300 episode/3086 frame、D4 的 324 episode/921 frame、D5 的 104
+  episode/280968 sample；检查在线/离线分离、时间戳、可用协方差、唯一键、split 和 truth 隔离。
+- [x] 按实际生产者合同拆分 D5 source identity、source provenance、partition identity 和
+  online identity；缺字段、非零计数和错误 ownership 均失败关闭。
+- [x] D5 descriptor 使用独立 producer canonical line SHA：ASCII 转义、排序紧凑 JSON 和
+  行尾换行；非 ASCII 与缺换行回归证明它不同于 D6 通用 canonical SHA，D3/D4 语义未改。
+- [x] 正负例覆盖授权缺失/篡改、权限升级、路径穿越/symlink、摘要篡改、重复键、非有限数、
+  truth/split 泄漏、时间戳/协方差错误和 D4 `schema` 字段差异。专项结果为
+  `37 passed, 1 warning in 2.67s`。
+- [x] 使用冻结授权真实执行 v3。D3/D4/D5 计数为 `300/324/104` episode，记录为
+  `3086/921/280968`，truth leakage 与 split leakage 均为 0；future-held-out 仅完整性审计。
+- [x] 在外部非覆盖目录写出机器 JSON、中文 Markdown 和 `SHA256SUMS`。状态为
+  `source_integrity_audit_passed_not_training_authorized`，全部非审计权限为 false。
+- [x] 完整 D6 回归达到 `1418 passed, 16 skipped, 1 warning in 126.18s`；唯一 warning 为既有
+  Matplotlib `Axes3D` 环境提示。
+
+### 保留边界
+
+- [ ] D3 当前 assignment source 不显式包含六维状态/协方差，D4 regional source 不包含协方差，
+  D5 当前只给 opaque feature fingerprint 而非显式 bbox/local-track geometry；按实际合同记 warning，
+  不能由 D6 补造字段。
+- [ ] future-held-out 未用于训练、验证、测试、模型选择、阈值选择或推理。后续任何模型消费需要
+  新授权和独立准入，不得由本次来源审计通过状态推导。
+
+## 2026-08-03 D3/D4/D5 来源生成元数据预检
+
+### 已完成
+
+- [x] 定义 `d6.learning-source-generation-preflight-input.v1`，固定 D3/D4/D5 三模块清单、
+  `300/324/104` episode 数和源码/授权/请求/元数据/inventory 摘要绑定。
+- [x] 实现 metadata-only evaluator，只读取 session、checkpoint、result、progress 和显式
+  manifest；检查 symlink、重复 JSON key、最终态、sequence、seed、绑定、安全计数和 producer
+  inventory 元数据自洽性，不把该结论写成 payload 内容已核验。
+- [x] 支持 D3 `dataset/dataset_manifest.json`、D4 `dataset/manifest.json` 和 D5
+  `source_manifest.json` 三种相对路径形态；仅用 synthetic fixtures 验证接口可表示性。
+- [x] 冻结 producer-specific schema 字段：D3/D5 使用 `schema_version`，D4 使用 `schema`；
+  统一输出 schema 值和原字段名。双字段、错模块字段、类型、空值、模块身份和通用 `version`
+  负例均失败关闭。
+- [x] 实现 preflight-only CLI，生成 `preflight.json`、中文 Markdown 和 `SHA256SUMS`；CLI
+  没有 full-audit、训练、运行或控制模式。
+- [x] 增加 D3/D4/D5 synthetic fixtures。测试在 inventory 冻结后改写 payload，监控来源根的
+  `open/iterdir/glob/rglob`；只打开 15 个绑定元数据文件，payload 打开和目录扫描均为 0。
+- [x] 结果权限合同显式关闭 training、validation/test/future-held-out consumption、inference、
+  shadow、assist、promotion、PPO、assignment、degradation、camera command、runtime、
+  production、control 和 `global_track_id` create/write。
+- [x] 2026-08-03 修订后定向验收达到 17/17：`17 passed, 1 warning in 2.57s`。合成范围为
+  `300+324+104=728` 条唯一 seed 的 progress 元数据；warning 为既有 Matplotlib 环境提示。
+- [x] main 于 2026-08-03 对真实 D3/D4/D5 生成会话执行 metadata-only preflight。输入合同
+  SHA-256 为 `341afff736127b8624c0c730f56c6a0cea90bb2505988ae0e6b9cd78aca60092`；
+  `preflight.json` 与中文报告 SHA-256 分别为
+  `2c051c5d653a56a33a4036464c7c76784b60615b4f90a768962614a04b31205f`、
+  `6cacd9a8a32a7967985a23ce3e1f2a201118807ddc3a2078b440861c8d54ae4c`。
+- [x] 真实预检达到冻结阈值：D3/D4/D5 为 `300/324/104 metadata_ready`，唯一 seed 同数，
+  `blocker_codes=[]`，每模块 `payload_file_open_count=0`；inventory 范围仅为 producer metadata
+  self-consistency，payload content verified 为 false，全部训练、消费、模型和系统权限为 false。
+
+### 后续授权审计（已关闭）
+
+- [x] main 单独定义并签发显式 D6 来源审计授权；preflight 本身仍不能签发或消费授权。
+- [x] 实现授权后的 full payload audit，独立检查 episode/sample wrapper、split、双时间戳、
+  协方差、在线 truth/actor/object 身份、全局编号创建/改写和实际整树摘要。
+- [x] 在新授权下对最新 D3/D4/D5 generation-only 来源执行正式独立载荷审计；结果和限制见
+  本文顶部。预检阶段没有载荷权限的历史事实保持不变。
+
 ## 2026-08-01 真实 AirSim 受控 TTC 专项复核
 
 ### 已完成

@@ -1,5 +1,78 @@
 # D6 Evaluation Metrics
 
+## 2026-08-03 D3/D4/D5 授权来源载荷审计
+
+D6 已实现并真实执行只读 full payload source audit。入口同时绑定输入合同、metadata preflight
+和 main 签发的 audit-only authorization，三者 SHA-256 任一漂移即失败关闭。授权权限必须与
+来源审计白名单精确相等；训练、优化器、模型消费、阈值调整、shadow/assist、分配、降级、
+联盟、相机命令、运行和控制等权限保持 false。
+
+审计只读取绑定 inventory 中列出的安全相对路径。绝对路径、`..`、symlink、非普通文件、
+hard-link 路径复用、未登记引用、摘要篡改、重复 JSON key、NaN/Inf、schema/episode/seed/frame
+计数漂移均被拒绝，不通过目录扫描推断合法数据。D3、D4、D5 分别使用自身 schema：D4 manifest
+字段固定为 `schema`；D5 的 source、partition、online identity/provenance 分层精确核对。
+D5 descriptor 自哈希单独采用生产方规范，即 `ensure_ascii=True`、键排序、紧凑分隔符和末尾
+换行，不改变 D3/D4 的摘要语义。
+
+真实 v3 审计目录为 `/home/linux/Documents/MSM-source-audit-result-20260803-v3`，状态为
+`source_integrity_audit_passed_not_training_authorized`，阻断项为空。D3 为 300 episode、3086
+frame；D4 为 324 episode、921 frame；D5 为 104 episode、280968 sample，其中 train、
+validation、future-held-out 分别为 `48/24/32` episode 和 `126138/66782/88048` sample。
+三模块 truth leakage 和 split leakage 均为 0。future-held-out 只做完整性审计，没有模型消费。
+
+输出 `source_audit.json`、中文报告和 `SHA256SUMS` 的 SHA-256 分别为
+`8fa4f39c4c63a30362a421cd1cd7904554873ebaccfc1fdb0040a31416043bc7`、
+`642e6500a827d7fe0fc6e786dd525388145d92433be9732b07c12610b64e12e6` 和
+`8ed97b186603c0e8977d03e32107a412a3748c1286eb9e16fb1867822a7feb25`。专项回归为
+`37 passed, 1 warning in 2.67s`；D6 全量为
+`1418 passed, 16 skipped, 1 warning in 126.18s`。warning 是既有 Matplotlib `Axes3D` 环境提示。
+该结论只确认来源完整性，不是训练、推理或系统运行许可。
+
+## 2026-08-03 D3/D4/D5 来源生成元数据预检
+
+D6 新增统一的 generation metadata preflight。版本化输入合同必须显式列出 D3、D4、D5
+三个不透明来源根，分别绑定 `300/324/104` 个 episode、源码提交、generation-only 授权摘要、
+模块请求摘要，以及 session、checkpoint、result、progress、manifest 和嵌入式
+`artifact_inventory` 摘要。模块身份只取合同字段并与文件内容交叉核对，不从目录名推断。
+
+预检只打开五类显式元数据文件。它检查父路径和文件 symlink、重复 JSON key、schema、最终态、
+连续 sequence、唯一 seed、提交/授权/请求绑定、安全计数和 inventory 元数据；登记在 inventory
+中的 dataset episode/sample payload 不会被打开、遍历或重新哈希。清单绑定支持 D3 的
+`dataset/dataset_manifest.json`、D4 的 `dataset/manifest.json` 和 D5 的
+`source_manifest.json`。schema 字段按生产者固定：D3/D5 只接受 `schema_version`，D4 只接受
+`schema`；结果统一输出 `manifest_schema_version`，并保留 `manifest_schema_field`。双字段并存、
+错用另一模块字段、非字符串、空白值、模块不匹配和仅提供通用 `version` 均失败关闭。这些字段
+形态先在合成路径上完成接口测试，再由 main 对真实生成来源的绑定元数据执行预检。
+
+通过状态仅为 `ready_for_explicit_d6_source_audit_authorization`。结果权限合同显式关闭训练、
+验证集消费、测试集消费、未来保留集消费、模型推理、shadow、assist、promotion、PPO、分配、
+降级、相机命令、运行、生产、控制以及 `global_track_id` 创建和写入。
+
+软件边界证据来自 D6 synthetic fixtures：D3/D4/D5 合计 728 条 progress 记录和三个嵌套 payload
+占位文件。测试在 inventory 冻结后改写 payload，并监控来源根内的文件打开和目录扫描；实际只
+打开 15 个绑定元数据文件，目录扫描和 payload 打开均为 0。结果只标记
+`artifact_inventory_producer_metadata_self_consistent=true`，同时固定
+`artifact_inventory_payload_content_verified=false`。2026-08-03 修订后的软件验收阈值为
+全部 17 个定向用例通过，实际结果为
+`17 passed, 1 warning in 2.57s`；warning 是既有 Matplotlib `Axes3D` 环境提示。
+
+同日，main 使用真实 D3/D4/D5 生成会话执行了 metadata-only preflight。输入合同位于
+`/home/linux/Documents/MSM-source-audit-request-20260803/preflight_input.json`，SHA-256 为
+`341afff736127b8624c0c730f56c6a0cea90bb2505988ae0e6b9cd78aca60092`。报告目录为
+`/home/linux/Documents/MSM-source-audit-request-20260803/metadata-preflight-report-v2`；
+`preflight.json` 与中文报告的 SHA-256 分别为
+`2c051c5d653a56a33a4036464c7c76784b60615b4f90a768962614a04b31205f` 和
+`6cacd9a8a32a7967985a23ce3e1f2a201118807ddc3a2078b440861c8d54ae4c`。验收要求三模块
+episode 数与唯一 seed 数分别严格等于 `300/324/104`、状态均为 `metadata_ready`、阻断码为空、
+每模块 payload 文件打开数为 0，且全部权限为 false；实际结果满足上述要求，状态为
+`ready_for_explicit_d6_source_audit_authorization`。
+
+该真实执行只证明绑定元数据及生产者 inventory 声明自洽。`formal_source_data_read=false`、
+`full_payload_audit_performed=false`、`artifact_inventory_payload_content_verified=false`；
+episode/sample 数量及内容、数据划分、双时间戳、协方差、在线身份隔离和实际整树摘要均未核验。
+该段记录正式授权前的预检边界。后续 full payload audit 已按本页顶部记录执行并通过；训练、
+模型消费、推理、shadow、assist、分配、降级、相机、运行、控制及 `global_track_id` 权限仍未开放。
+
 ## 2026-08-01 真实 AirSim 末端受控扰动复核
 
 D6 只读复核了 seed `1`、`ClockSpeed=0.2` 的两个真实 AirSim SimpleFlight 2 对 2 case。

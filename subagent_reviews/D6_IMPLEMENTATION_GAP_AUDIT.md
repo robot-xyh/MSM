@@ -1,5 +1,78 @@
 # D6 实现差距审计
 
+## 2026-08-03 D3/D4/D5 授权来源载荷审计 P1 关闭
+
+### 已关闭范围
+
+D6 已实现 input/preflight/authorization 三重 SHA 绑定的 audit-only 入口，并对冻结真实来源完成
+v3 审计。文件准入只来自 inventory；路径穿越、symlink、非普通文件、inode 复用、未列引用、
+hash、重复键、非有限数、schema/count/timestamp/covariance、truth 和 split 问题均失败关闭。
+生产者合同分别建模，D4 保留 `schema` 字段，D5 identity/provenance 按 source、partition 和 online
+层精确核对。
+
+D5 descriptor 自哈希误报已关闭。生产者规范为 ASCII 转义、键排序、紧凑分隔符和行尾换行，
+D6 使用独立 producer canonical line SHA 函数；非 ASCII 和换行负例已覆盖，D3/D4 摘要语义未改。
+缺身份字段、非零 truth/global-track 计数及错误 ownership 均失败关闭。
+
+真实 v3 的 D3/D4/D5 为 `300/324/104` episode、`3086/921/280968` 语义记录；truth leakage 和
+split leakage 均为 0，阻断项为空，所有非审计权限为 false。专项回归为
+`37 passed, 1 warning in 2.67s`，D6 全量为
+`1418 passed, 16 skipped, 1 warning in 126.18s`。该证据关闭“正式 generation 来源能否在精确授权
+下完成独立载荷完整性审计”的 D6-owned P1，不产生训练或运行准入。
+
+### 保留边界
+
+1. D3 六维状态/协方差、D4 协方差和 D5 显式 bbox/local-track geometry 不在当前 producer schema；
+   D6 只能标记 warning，不能补造来源字段。
+2. future-held-out 只做完整性审计，没有模型消费。任何训练、选择、推理或策略准入均需新授权。
+3. 该项不证明模型质量、AirSim/真实传感器性能或物理闭环效果。当前没有新增 D6-owned P0。
+
+## 2026-08-03 最新 generation 来源统一预检 P1 部分关闭
+
+### 已关闭范围
+
+D6 已实现统一、版本化、失败关闭的 D3/D4/D5 generation metadata preflight。输入合同显式
+绑定三个不透明来源根、模块名、`300/324/104` episode、源码提交、generation-only 授权摘要、
+模块请求摘要和五类元数据摘要；`artifact_inventory` 以规范 JSON 摘要单独绑定。预检不根据
+路径名识别模块。
+
+实现只打开 session、checkpoint、result、progress 和显式 manifest。它拒绝父路径或文件
+symlink、重复 JSON key、错误 schema、非 finalized 状态、缺失 sequence、重复 seed、绑定漂移、
+非有限状态、在线 truth 使用、全局编号创建/改写以及任何训练/运行/控制 authority。inventory
+仅检查登记项、路径、大小、摘要格式、计数和树摘要的 producer metadata 自洽性，不读取
+payload，也不将该结论标记为 payload 内容已核验。D3 的 `dataset/dataset_manifest.json`、D4
+的 `dataset/manifest.json` 和 D5 `source_manifest.json` 已通过合成相对路径夹具验证。
+
+producer-specific schema 字段兼容缺口已关闭。D3/D5 只接受 `schema_version`，D4 只接受
+`schema`；输出保留统一的 `manifest_schema_version` 和可审计的 `manifest_schema_field`。
+双字段、错模块字段、非字符串、空白值、manifest 模块身份不匹配及仅提供通用 `version` 的
+负例均失败关闭。兼容逻辑不搜索或猜测其他版本字段。
+
+专用 CLI 只提供 preflight，并输出机器 JSON、中文 Markdown 和 `SHA256SUMS`。通过状态仅表示
+可以申请显式 D6 来源审计授权；训练、验证/测试/未来保留集消费、模型推理、shadow、assist、
+promotion、PPO、assignment、degradation、camera command、runtime、production、control 和
+`global_track_id` create/write 均显式保持 false。
+
+2026-08-03 软件验收使用三个 synthetic root 和 728 条唯一 seed 的 progress 元数据。测试在
+inventory 冻结后改写三个 payload，并监控来源根文件打开与目录扫描。修订后阈值为 17 个正负例
+全部通过，实际为 `17 passed, 1 warning in 2.57s`；只打开 15 个绑定元数据文件，payload 打开和目录
+扫描均为 0。warning 是既有 Matplotlib `Axes3D` 环境提示，不影响 preflight。
+
+同日，main 对真实 D3/D4/D5 生成会话执行 metadata-only preflight。输入合同 SHA-256 为
+`341afff736127b8624c0c730f56c6a0cea90bb2505988ae0e6b9cd78aca60092`；机器报告和中文报告
+SHA-256 分别为 `2c051c5d653a56a33a4036464c7c76784b60615b4f90a768962614a04b31205f`、
+`6cacd9a8a32a7967985a23ce3e1f2a201118807ddc3a2078b440861c8d54ae4c`。冻结验收要求 D3/D4/D5
+分别为 `300/324/104 metadata_ready`、唯一 seed 同数、`blocker_codes=[]`、每模块 payload 打开为
+0、inventory payload 未验证且全部权限为 false；真实结果全部满足。该证据关闭“统一预检能否在
+真实生产者元数据上完成 schema 兼容和失败关闭检查”的 D6-owned P1 子项。
+
+### 预检时点边界（已由正式审计关闭）
+
+1. 预检当时没有来源载荷读取权限，不能写成来源完整性通过；该历史结论保持成立。
+2. 后续已由 main 独立签发 audit-only authorization，并由本文顶部的 full payload audit 关闭
+   episode/sample、split、时间戳、身份隔离和实际摘要 P1。
+3. preflight 状态本身仍不构成审计授权、训练许可、模型质量、运行准入或物理结果。
+
 ## 2026-08-01 末端本地 ID Switch 流分组 P1
 
 真实 AirSim seed `1` 的 `bbox_area_jump` 与 `bbox_clipping` 两个 2 对 2 case 均完成专项合规

@@ -1,5 +1,38 @@
 # 200 对 200 三维质点仿真实施计划
 
+## 2026-08-03 全目标证据审计
+
+1. [x] main 重新读取终极目标和版本管理要求，D1-D7 owner 分别完成首轮只读证据核验；
+   随后在独立 audit-only 授权下由 D6 读取正式来源载荷。两个阶段均未启动训练、模型消费、
+   运行或控制。
+2. [x] 可扩展三维主模块在提交 `adc13d1` 上通过 `522 passed, 1 warning`。该结果只证明
+   软件合同回归，不替代正式 episode、模型质量或物理结果。
+3. [x] 确认 D3/D4/D5 来源生成共 `728/728`，D6 最新来源独立审计已经通过；当前代际训练、
+   validation 选模、future-held-out 模型评价和运行准入仍未完成。
+4. [x] 确认当前关键质量缺口：D1 单种子暖机召回 `0.8183`，D2 的 200 规模正式样本中
+   `67/90` 可用、64 个 episode 累计 562 次身份交换；两项均未达到最终验收状态。
+5. [x] 确认 D1-D3 仍存在同进程直接传递，D1 总线航迹摘要未完整携带双时间戳。统一消息
+   总线闭环为开放 P1。
+6. [x] 确认正式 R0 保持 `450/900`，G1/A1/A2/A3/C1/F1 尚未形成同键最终对照，200 对
+   200 多 seed 五米物理闭环和中文 Word 报告未完成。
+7. [x] main 增加 D3/D4/D5 来源元数据绑定请求生成器。生成器只打开显式绑定的
+   session、checkpoint、result、progress 和 manifest，不遍历 dataset；合成测试
+   `5 passed, 1 warning`。真实三个来源已形成外置 input contract，SHA-256 为
+   `341afff7...aca60092`。D6 元数据预检在修复 D4 规范 `schema` 字段兼容后通过，
+   结果 SHA-256 为 `2c051c5d...b31205f`；三模块 payload 打开数均为 0。
+8. [x] main 使用精确确认语句签发 audit-only 授权，授权 SHA-256 为
+   `ec6ab29d...a10f0f`。只读来源审计权限开启；训练、模型推理、保留集模型消费、shadow、
+   assist、分配、降级、相机命令、运行、控制和全局航迹编号创建/改写保持关闭。
+9. [x] D6 对最新 D3/D4/D5 来源完成独立载荷审计。D3/D4/D5 分别覆盖
+   `300/324/104` episode 和 `3086/921/280968` 条语义记录，真值泄漏和切分泄漏均为 0；
+   结果状态为 `source_integrity_audit_passed_not_training_authorized`，机器报告 SHA-256 为
+   `8fa4f39c...bc7`。
+10. [ ] 来源审计通过后，分别申请 D3 A1 v3、D4 A2 v8、D5 A3 v3 的 train-only 授权；
+   validation、future-held-out、shadow、assist 和控制继续使用独立授权门。
+
+完整矩阵见
+[`docs/SCALABLE_3D_GOAL_COMPLETION_AUDIT_20260803_CN.md`](docs/SCALABLE_3D_GOAL_COMPLETION_AUDIT_20260803_CN.md)。
+
 ## 2026-08-03 正式来源生成恢复计划
 
 1. [x] 在 generation-only 授权下完成 D3 `300/300`，最终清单记录 `3086` 帧和 `300`
@@ -23,7 +56,8 @@
    `24000-24103`、development/future-held-out `72/32` 均完整；总来源清单为
    `b3bbdc1b...ad7978`。在线真值、身份创建/改写、正式 seed 读取、保留集模型消费、训练、
    运行和控制计数均为 0。
-9. [ ] D6 独立审计、训练、held-out 消费、运行和控制需另行授权；本轮不得启动。
+9. [x] D6 已在独立 audit-only 授权下完成来源载荷审计；训练、held-out 模型消费、运行和
+   控制仍需分别授权，本轮均未启动。
 
 ## 2026-08-02 学习来源生成前置收敛
 

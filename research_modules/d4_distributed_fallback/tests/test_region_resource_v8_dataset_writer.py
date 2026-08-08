@@ -15,7 +15,9 @@ from d4_distributed_fallback.region_resource_v8_dataset_writer import (
     V8TrainDatasetWriter,
 )
 from d4_distributed_fallback.region_resource_v8_development_contract import (
+    REGION_RESOURCE_V8_DATASET_MANIFEST_SCHEMA,
     RegionResourceV8ValidationError,
+    V8_DATASET_STATUS,
     V8AnonymousRawActorAction,
     V8AnonymousTransferCandidate,
     V8DirectedEdgeState,
@@ -492,6 +494,20 @@ def test_writer_uses_canonical_bytes_and_separate_exact_inventory(
     files = {path.relative_to(result.dataset_root) for path in result.dataset_root.rglob("*") if path.is_file()}
     assert len(files) == 649
     assert all(path.parts[0] in {"online", "labels"} or path == Path("manifest.json") for path in files)
+
+
+def test_writer_publishes_canonical_manifest_schema_and_status_fields(
+    finalized_dataset: V8DatasetWriteResult,
+) -> None:
+    manifest_payload = json.loads(
+        (finalized_dataset.dataset_root / "manifest.json").read_text(
+            encoding="utf-8"
+        )
+    )
+
+    assert manifest_payload["schema"] == REGION_RESOURCE_V8_DATASET_MANIFEST_SCHEMA
+    assert "schema_version" not in manifest_payload
+    assert manifest_payload["status"] == V8_DATASET_STATUS
 
 
 def test_resume_reloads_order_seed_hash_and_clean_source_state(

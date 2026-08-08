@@ -1,5 +1,32 @@
 # D6 文档索引
 
+2026-08-03 完成 D3/D4/D5 授权来源载荷审计。新入口严格绑定 input、preflight、authorization
+三份文件及 SHA-256，只读取 inventory 登记的普通文件，不扫描目录推导合法数据。生产者差异按
+D3/D4/D5 分别建模；D5 descriptor 使用 ASCII 转义、紧凑排序 JSON 和行尾换行的独立摘要函数，
+source/partition/online identity 分层精确验证。真实 v3 覆盖 `300/324/104` episode 和
+`3086/921/280968` frame/sample，truth 与 split leakage 均为 0，阻断项为空。状态仅为来源完整性
+审计通过，不开放训练或运行权限。原理、实现和真实结果分别见 `MODULE_PRINCIPLES_CN.md`、
+`ALGORITHM_AND_IMPLEMENTATION.md` 和 `EXPERIMENT_REPORT.md`。
+
+2026-08-03 新增 D3/D4/D5 generation metadata preflight。该入口只读取五类显式元数据，
+校验 `300/324/104` episode、连续 sequence、唯一 seed、来源绑定、安全计数和 producer
+inventory 元数据自洽性。合成夹具覆盖 D3/D4 嵌套 manifest 与 D5 source manifest；测试精确打开
+集合为 15 个绑定元数据文件，dataset payload 打开和来源目录扫描均为 0。权限合同显式关闭
+训练、数据消费、推理、shadow/assist/promotion、PPO、任务权限、运行生产控制和全局航迹编号
+创建/写入。原理见 `MODULE_PRINCIPLES_CN.md`，实现见 `ALGORITHM_AND_IMPLEMENTATION.md`，P1
+边界见 `../../../subagent_reviews/D6_IMPLEMENTATION_GAP_AUDIT.md`。manifest 字段映射固定为
+D3/D5 `schema_version` 与 D4 `schema`；D4 合成路径为
+`dataset/manifest.json`。字段冲突、错模块字段、类型、空值、模块身份和通用 `version` 负例均
+失败关闭。修订后专项结果为 `17 passed, 1 warning in 2.57s`。
+
+main 随后对真实生成会话执行 metadata-only preflight。D3/D4/D5 的 episode 与唯一 seed 数均为
+`300/324/104`，状态均为 `metadata_ready`，阻断码为空，每模块 payload 打开数为 0。输入合同、
+机器报告和中文报告 SHA-256 依次为 `341afff7...0092`、`2c051c5d...205f`、
+`6cacd9a8...ae4c`，报告状态为 `ready_for_explicit_d6_source_audit_authorization`。该结果只确认
+真实来源绑定元数据和 producer inventory 声明自洽；payload 内容、样本数量、数据划分、双时间戳、
+协方差、在线身份及实际整树摘要在该预检时点尚未核验；后续正式来源审计状态见上一段。预检
+本身没有签发审计或运行权限。
+
 2026-07-31 关闭 `learning_scope_formal_audit` archive 模式 P1。learned scope 与每个
 R0 scope 显式选择目录或归档存储；归档路径逐片验证、恢复、执行原学习证据审计和 D6
 离线评价，再复核 archive-native merge。开发夹具覆盖 G1/A1/A2/A3/C1/F1、归档 R0、

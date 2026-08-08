@@ -1,5 +1,98 @@
 # D6 系统级离线评估：算法原理与实施说明
 
+## D3/D4/D5 授权来源载荷审计
+
+入口 `audit_learning_source_payloads()` 接收六个带外参数：input contract、metadata preflight、
+audit authorization 三个文件路径及各自 SHA-256。执行顺序固定如下：
+
+1. 复算三份文件摘要，使用严格 JSON 解析器拒绝重复键和 NaN/Inf；授权 confirmation 必须精确为
+   `AUTHORIZE D6 SOURCE AUDIT OF D3 D4 D5 ONLY`，权限字典必须精确等于 audit-only 白名单。
+2. 重新运行 metadata preflight，核对原预检的 raw/canonical 绑定、source root、commit、request、
+   generation authorization、manifest schema 和 inventory tree。预检漂移时不打开 payload。
+3. 规范化 inventory 相对路径，拒绝绝对路径、`..`、symlink、非普通文件和 inode 复用。只打开
+   清单列出的文件，逐项核对 size、SHA-256 和精确文件集合，不扫描目录补齐数据。
+4. D3 核对 300 episode、3086 frame、online/offline 哈希和行数、episode/seed 关系、双时间戳、
+   候选边与需求合同。在线记录递归拒绝 truth 字段，离线标签保持物理分离。
+5. D4 核对 324 对 online/label 文件、921 frame、episode/seed/timestamp 边界及 epoch、lease、
+   plan version、区域资源合同。manifest 只接受生产者字段 `schema`。
+6. D5 核对 104 episode、development 72 和 future-held-out 32，train/validation/future-held-out
+   episode 与 sample 均不交叠。source、partition、online identity/provenance 按各层精确键验证，
+   truth identity 使用、全局编号创建和改写计数必须为 0，所有权必须为 `center_read_only`。
+7. D5 descriptor 去除 `content_sha256` 后，使用
+   `_d5_producer_canonical_line_sha256()` 复算生产方规范字节：`ensure_ascii=True`、键排序、紧凑
+   分隔符、`allow_nan=False` 和末尾换行。该函数不替换 D3/D4 的通用摘要函数。
+8. 汇总每模块打开文件数、字节数、记录数、缺失率、覆盖、延迟、truth/split leakage、warning
+   和所有权限。报告写入新的空目录，禁止位于来源根内，也不覆盖历史结果。
+
+合成测试覆盖授权缺失与篡改、权限升级、路径穿越、symlink、hard-link、哈希篡改、重复 JSON
+key、NaN/Inf、truth/split 泄漏、timestamp/covariance 错误、D4 schema 差异和 D5 三层身份合同。
+D5 descriptor 回归包含中文字符串，并分别验证 ASCII 转义与行尾换行。定向结果为
+`37 passed, 1 warning in 2.67s`，完整 D6 回归为
+`1418 passed, 16 skipped, 1 warning in 126.18s`。
+
+真实 v3 执行输出位于 `/home/linux/Documents/MSM-source-audit-result-20260803-v3`。D3/D4/D5
+打开文件数为 `308/654/319`，读取字节数为 `1375907650/30988677/355512715`，语义记录数为
+`3086/921/280968`。全部 hard gate 通过，truth/split leakage 均为 0。输出 JSON、中文报告和
+校验和文件的 SHA-256 分别为 `8fa4f39c...bc7`、`642e6500...2e6` 和 `8ed97b18...f25`。
+future-held-out 只做哈希、结构、计数和隔离核验，没有训练、验证、测试、选择或推理消费。
+
+## D3/D4/D5 generation metadata preflight
+
+输入合同固定包含三个 `GenerationSourceBinding`。每个 binding 显式给出 module、绝对来源根、
+episode 数、源码提交、generation 授权摘要、模块请求摘要，及 session、checkpoint、result、
+progress、manifest 的相对路径和 SHA-256。result 内嵌的 `artifact_inventory` 另计算规范 JSON
+摘要，防止调用方替换文件列表后仍沿用旧合同。
+
+执行顺序如下：
+
+1. 在解析内容前检查 input、来源根和五类元数据路径的全部已存在父节点，任何 symlink 失败关闭；
+2. 对五类文件复算合同摘要，使用 duplicate-key rejecting JSON parser 解析，拒绝 NaN 和重复键；
+3. 交叉核对 session、checkpoint、result 的 schema、module、commit、authorization、request、
+   planned/completed/remaining/next sequence 和 finalized 状态；
+4. 逐行解析 progress，要求恰有 N 条，sequence 等于行号，seed 全局唯一，finite 为 true，truth、
+   全局编号创建/改写及 authority 计数为零或 false；
+5. 解析 manifest 的 schema 元数据，不调用 D3/D4/D5 高层 validator。字段映射固定为 D3/D5
+   `schema_version`、D4 `schema`，统一输出 `manifest_schema_version` 和
+   `manifest_schema_field`。双字段、错模块字段、非字符串、空白值、模块身份不匹配及仅提供
+   通用 `version` 均失败关闭。manifest 允许安全的嵌套相对路径，但文件名只能是
+   `dataset_manifest.json`、`manifest.json` 或 `source_manifest.json`；
+6. 验证 artifact inventory 声明项的规范路径、排序、唯一性、大小合计、SHA-256 格式和树摘要，
+   并确认五类绑定文件均在 inventory 中。该步骤不将 inventory path 拼到来源根，不 stat、遍历、
+   打开或重新哈希 payload；
+7. 返回 readiness 或 fail closed。结果使用
+   `artifact_inventory_verification_scope=producer_metadata_self_consistency_only`、
+   `artifact_inventory_producer_metadata_self_consistent=true` 和
+   `artifact_inventory_payload_content_verified=false` 区分两层证据，并固定写明
+   `payload_file_open_count=0`、`formal_source_data_read=false`；
+8. 输出权限字典显式关闭训练、验证/测试/未来保留集消费、模型推理、shadow、assist、promotion、
+   PPO、分配、降级、相机命令、运行、生产、控制和 `global_track_id` 创建/写入。
+
+CLI `run_learning_source_generation_preflight.py` 只暴露上述流程。它没有 full-audit 参数，报告
+包含 `preflight.json`、`PREFLIGHT_REPORT_CN.md` 和 `SHA256SUMS`。payload 实际摘要、split、
+双时间戳、协方差和在线身份检查留给后续授权后的独立审计入口。
+
+合成测试分别使用 D3 `dataset/dataset_manifest.json`、D4
+`dataset/manifest.json` 和 D5 `source_manifest.json`。D3/D5 夹具写 `schema_version`，D4 夹具
+写 `schema=d4-region-resource-v8-train-dataset-manifest-v1`。inventory 生成后，测试改写三个
+payload，再监控来源根内的 `open` 与目录扫描调用。预检仍只打开五类绑定元数据，每模块 5 个、
+总计 15 个；payload 打开和目录扫描均为 0。该测试证明接口与当前实现的元数据边界，不证明正式
+来源内容完整。2026-08-03 修订后的专项测试为 `17 passed, 1 warning in 2.57s`。
+
+2026-08-03，main 以
+`/home/linux/Documents/MSM-source-audit-request-20260803/preflight_input.json` 作为真实执行输入，
+其 SHA-256 为 `341afff736127b8624c0c730f56c6a0cea90bb2505988ae0e6b9cd78aca60092`。报告写入
+`/home/linux/Documents/MSM-source-audit-request-20260803/metadata-preflight-report-v2`；
+`preflight.json` 和中文报告 SHA-256 分别为
+`2c051c5d653a56a33a4036464c7c76784b60615b4f90a768962614a04b31205f`、
+`6cacd9a8a32a7967985a23ce3e1f2a201118807ddc3a2078b440861c8d54ae4c`。三模块结果分别为
+`300/324/104 metadata_ready`，唯一 seed 同数，`blocker_codes=[]`，每模块 payload 文件打开数
+为 0。验收阈值要求上述计数精确一致、阻断码为空、payload 打开为 0、inventory payload 验证为
+false 且全部权限为 false；真实执行满足该阈值。
+
+该段记录 metadata-only preflight 的时点边界。后续 full payload audit 已通过独立授权入口执行，
+但训练、验证、未来保留集模型消费、推理、shadow、assist、分配、降级、相机命令、运行、控制
+或 `global_track_id` 创建/写入仍未授权。
+
 ## 末端 ID Switch 分组审计
 
 当前 `_count_terminal_id_switches()` 过滤缺少全局航迹或本地航迹号的记录，并忽略

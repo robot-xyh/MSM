@@ -1,5 +1,35 @@
 # D6 正式实验矩阵准入预检报告
 
+## D3/D4/D5 授权来源载荷审计（2026-08-03）
+
+真实审计使用冻结 input contract、metadata preflight 和 main audit-only authorization。输入合同、
+预检和授权 SHA-256 分别为 `341afff736127b8624c0c730f56c6a0cea90bb2505988ae0e6b9cd78aca60092`、
+`2c051c5d653a56a33a4036464c7c76784b60615b4f90a768962614a04b31205f` 和
+`ec6ab29d0db30a03ad72594f008d1e9e88348d3e2d64eb9dbf046510d3a10f0f`。D6 只按绑定 inventory
+读取文件，没有执行训练、推理、阈值调整、任务分配、降级、相机或控制流程。
+
+- D3：300 episode、3086 frame，打开 308 个文件，读取 1375907650 字节。
+- D4：324 episode、921 frame，打开 654 个文件，读取 30988677 字节。
+- D5：104 episode、280968 sample，打开 319 个文件，读取 355512715 字节。train、validation、
+  future-held-out 为 `48/24/32` episode 和 `126138/66782/88048` sample。
+
+三模块 hash、path、schema、count、timestamp、finite numeric、truth leakage 和 split leakage 门
+全部通过；truth leakage 与 split leakage 均为 0。D5 future-held-out 只用于哈希、结构、计数和
+隔离核验，`future_held_out_model_consumption_performed=false`。D5 descriptor 自哈希采用 producer
+的 ASCII 转义与行尾换行规范后，v3 不再出现合同建模误报。
+
+结果目录为 `/home/linux/Documents/MSM-source-audit-result-20260803-v3`。`source_audit.json`、
+`SOURCE_AUDIT_REPORT_CN.md`、`SHA256SUMS` 的 SHA-256 分别为
+`8fa4f39c4c63a30362a421cd1cd7904554873ebaccfc1fdb0040a31416043bc7`、
+`642e6500a827d7fe0fc6e786dd525388145d92433be9732b07c12610b64e12e6`、
+`8ed97b186603c0e8977d03e32107a412a3748c1286eb9e16fb1867822a7feb25`。状态为
+`source_integrity_audit_passed_not_training_authorized`，阻断项为空，全部非审计权限为 false。
+
+warning 记录实际 producer 合同边界：D3 不含显式六维状态/协方差，D4 不含协方差，D5 使用
+opaque feature fingerprint 而非显式 bbox/local-track geometry。它们不影响本次按现有 schema 的
+完整性结论，也不能被解释为这些字段已经可用。专项测试为 `37 passed, 1 warning in 2.67s`，
+D6 全量为 `1418 passed, 16 skipped, 1 warning in 126.18s`。
+
 ## 真实 AirSim 末端受控扰动（2026-08-01）
 
 本次只读评估覆盖 seed `1`、`ClockSpeed=0.2` 的两个真实 AirSim SimpleFlight 2 对 2 case。

@@ -694,6 +694,27 @@ from .reserved_seed_intervention_audit import (
     render_reserved_seed_intervention_audit_markdown,
     write_reserved_seed_intervention_audit,
 )
+from .learning_source_generation_preflight import (
+    EXPECTED_EPISODE_COUNTS as LEARNING_SOURCE_GENERATION_EXPECTED_EPISODE_COUNTS,
+    GenerationSourceBinding,
+    LEARNING_SOURCE_GENERATION_PREFLIGHT_INPUT_SCHEMA_VERSION,
+    LEARNING_SOURCE_GENERATION_PREFLIGHT_SCHEMA_VERSION,
+    LearningSourceGenerationPreflightError,
+    LearningSourceGenerationPreflightInputs,
+    MetadataFileBinding,
+    evaluate_learning_source_generation_preflight,
+    load_learning_source_generation_preflight_inputs,
+    write_learning_source_generation_preflight_report,
+)
+from .learning_source_payload_audit import (
+    LEARNING_SOURCE_PAYLOAD_AUDIT_SCHEMA_VERSION,
+    SOURCE_AUDIT_AUTHORIZATION_SCHEMA_VERSION,
+    SOURCE_AUDIT_CONFIRMATION,
+    LearningSourcePayloadAuditError,
+    LearningSourcePayloadAuditInputs,
+    audit_learning_source_payloads,
+    write_learning_source_payload_audit_report,
+)
 from .d1_global_track_a95_episode_ab import (
     CANDIDATE_IMPLEMENTATION_ID as D1_GLOBAL_TRACK_A95_CANDIDATE_IMPLEMENTATION_ID,
     CANDIDATE_SELECTOR as D1_GLOBAL_TRACK_A95_CANDIDATE_SELECTOR,
@@ -709,6 +730,23 @@ from .d1_global_track_a95_episode_ab import (
 )
 
 __all__ = [
+    "LEARNING_SOURCE_PAYLOAD_AUDIT_SCHEMA_VERSION",
+    "SOURCE_AUDIT_AUTHORIZATION_SCHEMA_VERSION",
+    "SOURCE_AUDIT_CONFIRMATION",
+    "LearningSourcePayloadAuditError",
+    "LearningSourcePayloadAuditInputs",
+    "audit_learning_source_payloads",
+    "write_learning_source_payload_audit_report",
+    "GenerationSourceBinding",
+    "LEARNING_SOURCE_GENERATION_EXPECTED_EPISODE_COUNTS",
+    "LEARNING_SOURCE_GENERATION_PREFLIGHT_INPUT_SCHEMA_VERSION",
+    "LEARNING_SOURCE_GENERATION_PREFLIGHT_SCHEMA_VERSION",
+    "LearningSourceGenerationPreflightError",
+    "LearningSourceGenerationPreflightInputs",
+    "MetadataFileBinding",
+    "evaluate_learning_source_generation_preflight",
+    "load_learning_source_generation_preflight_inputs",
+    "write_learning_source_generation_preflight_report",
     "D1_GLOBAL_TRACK_A95_AGGREGATE_SCHEMA_VERSION",
     "D1_GLOBAL_TRACK_A95_CANDIDATE_IMPLEMENTATION_ID",
     "D1_GLOBAL_TRACK_A95_CANDIDATE_SELECTOR",

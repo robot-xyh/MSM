@@ -1,5 +1,59 @@
 # D6 系统评估指标综述及子方案
 
+## 2026-08-03 授权来源载荷审计评审
+
+评审接受 v3 来源完整性结论。D6 在打开载荷前核对 input contract、metadata preflight 和
+audit-only authorization 三重摘要与精确权限，随后只读取绑定 inventory 中的普通文件。实现没有
+通过目录扫描补齐数据，也没有导入生产者 loader。路径、hash、JSON、schema、计数、时间戳、
+可用协方差、truth 和 split 任一不一致都会失败关闭。
+
+两次真实失败均按保守流程保留。v2 的 D5 identity 层级和 descriptor 自哈希问题属于 D6 对生产者
+schema 的错误建模，不是数据缺口。修订将 source provenance 与三层 identity 分开精确验证，并为
+D5 descriptor 增加 ASCII 转义、紧凑排序 JSON、行尾换行的独立 producer digest；没有放宽真值、
+全局编号或 D3/D4 摘要门。缺字段、非零计数和错误 ownership 负例继续失败。
+
+真实 v3 覆盖 D3 300 episode/3086 frame、D4 324 episode/921 frame、D5 104 episode/280968
+sample。D5 的 train/validation/future-held-out 为 `48/24/32` episode 和
+`126138/66782/88048` sample。三模块 truth leakage 与 split leakage 均为 0；阻断项为空，全部
+非审计权限为 false。专项回归 37 项通过，D6 全量为 1418 passed、16 skipped、1 warning。
+
+评审只接受状态 `source_integrity_audit_passed_not_training_authorized`。D3/D4 缺少当前 schema
+未承诺的协方差字段、D5 缺显式 bbox/local-track geometry 作为 warning 保留。future-held-out 未被
+模型消费。本结果不授权训练、推理、阈值选择、shadow/assist、任务分配、降级、相机或控制。
+
+## 2026-08-03 generation metadata preflight 评审
+
+评审接受本次最小切片的软件边界。D6 用一个版本化合同同时登记 D3、D4、D5 三个来源，要求
+episode 数固定为 `300/324/104`，并交叉核对 session、checkpoint、result 和逐 episode
+progress 中的模块、提交、授权和请求摘要。模块身份不依赖目录命名。
+
+manifest 兼容范围按生产者收紧：D3/D5 使用 `schema_version`，D4 使用 `schema`。D4 合成夹具
+采用 `dataset/manifest.json` 和规范 schema 值；输出同时保留统一值
+`manifest_schema_version` 与来源字段 `manifest_schema_field`。双字段并存、错用另一模块字段、
+类型错误、空白值、manifest 模块不匹配和仅提供通用 `version` 均失败关闭，未引入宽泛兼容。
+
+preflight 只验证元数据。`artifact_inventory` 中的 dataset payload 只作为路径、大小和摘要声明
+参与生产者元数据自洽性检查，文件内容不打开。结果显式写明 payload 内容未核验。合成正例覆盖
+728 条连续 sequence 和唯一 seed，以及 D3/D4 嵌套 manifest 与 D5 source manifest；测试在
+inventory 冻结后改写 payload，来源根实际只打开 15 个绑定元数据文件，目录扫描和 payload 打开
+均为 0。负例覆盖 sequence 缺口、seed 重复、摘要篡改、symlink、authority true、truth 非零和
+全局编号改写，以及六类 manifest 字段/模块负例。
+
+输出权限合同逐项关闭训练、验证/测试/未来保留集消费、模型推理、shadow、assist、promotion、
+PPO、assignment、degradation、camera command、runtime、production、control 和
+`global_track_id` create/write。2026-08-03 修订后定向阈值为 17/17，通过结果为
+`17 passed, 1 warning in 2.57s`；warning 为既有 Matplotlib 环境提示。
+
+main 于 2026-08-03 对真实 D3/D4/D5 生成会话执行 metadata-only preflight。输入合同 SHA-256 为
+`341afff736127b8624c0c730f56c6a0cea90bb2505988ae0e6b9cd78aca60092`；机器报告与中文报告
+SHA-256 分别为 `2c051c5d653a56a33a4036464c7c76784b60615b4f90a768962614a04b31205f`、
+`6cacd9a8a32a7967985a23ce3e1f2a201118807ddc3a2078b440861c8d54ae4c`。D3/D4/D5 分别达到
+`300/324/104 metadata_ready`，唯一 seed 同数，阻断码为空，每模块 payload 打开数为 0。
+
+评审接受“真实元数据预检通过”，且保留该时点不等于来源载荷审计的边界。后续 full payload audit
+已按本页顶部的独立授权和入口完成；`ready_for_explicit_d6_source_audit_authorization` 本身仍不是
+审计授权。全部训练、模型消费、推理、shadow、assist、任务和控制权限继续为 false。
+
 ## 2026-08-01 真实 AirSim 受控末端专项评审
 
 评审接受两个受控 case 的专项结论。两类扰动应用/合规均为 `1/1`，回退为 `radar_pn`，

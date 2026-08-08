@@ -199,6 +199,8 @@ D4 已新增 `region_resource_v8_dataset_writer.py`，供 main 的 scalable 3D p
 validation/test、零训练/注册/运行计数和全 false 权限。finalizer 在发布前、发布后均调用
 既有 `load_v8_development_train_dataset()` 做完整 round-trip；最终 dataset root 只允许
 `manifest.json` 和 324 对 JSONL，generation schedule 位于 dataset root 外部。
+其中 dataset manifest 的规范版本键固定为 `schema`，值为
+`d4-region-resource-v8-train-dataset-manifest-v1`；`schema_version` 不是该 v8 合同字段。
 
 schedule entry 逐项保留 registry 的 `topology_id`、`communication_condition`、
 `requested_target_class`、正类转移数或困难负类候选数以及 seed/episode 映射。严格 loader

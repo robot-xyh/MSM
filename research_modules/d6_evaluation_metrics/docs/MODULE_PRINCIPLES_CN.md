@@ -1,5 +1,71 @@
 # D6 系统级离线评估模块原理
 
+## 授权来源载荷审计
+
+正式载荷审计采用三重绑定。输入合同固定来源根和元数据摘要，预检固定元数据检查结果，main
+授权固定唯一允许的只读审计动作。D6 在打开 episode 或 sample 前复算三份文件摘要，并交叉核对
+source root、commit、request、generation authorization、inventory tree 和 manifest schema。
+任一值不一致时停止读取载荷。审计通过后权限字典仍只开放来源元数据与载荷完整性读取。
+
+inventory 是唯一文件准入清单。D6 不用 `rglob` 或目录内容推导数据集，只解析绑定清单中的
+规范相对路径。路径穿越、绝对路径、symlink、非普通文件、同 inode 路径复用和未登记引用均被
+阻断。每个文件先核对大小与 SHA-256，再使用拒绝重复键和非有限数的 JSON 解析器读取。这样可将
+“文件存在”“文件字节匹配”和“业务合同匹配”分成三道独立门。
+
+生产者摘要语义不得强行统一。D3/D4 的通用 JSON 摘要保持原实现；D5 episode descriptor 的
+`content_sha256` 来自 D5 writer，规范字节为 ASCII 转义、键排序、紧凑分隔符并追加一个换行。
+D6 使用独立 `_d5_producer_canonical_line_sha256()` 复算。含中文字符串和缺少行尾换行的回归
+证明两种字节规范不能互换。
+
+D5 身份合同按层级验证。source identity 只包含全局航迹编号创建数、所有权和改写数；source
+provenance 单独携带在线 truth 使用计数；partition 和 online identity 再包含
+`online_truth_identity_use_count`。每层采用精确键集合，缺字段、额外字段、非零计数或所有权
+不是 `center_read_only` 都失败关闭。这种建模保留 producer schema 差异，同时不降低真值隔离和
+全局编号只读门。
+
+真实 v3 审计覆盖 D3 300 episode/3086 frame、D4 324 episode/921 frame、D5 104 episode/
+280968 sample。三模块 truth leakage 与 split leakage 均为 0，future-held-out 只做完整性检查。
+最终状态明确写为“来源完整性审计通过，但未授权训练”。该状态不能转化为模型质量、训练准入、
+推理、任务分配、降级、相机或控制权限。
+
+## 来源生成元数据与载荷审计分层
+
+来源审计先验证“生成过程声称完成了什么”，再验证“数据内容实际是什么”。前一层只需要
+session、checkpoint、result、progress、manifest 和 artifact inventory。后一层才需要打开
+episode 和 sample。两层分开后，无审计授权时仍可检查来源是否具备申请条件，同时不会因预检
+误读验证集、测试集或未来保留集载荷。
+
+元数据预检使用显式三模块合同。D3、D4、D5 的路径只是 opaque root，模块名必须同时出现在
+合同和生成文件中；episode 数固定为 `300/324/104`。每个进度序号必须覆盖 `0..N-1`，seed
+必须唯一，提交、generation 授权和模块请求摘要必须逐层一致。有限状态为 true，truth 使用、
+全局编号创建/改写和运行控制权限必须为零或 false。
+
+manifest 的版本字段按生产者合同解析。D3、D5 只允许 `schema_version`，D4 只允许 `schema`；
+预检将值统一登记为 `manifest_schema_version`，同时记录原字段名
+`manifest_schema_field`。两个字段同时存在、使用另一模块字段、值不是字符串、值为空或仅空白、
+manifest 模块身份不匹配时均失败关闭。名为 `version` 的其他字段不参与推断，避免把未知生产者
+格式误当作已知合同。
+
+artifact inventory 在这一层只证明清单自身结构闭合：文件项排序唯一、大小合计、摘要格式和
+树摘要可复算。它不证明 payload 的实际字节仍与声明一致。只有后续显式授权的 full audit
+重新打开并哈希 payload 后，才能形成来源完整性结论。
+
+预检结果使用单一全关闭权限合同。训练、验证集/测试集/未来保留集消费、模型推理、shadow、
+assist、promotion、PPO、分配、降级、相机命令、运行、生产、控制及 `global_track_id` 创建和
+写入均为 false。元数据通过只允许 main 继续申请独立来源审计，不产生任何数据消费或系统权限。
+
+### 真实预检证据的解释
+
+2026-08-03 的真实 metadata-only preflight 使用一个摘要固定的输入合同，D3、D4、D5 分别得到
+`300/324/104 metadata_ready`，唯一 seed 数与 episode 数相同，阻断码为空。每模块
+`payload_file_open_count=0`，总权限合同保持全 false。输入合同 SHA-256 为
+`341afff736127b8624c0c730f56c6a0cea90bb2505988ae0e6b9cd78aca60092`，机器报告和中文报告
+SHA-256 分别为 `2c051c5d653a56a33a4036464c7c76784b60615b4f90a768962614a04b31205f` 与
+`6cacd9a8a32a7967985a23ce3e1f2a201118807ddc3a2078b440861c8d54ae4c`。
+
+该段描述授权前预检时点。后续独立授权载荷审计已按上一节完成；预检状态本身仍只表示可以申请
+下一道授权，不是审计授权、训练许可、模型消费许可或系统运行许可。
+
 ## 末端本地身份连续性的流边界
 
 本地航迹号只在产生它的资源和相机流内有连续性含义。同一 `global_track_id` 可以同时被多个

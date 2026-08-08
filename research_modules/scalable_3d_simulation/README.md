@@ -1,5 +1,40 @@
 # Scalable 3D Simulation
 
+## 2026-08-03 全目标完成度复核
+
+D1-D7 owner 已按终极 200 对 200 目标完成只读证据复核。可扩展三维主模块在当前提交
+`adc13d1` 上通过 `522 passed, 1 warning`；该回归不读取正式来源载荷，也不执行训练、
+保留集消费或控制。
+
+当前规则三维世界、D1-D7 软件链、真值隔离、版本门和失败回退已形成。终极目标仍未完成：
+D1 单种子暖机召回为 `0.8183`，D2 的 200 规模身份连续性仍有明显缺口；D1-D3 尚未完全
+通过版本化总线消费；正式 R0 为 `450/900`；D3/D4/D5 最新来源 `728/728` 已完成 D6
+独立载荷审计，但训练和准入尚未开始；C1/F1、20 个未见 seed 的五米物理闭环、最终三维
+动画和中文 Word 报告均未闭合。
+
+逐项证据、授权边界和下一验收顺序见
+[`docs/SCALABLE_3D_GOAL_COMPLETION_AUDIT_20260803_CN.md`](docs/SCALABLE_3D_GOAL_COMPLETION_AUDIT_20260803_CN.md)。
+
+main 已补齐来源生成到 D6 审计之间的显式门控。`learning_source_audit_gate.py` 只绑定
+D3、D4、D5 的 session、checkpoint、result、progress 和 manifest；不遍历数据目录，
+也不打开 episode/sample。合成回归为 `5 passed, 1 warning`。三个真实来源已生成外置
+预检输入合同，SHA-256 为 `341afff736127b8624c0c730f56c6a0cea90bb2505988ae0e6b9cd78aca60092`。
+首次预检发现 D4 规范使用 `schema` 而 D3/D5 使用 `schema_version`。D4 owner 确认生产
+合同不应改写，D6 改为按模块严格接受对应字段；双字段、错字段、空值和通用 `version`
+继续失败关闭。第二次真实元数据预检通过，结果 SHA-256 为
+`2c051c5d653a56a33a4036464c7c76784b60615b4f90a768962614a04b31205f`。D3/D4/D5 分别
+记录 `300/324/104` 个唯一 seed，阻断项为空，三个模块 payload 打开数均为 0。
+
+上述元数据预检只证明显式绑定元数据和生产者 inventory 声明自洽。随后 main 按精确语句
+`AUTHORIZE D6 SOURCE AUDIT OF D3 D4 D5 ONLY` 签发只读授权，D6 对 inventory 登记的实际
+载荷完成独立审计。v3 结果状态为 `source_integrity_audit_passed_not_training_authorized`，
+D3/D4/D5 分别覆盖 `300/324/104` episode 和 `3086/921/280968` 条语义记录；三模块真值
+泄漏和切分泄漏均为 0，机器报告 SHA-256 为 `8fa4f39c...bc7`。
+
+该结论只确认来源完整性。训练、模型推理、验证/测试/未来保留集模型消费、shadow、assist、
+分配、降级、相机命令、运行、控制和 `global_track_id` 创建/改写仍为 false。D5 的
+future-held-out 在本轮只做完整性审计，没有用于模型选择、阈值调整或语义评价。
+
 ## 2026-08-03 generation-only 执行状态
 
 main 获得的授权仅允许 D3、D4、D5 生成来源数据。D3 已最终封装 `300/300`，包含 `3086`
@@ -25,8 +60,8 @@ SHA-256 为 `a803116b...622225a`，仅允许 dataset generation。
 D5 已从全新目录和序列 0 完成 `104/104`，development/future-held-out 为 `72/32`，总来源
 清单为 `b3bbdc1b...ad7978`，状态为 `source_generated_not_trained`。104 个唯一 seed 严格
 覆盖 `24000-24103`；在线真值、全局编号创建/改写、正式 seed 读取和保留集模型消费均为 0。
-训练、运行、分配、降级、相机命令、控制和全局航迹编号写入仍未授权；D6 独立审计也不在
-本次授权范围内。完整记录见
+训练、运行、分配、降级、相机命令、控制和全局航迹编号写入仍未授权；后续 D6 独立审计已
+在单独 audit-only 授权下完成。来源生成记录见
 [`docs/SCALABLE_3D_D3_D5_SOURCE_GENERATION_COMPLETION_20260803_CN.md`](docs/SCALABLE_3D_D3_D5_SOURCE_GENERATION_COMPLETION_20260803_CN.md)。
 
 ## 2026-08-02 学习来源生成前置收口
