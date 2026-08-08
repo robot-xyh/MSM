@@ -1,0 +1,61 @@
+{
+  "schema_version": "msm.200v200.d1_d3_3d_experiment_metrics.v1",
+  "source_episode": "research_modules/scalable_3d_simulation/outputs/200v200_learning_gnn_report_seed1000_20260728",
+  "source_seed": 1000,
+  "source_duration_s": 10.0,
+  "truth_use_policy": "offline_evaluation_and_visualization_only",
+  "d1_sensor_fusion": {
+    "snapshot_timestamp": 9.932296790765715,
+    "truth_count": 200,
+    "online_track_count": 201,
+    "geometric_pair_count": 200,
+    "geometric_pair_distance_median_m": 6.561586594474222,
+    "geometric_pair_distance_p95_m": 24.922298041921206,
+    "geometric_pair_distance_rms_m": 11.361799362524867,
+    "geometric_pair_distance_max_m": 58.18146739603401,
+    "position_covariance_sigma_median_m": 8.648779302177857,
+    "position_covariance_sigma_p95_m": 10.17600925494383,
+    "mean_nis": 2.9887675732633343,
+    "mean_normalized_nis": 1.0478942082884977,
+    "nis_gate_coverage": 0.9928776443074306,
+    "formal_position_rmse_available": false,
+    "formal_position_rmse_unavailable_reason": "d2_lineage_mapping_missing"
+  },
+  "d2_data_association": {
+    "snapshot_timestamp": 9.932296790765715,
+    "truth_count": 200,
+    "online_track_count": 201,
+    "lifecycle_state_counts": {
+      "engageable": 92,
+      "confirmed": 108,
+      "tentative": 1
+    },
+    "final_available_mapping_count": 200,
+    "final_ambiguous_mapping_count": 1,
+    "final_unavailable_mapping_count": 0,
+    "evaluable_mapping_coverage": 0.9980536332179931,
+    "evaluable_frame_coverage": 0.7291666666666666,
+    "evaluable_transition_coverage": 0.5125531914893617,
+    "id_switch_lower_bound": 48,
+    "strict_id_switch_count_available": false,
+    "strict_metric_unavailable_reason": "multiple_truth_targets_for_global_track"
+  },
+  "d3_assignment": {
+    "plan_version": 8,
+    "plan_timestamp": 8.0,
+    "d2_snapshot_timestamp": 8.0,
+    "unique_resource_binding_count": 200,
+    "unique_target_binding_count": 200,
+    "three_dimensional_binding_count": 200,
+    "missing_target_count": 0,
+    "duplicate_target_binding_count": 0,
+    "assignment_distance_median_m": 3114.073356357549,
+    "assignment_distance_p95_m": 3770.612424097536,
+    "assignment_distance_max_m": 3947.5616262681133,
+    "assignment_plan_ack_count": 10,
+    "assignment_plan_binding_ack_count": 1978,
+    "assignment_plan_control_applied_count": 1978,
+    "d3_mean_wall_time_ms": 221.67558029759675,
+    "d3_p95_wall_time_ms": 284.3005802249536
+  }
+}

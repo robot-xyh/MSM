@@ -1,0 +1,65 @@
+{
+  "schema_version": "msm.200v200.full_stack_figure_manifest.v2",
+  "source_episode": "research_modules/scalable_3d_simulation/outputs/200v200_learning_gnn_report_seed1000_20260728",
+  "source_seed": 1000,
+  "source_duration_s": 10.0,
+  "derived_metrics": "d1_d3_3d_experiment_metrics.json",
+  "figures": [
+    {
+      "file": "01_full_stack_architecture.png",
+      "evidence_type": "algorithm_mechanism"
+    },
+    {
+      "file": "02_layered_3d_scene.png",
+      "evidence_type": "measured_trajectory_with_scheme_annotations"
+    },
+    {
+      "file": "03_contract_chain.png",
+      "evidence_type": "algorithm_mechanism"
+    },
+    {
+      "file": "04_d1_sensor_fusion.png",
+      "evidence_type": "algorithm_mechanism"
+    },
+    {
+      "file": "05_d2_data_association.png",
+      "evidence_type": "algorithm_mechanism"
+    },
+    {
+      "file": "06_d3_assignment_and_residual.png",
+      "evidence_type": "algorithm_mechanism_with_frozen_result_annotation"
+    },
+    {
+      "file": "07_d4_degradation_state_machine.png",
+      "evidence_type": "algorithm_mechanism"
+    },
+    {
+      "file": "08_d5_geometry_registration.png",
+      "evidence_type": "algorithm_mechanism"
+    },
+    {
+      "file": "09_d7_guidance_handover.png",
+      "evidence_type": "algorithm_mechanism"
+    },
+    {
+      "file": "10_d6_evaluation_and_timing.png",
+      "evidence_type": "algorithm_mechanism_and_measured_timing"
+    },
+    {
+      "file": "11_episode_state_machine.png",
+      "evidence_type": "runtime_mechanism"
+    },
+    {
+      "file": "12_d1_3d_fusion_experiment.png",
+      "evidence_type": "measured_online_tracks_with_offline_truth_diagnostic"
+    },
+    {
+      "file": "13_d2_3d_association_experiment.png",
+      "evidence_type": "measured_online_tracks_with_offline_identity_evidence"
+    },
+    {
+      "file": "14_d3_3d_assignment_experiment.png",
+      "evidence_type": "measured_runtime_assignment_with_3d_geometry"
+    }
+  ]
+}

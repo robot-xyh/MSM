@@ -1,0 +1,74 @@
+{
+  "schema_version": "msm-200v200-learning-gnn-report-figures-v2",
+  "generated_date": "2026-07-29",
+  "source_episode": "research_modules/scalable_3d_simulation/outputs/200v200_learning_gnn_report_seed1000_20260728",
+  "source_episode_id": "nominal_200v200-s1000-096682b82255-r4c830da0fd99",
+  "source_summary": {
+    "target_count": 200,
+    "resource_count": 200,
+    "recon_count": 8,
+    "simulated_duration_s": 10.0,
+    "seed": 1000,
+    "finite_state": true,
+    "online_truth_use_count": 0,
+    "online_observation_count": 12087,
+    "wall_time_s": 80.19799128605518,
+    "real_time_factor": 0.12469140236108131,
+    "intercepted_target_count": 0
+  },
+  "figures": [
+    {
+      "path": "01_learning_gnn_architecture.png",
+      "evidence_type": "architecture_schematic"
+    },
+    {
+      "path": "02_replay_3d_200v200.png",
+      "evidence_type": "actual_offline_rerun"
+    },
+    {
+      "path": "03_gnn_crossview_matching.png",
+      "evidence_type": "mechanism_schematic_from_offline_positions"
+    },
+    {
+      "path": "04_d3_cost_residual_assignment.png",
+      "evidence_type": "mechanism_schematic"
+    },
+    {
+      "path": "05_regional_resource_policy.png",
+      "evidence_type": "expected_effect_schematic_from_offline_positions"
+    },
+    {
+      "path": "06_active_vision_reconnaissance.png",
+      "evidence_type": "expected_effect_schematic_from_offline_positions"
+    },
+    {
+      "path": "07_current_evidence_boundary.png",
+      "evidence_type": "frozen_evidence_summary"
+    },
+    {
+      "path": "08_deterministic_regional_flow.png",
+      "evidence_type": "deterministic_architecture_schematic"
+    },
+    {
+      "path": "09_deterministic_regional_3d.png",
+      "evidence_type": "deterministic_mechanism_schematic_from_offline_positions"
+    },
+    {
+      "path": "10_learning_regional_flow.png",
+      "evidence_type": "learning_architecture_schematic"
+    },
+    {
+      "path": "11_learning_regional_3d.png",
+      "evidence_type": "learning_expected_effect_schematic_from_offline_positions"
+    },
+    {
+      "path": "12_gnn_algorithm_pipeline.png",
+      "evidence_type": "gnn_algorithm_pipeline_schematic"
+    },
+    {
+      "path": "13_gnn_message_passing_and_binding.png",
+      "evidence_type": "gnn_message_passing_and_binding_schematic"
+    }
+  ],
+  "boundary": "Only figure 02 is a direct rerun visualization. Figures 03-06 and 08-13 are architecture, mechanism, or expected-effect schematics. Figures 09 and 11 reuse offline positions but their regional overlays do not establish executed scheduling or learning benefit."
+}
