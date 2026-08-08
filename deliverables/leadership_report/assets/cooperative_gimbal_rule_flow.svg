@@ -1,0 +1,63 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1600" height="760" viewBox="0 0 1600 760">
+  <defs>
+    <marker id="a" markerWidth="12" markerHeight="12" refX="10" refY="6" orient="auto"><path d="M0 0 L12 6 L0 12 Z" fill="#49657a"/></marker>
+  </defs>
+  <rect width="1600" height="760" fill="#f7f9fb"/>
+  <text x="800" y="58" text-anchor="middle" font-family="Noto Sans CJK SC,Microsoft YaHei,sans-serif" font-size="34" font-weight="700" fill="#1f3342">确定性协同搜索流程</text>
+
+  <g font-family="Noto Sans CJK SC,Microsoft YaHei,sans-serif">
+    <rect x="65" y="135" width="235" height="135" rx="10" fill="#ffffff" stroke="#2f6f86" stroke-width="3"/>
+    <text x="182" y="181" text-anchor="middle" font-size="23" font-weight="700" fill="#24566a">中心粗航迹</text>
+    <text x="182" y="218" text-anchor="middle" font-size="18" fill="#4b5e68">位置、速度</text>
+    <text x="182" y="247" text-anchor="middle" font-size="18" fill="#4b5e68">时间戳、协方差</text>
+
+    <rect x="355" y="135" width="235" height="135" rx="10" fill="#ffffff" stroke="#2f6f86" stroke-width="3"/>
+    <text x="472" y="181" text-anchor="middle" font-size="23" font-weight="700" fill="#24566a">角度搜索图</text>
+    <text x="472" y="218" text-anchor="middle" font-size="18" fill="#4b5e68">投影到每架相机</text>
+    <text x="472" y="247" text-anchor="middle" font-size="18" fill="#4b5e68">随目标运动更新</text>
+
+    <rect x="645" y="135" width="235" height="135" rx="10" fill="#ffffff" stroke="#bd7a2e" stroke-width="3"/>
+    <text x="762" y="181" text-anchor="middle" font-size="23" font-weight="700" fill="#8b541d">扇区分工</text>
+    <text x="762" y="218" text-anchor="middle" font-size="18" fill="#4b5e68">概率、转动、遮挡</text>
+    <text x="762" y="247" text-anchor="middle" font-size="18" fill="#4b5e68">重复覆盖、有效期</text>
+
+    <rect x="935" y="135" width="235" height="135" rx="10" fill="#ffffff" stroke="#4b8a61" stroke-width="3"/>
+    <text x="1052" y="181" text-anchor="middle" font-size="23" font-weight="700" fill="#356948">宽视场扫描</text>
+    <text x="1052" y="218" text-anchor="middle" font-size="18" fill="#4b5e68">中心外扩、栅格</text>
+    <text x="1052" y="247" text-anchor="middle" font-size="18" fill="#4b5e68">长轴往返扫描</text>
+
+    <polygon points="1345,128 1465,202 1345,276 1225,202" fill="#ffffff" stroke="#c9483b" stroke-width="3"/>
+    <text x="1345" y="194" text-anchor="middle" font-size="22" font-weight="700" fill="#923c35">发现候选？</text>
+    <text x="1345" y="224" text-anchor="middle" font-size="17" fill="#4b5e68">连续检测与质量门</text>
+
+    <rect x="1035" y="440" width="260" height="135" rx="10" fill="#ffffff" stroke="#bd7a2e" stroke-width="3"/>
+    <text x="1165" y="486" text-anchor="middle" font-size="23" font-weight="700" fill="#8b541d">广播候选提示</text>
+    <text x="1165" y="523" text-anchor="middle" font-size="18" fill="#4b5e68">视线、框、位姿</text>
+    <text x="1165" y="552" text-anchor="middle" font-size="18" fill="#4b5e68">双时间戳、协方差</text>
+
+    <rect x="705" y="440" width="260" height="135" rx="10" fill="#ffffff" stroke="#4b8a61" stroke-width="3"/>
+    <text x="835" y="486" text-anchor="middle" font-size="23" font-weight="700" fill="#356948">邻机转向确认</text>
+    <text x="835" y="523" text-anchor="middle" font-size="18" fill="#4b5e68">几何投影、视线交会</text>
+    <text x="835" y="552" text-anchor="middle" font-size="18" fill="#4b5e68">连续多帧与身份检查</text>
+
+    <polygon points="495,430 625,507 495,584 365,507" fill="#ffffff" stroke="#2f6f86" stroke-width="3"/>
+    <text x="495" y="499" text-anchor="middle" font-size="22" font-weight="700" fill="#24566a">确认同一目标？</text>
+    <text x="495" y="529" text-anchor="middle" font-size="17" fill="#4b5e68">与原分配一致</text>
+
+    <rect x="65" y="440" width="235" height="135" rx="10" fill="#e9f4ed" stroke="#4b8a61" stroke-width="3"/>
+    <text x="182" y="489" text-anchor="middle" font-size="24" font-weight="700" fill="#356948">形成视觉锁定</text>
+    <text x="182" y="527" text-anchor="middle" font-size="18" fill="#4b5e68">继续执行版本与</text>
+    <text x="182" y="555" text-anchor="middle" font-size="18" fill="#4b5e68">导引安全检查</text>
+  </g>
+
+  <g fill="none" stroke="#49657a" stroke-width="4" marker-end="url(#a)">
+    <path d="M300 202 H350"/><path d="M590 202 H640"/><path d="M880 202 H930"/><path d="M1170 202 H1215"/>
+    <path d="M1345 276 V370 C1345 410 1295 435 1270 455"/>
+    <path d="M1035 507 H975"/><path d="M705 507 H635"/><path d="M365 507 H305"/>
+  </g>
+  <path d="M1465 202 C1540 202 1540 650 1052 650 C780 650 475 650 475 280" fill="none" stroke="#c9483b" stroke-width="4" stroke-dasharray="12 9" marker-end="url(#a)"/>
+  <text x="1510" y="185" text-anchor="middle" font-family="Noto Sans CJK SC,Microsoft YaHei,sans-serif" font-size="18" fill="#923c35">否</text>
+  <text x="1380" y="338" font-family="Noto Sans CJK SC,Microsoft YaHei,sans-serif" font-size="18" fill="#356948">是</text>
+  <path d="M495 584 C495 675 800 680 800 590" fill="none" stroke="#c9483b" stroke-width="4" stroke-dasharray="12 9" marker-end="url(#a)"/>
+  <text x="640" y="704" text-anchor="middle" font-family="Noto Sans CJK SC,Microsoft YaHei,sans-serif" font-size="18" fill="#923c35">未确认：降低已搜索区域概率，重新分工</text>
+</svg>

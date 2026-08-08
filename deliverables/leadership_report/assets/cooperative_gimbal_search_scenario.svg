@@ -1,0 +1,64 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1600" height="900" viewBox="0 0 1600 900">
+  <defs>
+    <marker id="arrow" markerWidth="12" markerHeight="12" refX="10" refY="6" orient="auto">
+      <path d="M0 0 L12 6 L0 12 Z" fill="#49657a"/>
+    </marker>
+    <linearGradient id="uncertainty" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0" stop-color="#f4c95d" stop-opacity="0.22"/>
+      <stop offset="1" stop-color="#e98b49" stop-opacity="0.42"/>
+    </linearGradient>
+  </defs>
+  <rect width="1600" height="900" fill="#f7f9fb"/>
+  <text x="800" y="58" text-anchor="middle" font-family="Noto Sans CJK SC,Microsoft YaHei,sans-serif" font-size="34" font-weight="700" fill="#1f3342">中心粗航迹条件下的多机云台协同搜索</text>
+
+  <rect x="565" y="88" width="470" height="100" rx="10" fill="#ffffff" stroke="#2f6f86" stroke-width="3"/>
+  <text x="800" y="128" text-anchor="middle" font-family="Noto Sans CJK SC,Microsoft YaHei,sans-serif" font-size="25" font-weight="700" fill="#235469">中心节点</text>
+  <text x="800" y="164" text-anchor="middle" font-family="Noto Sans CJK SC,Microsoft YaHei,sans-serif" font-size="20" fill="#425767">目标预测位置、速度、误差范围、信息时刻</text>
+
+  <ellipse cx="1090" cy="510" rx="260" ry="145" fill="url(#uncertainty)" stroke="#d07a32" stroke-width="4" stroke-dasharray="14 10"/>
+  <line x1="900" y1="590" x2="1235" y2="425" stroke="#cf8c45" stroke-width="3" stroke-dasharray="10 10"/>
+  <line x1="935" y1="630" x2="1280" y2="462" stroke="#cf8c45" stroke-width="3" stroke-dasharray="10 10"/>
+  <text x="1090" y="350" text-anchor="middle" font-family="Noto Sans CJK SC,Microsoft YaHei,sans-serif" font-size="23" font-weight="700" fill="#98521f">随目标运动的搜索范围</text>
+  <circle cx="1165" cy="505" r="24" fill="#c9483b"/>
+  <path d="M1130 505 L1200 505 M1165 470 L1165 540" stroke="#ffffff" stroke-width="6"/>
+  <text x="1165" y="570" text-anchor="middle" font-family="Noto Sans CJK SC,Microsoft YaHei,sans-serif" font-size="21" fill="#81362f">入侵目标</text>
+
+  <g font-family="Noto Sans CJK SC,Microsoft YaHei,sans-serif">
+    <g transform="translate(160,310)">
+      <circle cx="95" cy="90" r="58" fill="#2f7786"/>
+      <path d="M38 90 H152 M95 33 V147 M55 50 L135 130 M135 50 L55 130" stroke="#ffffff" stroke-width="8"/>
+      <circle cx="95" cy="90" r="16" fill="#f4c95d"/>
+      <path d="M150 75 L515 115 L515 235 L150 105 Z" fill="#3c96a8" opacity="0.18" stroke="#3c96a8" stroke-width="3"/>
+      <text x="95" y="180" text-anchor="middle" font-size="22" font-weight="700" fill="#234653">拦截无人机1</text>
+      <text x="95" y="210" text-anchor="middle" font-size="18" fill="#49606c">搜索左侧扇区</text>
+    </g>
+    <g transform="translate(190,525)">
+      <circle cx="95" cy="90" r="58" fill="#2f7786"/>
+      <path d="M38 90 H152 M95 33 V147 M55 50 L135 130 M135 50 L55 130" stroke="#ffffff" stroke-width="8"/>
+      <circle cx="95" cy="90" r="16" fill="#f4c95d"/>
+      <path d="M150 70 L505 -55 L545 55 L150 110 Z" fill="#4da36b" opacity="0.18" stroke="#4da36b" stroke-width="3"/>
+      <text x="95" y="180" text-anchor="middle" font-size="22" font-weight="700" fill="#234653">拦截无人机2</text>
+      <text x="95" y="210" text-anchor="middle" font-size="18" fill="#49606c">搜索中心扇区</text>
+    </g>
+    <g transform="translate(485,670)">
+      <circle cx="95" cy="70" r="58" fill="#2f7786"/>
+      <path d="M38 70 H152 M95 13 V127 M55 30 L135 110 M135 30 L55 110" stroke="#ffffff" stroke-width="8"/>
+      <circle cx="95" cy="70" r="16" fill="#f4c95d"/>
+      <path d="M145 40 L545 -215 L590 -105 L150 90 Z" fill="#db8a38" opacity="0.17" stroke="#db8a38" stroke-width="3"/>
+      <text x="95" y="157" text-anchor="middle" font-size="22" font-weight="700" fill="#234653">拦截无人机3</text>
+      <text x="95" y="187" text-anchor="middle" font-size="18" fill="#49606c">搜索右侧扇区</text>
+    </g>
+  </g>
+
+  <path d="M735 188 C660 230 500 245 310 330" fill="none" stroke="#49657a" stroke-width="4" marker-end="url(#arrow)"/>
+  <path d="M800 188 C700 330 500 450 340 555" fill="none" stroke="#49657a" stroke-width="4" marker-end="url(#arrow)"/>
+  <path d="M865 188 C860 400 740 570 625 680" fill="none" stroke="#49657a" stroke-width="4" marker-end="url(#arrow)"/>
+
+  <path d="M1110 470 C890 320 585 305 370 385" fill="none" stroke="#c9483b" stroke-width="4" marker-end="url(#arrow)"/>
+  <text x="725" y="310" text-anchor="middle" font-family="Noto Sans CJK SC,Microsoft YaHei,sans-serif" font-size="20" fill="#9c3d36">首机发现后广播视线和图像摘要</text>
+
+  <rect x="960" y="735" width="500" height="105" rx="10" fill="#ffffff" stroke="#4b8a61" stroke-width="3"/>
+  <text x="1210" y="776" text-anchor="middle" font-family="Noto Sans CJK SC,Microsoft YaHei,sans-serif" font-size="23" font-weight="700" fill="#356948">邻机交叉确认</text>
+  <text x="1210" y="811" text-anchor="middle" font-family="Noto Sans CJK SC,Microsoft YaHei,sans-serif" font-size="18" fill="#4b5e68">几何投影 + 视线交会 + 连续多帧 + 原任务一致</text>
+  <path d="M1168 530 C1200 610 1210 670 1210 730" fill="none" stroke="#4b8a61" stroke-width="4" marker-end="url(#arrow)"/>
+</svg>

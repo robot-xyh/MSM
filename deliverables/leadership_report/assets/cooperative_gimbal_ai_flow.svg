@@ -1,0 +1,57 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1600" height="900" viewBox="0 0 1600 900">
+  <defs><marker id="arr" markerWidth="12" markerHeight="12" refX="10" refY="6" orient="auto"><path d="M0 0 L12 6 L0 12 Z" fill="#49657a"/></marker></defs>
+  <rect width="1600" height="900" fill="#f7f9fb"/>
+  <text x="800" y="58" text-anchor="middle" font-family="Noto Sans CJK SC,Microsoft YaHei,sans-serif" font-size="34" font-weight="700" fill="#1f3342">强化学习协同搜索方案</text>
+
+  <g font-family="Noto Sans CJK SC,Microsoft YaHei,sans-serif">
+    <rect x="70" y="130" width="360" height="305" rx="12" fill="#ffffff" stroke="#2f6f86" stroke-width="3"/>
+    <text x="250" y="178" text-anchor="middle" font-size="25" font-weight="700" fill="#24566a">在线可用信息</text>
+    <text x="105" y="225" font-size="20" fill="#425767">• 目标角度概率图</text>
+    <text x="105" y="265" font-size="20" fill="#425767">• 云台姿态和视场</text>
+    <text x="105" y="305" font-size="20" fill="#425767">• 历史覆盖和候选检测</text>
+    <text x="105" y="345" font-size="20" fill="#425767">• 邻机搜索摘要</text>
+    <text x="105" y="385" font-size="20" fill="#425767">• 计划版本和通信状态</text>
+
+    <rect x="520" y="130" width="430" height="305" rx="12" fill="#fffaf0" stroke="#bd7a2e" stroke-width="3"/>
+    <text x="735" y="178" text-anchor="middle" font-size="25" font-weight="700" fill="#8b541d">学习策略</text>
+    <circle cx="620" cy="275" r="48" fill="#e8b45e"/><circle cx="735" cy="230" r="48" fill="#e8b45e"/><circle cx="850" cy="275" r="48" fill="#e8b45e"/>
+    <line x1="665" y1="257" x2="690" y2="242" stroke="#9a6327" stroke-width="7"/>
+    <line x1="780" y1="242" x2="805" y2="257" stroke="#9a6327" stroke-width="7"/>
+    <line x1="668" y1="285" x2="802" y2="285" stroke="#9a6327" stroke-width="7"/>
+    <text x="735" y="354" text-anchor="middle" font-size="21" fill="#425767">汇总本机与邻机信息</text>
+    <text x="735" y="390" text-anchor="middle" font-size="21" fill="#425767">选择下一搜索动作</text>
+
+    <rect x="1040" y="130" width="490" height="305" rx="12" fill="#ffffff" stroke="#4b8a61" stroke-width="3"/>
+    <text x="1285" y="178" text-anchor="middle" font-size="25" font-weight="700" fill="#356948">有限动作</text>
+    <text x="1080" y="225" font-size="20" fill="#425767">• 下一搜索扇区</text>
+    <text x="1080" y="265" font-size="20" fill="#425767">• 宽视场或窄视场</text>
+    <text x="1080" y="305" font-size="20" fill="#425767">• 观察停留时间</text>
+    <text x="1080" y="345" font-size="20" fill="#425767">• 重访顺序</text>
+    <text x="1080" y="395" font-size="18" font-weight="700" fill="#923c35">不输出目标分配、编号和飞行控制</text>
+
+    <rect x="310" y="535" width="980" height="125" rx="12" fill="#eef5f7" stroke="#2f6f86" stroke-width="3"/>
+    <text x="800" y="578" text-anchor="middle" font-size="25" font-weight="700" fill="#24566a">确定性安全层</text>
+    <text x="800" y="618" text-anchor="middle" font-size="20" fill="#425767">计划版本　全局编号只读　友方冲突　云台限位　命令有效期　导引权限</text>
+    <text x="800" y="647" text-anchor="middle" font-size="18" fill="#923c35">检查失败、推理超时或输入异常时，立即回退规则方案</text>
+
+    <rect x="100" y="745" width="410" height="95" rx="10" fill="#ffffff" stroke="#bd7a2e" stroke-width="3"/>
+    <text x="305" y="785" text-anchor="middle" font-size="23" font-weight="700" fill="#8b541d">离线训练</text>
+    <text x="305" y="817" text-anchor="middle" font-size="18" fill="#425767">仿真真值只用于奖励和评分</text>
+
+    <rect x="595" y="745" width="410" height="95" rx="10" fill="#ffffff" stroke="#4b8a61" stroke-width="3"/>
+    <text x="800" y="785" text-anchor="middle" font-size="23" font-weight="700" fill="#356948">影子运行</text>
+    <text x="800" y="817" text-anchor="middle" font-size="18" fill="#425767">记录建议，不改变正式云台命令</text>
+
+    <rect x="1090" y="745" width="410" height="95" rx="10" fill="#ffffff" stroke="#2f6f86" stroke-width="3"/>
+    <text x="1295" y="785" text-anchor="middle" font-size="23" font-weight="700" fill="#24566a">受限辅助</text>
+    <text x="1295" y="817" text-anchor="middle" font-size="18" fill="#425767">独立验证通过后再申请准入</text>
+  </g>
+
+  <g fill="none" stroke="#49657a" stroke-width="4" marker-end="url(#arr)">
+    <path d="M430 282 H510"/><path d="M950 282 H1030"/>
+    <path d="M1285 435 V500 C1285 520 1220 535 1180 535"/>
+    <path d="M800 660 V720"/><path d="M510 792 H585"/><path d="M1005 792 H1080"/>
+  </g>
+  <path d="M305 745 C305 690 520 690 580 435" fill="none" stroke="#bd7a2e" stroke-width="4" stroke-dasharray="12 9" marker-end="url(#arr)"/>
+  <text x="430" y="700" font-family="Noto Sans CJK SC,Microsoft YaHei,sans-serif" font-size="18" fill="#8b541d">训练后形成只读模型</text>
+</svg>
