@@ -1,0 +1,80 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" width="1500" height="820" viewBox="0 0 1500 820">
+  <defs>
+    <marker id="arrow" markerWidth="10" markerHeight="10" refX="9" refY="3" orient="auto" markerUnits="strokeWidth">
+      <path d="M0,0 L0,6 L9,3 z" fill="#315a70"/>
+    </marker>
+    <style>
+      .title { font: 700 30px "Noto Sans CJK SC", "Microsoft YaHei", sans-serif; fill: #173042; }
+      .stage { font: 700 21px "Noto Sans CJK SC", "Microsoft YaHei", sans-serif; fill: #173042; }
+      .label { font: 600 17px "Noto Sans CJK SC", "Microsoft YaHei", sans-serif; fill: #173042; }
+      .text { font: 400 15px "Noto Sans CJK SC", "Microsoft YaHei", sans-serif; fill: #29424f; }
+      .small { font: 400 13px "Noto Sans CJK SC", "Microsoft YaHei", sans-serif; fill: #405764; }
+      .stagebox { fill: #f8fbfc; stroke: #315a70; stroke-width: 2.5; rx: 7; }
+      .check { fill: #edf7f1; stroke: #316d51; stroke-width: 2; rx: 5; }
+      .later { fill: #fff9ef; stroke: #aa6a17; stroke-width: 2; rx: 5; }
+    </style>
+  </defs>
+
+  <rect width="1500" height="820" fill="#ffffff"/>
+  <text x="750" y="48" text-anchor="middle" class="title">纯相机配准的分阶段验证路线</text>
+
+  <line x1="130" y1="155" x2="1370" y2="155" stroke="#315a70" stroke-width="4" marker-end="url(#arrow)"/>
+  <circle cx="180" cy="155" r="13" fill="#315a70"/>
+  <circle cx="505" cy="155" r="13" fill="#315a70"/>
+  <circle cx="830" cy="155" r="13" fill="#315a70"/>
+  <circle cx="1155" cy="155" r="13" fill="#315a70"/>
+
+  <rect x="55" y="205" width="275" height="420" class="stagebox"/>
+  <text x="192" y="245" text-anchor="middle" class="stage">阶段一</text>
+  <text x="192" y="277" text-anchor="middle" class="label">解析质点与理想相机</text>
+  <text x="80" y="320" class="text">• 20 个前后错列目标</text>
+  <text x="80" y="350" class="text">• 轨迹轻微交叉，速度 50 米/秒</text>
+  <text x="80" y="380" class="text">• A 扫描，B 只看见部分目标</text>
+  <text x="80" y="410" class="text">• 检测无误差，编号随机打乱</text>
+  <rect x="80" y="455" width="225" height="118" class="check"/>
+  <text x="192" y="486" text-anchor="middle" class="label">检查重点</text>
+  <text x="100" y="518" class="small">双视线几何能否恢复位置</text>
+  <text x="100" y="545" class="small">匈牙利关系是否一对一稳定</text>
+
+  <rect x="380" y="205" width="275" height="420" class="stagebox"/>
+  <text x="517" y="245" text-anchor="middle" class="stage">阶段二</text>
+  <text x="517" y="277" text-anchor="middle" class="label">解析质点误差扩展</text>
+  <text x="405" y="320" class="text">• 逐项加入像素噪声</text>
+  <text x="405" y="350" class="text">• 逐项加入时间偏差</text>
+  <text x="405" y="380" class="text">• 逐项加入位姿误差</text>
+  <text x="405" y="410" class="text">• 增加遮挡和扫描漏窗</text>
+  <rect x="405" y="455" width="225" height="118" class="later"/>
+  <text x="517" y="486" text-anchor="middle" class="label">检查重点</text>
+  <text x="425" y="518" class="small">协方差覆盖率和门限标定</text>
+  <text x="425" y="545" class="small">近共线与时间错配失败边界</text>
+
+  <rect x="705" y="205" width="275" height="420" class="stagebox"/>
+  <text x="842" y="245" text-anchor="middle" class="stage">阶段三</text>
+  <text x="842" y="277" text-anchor="middle" class="label">AirSim 纯视觉接口</text>
+  <text x="730" y="320" class="text">• ComputerVision 相机 A、B</text>
+  <text x="730" y="350" class="text">• 无人机网格 Actor 运动</text>
+  <text x="730" y="380" class="text">• 只读取二维检测框</text>
+  <text x="730" y="410" class="text">• 对象名在在线入口前删除</text>
+  <rect x="730" y="455" width="225" height="118" class="check"/>
+  <text x="842" y="486" text-anchor="middle" class="label">检查重点</text>
+  <text x="750" y="518" class="small">扫描可见性和有效采样率</text>
+  <text x="750" y="545" class="small">相机位姿、时间和轨迹记录</text>
+
+  <rect x="1030" y="205" width="275" height="420" class="stagebox"/>
+  <text x="1167" y="245" text-anchor="middle" class="stage">阶段四</text>
+  <text x="1167" y="277" text-anchor="middle" class="label">AirSim 结果复核</text>
+  <text x="1055" y="320" class="text">• 匈牙利作为正式基线</text>
+  <text x="1055" y="350" class="text">• 图网络作为歧义对照</text>
+  <text x="1055" y="380" class="text">• 真值只在离线评分读取</text>
+  <text x="1055" y="410" class="text">• 输出逐轨迹失败原因</text>
+  <rect x="1055" y="455" width="225" height="118" class="later"/>
+  <text x="1167" y="486" text-anchor="middle" class="label">检查重点</text>
+  <text x="1075" y="518" class="small">重叠窗口内准确率与漏配率</text>
+  <text x="1075" y="545" class="small">交叉段身份切换与失败关闭</text>
+
+  <rect x="190" y="675" width="1120" height="92" fill="#fff8f7" stroke="#a84a3a" stroke-width="2" rx="7"/>
+  <text x="750" y="708" text-anchor="middle" class="label" fill="#8e3f33">旧结果的使用边界</text>
+  <text x="750" y="738" text-anchor="middle" class="text">原“理想 100%”与“AirSim 99.79%”只保留为给定准确三维先验后的下游匹配基线</text>
+  <text x="750" y="762" text-anchor="middle" class="small">纯相机三角定位、匿名轨迹配准和误差传播必须按上述阶段重新运行并重新评分</text>
+</svg>

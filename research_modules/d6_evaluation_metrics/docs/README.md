@@ -1,5 +1,13 @@
 # D6 文档索引
 
+2026-08-10 新增长距离视觉配准专项离线评估。公共入口支持单个或多个 v2/v3 AirSim episode，
+输出逐 episode CSV、聚合 JSON、中文报告和综合图。冻结单 seed 复现准确率
+`0.9979317476732161`、短缺口 `3`、长期重发现 `48`、几何绑定切换 `7` 和交叉可评分 `3/31`；
+因有效短缺口中断、v2 时序证据不可用和交叉覆盖不足而失败关闭。原理、实现和证据边界分别见
+`MODULE_PRINCIPLES_CN.md`、`ALGORITHM_AND_IMPLEMENTATION.md` 和 `EXPERIMENT_REPORT.md`。真实 main
+v3 行结构与无表头空 CSV 回归已覆盖；专项为 `7 passed, 1 warning`，D6 全量为
+`1425 passed, 16 skipped, 1 warning in 129.29s`。
+
 2026-08-03 完成 D3/D4/D5 授权来源载荷审计。新入口严格绑定 input、preflight、authorization
 三份文件及 SHA-256，只读取 inventory 登记的普通文件，不扫描目录推导合法数据。生产者差异按
 D3/D4/D5 分别建模；D5 descriptor 使用 ASCII 转义、紧凑排序 JSON 和行尾换行的独立摘要函数，

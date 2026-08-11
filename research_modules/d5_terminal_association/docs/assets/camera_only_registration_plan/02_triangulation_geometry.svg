@@ -1,0 +1,109 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" width="1400" height="860" viewBox="0 0 1400 860">
+  <defs>
+    <marker id="arrow" markerWidth="10" markerHeight="10" refX="9" refY="3" orient="auto" markerUnits="strokeWidth">
+      <path d="M0,0 L0,6 L9,3 z" fill="#2b536b"/>
+    </marker>
+    <marker id="arrow-orange" markerWidth="10" markerHeight="10" refX="9" refY="3" orient="auto" markerUnits="strokeWidth">
+      <path d="M0,0 L0,6 L9,3 z" fill="#b66a1c"/>
+    </marker>
+    <style>
+      .title { font: 700 30px "Noto Sans CJK SC", "Microsoft YaHei", sans-serif; fill: #173042; }
+      .label { font: 600 19px "Noto Sans CJK SC", "Microsoft YaHei", sans-serif; fill: #173042; }
+      .text { font: 400 16px "Noto Sans CJK SC", "Microsoft YaHei", sans-serif; fill: #29424f; }
+      .small { font: 400 14px "Noto Sans CJK SC", "Microsoft YaHei", sans-serif; fill: #405764; }
+      .note { fill: #f7fafc; stroke: #8ca8b8; stroke-width: 2; rx: 6; }
+    </style>
+  </defs>
+
+  <rect width="1400" height="860" fill="#ffffff"/>
+  <text x="700" y="48" text-anchor="middle" class="title">A-B 双视线三角定位与退化条件</text>
+
+  <!-- 伪三维参考网格 -->
+  <polygon points="95,690 840,690 1260,495 515,495" fill="#f7fafc" stroke="#c8d5dc" stroke-width="2"/>
+  <line x1="95" y1="690" x2="515" y2="495" stroke="#d6e0e5" stroke-width="1"/>
+  <line x1="280" y1="690" x2="700" y2="495" stroke="#d6e0e5" stroke-width="1"/>
+  <line x1="465" y1="690" x2="885" y2="495" stroke="#d6e0e5" stroke-width="1"/>
+  <line x1="650" y1="690" x2="1070" y2="495" stroke="#d6e0e5" stroke-width="1"/>
+  <line x1="835" y1="690" x2="1255" y2="495" stroke="#d6e0e5" stroke-width="1"/>
+  <line x1="200" y1="641" x2="945" y2="641" stroke="#d6e0e5" stroke-width="1"/>
+  <line x1="305" y1="593" x2="1050" y2="593" stroke="#d6e0e5" stroke-width="1"/>
+  <line x1="410" y1="544" x2="1155" y2="544" stroke="#d6e0e5" stroke-width="1"/>
+
+  <!-- 坐标轴 -->
+  <line x1="115" y1="735" x2="235" y2="735" stroke="#2b536b" stroke-width="3" marker-end="url(#arrow)"/>
+  <line x1="115" y1="735" x2="175" y2="695" stroke="#2b536b" stroke-width="3" marker-end="url(#arrow)"/>
+  <line x1="115" y1="735" x2="115" y2="625" stroke="#2b536b" stroke-width="3" marker-end="url(#arrow)"/>
+  <text x="245" y="742" class="small">北</text>
+  <text x="177" y="689" class="small">东</text>
+  <text x="98" y="616" class="small">高度</text>
+
+  <!-- 相机 A -->
+  <g transform="translate(235,610)">
+    <rect x="-30" y="-22" width="60" height="44" fill="#eaf4f8" stroke="#245b78" stroke-width="3" rx="5"/>
+    <polygon points="30,-14 58,-28 58,28 30,14" fill="#d9eaf1" stroke="#245b78" stroke-width="3"/>
+    <line x1="0" y1="22" x2="0" y2="45" stroke="#245b78" stroke-width="3"/>
+    <line x1="-26" y1="45" x2="26" y2="45" stroke="#245b78" stroke-width="3"/>
+  </g>
+  <text x="235" y="690" text-anchor="middle" class="label">中心相机 A</text>
+  <text x="235" y="716" text-anchor="middle" class="small">已知光心与姿态</text>
+
+  <!-- 相机 B -->
+  <g transform="translate(760,590)">
+    <rect x="-30" y="-22" width="60" height="44" fill="#edf7f1" stroke="#2f6b4f" stroke-width="3" rx="5"/>
+    <polygon points="30,-14 58,-28 58,28 30,14" fill="#dcefe4" stroke="#2f6b4f" stroke-width="3"/>
+    <line x1="0" y1="22" x2="0" y2="45" stroke="#2f6b4f" stroke-width="3"/>
+    <line x1="-26" y1="45" x2="26" y2="45" stroke="#2f6b4f" stroke-width="3"/>
+  </g>
+  <text x="760" y="670" text-anchor="middle" class="label">拦截相机 B</text>
+  <text x="760" y="696" text-anchor="middle" class="small">具有横向或高度偏置</text>
+
+  <!-- 目标和双视线 -->
+  <circle cx="1030" cy="225" r="13" fill="#d65c4a" stroke="#8e3227" stroke-width="3"/>
+  <path d="M1016 219 L1044 231 M1016 231 L1044 219" stroke="#ffffff" stroke-width="3"/>
+  <text x="1060" y="217" class="label">候选目标位置</text>
+  <text x="1060" y="245" class="small">由两条视线计算，不是先验输入</text>
+
+  <line x1="285" y1="600" x2="1018" y2="233" stroke="#245b78" stroke-width="4"/>
+  <line x1="810" y1="580" x2="1022" y2="238" stroke="#2f6b4f" stroke-width="4"/>
+  <text x="545" y="420" class="label" fill="#245b78">A 反投影视线</text>
+  <text x="855" y="390" class="label" fill="#2f6b4f">B 反投影视线</text>
+
+  <!-- 最近点和视线间距 -->
+  <circle cx="997" cy="243" r="6" fill="#245b78"/>
+  <circle cx="1010" cy="257" r="6" fill="#2f6b4f"/>
+  <line x1="997" y1="243" x2="1010" y2="257" stroke="#b66a1c" stroke-width="4" stroke-dasharray="6 5"/>
+  <text x="895" y="285" class="small" fill="#9b5915">两条视线最近距离</text>
+  <text x="895" y="308" class="small" fill="#9b5915">中点作为三角定位位置</text>
+
+  <!-- 基线 -->
+  <line x1="285" y1="624" x2="750" y2="608" stroke="#b66a1c" stroke-width="4" marker-end="url(#arrow-orange)"/>
+  <text x="520" y="652" text-anchor="middle" class="label" fill="#9b5915">A-B 光学基线</text>
+
+  <!-- 夹角 -->
+  <path d="M953 265 A88 88 0 0 1 997 313" fill="none" stroke="#b66a1c" stroke-width="3"/>
+  <text x="928" y="340" class="label" fill="#9b5915">视差角</text>
+
+  <!-- 说明框 -->
+  <rect x="70" y="90" width="430" height="185" class="note"/>
+  <text x="95" y="126" class="label">可观测条件</text>
+  <text x="95" y="160" class="text">1. A、B 内参与位姿已知</text>
+  <text x="95" y="191" class="text">2. 两条轨迹具有重叠或可对齐的时间窗</text>
+  <text x="95" y="222" class="text">3. 两视线不接近平行，三角定位在相机前方</text>
+  <text x="95" y="253" class="text">4. 重投影误差和视线间距同时满足门限</text>
+
+  <rect x="70" y="300" width="430" height="170" fill="#fff8f1" stroke="#b66a1c" stroke-width="2" rx="6"/>
+  <text x="95" y="336" class="label" fill="#8d5217">近共线退化</text>
+  <text x="95" y="370" class="text">B 若沿 A 到目标的同一直线接近，视差角过小。</text>
+  <text x="95" y="401" class="text">像素微小变化会被放大为较大的深度误差。</text>
+  <text x="95" y="432" class="text">演示中为 B 设置横向或高度偏置，并记录条件数。</text>
+
+  <rect x="930" y="550" width="400" height="180" class="note"/>
+  <text x="955" y="586" class="label">固定单目云台的能力边界</text>
+  <text x="955" y="620" class="text">单个固定光心只转动云台，只能改变观察方向。</text>
+  <text x="955" y="651" class="text">它不能单独给出目标尺度深度。</text>
+  <text x="955" y="682" class="text">本演示用 A、B 两个已知光心形成空间基线。</text>
+  <text x="955" y="713" class="text">后续误差试验再加入位姿和时间不确定性。</text>
+
+  <text x="700" y="825" text-anchor="middle" class="small">示意图按三维关系表达，线段长度不代表实际三千米与五百米比例</text>
+</svg>

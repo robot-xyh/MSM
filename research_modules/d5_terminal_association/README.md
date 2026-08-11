@@ -2,6 +2,132 @@
 
 科研模块，用于把末端相机视场中的本地视觉轨迹保守关联到中心分配的 `global_track_id`。模块可在统一三维 episode 中在线运行；训练标签和真值评分仍保持离线。D5 只输出视觉关联与相机观察意图，不修改、重写或重新分配任何全局轨迹 ID。
 
+## 2026-08-10 有状态时序几何关联接口
+
+D5 已在原无状态 `associate_tracks_to_detections_geometrically()` 之外增加
+`TemporalGeometricAssociator`。原函数签名和逐帧匈牙利结果保持不变；新接口按
+`resource_id/camera_id/stream_id/local_track_id` 隔离历史，只把当前实测证据纳入
+`measured_assignments`。输出同时保留瞬时几何结果、当前有效绑定、预测记录、候选代价间隔和
+`continued/pending/held/confirmed/expired/recovered` 事件。
+
+默认短时保持窗口为 0.25 秒。量测暂时缺失时，接口按最近像面角速度平移预测框中心和边界框，
+预测协方差按
+`camera.measurement_cov + (rate_sigma_px_s * prediction_age_s)^2 I` 增长。
+`predicted/lost` 证据只能产生 `coast/reacquire/hold`，所有相关日志都明确
+`terminal_authorization_allowed=false`。同一本地轨迹改变全局航迹引用时，挑战者必须来自当前
+实测帧，连续两帧胜出，并相对原绑定取得不小于 `AssociationConfig.min_lock_margin` 的总代价
+优势。成对交换、近似平局、重复占用和单帧跳变均保持失败关闭。
+
+公开 API：
+
+- `TemporalGeometricAssociationConfig`
+- `TemporalGeometricAssociator.associate(...)` 与显式 `reset(...)`
+- `TemporalGeometricAssociationResult`
+- `TemporalBindingEvent`
+- `TemporalPredictionRecord`
+
+2026-08-10 的确定性单元测试覆盖 0.06/0.10/0.17 秒缺口、0.26 秒过期、一帧和两帧挑战者、
+近似平局、成对交换、时戳回退、多相机/多流隔离及在线真值隔离。专项为 `13 passed`，D5 全量
+为 `904 passed, 1 warning in 146.08s`。
+
+main 已把该接口接入 `long_range_cv_scan`。每台相机在 episode 内维护独立状态，只有
+`measured_assignments` 可以触发发现、提示和完成；`coasted_records` 只写日志，且
+`terminal_authorization_allowed=false`。运行记录增加 `temporal_binding_events.csv` 和
+`dropout_events.csv`，main-D6 联合专项为 `23 passed`。这些结果关闭接口接线，不构成真实
+AirSim 性能证据。
+
+冻结 seed `20260810` 的 D6 离线报告仍是旧 v2 基线：关联准确率 `0.9979317477`、短缺口 3、
+绑定切换 7、交叉窗口可评价 `3/31`，结论保持 `fail_closed`。该报告不是采用新时序接线的 v3
+真实 AirSim 复跑。v3 单 seed 复跑及不少于 10 个 seed 的标定仍是开放 P1。
+
+## 2026-08-10 真实 AirSim 长距离 20 目标取证复核（冻结旧 v2 基线）
+
+main 在 AirSim ComputerVision 模式下重新运行了原始尺度的 `coverage_safe`
+场景。冻结 seed 为 `20260810`，20 个 `Quadrotor1` 移动 actor 以 50 米/秒运动，
+episode 时长 20 秒，逻辑更新率 100 Hz。目标距中心相机约 2.8-3.2 千米，
+拦截相机距目标群约 500 米。中心按带协方差的合成 `GlobalTrack` 执行偏航/俯仰
+二维扫描，拦截相机按中心确认结果执行二维提示。匿名跟踪继续使用经相机
+运动补偿的 NED 世界视线和速度预测。
+
+| `coverage_safe` 指标 | 结果 | 验收判断 |
+| --- | ---: | --- |
+| 中心累计发现 / 五帧确认 | `20/20` / `20/20` | 通过发现门；本 seed 全部确认 |
+| 拦截提示 / 观察 / 完成 | `20/20` / `19/20` / `19/20` | 观察和完成比例 `0.95`，通过 `0.90` 门限 |
+| 可评分几何关联 | `1934` 条，准确率 `0.9979317477` | 通过 `0.95` 准确率门限 |
+| 连续可见段身份切换 | `0` | 通过零切换门限 |
+| 短缺口中断 / 长期重发现 | `3` / `48` | 短缺口中断要求为 0，未通过 |
+| 轨迹纯度 / 连续性 | `1.0` / `1.0` | 通过 `0.95/0.90` 门限 |
+| 可评价交叉窗口 | `3/31` | 样本覆盖不足，保持 P1 |
+| 交叉窗口身份切换 | `0` | 仅对 3 个可评价窗口成立 |
+| 几何绑定切换 | `7` | 保持 P1 |
+
+发现、提示比例、关联准确率和运行记录项通过，专项总门因短缺口中断 `3 > 0`
+失败关闭。取证包保存 98 幅原始相机图和 98 幅在线配准标注图，19/20 条全局航迹形成
+中心与拦截相机双视角图像证据。在线叠加和关联不使用 actor 名、`object_id` 或真值
+全局身份；真值仅用于离线混淆矩阵和指标评分。`global_track_id` 改写为 0。
+
+原始尺度主场景证据位于
+`research_modules/airsim_runtime/outputs/d5_cv_long_range_20target_visual_evidence_20260810/`。
+中心相机在约 3 千米的原始截图仍接近 AirSim 渲染和像素极限；`simGetDetections` 返回检测框
+不等价于真实光电设备已能辨识目标。中心航迹仍来自 `synthetic_d1_d2_fixture`。
+
+同日的 2 倍网格只是可视化诊断：中心和拦截相机均达到 `20/20`，2319 条可评分
+关联的准确率为 `0.9892194912`，但仍有 3 次短缺口和 42 次几何绑定切换，总门仍未通过。
+目标放大提高了可见性和双相机证据覆盖，也因检测框重叠增加了几何歧义。该诊断不替代
+原始尺度主场景。
+
+当前未闭合 P1 为短漏检恢复、几何绑定迟滞、更多可评价交叉窗口、多 seed 统计，以及位置、
+姿态、时间、漏检和虚警误差注入。本轮没有运行图神经网络，不改变既有学习模型权限。
+
+## 2026-08-10 不规则交叉目标窄视场扫描验证
+
+原理想两级配准基线增加了一个隔离的窄视场扫描场景。默认 20 个目标在距中心 A 约
+2.8-3.2 千米处前后、高度错列，初始径向跨度 390.0 米，全时段最小三维间距 30.0 米。
+A、B 参考像面的交叉或明确近距交叉分别为 10 对和 6 对。B 保持在目标群后方 500 米随群
+平移，只按 A 已确认的中心航迹提示逐目标观察，不参与拦截。
+
+扫描可见性按 0.01 秒解析时间轴计算。`mechanical_2s` 以 180 度/秒扫描，100 Hz 相邻光轴
+间隔 1.8 度，大于 A 相机 0.621 度水平视场；标准 seed 实测中心发现率和完整链比例均为 0。
+`coverage_safe` 以 49.68 度/秒扫描并保留 20% 视场重叠，标准 seed 在 1.61 秒内达到中心发现、
+B 提示观测和完整链比例 1.0。seed `20260810-20260819` 共 10 组的两级准确率和完整链均为
+1.0，身份切换、重复分配、未匹配、在线 truth 使用和全局编号改写均为 0。
+
+复现命令：
+
+```bash
+python3 research_modules/d5_terminal_association/scripts/run_ideal_irregular_crossing_demo.py
+```
+
+输出位于 `outputs/ideal_20_target_irregular_crossing_20260810/`，包含 100 Hz 双模式扫描时间线、
+匿名观测、事件级完整代价、关系链、离线评分、10 张 PNG、76 帧 GIF 和中文报告。该实验使用
+无误差质点及针孔投影，不是 AirSim、实飞、真实检测或图神经网络验证。
+
+## 2026-08-10 理想二十目标两级配准验证
+
+D5 新增独立的参数化质点演示。中心节点 A 持有既有三维 `GlobalTrack` 和 A 相机匿名像素
+轨迹，但初始不知道两者对应关系；拦截节点 B 只提供匿名像素轨迹。中心侧先把三维航迹投影到
+A 图像，以最近五帧位置和帧间位移构造完整代价矩阵并执行匈牙利匹配，再把已绑定航迹投影到
+B 图像完成第二级匹配。算法输出
+`global_track_id -> A_local_track_id -> B_local_track_id`，不创建或改写全局编号。
+
+标准场景为 20 目标、15 秒、0.1 秒动力学周期和 0.2 秒图像周期。A 为固定 4K 相机，B 以
+14 米/秒运动并使用 1080p 相机；两台云台逐帧指向目标群质心。2026-08-10 使用 seed
+`20260810-20260819` 运行 10 组理想实验，A 侧、B 侧和端到端准确率均为 `1.0`，完整关系链
+比例和双相机全时段可见率均为 `1.0`；`id_switch_count`、重复分配、未匹配、在线 truth 使用和
+`global_track_id` 改写均为 `0`。专项测试为 `7 passed`。
+
+复现命令：
+
+```bash
+python3 research_modules/d5_terminal_association/scripts/run_ideal_registration_demo.py
+```
+
+输出位于
+`outputs/ideal_20_target_two_stage_registration_20260810/`，包括三类轨迹 CSV、两级逐候选代价
+CSV、公开关系链、离线 truth sidecar、指标、13 张步骤图、76 帧 GIF 和中文报告。目标数量由
+`--target-count` 控制，代码不固定 20。该证据属于无误差质点仿真，不是 AirSim 或实飞验证；
+未加入漏检、虚警、遮挡、像素噪声、位置姿态误差、时间偏差和通信误差，也没有执行图神经网络。
+
 ## 2026-08-03 A3 v3 正式来源生成完成
 
 main 已在来源提交 `64dfc088cf4990304a95b2a362b905136092c70a` 上，按仅允许 D3/D4/D5

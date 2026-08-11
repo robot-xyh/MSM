@@ -1,0 +1,123 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" width="1450" height="860" viewBox="0 0 1450 860">
+  <defs>
+    <marker id="arrow" markerWidth="10" markerHeight="10" refX="9" refY="3" orient="auto" markerUnits="strokeWidth">
+      <path d="M0,0 L0,6 L9,3 z" fill="#315a70"/>
+    </marker>
+    <style>
+      .title { font: 700 30px "Noto Sans CJK SC", "Microsoft YaHei", sans-serif; fill: #173042; }
+      .section { font: 700 21px "Noto Sans CJK SC", "Microsoft YaHei", sans-serif; fill: #173042; }
+      .label { font: 600 17px "Noto Sans CJK SC", "Microsoft YaHei", sans-serif; fill: #173042; }
+      .text { font: 400 15px "Noto Sans CJK SC", "Microsoft YaHei", sans-serif; fill: #29424f; }
+      .small { font: 400 13px "Noto Sans CJK SC", "Microsoft YaHei", sans-serif; fill: #405764; }
+      .cell { stroke: #aebdc5; stroke-width: 1.5; }
+    </style>
+  </defs>
+
+  <rect width="1450" height="860" fill="#ffffff"/>
+  <text x="725" y="48" text-anchor="middle" class="title">候选代价矩阵与一对一跨视角配准</text>
+
+  <rect x="45" y="88" width="390" height="675" fill="#f8fbfc" stroke="#9eb5c1" stroke-width="2" rx="8"/>
+  <text x="75" y="127" class="section">候选代价</text>
+  <text x="75" y="171" class="label">每个 A-B 轨迹对计算：</text>
+  <text x="75" y="211" class="text">极线距离</text>
+  <rect x="230" y="190" width="160" height="32" fill="#eef6f9" stroke="#315a70" rx="4"/>
+  <text x="310" y="212" text-anchor="middle" class="small">像素几何一致性</text>
+  <text x="75" y="258" class="text">视线最近距离</text>
+  <rect x="230" y="237" width="160" height="32" fill="#edf7f1" stroke="#316d51" rx="4"/>
+  <text x="310" y="259" text-anchor="middle" class="small">三角定位闭合程度</text>
+  <text x="75" y="305" class="text">双相机重投影误差</text>
+  <rect x="230" y="284" width="160" height="32" fill="#fff7e8" stroke="#aa6a17" rx="4"/>
+  <text x="310" y="306" text-anchor="middle" class="small">回到原像点的偏差</text>
+  <text x="75" y="352" class="text">三维轨迹连续性</text>
+  <rect x="230" y="331" width="160" height="32" fill="#f3f0f8" stroke="#67518a" rx="4"/>
+  <text x="310" y="353" text-anchor="middle" class="small">位置与速度变化</text>
+  <text x="75" y="399" class="text">时间重叠质量</text>
+  <rect x="230" y="378" width="160" height="32" fill="#f3f5f6" stroke="#6d7b82" rx="4"/>
+  <text x="310" y="400" text-anchor="middle" class="small">样本数和时间偏差</text>
+
+  <line x1="75" y1="445" x2="390" y2="445" stroke="#9eb5c1" stroke-width="2"/>
+  <text x="75" y="484" class="label">处理原则</text>
+  <text x="75" y="520" class="text">先用硬门剔除不可能候选。</text>
+  <text x="75" y="553" class="text">可行候选按不确定度归一化。</text>
+  <text x="75" y="586" class="text">低代价表示关系更一致。</text>
+  <text x="75" y="619" class="text">矩阵加入“未匹配”虚拟项。</text>
+  <text x="75" y="652" class="text">不强迫 B 的每条轨迹都有配对。</text>
+  <rect x="75" y="686" width="315" height="48" fill="#fff8f7" stroke="#a84a3a" stroke-width="2" rx="5"/>
+  <text x="232" y="716" text-anchor="middle" class="label" fill="#8e3f33">真实目标编号不参与代价计算</text>
+
+  <line x1="435" y1="425" x2="505" y2="425" stroke="#315a70" stroke-width="3" marker-end="url(#arrow)"/>
+
+  <!-- 矩阵 -->
+  <rect x="505" y="88" width="585" height="675" fill="#ffffff" stroke="#9eb5c1" stroke-width="2" rx="8"/>
+  <text x="535" y="127" class="section">示例候选矩阵</text>
+  <text x="800" y="160" text-anchor="middle" class="small">列：B 相机匿名轨迹</text>
+  <text x="535" y="190" class="small">行：A 相机匿名轨迹</text>
+
+  <!-- 列标题 -->
+  <text x="665" y="215" text-anchor="middle" class="label">B-1</text>
+  <text x="735" y="215" text-anchor="middle" class="label">B-2</text>
+  <text x="805" y="215" text-anchor="middle" class="label">B-3</text>
+  <text x="875" y="215" text-anchor="middle" class="label">B-4</text>
+  <text x="945" y="215" text-anchor="middle" class="label">B-5</text>
+  <text x="1020" y="215" text-anchor="middle" class="label">未匹配</text>
+
+  <!-- 行标题 -->
+  <text x="605" y="267" text-anchor="end" class="label">A-1</text>
+  <text x="605" y="337" text-anchor="end" class="label">A-2</text>
+  <text x="605" y="407" text-anchor="end" class="label">A-3</text>
+  <text x="605" y="477" text-anchor="end" class="label">A-4</text>
+  <text x="605" y="547" text-anchor="end" class="label">A-5</text>
+
+  <!-- 5x6 单元格 -->
+  <g class="cell">
+    <rect x="625" y="230" width="70" height="70" fill="#cfe9d9"/><rect x="695" y="230" width="70" height="70" fill="#fff0dc"/><rect x="765" y="230" width="70" height="70" fill="#e6e9eb"/><rect x="835" y="230" width="70" height="70" fill="#e6e9eb"/><rect x="905" y="230" width="70" height="70" fill="#f8dfdc"/><rect x="975" y="230" width="90" height="70" fill="#f7f1e5"/>
+    <rect x="625" y="300" width="70" height="70" fill="#fff0dc"/><rect x="695" y="300" width="70" height="70" fill="#cfe9d9"/><rect x="765" y="300" width="70" height="70" fill="#f8dfdc"/><rect x="835" y="300" width="70" height="70" fill="#e6e9eb"/><rect x="905" y="300" width="70" height="70" fill="#e6e9eb"/><rect x="975" y="300" width="90" height="70" fill="#f7f1e5"/>
+    <rect x="625" y="370" width="70" height="70" fill="#e6e9eb"/><rect x="695" y="370" width="70" height="70" fill="#fff0dc"/><rect x="765" y="370" width="70" height="70" fill="#cfe9d9"/><rect x="835" y="370" width="70" height="70" fill="#f8dfdc"/><rect x="905" y="370" width="70" height="70" fill="#e6e9eb"/><rect x="975" y="370" width="90" height="70" fill="#f7f1e5"/>
+    <rect x="625" y="440" width="70" height="70" fill="#e6e9eb"/><rect x="695" y="440" width="70" height="70" fill="#e6e9eb"/><rect x="765" y="440" width="70" height="70" fill="#fff0dc"/><rect x="835" y="440" width="70" height="70" fill="#cfe9d9"/><rect x="905" y="440" width="70" height="70" fill="#f8dfdc"/><rect x="975" y="440" width="90" height="70" fill="#f7f1e5"/>
+    <rect x="625" y="510" width="70" height="70" fill="#e6e9eb"/><rect x="695" y="510" width="70" height="70" fill="#e6e9eb"/><rect x="765" y="510" width="70" height="70" fill="#f8dfdc"/><rect x="835" y="510" width="70" height="70" fill="#fff0dc"/><rect x="905" y="510" width="70" height="70" fill="#cfe9d9"/><rect x="975" y="510" width="90" height="70" fill="#f7f1e5"/>
+  </g>
+
+  <!-- 数值 -->
+  <g class="text" text-anchor="middle">
+    <text x="660" y="272">0.12</text><text x="730" y="272">2.30</text><text x="800" y="272">禁止</text><text x="870" y="272">禁止</text><text x="940" y="272">5.10</text><text x="1020" y="272">3.00</text>
+    <text x="660" y="342">1.90</text><text x="730" y="342">0.18</text><text x="800" y="342">4.80</text><text x="870" y="342">禁止</text><text x="940" y="342">禁止</text><text x="1020" y="342">3.00</text>
+    <text x="660" y="412">禁止</text><text x="730" y="412">2.10</text><text x="800" y="412">0.09</text><text x="870" y="412">4.20</text><text x="940" y="412">禁止</text><text x="1020" y="412">3.00</text>
+    <text x="660" y="482">禁止</text><text x="730" y="482">禁止</text><text x="800" y="482">2.40</text><text x="870" y="482">0.15</text><text x="940" y="482">4.60</text><text x="1020" y="482">3.00</text>
+    <text x="660" y="552">禁止</text><text x="730" y="552">禁止</text><text x="800" y="552">4.30</text><text x="870" y="552">2.20</text><text x="940" y="552">0.11</text><text x="1020" y="552">3.00</text>
+  </g>
+
+  <rect x="625" y="230" width="70" height="70" fill="none" stroke="#1f7a4d" stroke-width="4"/>
+  <rect x="695" y="300" width="70" height="70" fill="none" stroke="#1f7a4d" stroke-width="4"/>
+  <rect x="765" y="370" width="70" height="70" fill="none" stroke="#1f7a4d" stroke-width="4"/>
+  <rect x="835" y="440" width="70" height="70" fill="none" stroke="#1f7a4d" stroke-width="4"/>
+  <rect x="905" y="510" width="70" height="70" fill="none" stroke="#1f7a4d" stroke-width="4"/>
+
+  <text x="535" y="630" class="small">绿色框：匈牙利算法选中的低代价一对一关系</text>
+  <text x="535" y="658" class="small">灰色：未通过硬门；红色：虽可计算但明显不一致</text>
+  <text x="535" y="686" class="small">实际矩阵按 A、B 可见轨迹数动态变化，不固定为 20×20</text>
+  <text x="535" y="714" class="small">未匹配代价控制“拒绝错误配准”与“保留候选”的取舍</text>
+
+  <line x1="1090" y1="425" x2="1155" y2="425" stroke="#315a70" stroke-width="3" marker-end="url(#arrow)"/>
+
+  <rect x="1155" y="150" width="250" height="520" fill="#f8fbfc" stroke="#9eb5c1" stroke-width="2" rx="8"/>
+  <text x="1185" y="190" class="section">输出关系</text>
+  <rect x="1190" y="235" width="180" height="52" fill="#edf7f1" stroke="#316d51" stroke-width="2" rx="5"/>
+  <text x="1280" y="268" text-anchor="middle" class="label">A-1 ↔ B-1</text>
+  <rect x="1190" y="305" width="180" height="52" fill="#edf7f1" stroke="#316d51" stroke-width="2" rx="5"/>
+  <text x="1280" y="338" text-anchor="middle" class="label">A-2 ↔ B-2</text>
+  <rect x="1190" y="375" width="180" height="52" fill="#edf7f1" stroke="#316d51" stroke-width="2" rx="5"/>
+  <text x="1280" y="408" text-anchor="middle" class="label">A-3 ↔ B-3</text>
+  <rect x="1190" y="445" width="180" height="52" fill="#edf7f1" stroke="#316d51" stroke-width="2" rx="5"/>
+  <text x="1280" y="478" text-anchor="middle" class="label">A-4 ↔ B-4</text>
+  <rect x="1190" y="515" width="180" height="52" fill="#edf7f1" stroke="#316d51" stroke-width="2" rx="5"/>
+  <text x="1280" y="548" text-anchor="middle" class="label">A-5 ↔ B-5</text>
+  <text x="1280" y="610" text-anchor="middle" class="small">稳定多帧后创建</text>
+  <text x="1280" y="635" text-anchor="middle" class="label">中心视觉轨迹编号</text>
+
+  <rect x="1155" y="700" width="250" height="63" fill="#fff7e8" stroke="#aa6a17" stroke-width="2" rx="6"/>
+  <text x="1280" y="727" text-anchor="middle" class="small">B 若只看见部分目标，其他 A 轨迹</text>
+  <text x="1280" y="751" text-anchor="middle" class="small">保持未匹配，不构造虚假对应</text>
+
+  <text x="725" y="825" text-anchor="middle" class="small">图中数值只用于说明矩阵结构，不是实验结果或固定门限</text>
+</svg>

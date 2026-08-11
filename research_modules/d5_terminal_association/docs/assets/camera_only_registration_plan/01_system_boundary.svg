@@ -1,0 +1,96 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" width="1400" height="820" viewBox="0 0 1400 820">
+  <defs>
+    <marker id="arrow-blue" markerWidth="10" markerHeight="10" refX="9" refY="3" orient="auto" markerUnits="strokeWidth">
+      <path d="M0,0 L0,6 L9,3 z" fill="#245b78"/>
+    </marker>
+    <marker id="arrow-green" markerWidth="10" markerHeight="10" refX="9" refY="3" orient="auto" markerUnits="strokeWidth">
+      <path d="M0,0 L0,6 L9,3 z" fill="#2f6b4f"/>
+    </marker>
+    <style>
+      .title { font: 700 30px "Noto Sans CJK SC", "Microsoft YaHei", sans-serif; fill: #173042; }
+      .section { font: 700 22px "Noto Sans CJK SC", "Microsoft YaHei", sans-serif; fill: #173042; }
+      .label { font: 600 18px "Noto Sans CJK SC", "Microsoft YaHei", sans-serif; fill: #173042; }
+      .text { font: 400 16px "Noto Sans CJK SC", "Microsoft YaHei", sans-serif; fill: #29424f; }
+      .small { font: 400 14px "Noto Sans CJK SC", "Microsoft YaHei", sans-serif; fill: #405764; }
+      .box { fill: #f7fafc; stroke: #245b78; stroke-width: 2; rx: 6; }
+      .camera { fill: #eef6f9; stroke: #245b78; stroke-width: 2; rx: 6; }
+      .process { fill: #edf7f1; stroke: #2f6b4f; stroke-width: 2; rx: 6; }
+      .output { fill: #fff7e8; stroke: #a66a16; stroke-width: 2; rx: 6; }
+      .offline { fill: #fff8f7; stroke: #a84a3a; stroke-width: 2; rx: 6; }
+    </style>
+  </defs>
+
+  <rect x="0" y="0" width="1400" height="820" fill="#ffffff"/>
+  <text x="700" y="48" text-anchor="middle" class="title">纯相机二十目标跨视角配准的数据边界</text>
+
+  <rect x="35" y="78" width="1330" height="480" fill="#fbfdfe" stroke="#9eb5c1" stroke-width="2" rx="8"/>
+  <text x="65" y="112" class="section">在线配准区</text>
+  <text x="1240" y="110" text-anchor="end" class="small">算法只能读取像素、时间、相机参数和已知相机位姿</text>
+
+  <rect x="70" y="155" width="235" height="105" class="camera"/>
+  <text x="187" y="188" text-anchor="middle" class="label">中心光电节点 A</text>
+  <text x="187" y="218" text-anchor="middle" class="text">匿名检测框与像素中心</text>
+  <text x="187" y="244" text-anchor="middle" class="small">扫描形成间歇二维轨迹</text>
+
+  <rect x="70" y="340" width="235" height="105" class="camera"/>
+  <text x="187" y="373" text-anchor="middle" class="label">拦截无人机相机 B</text>
+  <text x="187" y="403" text-anchor="middle" class="text">匿名检测框与像素中心</text>
+  <text x="187" y="429" text-anchor="middle" class="small">云台跟踪形成连续二维轨迹</text>
+
+  <rect x="370" y="155" width="225" height="105" class="box"/>
+  <text x="482" y="188" text-anchor="middle" class="label">A 本地二维跟踪</text>
+  <text x="482" y="218" text-anchor="middle" class="text">只生成 A 侧匿名编号</text>
+  <text x="482" y="244" text-anchor="middle" class="small">不读取目标名称或真值</text>
+
+  <rect x="370" y="340" width="225" height="105" class="box"/>
+  <text x="482" y="373" text-anchor="middle" class="label">B 本地二维跟踪</text>
+  <text x="482" y="403" text-anchor="middle" class="text">发送轨迹、内参和位姿</text>
+  <text x="482" y="429" text-anchor="middle" class="small">保留量测与到达时间戳</text>
+
+  <rect x="665" y="225" width="250" height="150" class="process"/>
+  <text x="790" y="260" text-anchor="middle" class="label">跨视角候选构造</text>
+  <text x="790" y="292" text-anchor="middle" class="text">时间对齐与极线门控</text>
+  <text x="790" y="321" text-anchor="middle" class="text">双视线候选三角定位</text>
+  <text x="790" y="350" text-anchor="middle" class="small">三维位置是计算结果</text>
+
+  <rect x="980" y="225" width="170" height="150" class="process"/>
+  <text x="1065" y="260" text-anchor="middle" class="label">一对一配准</text>
+  <text x="1065" y="292" text-anchor="middle" class="text">几何与时序代价</text>
+  <text x="1065" y="321" text-anchor="middle" class="text">匈牙利匹配</text>
+  <text x="1065" y="350" text-anchor="middle" class="small">允许未匹配轨迹</text>
+
+  <rect x="1200" y="225" width="130" height="150" class="output"/>
+  <text x="1265" y="258" text-anchor="middle" class="label">结果</text>
+  <text x="1265" y="290" text-anchor="middle" class="text">A-B 对应</text>
+  <text x="1265" y="319" text-anchor="middle" class="text">视觉三维轨迹</text>
+  <text x="1265" y="348" text-anchor="middle" class="small">匹配后编号</text>
+
+  <line x1="305" y1="207" x2="370" y2="207" stroke="#245b78" stroke-width="3" marker-end="url(#arrow-blue)"/>
+  <line x1="305" y1="392" x2="370" y2="392" stroke="#245b78" stroke-width="3" marker-end="url(#arrow-blue)"/>
+  <path d="M595 207 C625 207,625 265,665 265" fill="none" stroke="#245b78" stroke-width="3" marker-end="url(#arrow-blue)"/>
+  <path d="M595 392 C625 392,625 335,665 335" fill="none" stroke="#245b78" stroke-width="3" marker-end="url(#arrow-blue)"/>
+  <line x1="915" y1="300" x2="980" y2="300" stroke="#2f6b4f" stroke-width="3" marker-end="url(#arrow-green)"/>
+  <line x1="1150" y1="300" x2="1200" y2="300" stroke="#2f6b4f" stroke-width="3" marker-end="url(#arrow-green)"/>
+
+  <line x1="35" y1="590" x2="1365" y2="590" stroke="#a84a3a" stroke-width="3" stroke-dasharray="10 8"/>
+  <text x="700" y="582" text-anchor="middle" class="label" fill="#8f3e32">在线与离线严格隔离</text>
+
+  <rect x="70" y="630" width="310" height="120" class="offline"/>
+  <text x="225" y="665" text-anchor="middle" class="label">AirSim / 质点目标真值</text>
+  <text x="225" y="696" text-anchor="middle" class="text">只用于生成图像和目标运动</text>
+  <text x="225" y="725" text-anchor="middle" class="small">对象名、真实位置和速度不得上送在线区</text>
+
+  <rect x="545" y="630" width="310" height="120" class="offline"/>
+  <text x="700" y="665" text-anchor="middle" class="label">离线对应标签</text>
+  <text x="700" y="696" text-anchor="middle" class="text">保存为独立真值旁路文件</text>
+  <text x="700" y="725" text-anchor="middle" class="small">只在实验结束后用于评分</text>
+
+  <rect x="1020" y="630" width="310" height="120" class="offline"/>
+  <text x="1175" y="665" text-anchor="middle" class="label">离线评估</text>
+  <text x="1175" y="696" text-anchor="middle" class="text">准确率、漏配、误配和身份切换</text>
+  <text x="1175" y="725" text-anchor="middle" class="small">不反向改变在线配准结果</text>
+
+  <line x1="380" y1="690" x2="545" y2="690" stroke="#a84a3a" stroke-width="3" marker-end="url(#arrow-blue)"/>
+  <line x1="855" y1="690" x2="1020" y2="690" stroke="#a84a3a" stroke-width="3" marker-end="url(#arrow-blue)"/>
+</svg>

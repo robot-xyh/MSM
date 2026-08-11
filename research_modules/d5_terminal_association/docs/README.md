@@ -1,5 +1,13 @@
 # D5 文档索引
 
+## 2026-08-10 文档同步
+
+本目录已同步 D5 有状态时序几何关联接口。原理文档说明 0.25 秒像面预测、协方差增长和两帧
+绑定迟滞；实施文档列出公开 API、状态事件和 reset 规则。main 已完成长距离 runtime 接线，
+联合专项为 23 项通过；实验报告同时保留 13 项 D5 专项与 904 项全量单元测试。冻结 seed
+`20260810` 的 D6 报告仍是旧 v2 `fail_closed` 基线，不是新 v3 AirSim 结果。v3 单 seed 和
+多 seed 性能证据尚未形成，长距离 P1 状态不变。
+
 D5 文档遵循 `research_modules/DOCUMENTATION_STANDARD.md`。推荐阅读顺序：
 
 1. `../README.md`：模块用途、运行方式和接口入口。
@@ -19,6 +27,35 @@ D5 文档遵循 `research_modules/DOCUMENTATION_STANDARD.md`。推荐阅读顺�
     来源独立质点语料的严格复载、动作角色覆盖、来源门、训练结构门和权限边界。
 15. `../reports/D5_A3_V2_ACTIVE_VISION_BC_DEVELOPMENT_CANDIDATE_20260801_CN.md`：A3 v2
     冻结单配置行为克隆、逐动作与相机角色指标、校准、边界分布外诊断和失败关闭结论。
+16. `../outputs/ideal_20_target_two_stage_registration_20260810/D5_IDEAL_20_TARGET_TWO_STAGE_REGISTRATION_CN.md`：
+    理想 20 目标、A 中心相机到 B 拦截相机的两级匈牙利配准报告，附 13 张步骤图、GIF、
+    完整代价 CSV 和 10-seed 指标。该输出为可复现生成产物，不是 AirSim 或实飞证据。
+17. `../outputs/ideal_20_target_irregular_crossing_20260810/D5_IDEAL_IRREGULAR_CROSSING_SCAN_REPORT_CN.md`：
+    不规则三维前后错列、投影交叉和窄视场云台扫描报告，比较机械扫描漏区与 20% 重叠安全
+    覆盖，附双模式时间线、10 张图和 GIF。该输出使用理想解析相机，不是 AirSim 或实飞证据。
+18. `../../airsim_runtime/outputs/d5_cv_long_range_20target_visual_evidence_20260810/coverage_safe/visual_evidence/D5_VISUAL_REGISTRATION_EFFECT_REPORT_CN.md`：
+    原始尺度 20 目标、50 米/秒、20 秒二维扫描和匿名世界视线跟踪取证报告。包含原图、在线标注图、
+    跨视角对照、时间轴、误差分布和离线混淆矩阵。单 seed 专项总门因 3 次短缺口中断未通过。
+19. `../../airsim_runtime/outputs/d5_cv_long_range_20target_scale2_visual_diagnostic_20260810/coverage_safe/visual_evidence/D5_VISUAL_REGISTRATION_EFFECT_REPORT_CN.md`：
+    2 倍目标网格可视化诊断。该输出用于分析可见性与框重叠歧义，不替代原始尺度主场景。
+
+2026-08-10 原始尺度长距离取证使用 seed `20260810`、20 秒和 20 个 50 米/秒目标。
+`coverage_safe` 中心发现/确认 `20/20`，拦截提示 `20/20`，观察和完成 `19/20`；1934 条可评分
+几何关联准确率为 `0.9979317477`。连续可见段身份切换为 0，但有 3 次短缺口中断和 7 次
+几何绑定切换。31 个交叉窗口只有 3 个可评价。取证包含 98 幅原图和 98 幅标注图，19/20 条
+全局航迹形成双相机图像证据。总门因短缺口中断失败。
+
+2 倍网格诊断达到双相机 `20/20`，但准确率为 `0.9892194912`，几何绑定切换增至 42，
+短缺口仍为 3，总门仍失败。该诊断不能替代原始尺度主场景。在线标注不使用 actor/object/truth ID；
+中心相机 3 千米原始图接近渲染/像素极限，AirSim detect 框不等价于真实光电辨识。短漏检、绑定
+稳定性、交叉覆盖、真实误差注入和多 seed 保持 P1。
+
+理想两级配准复现命令：
+
+```bash
+python3 research_modules/d5_terminal_association/scripts/run_ideal_registration_demo.py
+python3 research_modules/d5_terminal_association/scripts/run_ideal_irregular_crossing_demo.py
+```
 
 2026-08-01，D5 在验收后的 v2 语料上执行了一次冻结行为克隆训练。候选为
 `development_shadow_only`，开发预检因 `observe_target`、`search_sector` 召回均为 0、宏召回

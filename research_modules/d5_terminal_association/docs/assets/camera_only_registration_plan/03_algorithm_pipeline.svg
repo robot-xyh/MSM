@@ -1,0 +1,124 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" width="1500" height="980" viewBox="0 0 1500 980">
+  <defs>
+    <marker id="arrow" markerWidth="10" markerHeight="10" refX="9" refY="3" orient="auto" markerUnits="strokeWidth">
+      <path d="M0,0 L0,6 L9,3 z" fill="#315a70"/>
+    </marker>
+    <marker id="arrow-green" markerWidth="10" markerHeight="10" refX="9" refY="3" orient="auto" markerUnits="strokeWidth">
+      <path d="M0,0 L0,6 L9,3 z" fill="#316d51"/>
+    </marker>
+    <style>
+      .title { font: 700 30px "Noto Sans CJK SC", "Microsoft YaHei", sans-serif; fill: #173042; }
+      .lane { font: 700 22px "Noto Sans CJK SC", "Microsoft YaHei", sans-serif; fill: #173042; }
+      .label { font: 600 18px "Noto Sans CJK SC", "Microsoft YaHei", sans-serif; fill: #173042; }
+      .text { font: 400 15px "Noto Sans CJK SC", "Microsoft YaHei", sans-serif; fill: #29424f; }
+      .small { font: 400 13px "Noto Sans CJK SC", "Microsoft YaHei", sans-serif; fill: #405764; }
+      .input { fill: #eef6f9; stroke: #315a70; stroke-width: 2; rx: 6; }
+      .process { fill: #edf7f1; stroke: #316d51; stroke-width: 2; rx: 6; }
+      .gate { fill: #fff7e8; stroke: #aa6a17; stroke-width: 2; rx: 6; }
+      .result { fill: #f3f0f8; stroke: #67518a; stroke-width: 2; rx: 6; }
+      .optional { fill: #fafafa; stroke: #6d7b82; stroke-width: 2; stroke-dasharray: 8 5; rx: 6; }
+    </style>
+  </defs>
+
+  <rect width="1500" height="980" fill="#ffffff"/>
+  <text x="750" y="48" text-anchor="middle" class="title">匿名像素轨迹到纯视觉三维配准的算法流程</text>
+
+  <rect x="35" y="80" width="1430" height="190" fill="#fbfdfe" stroke="#b2c4ce" stroke-width="2" rx="8"/>
+  <text x="65" y="115" class="lane">相机内局部处理</text>
+
+  <rect x="70" y="145" width="200" height="90" class="input"/>
+  <text x="170" y="176" text-anchor="middle" class="label">A 匿名检测序列</text>
+  <text x="170" y="204" text-anchor="middle" class="text">像素中心、框、时间戳</text>
+  <text x="170" y="226" text-anchor="middle" class="small">窄视场扫描，间歇出现</text>
+
+  <rect x="330" y="145" width="200" height="90" class="process"/>
+  <text x="430" y="176" text-anchor="middle" class="label">A 二维轨迹</text>
+  <text x="430" y="204" text-anchor="middle" class="text">像面运动预测与续接</text>
+  <text x="430" y="226" text-anchor="middle" class="small">仅保留 A 本地匿名编号</text>
+
+  <rect x="850" y="145" width="200" height="90" class="input"/>
+  <text x="950" y="176" text-anchor="middle" class="label">B 匿名检测序列</text>
+  <text x="950" y="204" text-anchor="middle" class="text">像素中心、框、时间戳</text>
+  <text x="950" y="226" text-anchor="middle" class="small">云台跟踪，目标可为子集</text>
+
+  <rect x="1110" y="145" width="200" height="90" class="process"/>
+  <text x="1210" y="176" text-anchor="middle" class="label">B 二维轨迹</text>
+  <text x="1210" y="204" text-anchor="middle" class="text">像面运动预测与续接</text>
+  <text x="1210" y="226" text-anchor="middle" class="small">仅保留 B 本地匿名编号</text>
+
+  <line x1="270" y1="190" x2="330" y2="190" stroke="#315a70" stroke-width="3" marker-end="url(#arrow)"/>
+  <line x1="1050" y1="190" x2="1110" y2="190" stroke="#315a70" stroke-width="3" marker-end="url(#arrow)"/>
+
+  <rect x="35" y="300" width="1430" height="470" fill="#fbfdfb" stroke="#aac1b3" stroke-width="2" rx="8"/>
+  <text x="65" y="337" class="lane">中心候选构造与一对一决策</text>
+
+  <rect x="75" y="390" width="205" height="120" class="process"/>
+  <text x="177" y="423" text-anchor="middle" class="label">1 时间对齐</text>
+  <text x="177" y="452" text-anchor="middle" class="text">按量测时刻插值或外推</text>
+  <text x="177" y="480" text-anchor="middle" class="text">只保留重叠时间窗</text>
+  <text x="177" y="502" text-anchor="middle" class="small">记录到达延迟，不混用时间</text>
+
+  <rect x="330" y="390" width="205" height="120" class="gate"/>
+  <text x="432" y="423" text-anchor="middle" class="label">2 极线门控</text>
+  <text x="432" y="452" text-anchor="middle" class="text">基础矩阵约束候选区域</text>
+  <text x="432" y="480" text-anchor="middle" class="text">剔除明显不可能配对</text>
+  <text x="432" y="502" text-anchor="middle" class="small">门限由像素协方差归一化</text>
+
+  <rect x="585" y="390" width="205" height="120" class="process"/>
+  <text x="687" y="423" text-anchor="middle" class="label">3 候选三角定位</text>
+  <text x="687" y="452" text-anchor="middle" class="text">双视线最小二乘求交</text>
+  <text x="687" y="480" text-anchor="middle" class="text">计算位置、视差与条件数</text>
+  <text x="687" y="502" text-anchor="middle" class="small">三维状态此时才首次出现</text>
+
+  <rect x="840" y="390" width="205" height="120" class="gate"/>
+  <text x="942" y="423" text-anchor="middle" class="label">4 几何复核</text>
+  <text x="942" y="452" text-anchor="middle" class="text">双相机重投影误差</text>
+  <text x="942" y="480" text-anchor="middle" class="text">视线间距与正深度检查</text>
+  <text x="942" y="502" text-anchor="middle" class="small">退化候选失败关闭</text>
+
+  <rect x="1095" y="390" width="205" height="120" class="process"/>
+  <text x="1197" y="423" text-anchor="middle" class="label">5 轨迹代价</text>
+  <text x="1197" y="452" text-anchor="middle" class="text">时序、速度和连续性</text>
+  <text x="1197" y="480" text-anchor="middle" class="text">形成矩形候选代价矩阵</text>
+  <text x="1197" y="502" text-anchor="middle" class="small">不可行项赋禁止代价</text>
+
+  <line x1="280" y1="450" x2="330" y2="450" stroke="#316d51" stroke-width="3" marker-end="url(#arrow-green)"/>
+  <line x1="535" y1="450" x2="585" y2="450" stroke="#316d51" stroke-width="3" marker-end="url(#arrow-green)"/>
+  <line x1="790" y1="450" x2="840" y2="450" stroke="#316d51" stroke-width="3" marker-end="url(#arrow-green)"/>
+  <line x1="1045" y1="450" x2="1095" y2="450" stroke="#316d51" stroke-width="3" marker-end="url(#arrow-green)"/>
+
+  <path d="M430 235 L430 310 L178 310 L178 390" fill="none" stroke="#315a70" stroke-width="3" marker-end="url(#arrow)"/>
+  <path d="M1210 235 L1210 310 L230 310 L230 390" fill="none" stroke="#315a70" stroke-width="3" marker-end="url(#arrow)"/>
+
+  <rect x="365" y="580" width="270" height="120" class="result"/>
+  <text x="500" y="614" text-anchor="middle" class="label">6 匈牙利一对一匹配</text>
+  <text x="500" y="643" text-anchor="middle" class="text">全局最小总代价</text>
+  <text x="500" y="671" text-anchor="middle" class="text">加入未匹配虚拟项</text>
+  <text x="500" y="693" text-anchor="middle" class="small">首选、可解释基线</text>
+
+  <rect x="865" y="580" width="270" height="120" class="optional"/>
+  <text x="1000" y="614" text-anchor="middle" class="label">图神经网络对照</text>
+  <text x="1000" y="643" text-anchor="middle" class="text">学习候选边的匹配分数</text>
+  <text x="1000" y="671" text-anchor="middle" class="text">仍受几何门和一对一约束</text>
+  <text x="1000" y="693" text-anchor="middle" class="small">仅用于密集和交叉歧义比较</text>
+
+  <path d="M1197 510 L1197 545 L500 545 L500 580" fill="none" stroke="#67518a" stroke-width="3" marker-end="url(#arrow)"/>
+  <path d="M1197 510 L1197 545 L1000 545 L1000 580" fill="none" stroke="#6d7b82" stroke-width="3" stroke-dasharray="8 5" marker-end="url(#arrow)"/>
+
+  <rect x="35" y="800" width="1430" height="135" fill="#fffaf0" stroke="#b58a43" stroke-width="2" rx="8"/>
+  <text x="65" y="837" class="lane">稳定输出</text>
+  <rect x="265" y="825" width="255" height="80" class="result"/>
+  <text x="392" y="856" text-anchor="middle" class="label">A-B 轨迹对应关系</text>
+  <text x="392" y="883" text-anchor="middle" class="small">保留未匹配和拒绝原因</text>
+  <rect x="625" y="825" width="255" height="80" class="result"/>
+  <text x="752" y="856" text-anchor="middle" class="label">视觉三维轨迹</text>
+  <text x="752" y="883" text-anchor="middle" class="small">位置、速度、协方差</text>
+  <rect x="985" y="825" width="255" height="80" class="result"/>
+  <text x="1112" y="856" text-anchor="middle" class="label">中心视觉轨迹编号</text>
+  <text x="1112" y="883" text-anchor="middle" class="small">匹配稳定后才创建</text>
+
+  <path d="M500 700 L500 760 L392 760 L392 825" fill="none" stroke="#67518a" stroke-width="3" marker-end="url(#arrow)"/>
+  <path d="M500 700 L500 760 L752 760 L752 825" fill="none" stroke="#67518a" stroke-width="3" marker-end="url(#arrow)"/>
+  <path d="M500 700 L500 760 L1112 760 L1112 825" fill="none" stroke="#67518a" stroke-width="3" marker-end="url(#arrow)"/>
+</svg>

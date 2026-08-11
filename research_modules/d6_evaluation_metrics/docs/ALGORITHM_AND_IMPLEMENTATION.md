@@ -1,5 +1,32 @@
 # D6 系统级离线评估：算法原理与实施说明
 
+## D5长距离视觉配准离线评估
+
+模块提供 `load_d5_long_range_registration_episode()`、
+`load_d5_long_range_registration_episodes()`、`evaluate_d5_long_range_registration()` 和
+`write_d5_long_range_registration_report()`。`D5LongRangeRegistrationReportGenerator` 将四步
+封装为报告接口。命令行脚本支持重复传入 `--episode-dir`，失败关闭时写完整报告并返回状态码 2。
+
+加载阶段不导入 AirSim 或 D5。目录可直接包含 episode 文件，也可在下一层包含
+`coverage_safe`。JSON 根必须为对象；非空 CSV 必须有表头。无表头空 CSV 按
+`unavailable/empty_file_no_header` 读取，保留空证据状态而不生成零事件。三个基础文件和两个 v3
+时序文件分别记录文件可用性；缺字段进入指标级不可用，不生成默认数值。
+
+v2 的 `fragmentation_count` 作为实测短缺口数。没有保持事件时，有效短缺口中断等于实测中断，
+保持帧、恢复、过期和绑定振荡保持不可用。v3 优先读取显式有效中断，并从掉检事件统计时长、
+保持事件/帧、最大预测年龄、同编号恢复和过期。绑定事件按提出、待确认、保持、确认、过期分类；
+同一相机和匿名局部航迹连续出现 `A->B`、`B->A` 的确认切换时计一次振荡。
+
+实际交叉指标只读取连续性文件中的实际窗口字段。`crossing_geometry_preflight` 即使提供了窗口总数
+和可见性，也只触发“预检不能替代实测”的不可用原因。关联错误数优先读取显式字段；历史 v2
+只有准确率和可评分数时，仅在乘积接近整数时反推错误数。分相机关联准确率缺少逐行正确性字段
+时保持不可用。
+
+报告文件固定为逐 episode CSV、聚合 JSON、中文 Markdown 和一张四分区 PNG。图中分别显示
+短缺口/重发现、绑定事件、实际交叉可用性以及准确率/安全计数。专项测试覆盖 v2 冻结事实、v3
+完整字段、真实 main v3 行结构、缺失字段、无表头空 CSV、预检隔离和门控正负例，当前结果为
+`7 passed, 1 warning`；D6 全量为 `1425 passed, 16 skipped, 1 warning in 129.29s`。
+
 ## D3/D4/D5 授权来源载荷审计
 
 入口 `audit_learning_source_payloads()` 接收六个带外参数：input contract、metadata preflight、

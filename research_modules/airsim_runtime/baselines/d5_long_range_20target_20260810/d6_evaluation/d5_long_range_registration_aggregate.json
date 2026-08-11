@@ -1,0 +1,1440 @@
+{
+  "aggregate": {
+    "association_accuracy": {
+      "availability": "available",
+      "reason": null,
+      "source": "D6 aggregate:all episodes",
+      "value": 0.9979317476732161
+    },
+    "association_evaluable_count": {
+      "availability": "available",
+      "reason": null,
+      "source": "D6 aggregate:all episodes",
+      "value": 1934
+    },
+    "association_wrong_count": {
+      "availability": "available",
+      "reason": null,
+      "source": "D6 aggregate:all episodes",
+      "value": 4
+    },
+    "binding_oscillation_count": {
+      "availability": "unavailable",
+      "reason": "one_or_more_all_episodes_values_unavailable",
+      "source": null,
+      "value": null
+    },
+    "binding_switch_confirmed_count": {
+      "availability": "unavailable",
+      "reason": "one_or_more_all_episodes_values_unavailable",
+      "source": null,
+      "value": null
+    },
+    "binding_switch_expired_count": {
+      "availability": "unavailable",
+      "reason": "one_or_more_all_episodes_values_unavailable",
+      "source": null,
+      "value": null
+    },
+    "binding_switch_held_count": {
+      "availability": "unavailable",
+      "reason": "one_or_more_all_episodes_values_unavailable",
+      "source": null,
+      "value": null
+    },
+    "binding_switch_pending_count": {
+      "availability": "unavailable",
+      "reason": "one_or_more_all_episodes_values_unavailable",
+      "source": null,
+      "value": null
+    },
+    "binding_switch_proposed_count": {
+      "availability": "unavailable",
+      "reason": "one_or_more_all_episodes_values_unavailable",
+      "source": null,
+      "value": null
+    },
+    "bounded_coast_event_count": {
+      "availability": "unavailable",
+      "reason": "one_or_more_all_episodes_values_unavailable",
+      "source": null,
+      "value": null
+    },
+    "bounded_coast_frame_count": {
+      "availability": "unavailable",
+      "reason": "one_or_more_all_episodes_values_unavailable",
+      "source": null,
+      "value": null
+    },
+    "bounded_coast_max_age_s": {
+      "availability": "unavailable",
+      "reason": "one_or_more_all_episodes_values_unavailable",
+      "source": null,
+      "value": null
+    },
+    "bounded_coast_same_id_recovery_count": {
+      "availability": "unavailable",
+      "reason": "one_or_more_all_episodes_values_unavailable",
+      "source": null,
+      "value": null
+    },
+    "coast_expiry_count": {
+      "availability": "unavailable",
+      "reason": "one_or_more_all_episodes_values_unavailable",
+      "source": null,
+      "value": null
+    },
+    "crossing_availability_ratio": {
+      "availability": "available",
+      "reason": null,
+      "source": "D6 aggregate:all episodes",
+      "value": 0.0967741935483871
+    },
+    "crossing_evaluable_count": {
+      "availability": "available",
+      "reason": null,
+      "source": "D6 aggregate:all episodes",
+      "value": 3
+    },
+    "crossing_id_switch_count": {
+      "availability": "unavailable",
+      "reason": "one_or_more_all_episodes_values_unavailable",
+      "source": null,
+      "value": null
+    },
+    "crossing_total_count": {
+      "availability": "available",
+      "reason": null,
+      "source": "D6 aggregate:all episodes",
+      "value": 31
+    },
+    "crossing_track_continuity": {
+      "availability": "unavailable",
+      "reason": "one_or_more_all_episodes_values_unavailable",
+      "source": null,
+      "value": null
+    },
+    "crossing_track_purity": {
+      "availability": "unavailable",
+      "reason": "one_or_more_all_episodes_values_unavailable",
+      "source": null,
+      "value": null
+    },
+    "crossing_unavailable_count": {
+      "availability": "available",
+      "reason": null,
+      "source": "D6 aggregate:all episodes",
+      "value": 28
+    },
+    "crossing_unavailable_reasons": {
+      "availability": "available",
+      "reason": null,
+      "source": "D6 aggregate:all episodes",
+      "value": {
+        "insufficient_temporal_samples": 1,
+        "missing_pair_observation:GT-0001": 1,
+        "missing_pair_observation:GT-0001,GT-0002": 1,
+        "missing_pair_observation:GT-0002,GT-0003": 1,
+        "missing_pair_observation:GT-0003,GT-0004": 2,
+        "missing_pair_observation:GT-0005,GT-0006": 2,
+        "missing_pair_observation:GT-0005,GT-0008": 1,
+        "missing_pair_observation:GT-0007,GT-0008": 1,
+        "missing_pair_observation:GT-0007,GT-0010": 2,
+        "missing_pair_observation:GT-0009,GT-0010": 2,
+        "missing_pair_observation:GT-0011,GT-0012": 2,
+        "missing_pair_observation:GT-0011,GT-0014": 2,
+        "missing_pair_observation:GT-0013,GT-0014": 1,
+        "missing_pair_observation:GT-0013,GT-0016": 2,
+        "missing_pair_observation:GT-0015,GT-0016": 2,
+        "missing_pair_observation:GT-0015,GT-0018": 2,
+        "missing_pair_observation:GT-0017,GT-0018": 2,
+        "missing_pair_observation:GT-0017,GT-0020": 1
+      }
+    },
+    "duplicate_assignment_count": {
+      "availability": "available",
+      "reason": null,
+      "source": "D6 aggregate:all episodes",
+      "value": 0
+    },
+    "effective_short_gap_fragmentation_count": {
+      "availability": "available",
+      "reason": null,
+      "source": "D6 aggregate:all episodes",
+      "value": 3
+    },
+    "geometric_binding_switch_count": {
+      "availability": "available",
+      "reason": null,
+      "source": "D6 aggregate:all episodes",
+      "value": 7
+    },
+    "global_track_id_rewrite_count": {
+      "availability": "available",
+      "reason": null,
+      "source": "D6 aggregate:all episodes",
+      "value": 0
+    },
+    "id_switch_count": {
+      "availability": "available",
+      "reason": null,
+      "source": "D6 aggregate:all episodes",
+      "value": 0
+    },
+    "long_reacquisition_count": {
+      "availability": "available",
+      "reason": null,
+      "source": "D6 aggregate:all episodes",
+      "value": 48
+    },
+    "long_reacquisition_identity_change_count": {
+      "availability": "available",
+      "reason": null,
+      "source": "D6 aggregate:all episodes",
+      "value": 48
+    },
+    "measured_short_gap_count": {
+      "availability": "available",
+      "reason": null,
+      "source": "D6 aggregate:all episodes",
+      "value": 3
+    },
+    "measured_short_gap_total_duration_s": {
+      "availability": "available",
+      "reason": null,
+      "source": "D6 aggregate:all episodes",
+      "value": 0.3300000000000005
+    },
+    "online_truth_use_count": {
+      "availability": "available",
+      "reason": null,
+      "source": "D6 aggregate:all episodes",
+      "value": 0
+    }
+  },
+  "control_authority": false,
+  "episode_count": 1,
+  "episodes": [
+    {
+      "aggregate": {
+        "association_accuracy": {
+          "availability": "available",
+          "reason": null,
+          "source": "metrics.json:association_accuracy",
+          "value": 0.9979317476732161
+        },
+        "association_evaluable_count": {
+          "availability": "available",
+          "reason": null,
+          "source": "metrics.json:association_evaluable_count",
+          "value": 1934
+        },
+        "association_wrong_count": {
+          "availability": "available",
+          "reason": null,
+          "source": "metrics.json:association_wrong_count",
+          "value": 4
+        },
+        "binding_oscillation_count": {
+          "availability": "unavailable",
+          "reason": "file_missing",
+          "source": null,
+          "value": null
+        },
+        "binding_switch_confirmed_count": {
+          "availability": "unavailable",
+          "reason": "file_missing",
+          "source": null,
+          "value": null
+        },
+        "binding_switch_expired_count": {
+          "availability": "unavailable",
+          "reason": "file_missing",
+          "source": null,
+          "value": null
+        },
+        "binding_switch_held_count": {
+          "availability": "unavailable",
+          "reason": "file_missing",
+          "source": null,
+          "value": null
+        },
+        "binding_switch_pending_count": {
+          "availability": "unavailable",
+          "reason": "file_missing",
+          "source": null,
+          "value": null
+        },
+        "binding_switch_proposed_count": {
+          "availability": "unavailable",
+          "reason": "file_missing",
+          "source": null,
+          "value": null
+        },
+        "bounded_coast_event_count": {
+          "availability": "unavailable",
+          "reason": "file_missing",
+          "source": null,
+          "value": null
+        },
+        "bounded_coast_frame_count": {
+          "availability": "unavailable",
+          "reason": "file_missing",
+          "source": null,
+          "value": null
+        },
+        "bounded_coast_max_age_s": {
+          "availability": "unavailable",
+          "reason": "file_missing",
+          "source": null,
+          "value": null
+        },
+        "bounded_coast_same_id_recovery_count": {
+          "availability": "unavailable",
+          "reason": "file_missing",
+          "source": null,
+          "value": null
+        },
+        "coast_expiry_count": {
+          "availability": "unavailable",
+          "reason": "file_missing",
+          "source": null,
+          "value": null
+        },
+        "crossing_availability_ratio": {
+          "availability": "available",
+          "reason": null,
+          "source": "mot_continuity:aggregate:actual",
+          "value": 0.0967741935483871
+        },
+        "crossing_evaluable_count": {
+          "availability": "available",
+          "reason": null,
+          "source": "mot_continuity:aggregate:actual:crossing_evaluable_window_count",
+          "value": 3
+        },
+        "crossing_id_switch_count": {
+          "availability": "unavailable",
+          "reason": "actual_crossing_id_switch_count_missing",
+          "source": null,
+          "value": null
+        },
+        "crossing_total_count": {
+          "availability": "available",
+          "reason": null,
+          "source": "mot_continuity:aggregate:actual:crossing_window_count",
+          "value": 31
+        },
+        "crossing_track_continuity": {
+          "availability": "unavailable",
+          "reason": "actual_crossing_track_continuity_missing",
+          "source": null,
+          "value": null
+        },
+        "crossing_track_purity": {
+          "availability": "unavailable",
+          "reason": "actual_crossing_track_purity_missing",
+          "source": null,
+          "value": null
+        },
+        "crossing_unavailable_count": {
+          "availability": "available",
+          "reason": null,
+          "source": "mot_continuity:aggregate:actual:crossing_not_evaluable_window_count",
+          "value": 28
+        },
+        "crossing_unavailable_reasons": {
+          "availability": "available",
+          "reason": null,
+          "source": "mot_continuity:aggregate:actual",
+          "value": {
+            "insufficient_temporal_samples": 1,
+            "missing_pair_observation:GT-0001": 1,
+            "missing_pair_observation:GT-0001,GT-0002": 1,
+            "missing_pair_observation:GT-0002,GT-0003": 1,
+            "missing_pair_observation:GT-0003,GT-0004": 2,
+            "missing_pair_observation:GT-0005,GT-0006": 2,
+            "missing_pair_observation:GT-0005,GT-0008": 1,
+            "missing_pair_observation:GT-0007,GT-0008": 1,
+            "missing_pair_observation:GT-0007,GT-0010": 2,
+            "missing_pair_observation:GT-0009,GT-0010": 2,
+            "missing_pair_observation:GT-0011,GT-0012": 2,
+            "missing_pair_observation:GT-0011,GT-0014": 2,
+            "missing_pair_observation:GT-0013,GT-0014": 1,
+            "missing_pair_observation:GT-0013,GT-0016": 2,
+            "missing_pair_observation:GT-0015,GT-0016": 2,
+            "missing_pair_observation:GT-0015,GT-0018": 2,
+            "missing_pair_observation:GT-0017,GT-0018": 2,
+            "missing_pair_observation:GT-0017,GT-0020": 1
+          }
+        },
+        "duplicate_assignment_count": {
+          "availability": "available",
+          "reason": null,
+          "source": "metrics.json:duplicate_assignment_count",
+          "value": 0
+        },
+        "effective_short_gap_fragmentation_count": {
+          "availability": "available",
+          "reason": null,
+          "source": "mot_continuity:aggregate:pre_temporal_effective_equals_measured",
+          "value": 3
+        },
+        "geometric_binding_switch_count": {
+          "availability": "available",
+          "reason": null,
+          "source": "metrics.json:geometric_binding_switch_count",
+          "value": 7
+        },
+        "global_track_id_rewrite_count": {
+          "availability": "available",
+          "reason": null,
+          "source": "metrics.json:global_track_id_rewrite_count",
+          "value": 0
+        },
+        "id_switch_count": {
+          "availability": "available",
+          "reason": null,
+          "source": "mot_continuity:aggregate:id_switch_count",
+          "value": 0
+        },
+        "long_reacquisition_count": {
+          "availability": "available",
+          "reason": null,
+          "source": "mot_continuity:aggregate:reacquisition_count",
+          "value": 48
+        },
+        "long_reacquisition_identity_change_count": {
+          "availability": "available",
+          "reason": null,
+          "source": "mot_continuity:aggregate:reacquisition_identity_changed_count",
+          "value": 48
+        },
+        "measured_short_gap_count": {
+          "availability": "available",
+          "reason": null,
+          "source": "mot_continuity:aggregate:fragmentation_count",
+          "value": 3
+        },
+        "measured_short_gap_total_duration_s": {
+          "availability": "available",
+          "reason": null,
+          "source": "offline_truth_sidecar.json:short_gaps",
+          "value": 0.3300000000000005
+        },
+        "online_truth_use_count": {
+          "availability": "available",
+          "reason": null,
+          "source": "metrics.json:online_truth_identity_use_count",
+          "value": 0
+        }
+      },
+      "artifacts": {
+        "associations": {
+          "availability": "unavailable",
+          "fieldnames": [],
+          "path": "/home/linux/Documents/MSM/research_modules/airsim_runtime/baselines/d5_long_range_20target_20260810/associations.csv",
+          "reason": "file_missing"
+        },
+        "baseline_manifest": {
+          "availability": "available",
+          "path": "/home/linux/Documents/MSM/research_modules/airsim_runtime/baselines/d5_long_range_20target_20260810/baseline_manifest.json",
+          "reason": null,
+          "schema_version": "d5-long-range-baseline-v1"
+        },
+        "dropout_events": {
+          "availability": "unavailable",
+          "fieldnames": [],
+          "path": "/home/linux/Documents/MSM/research_modules/airsim_runtime/baselines/d5_long_range_20target_20260810/dropout_events.csv",
+          "reason": "file_missing"
+        },
+        "frozen_baseline": {
+          "availability": "available",
+          "reason": null,
+          "source": "baseline_manifest+online_replay+offline_truth_sidecar"
+        },
+        "metrics": {
+          "availability": "unavailable",
+          "path": "/home/linux/Documents/MSM/research_modules/airsim_runtime/baselines/d5_long_range_20target_20260810/metrics.json",
+          "reason": "file_missing",
+          "schema_version": null
+        },
+        "mot_continuity": {
+          "availability": "unavailable",
+          "path": "/home/linux/Documents/MSM/research_modules/airsim_runtime/baselines/d5_long_range_20target_20260810/mot_continuity.json",
+          "reason": "file_missing",
+          "schema_version": null
+        },
+        "offline_truth_sidecar": {
+          "availability": "available",
+          "path": "/home/linux/Documents/MSM/research_modules/airsim_runtime/baselines/d5_long_range_20target_20260810/offline_truth_sidecar.json",
+          "reason": null,
+          "schema_version": "d5-long-range-offline-sidecar-v1"
+        },
+        "online_replay": {
+          "availability": "available",
+          "path": "/home/linux/Documents/MSM/research_modules/airsim_runtime/baselines/d5_long_range_20target_20260810/online_replay.jsonl",
+          "reason": null,
+          "row_count": 70
+        },
+        "temporal_binding_events": {
+          "availability": "unavailable",
+          "fieldnames": [],
+          "path": "/home/linux/Documents/MSM/research_modules/airsim_runtime/baselines/d5_long_range_20target_20260810/temporal_binding_events.csv",
+          "reason": "file_missing"
+        }
+      },
+      "episode_id": "d5_long_range_20target_20260810",
+      "evidence_dir": "/home/linux/Documents/MSM/research_modules/airsim_runtime/baselines/d5_long_range_20target_20260810",
+      "gates": {
+        "actual_crossing_gate": {
+          "actual_availability_ratio": 0.0967741935483871,
+          "actual_evaluable_count": 3,
+          "actual_total_count": 31,
+          "geometry_preflight_accepted": false,
+          "minimum_availability_ratio": 0.3,
+          "minimum_evaluable_count": 10,
+          "passed": false,
+          "reason": "actual evaluable=3/31, ratio=0.096774",
+          "status": "failed"
+        },
+        "failure_reasons": [
+          "effective_short_gap_fragmentation_count:failed:threshold not satisfied",
+          "binding_oscillation_count:unavailable:file_missing",
+          "actual_crossing_gate:failed:actual evaluable=3/31, ratio=0.096774"
+        ],
+        "overall_gate_passed": false,
+        "structural_checks": {
+          "association_accuracy": {
+            "passed": true,
+            "reason": "threshold satisfied",
+            "requirement": ">= 0.95",
+            "status": "passed",
+            "value": 0.9979317476732161
+          },
+          "binding_oscillation_count": {
+            "passed": false,
+            "reason": "file_missing",
+            "requirement": "= 0",
+            "status": "unavailable",
+            "value": null
+          },
+          "duplicate_assignment_count": {
+            "passed": true,
+            "reason": "threshold satisfied",
+            "requirement": "= 0",
+            "status": "passed",
+            "value": 0
+          },
+          "effective_short_gap_fragmentation_count": {
+            "passed": false,
+            "reason": "threshold not satisfied",
+            "requirement": "= 0",
+            "status": "failed",
+            "value": 3
+          },
+          "global_track_id_rewrite_count": {
+            "passed": true,
+            "reason": "threshold satisfied",
+            "requirement": "= 0",
+            "status": "passed",
+            "value": 0
+          },
+          "id_switch_count": {
+            "passed": true,
+            "reason": "threshold satisfied",
+            "requirement": "= 0",
+            "status": "passed",
+            "value": 0
+          },
+          "online_truth_use_count": {
+            "passed": true,
+            "reason": "threshold satisfied",
+            "requirement": "= 0",
+            "status": "passed",
+            "value": 0
+          }
+        },
+        "structural_gate_passed": false
+      },
+      "per_camera": {
+        "Center_CV": {
+          "association_accuracy": {
+            "availability": "unavailable",
+            "reason": "per_camera_association_correctness_missing",
+            "source": null,
+            "value": null
+          },
+          "association_evaluable_count": {
+            "availability": "unavailable",
+            "reason": "association_correctness_field_missing",
+            "source": null,
+            "value": null
+          },
+          "association_wrong_count": {
+            "availability": "unavailable",
+            "reason": "association_correctness_field_missing",
+            "source": null,
+            "value": null
+          },
+          "binding_oscillation_count": {
+            "availability": "unavailable",
+            "reason": "file_missing",
+            "source": null,
+            "value": null
+          },
+          "binding_switch_confirmed_count": {
+            "availability": "unavailable",
+            "reason": "file_missing",
+            "source": null,
+            "value": null
+          },
+          "binding_switch_expired_count": {
+            "availability": "unavailable",
+            "reason": "file_missing",
+            "source": null,
+            "value": null
+          },
+          "binding_switch_held_count": {
+            "availability": "unavailable",
+            "reason": "file_missing",
+            "source": null,
+            "value": null
+          },
+          "binding_switch_pending_count": {
+            "availability": "unavailable",
+            "reason": "file_missing",
+            "source": null,
+            "value": null
+          },
+          "binding_switch_proposed_count": {
+            "availability": "unavailable",
+            "reason": "file_missing",
+            "source": null,
+            "value": null
+          },
+          "bounded_coast_event_count": {
+            "availability": "unavailable",
+            "reason": "file_missing",
+            "source": null,
+            "value": null
+          },
+          "bounded_coast_frame_count": {
+            "availability": "unavailable",
+            "reason": "file_missing",
+            "source": null,
+            "value": null
+          },
+          "bounded_coast_max_age_s": {
+            "availability": "unavailable",
+            "reason": "file_missing",
+            "source": null,
+            "value": null
+          },
+          "bounded_coast_same_id_recovery_count": {
+            "availability": "unavailable",
+            "reason": "file_missing",
+            "source": null,
+            "value": null
+          },
+          "coast_expiry_count": {
+            "availability": "unavailable",
+            "reason": "file_missing",
+            "source": null,
+            "value": null
+          },
+          "crossing_availability_ratio": {
+            "availability": "unavailable",
+            "reason": "actual_crossing_total_or_evaluable_count_unavailable",
+            "source": null,
+            "value": null
+          },
+          "crossing_evaluable_count": {
+            "availability": "unavailable",
+            "reason": "actual_crossing_evaluable_count_missing",
+            "source": null,
+            "value": null
+          },
+          "crossing_id_switch_count": {
+            "availability": "unavailable",
+            "reason": "actual_crossing_id_switch_count_missing",
+            "source": null,
+            "value": null
+          },
+          "crossing_total_count": {
+            "availability": "unavailable",
+            "reason": "actual_crossing_window_count_missing",
+            "source": null,
+            "value": null
+          },
+          "crossing_track_continuity": {
+            "availability": "unavailable",
+            "reason": "actual_crossing_track_continuity_missing",
+            "source": null,
+            "value": null
+          },
+          "crossing_track_purity": {
+            "availability": "unavailable",
+            "reason": "actual_crossing_track_purity_missing",
+            "source": null,
+            "value": null
+          },
+          "crossing_unavailable_count": {
+            "availability": "unavailable",
+            "reason": "actual_crossing_unavailable_count_missing",
+            "source": null,
+            "value": null
+          },
+          "crossing_unavailable_reasons": {
+            "availability": "unavailable",
+            "reason": "actual_crossing_window_results_missing",
+            "source": null,
+            "value": null
+          },
+          "duplicate_assignment_count": {
+            "availability": "unavailable",
+            "reason": "per_camera_duplicate_assignment_field_missing",
+            "source": null,
+            "value": null
+          },
+          "effective_short_gap_fragmentation_count": {
+            "availability": "available",
+            "reason": null,
+            "source": "mot_continuity:camera:Center_CV:pre_temporal_effective_equals_measured",
+            "value": 0
+          },
+          "geometric_binding_switch_count": {
+            "availability": "unavailable",
+            "reason": "per_camera_geometric_binding_switch_count_missing",
+            "source": null,
+            "value": null
+          },
+          "global_track_id_rewrite_count": {
+            "availability": "unavailable",
+            "reason": "per_camera_global_track_id_rewrite_field_missing",
+            "source": null,
+            "value": null
+          },
+          "id_switch_count": {
+            "availability": "unavailable",
+            "reason": "id_switch_count_missing",
+            "source": null,
+            "value": null
+          },
+          "long_reacquisition_count": {
+            "availability": "unavailable",
+            "reason": "long_reacquisition_count_missing",
+            "source": null,
+            "value": null
+          },
+          "long_reacquisition_identity_change_count": {
+            "availability": "unavailable",
+            "reason": "long_reacquisition_identity_change_missing",
+            "source": null,
+            "value": null
+          },
+          "measured_short_gap_count": {
+            "availability": "available",
+            "reason": null,
+            "source": "offline_truth_sidecar.json:short_gaps",
+            "value": 0
+          },
+          "measured_short_gap_total_duration_s": {
+            "availability": "available",
+            "reason": null,
+            "source": "offline_truth_sidecar.json:short_gaps",
+            "value": 0
+          },
+          "online_truth_use_count": {
+            "availability": "available",
+            "reason": null,
+            "source": "online_rows:camera:Center_CV",
+            "value": 0
+          }
+        },
+        "Interceptor_CV": {
+          "association_accuracy": {
+            "availability": "unavailable",
+            "reason": "per_camera_association_correctness_missing",
+            "source": null,
+            "value": null
+          },
+          "association_evaluable_count": {
+            "availability": "unavailable",
+            "reason": "association_correctness_field_missing",
+            "source": null,
+            "value": null
+          },
+          "association_wrong_count": {
+            "availability": "unavailable",
+            "reason": "association_correctness_field_missing",
+            "source": null,
+            "value": null
+          },
+          "binding_oscillation_count": {
+            "availability": "unavailable",
+            "reason": "file_missing",
+            "source": null,
+            "value": null
+          },
+          "binding_switch_confirmed_count": {
+            "availability": "unavailable",
+            "reason": "file_missing",
+            "source": null,
+            "value": null
+          },
+          "binding_switch_expired_count": {
+            "availability": "unavailable",
+            "reason": "file_missing",
+            "source": null,
+            "value": null
+          },
+          "binding_switch_held_count": {
+            "availability": "unavailable",
+            "reason": "file_missing",
+            "source": null,
+            "value": null
+          },
+          "binding_switch_pending_count": {
+            "availability": "unavailable",
+            "reason": "file_missing",
+            "source": null,
+            "value": null
+          },
+          "binding_switch_proposed_count": {
+            "availability": "unavailable",
+            "reason": "file_missing",
+            "source": null,
+            "value": null
+          },
+          "bounded_coast_event_count": {
+            "availability": "unavailable",
+            "reason": "file_missing",
+            "source": null,
+            "value": null
+          },
+          "bounded_coast_frame_count": {
+            "availability": "unavailable",
+            "reason": "file_missing",
+            "source": null,
+            "value": null
+          },
+          "bounded_coast_max_age_s": {
+            "availability": "unavailable",
+            "reason": "file_missing",
+            "source": null,
+            "value": null
+          },
+          "bounded_coast_same_id_recovery_count": {
+            "availability": "unavailable",
+            "reason": "file_missing",
+            "source": null,
+            "value": null
+          },
+          "coast_expiry_count": {
+            "availability": "unavailable",
+            "reason": "file_missing",
+            "source": null,
+            "value": null
+          },
+          "crossing_availability_ratio": {
+            "availability": "unavailable",
+            "reason": "actual_crossing_total_or_evaluable_count_unavailable",
+            "source": null,
+            "value": null
+          },
+          "crossing_evaluable_count": {
+            "availability": "unavailable",
+            "reason": "actual_crossing_evaluable_count_missing",
+            "source": null,
+            "value": null
+          },
+          "crossing_id_switch_count": {
+            "availability": "unavailable",
+            "reason": "actual_crossing_id_switch_count_missing",
+            "source": null,
+            "value": null
+          },
+          "crossing_total_count": {
+            "availability": "unavailable",
+            "reason": "actual_crossing_window_count_missing",
+            "source": null,
+            "value": null
+          },
+          "crossing_track_continuity": {
+            "availability": "unavailable",
+            "reason": "actual_crossing_track_continuity_missing",
+            "source": null,
+            "value": null
+          },
+          "crossing_track_purity": {
+            "availability": "unavailable",
+            "reason": "actual_crossing_track_purity_missing",
+            "source": null,
+            "value": null
+          },
+          "crossing_unavailable_count": {
+            "availability": "unavailable",
+            "reason": "actual_crossing_unavailable_count_missing",
+            "source": null,
+            "value": null
+          },
+          "crossing_unavailable_reasons": {
+            "availability": "unavailable",
+            "reason": "actual_crossing_window_results_missing",
+            "source": null,
+            "value": null
+          },
+          "duplicate_assignment_count": {
+            "availability": "unavailable",
+            "reason": "per_camera_duplicate_assignment_field_missing",
+            "source": null,
+            "value": null
+          },
+          "effective_short_gap_fragmentation_count": {
+            "availability": "available",
+            "reason": null,
+            "source": "mot_continuity:camera:Interceptor_CV:pre_temporal_effective_equals_measured",
+            "value": 3
+          },
+          "geometric_binding_switch_count": {
+            "availability": "unavailable",
+            "reason": "per_camera_geometric_binding_switch_count_missing",
+            "source": null,
+            "value": null
+          },
+          "global_track_id_rewrite_count": {
+            "availability": "unavailable",
+            "reason": "per_camera_global_track_id_rewrite_field_missing",
+            "source": null,
+            "value": null
+          },
+          "id_switch_count": {
+            "availability": "unavailable",
+            "reason": "id_switch_count_missing",
+            "source": null,
+            "value": null
+          },
+          "long_reacquisition_count": {
+            "availability": "unavailable",
+            "reason": "long_reacquisition_count_missing",
+            "source": null,
+            "value": null
+          },
+          "long_reacquisition_identity_change_count": {
+            "availability": "unavailable",
+            "reason": "long_reacquisition_identity_change_missing",
+            "source": null,
+            "value": null
+          },
+          "measured_short_gap_count": {
+            "availability": "available",
+            "reason": null,
+            "source": "offline_truth_sidecar.json:short_gaps",
+            "value": 3
+          },
+          "measured_short_gap_total_duration_s": {
+            "availability": "available",
+            "reason": null,
+            "source": "offline_truth_sidecar.json:short_gaps",
+            "value": 0.3300000000000005
+          },
+          "online_truth_use_count": {
+            "availability": "available",
+            "reason": null,
+            "source": "online_rows:camera:Interceptor_CV",
+            "value": 0
+          }
+        }
+      },
+      "schemas": {
+        "metrics": "d5-long-range-cv-scan-metrics-v2-frozen-sidecar",
+        "mot_continuity": "d5-long-range-mot-continuity-v2-frozen-sidecar"
+      },
+      "status": "fail_closed"
+    }
+  ],
+  "evaluation_date": "2026-08-10",
+  "evaluation_scope": "offline_d5_long_range_registration_only",
+  "gates": {
+    "actual_crossing_gate": {
+      "actual_availability_ratio": 0.0967741935483871,
+      "actual_evaluable_count": 3,
+      "actual_total_count": 31,
+      "geometry_preflight_accepted": false,
+      "minimum_availability_ratio": 0.3,
+      "minimum_evaluable_count": 10,
+      "passed": false,
+      "reason": "actual evaluable=3/31, ratio=0.096774",
+      "status": "failed"
+    },
+    "failure_reasons": [
+      "effective_short_gap_fragmentation_count:failed:threshold not satisfied",
+      "binding_oscillation_count:unavailable:one_or_more_all_episodes_values_unavailable",
+      "actual_crossing_gate:failed:actual evaluable=3/31, ratio=0.096774"
+    ],
+    "overall_gate_passed": false,
+    "structural_checks": {
+      "association_accuracy": {
+        "passed": true,
+        "reason": "threshold satisfied",
+        "requirement": ">= 0.95",
+        "status": "passed",
+        "value": 0.9979317476732161
+      },
+      "binding_oscillation_count": {
+        "passed": false,
+        "reason": "one_or_more_all_episodes_values_unavailable",
+        "requirement": "= 0",
+        "status": "unavailable",
+        "value": null
+      },
+      "duplicate_assignment_count": {
+        "passed": true,
+        "reason": "threshold satisfied",
+        "requirement": "= 0",
+        "status": "passed",
+        "value": 0
+      },
+      "effective_short_gap_fragmentation_count": {
+        "passed": false,
+        "reason": "threshold not satisfied",
+        "requirement": "= 0",
+        "status": "failed",
+        "value": 3
+      },
+      "global_track_id_rewrite_count": {
+        "passed": true,
+        "reason": "threshold satisfied",
+        "requirement": "= 0",
+        "status": "passed",
+        "value": 0
+      },
+      "id_switch_count": {
+        "passed": true,
+        "reason": "threshold satisfied",
+        "requirement": "= 0",
+        "status": "passed",
+        "value": 0
+      },
+      "online_truth_use_count": {
+        "passed": true,
+        "reason": "threshold satisfied",
+        "requirement": "= 0",
+        "status": "passed",
+        "value": 0
+      }
+    },
+    "structural_gate_passed": false
+  },
+  "geometry_preflight_counts_as_actual_crossing": false,
+  "global_track_id_write_authority": false,
+  "multi_seed_evidence_available": false,
+  "online_association_participation": false,
+  "p1_closed": false,
+  "p1_status_reason": "this evaluator does not close P1; main must review at least 10 real AirSim seeds and cross-module evidence",
+  "per_camera": {
+    "Center_CV": {
+      "episode_count": 1,
+      "metrics": {
+        "association_accuracy": {
+          "availability": "unavailable",
+          "reason": "one_or_more_camera_Center_CV_values_unavailable",
+          "source": null,
+          "value": null
+        },
+        "association_evaluable_count": {
+          "availability": "unavailable",
+          "reason": "one_or_more_camera_Center_CV_values_unavailable",
+          "source": null,
+          "value": null
+        },
+        "association_wrong_count": {
+          "availability": "unavailable",
+          "reason": "one_or_more_camera_Center_CV_values_unavailable",
+          "source": null,
+          "value": null
+        },
+        "binding_oscillation_count": {
+          "availability": "unavailable",
+          "reason": "one_or_more_camera_Center_CV_values_unavailable",
+          "source": null,
+          "value": null
+        },
+        "binding_switch_confirmed_count": {
+          "availability": "unavailable",
+          "reason": "one_or_more_camera_Center_CV_values_unavailable",
+          "source": null,
+          "value": null
+        },
+        "binding_switch_expired_count": {
+          "availability": "unavailable",
+          "reason": "one_or_more_camera_Center_CV_values_unavailable",
+          "source": null,
+          "value": null
+        },
+        "binding_switch_held_count": {
+          "availability": "unavailable",
+          "reason": "one_or_more_camera_Center_CV_values_unavailable",
+          "source": null,
+          "value": null
+        },
+        "binding_switch_pending_count": {
+          "availability": "unavailable",
+          "reason": "one_or_more_camera_Center_CV_values_unavailable",
+          "source": null,
+          "value": null
+        },
+        "binding_switch_proposed_count": {
+          "availability": "unavailable",
+          "reason": "one_or_more_camera_Center_CV_values_unavailable",
+          "source": null,
+          "value": null
+        },
+        "bounded_coast_event_count": {
+          "availability": "unavailable",
+          "reason": "one_or_more_camera_Center_CV_values_unavailable",
+          "source": null,
+          "value": null
+        },
+        "bounded_coast_frame_count": {
+          "availability": "unavailable",
+          "reason": "one_or_more_camera_Center_CV_values_unavailable",
+          "source": null,
+          "value": null
+        },
+        "bounded_coast_max_age_s": {
+          "availability": "unavailable",
+          "reason": "one_or_more_camera_Center_CV_values_unavailable",
+          "source": null,
+          "value": null
+        },
+        "bounded_coast_same_id_recovery_count": {
+          "availability": "unavailable",
+          "reason": "one_or_more_camera_Center_CV_values_unavailable",
+          "source": null,
+          "value": null
+        },
+        "coast_expiry_count": {
+          "availability": "unavailable",
+          "reason": "one_or_more_camera_Center_CV_values_unavailable",
+          "source": null,
+          "value": null
+        },
+        "crossing_availability_ratio": {
+          "availability": "unavailable",
+          "reason": "one_or_more_camera_Center_CV_values_unavailable",
+          "source": null,
+          "value": null
+        },
+        "crossing_evaluable_count": {
+          "availability": "unavailable",
+          "reason": "one_or_more_camera_Center_CV_values_unavailable",
+          "source": null,
+          "value": null
+        },
+        "crossing_id_switch_count": {
+          "availability": "unavailable",
+          "reason": "one_or_more_camera_Center_CV_values_unavailable",
+          "source": null,
+          "value": null
+        },
+        "crossing_total_count": {
+          "availability": "unavailable",
+          "reason": "one_or_more_camera_Center_CV_values_unavailable",
+          "source": null,
+          "value": null
+        },
+        "crossing_track_continuity": {
+          "availability": "unavailable",
+          "reason": "one_or_more_camera_Center_CV_values_unavailable",
+          "source": null,
+          "value": null
+        },
+        "crossing_track_purity": {
+          "availability": "unavailable",
+          "reason": "one_or_more_camera_Center_CV_values_unavailable",
+          "source": null,
+          "value": null
+        },
+        "crossing_unavailable_count": {
+          "availability": "unavailable",
+          "reason": "one_or_more_camera_Center_CV_values_unavailable",
+          "source": null,
+          "value": null
+        },
+        "crossing_unavailable_reasons": {
+          "availability": "unavailable",
+          "reason": "one_or_more_camera_Center_CV_values_unavailable",
+          "source": null,
+          "value": null
+        },
+        "duplicate_assignment_count": {
+          "availability": "unavailable",
+          "reason": "one_or_more_camera_Center_CV_values_unavailable",
+          "source": null,
+          "value": null
+        },
+        "effective_short_gap_fragmentation_count": {
+          "availability": "available",
+          "reason": null,
+          "source": "D6 aggregate:camera Center_CV",
+          "value": 0
+        },
+        "geometric_binding_switch_count": {
+          "availability": "unavailable",
+          "reason": "one_or_more_camera_Center_CV_values_unavailable",
+          "source": null,
+          "value": null
+        },
+        "global_track_id_rewrite_count": {
+          "availability": "unavailable",
+          "reason": "one_or_more_camera_Center_CV_values_unavailable",
+          "source": null,
+          "value": null
+        },
+        "id_switch_count": {
+          "availability": "unavailable",
+          "reason": "one_or_more_camera_Center_CV_values_unavailable",
+          "source": null,
+          "value": null
+        },
+        "long_reacquisition_count": {
+          "availability": "unavailable",
+          "reason": "one_or_more_camera_Center_CV_values_unavailable",
+          "source": null,
+          "value": null
+        },
+        "long_reacquisition_identity_change_count": {
+          "availability": "unavailable",
+          "reason": "one_or_more_camera_Center_CV_values_unavailable",
+          "source": null,
+          "value": null
+        },
+        "measured_short_gap_count": {
+          "availability": "available",
+          "reason": null,
+          "source": "D6 aggregate:camera Center_CV",
+          "value": 0
+        },
+        "measured_short_gap_total_duration_s": {
+          "availability": "available",
+          "reason": null,
+          "source": "D6 aggregate:camera Center_CV",
+          "value": 0
+        },
+        "online_truth_use_count": {
+          "availability": "available",
+          "reason": null,
+          "source": "D6 aggregate:camera Center_CV",
+          "value": 0
+        }
+      }
+    },
+    "Interceptor_CV": {
+      "episode_count": 1,
+      "metrics": {
+        "association_accuracy": {
+          "availability": "unavailable",
+          "reason": "one_or_more_camera_Interceptor_CV_values_unavailable",
+          "source": null,
+          "value": null
+        },
+        "association_evaluable_count": {
+          "availability": "unavailable",
+          "reason": "one_or_more_camera_Interceptor_CV_values_unavailable",
+          "source": null,
+          "value": null
+        },
+        "association_wrong_count": {
+          "availability": "unavailable",
+          "reason": "one_or_more_camera_Interceptor_CV_values_unavailable",
+          "source": null,
+          "value": null
+        },
+        "binding_oscillation_count": {
+          "availability": "unavailable",
+          "reason": "one_or_more_camera_Interceptor_CV_values_unavailable",
+          "source": null,
+          "value": null
+        },
+        "binding_switch_confirmed_count": {
+          "availability": "unavailable",
+          "reason": "one_or_more_camera_Interceptor_CV_values_unavailable",
+          "source": null,
+          "value": null
+        },
+        "binding_switch_expired_count": {
+          "availability": "unavailable",
+          "reason": "one_or_more_camera_Interceptor_CV_values_unavailable",
+          "source": null,
+          "value": null
+        },
+        "binding_switch_held_count": {
+          "availability": "unavailable",
+          "reason": "one_or_more_camera_Interceptor_CV_values_unavailable",
+          "source": null,
+          "value": null
+        },
+        "binding_switch_pending_count": {
+          "availability": "unavailable",
+          "reason": "one_or_more_camera_Interceptor_CV_values_unavailable",
+          "source": null,
+          "value": null
+        },
+        "binding_switch_proposed_count": {
+          "availability": "unavailable",
+          "reason": "one_or_more_camera_Interceptor_CV_values_unavailable",
+          "source": null,
+          "value": null
+        },
+        "bounded_coast_event_count": {
+          "availability": "unavailable",
+          "reason": "one_or_more_camera_Interceptor_CV_values_unavailable",
+          "source": null,
+          "value": null
+        },
+        "bounded_coast_frame_count": {
+          "availability": "unavailable",
+          "reason": "one_or_more_camera_Interceptor_CV_values_unavailable",
+          "source": null,
+          "value": null
+        },
+        "bounded_coast_max_age_s": {
+          "availability": "unavailable",
+          "reason": "one_or_more_camera_Interceptor_CV_values_unavailable",
+          "source": null,
+          "value": null
+        },
+        "bounded_coast_same_id_recovery_count": {
+          "availability": "unavailable",
+          "reason": "one_or_more_camera_Interceptor_CV_values_unavailable",
+          "source": null,
+          "value": null
+        },
+        "coast_expiry_count": {
+          "availability": "unavailable",
+          "reason": "one_or_more_camera_Interceptor_CV_values_unavailable",
+          "source": null,
+          "value": null
+        },
+        "crossing_availability_ratio": {
+          "availability": "unavailable",
+          "reason": "one_or_more_camera_Interceptor_CV_values_unavailable",
+          "source": null,
+          "value": null
+        },
+        "crossing_evaluable_count": {
+          "availability": "unavailable",
+          "reason": "one_or_more_camera_Interceptor_CV_values_unavailable",
+          "source": null,
+          "value": null
+        },
+        "crossing_id_switch_count": {
+          "availability": "unavailable",
+          "reason": "one_or_more_camera_Interceptor_CV_values_unavailable",
+          "source": null,
+          "value": null
+        },
+        "crossing_total_count": {
+          "availability": "unavailable",
+          "reason": "one_or_more_camera_Interceptor_CV_values_unavailable",
+          "source": null,
+          "value": null
+        },
+        "crossing_track_continuity": {
+          "availability": "unavailable",
+          "reason": "one_or_more_camera_Interceptor_CV_values_unavailable",
+          "source": null,
+          "value": null
+        },
+        "crossing_track_purity": {
+          "availability": "unavailable",
+          "reason": "one_or_more_camera_Interceptor_CV_values_unavailable",
+          "source": null,
+          "value": null
+        },
+        "crossing_unavailable_count": {
+          "availability": "unavailable",
+          "reason": "one_or_more_camera_Interceptor_CV_values_unavailable",
+          "source": null,
+          "value": null
+        },
+        "crossing_unavailable_reasons": {
+          "availability": "unavailable",
+          "reason": "one_or_more_camera_Interceptor_CV_values_unavailable",
+          "source": null,
+          "value": null
+        },
+        "duplicate_assignment_count": {
+          "availability": "unavailable",
+          "reason": "one_or_more_camera_Interceptor_CV_values_unavailable",
+          "source": null,
+          "value": null
+        },
+        "effective_short_gap_fragmentation_count": {
+          "availability": "available",
+          "reason": null,
+          "source": "D6 aggregate:camera Interceptor_CV",
+          "value": 3
+        },
+        "geometric_binding_switch_count": {
+          "availability": "unavailable",
+          "reason": "one_or_more_camera_Interceptor_CV_values_unavailable",
+          "source": null,
+          "value": null
+        },
+        "global_track_id_rewrite_count": {
+          "availability": "unavailable",
+          "reason": "one_or_more_camera_Interceptor_CV_values_unavailable",
+          "source": null,
+          "value": null
+        },
+        "id_switch_count": {
+          "availability": "unavailable",
+          "reason": "one_or_more_camera_Interceptor_CV_values_unavailable",
+          "source": null,
+          "value": null
+        },
+        "long_reacquisition_count": {
+          "availability": "unavailable",
+          "reason": "one_or_more_camera_Interceptor_CV_values_unavailable",
+          "source": null,
+          "value": null
+        },
+        "long_reacquisition_identity_change_count": {
+          "availability": "unavailable",
+          "reason": "one_or_more_camera_Interceptor_CV_values_unavailable",
+          "source": null,
+          "value": null
+        },
+        "measured_short_gap_count": {
+          "availability": "available",
+          "reason": null,
+          "source": "D6 aggregate:camera Interceptor_CV",
+          "value": 3
+        },
+        "measured_short_gap_total_duration_s": {
+          "availability": "available",
+          "reason": null,
+          "source": "D6 aggregate:camera Interceptor_CV",
+          "value": 0.3300000000000005
+        },
+        "online_truth_use_count": {
+          "availability": "available",
+          "reason": null,
+          "source": "D6 aggregate:camera Interceptor_CV",
+          "value": 0
+        }
+      }
+    }
+  },
+  "schema_version": "d6.d5-long-range-registration-evaluation.v1",
+  "status": "fail_closed",
+  "thresholds": {
+    "association_min_accuracy": 0.95,
+    "crossing_min_availability_ratio": 0.3,
+    "crossing_min_evaluable_count": 10
+  },
+  "unique_seed_count": 1
+}

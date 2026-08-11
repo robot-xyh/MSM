@@ -1,5 +1,72 @@
 # AirSim 离线集成计划
 
+## 有状态时序几何接口接入
+
+D5 已提供可由 main 长距离 ComputerVision runtime 调用的
+`TemporalGeometricAssociator`。main 已在 `long_range_cv_scan` 完成接线：每台相机在一个
+episode 内维护独立 associator 状态，episode reset 时清理；相机或 detector stream 重启时按
+资源、相机和流执行范围 reset。D5 owner 本轮未修改 main runtime。
+
+每帧调用顺序如下：
+
+1. main 形成中心只读 `GlobalTrack[]`、当前相机 `CameraModel` 和匿名
+   `LocalVisualTrack[]`；
+2. 同时传入 `measurement_timestamp` 与 `arrival_timestamp`，并使用稳定的
+   `resource_id/camera_id/stream_id`；
+3. 保存 `instantaneous_result`，用于比较原逐帧关系和迟滞结果；
+4. 只有 `measured_assignments` 可以触发发现、提示和完成；`coasted_records` 只写入预测日志，
+   且 `terminal_authorization_allowed=false`；
+5. 对 `binding_events` 统计 pending、held、confirmed、expired 和 recovered，不把 coast 或
+   reacquire 计为 locked；
+6. 输出 `temporal_binding_events.csv` 与 `dropout_events.csv`，episode 结束后由 D6 对短缺口、
+   重新发现、绑定切换和交叉窗口进行离线汇总。
+
+main-D6 联合专项当前为 `23 passed`，覆盖三档 coast、单帧挑战保持、两帧确认、预测不授权和
+reset 隔离。该结果关闭 runtime 字段映射、状态隔离和事件写盘接口项。
+
+真实验证仍未完成。冻结 seed `20260810` 的 D6 离线报告是旧 v2 基线，状态保持
+`fail_closed`：准确率 `0.9979317477`、短缺口 3、绑定切换 7、交叉窗口可评价 `3/31`。它不是
+新时序接线的 v3 真实 AirSim 复跑。下一步保持原始目标尺度、相机参数和检测门限，先运行 v3
+单 seed，再运行不少于 10 个原始尺度 seed。验收仍为连续身份切换 0、短缺口中断 0、重复分配
+0、在线真值使用 0、全局编号改写 0、关联准确率不低于 0.95。
+
+## 2026-08-10 长距离 20 目标真实接口复核（冻结旧 v2 基线）
+
+状态：**原始尺度取证已运行；发现、提示比例、关联和记录项通过，总门因短缺口中断仍失败关闭**。
+
+已形成的 AirSim 证据：
+
+- 原始尺度 `coverage_safe`，seed `20260810`，20 个目标、50 米/秒、20 秒、100 Hz；
+  中心距离 2.8-3.2 千米，拦截相机距离约 500 米。
+- 中心根据合成 `GlobalTrack` 及协方差执行偏航/俯仰二维蛇形扫描；拦截相机对中心确认目标执行
+  二维提示。中心发现/确认 `20/20`，拦截提示 `20/20`，观察及完成 `19/20`。
+- 世界视线补偿跟踪的 1934 条可评分关联准确率为 `0.9979317477`。连续可见段身份切换为 0，
+  纯度/连续性为 `1.0/1.0`；短缺口中断 3，长期重发现 48。
+- 31 个交叉窗口只有 3 个可评价；可评价窗口身份切换为 0，纯度/连续性为 `1.0/1.0`。
+  几何绑定切换为 7。
+- 保存 98 幅原始相机图和 98 幅在线标注图，19/20 条全局航迹形成双相机图像证据。记录门通过。
+  在线叠加不使用 actor/object/truth ID，真值只用于离线评分，`global_track_id` 改写为 0。
+
+后续 P1 按以下顺序执行：
+
+1. 保持现有五帧确认行为，以有界 coast/预测处理 3 次短漏检，同时保留显式 dropout 证据。
+2. 调整交叉时序与观察计划，使 31 个预定窗口中的有效双目标样本显著增加；必须把“不可评价”
+   与“评价通过”分开报告。
+3. 针对 7 次几何绑定切换标定投影协方差、门限和绑定迟滞，不得使用 actor/object/truth ID 修正。
+4. 注入真实位置、姿态、外参、时间、漏检和虚警误差，完成多 seed 复跑。累计发现需继续达到
+   `18/20`，短缺口中断需降为 0，才可重新申请总门验收。
+5. 使用真实小目标数据或保真合成数据验证探测极限。AirSim detect 返回框只作接口证据。
+
+当前发现/确认 `20/20`、提示 `20/20`、观察与完成 `19/20`、关联准确率
+`0.9979317477` 和记录门均通过相应子项。专项总门的直接失败原因是短缺口中断为 3，而门限为 0。
+7 次几何绑定切换是开放 P1。
+
+2 倍网格可视化诊断实测双相机 `20/20`、准确率 `0.9892194912`、短缺口 3 和几何绑定切换
+42。该结果不能代替原始尺度主场景或通过门控。
+
+后续继续采用一次 Blocks 启动和 reset 分隔 episode，保持在线/离线身份分流。本次没有运行
+图神经网络，也不授予 G1、assist 或控制权限；结果属于 AirSim 接口仿真，不代表真实设备性能。
+
 ## 2026-07-31 来源声明边界
 
 后续 AirSim episode writer 应为每个新主动视觉 episode 显式声明 `airsim_runtime` 来源，并保证

@@ -1,5 +1,25 @@
 # D6 AirSim 离线集成计划
 
+## 2026-08-10 D5长距离视觉配准接入
+
+D6 已实现 AirSim episode 的专项离线消费者。main 将 episode 目录作为显式输入，D6 读取
+`metrics.json`、`mot_continuity.json`、`associations.csv`，并在 v3 时读取
+`temporal_binding_events.csv` 和 `dropout_events.csv`。D6 不启动或 reset AirSim，不修改相机、
+目标、检测和关联流程，也不发送控制命令。
+
+main 在没有 accepted association 或时序事件时可能写出无表头空 CSV。D6 将这类文件记录为
+`unavailable/empty_file_no_header`，保留行数 0 的文件事实，但不把指标解释为零事件。
+
+接入合同要求实际检测形成的交叉窗口写入 `mot_continuity.json`。场景几何预检只用于说明目标
+轨迹是否具备交叉条件，不能作为实际可评分窗口。v3 时序文件应保留相机/资源、匿名局部航迹、
+中心全局航迹引用、测量/到达时间、事件状态、预测年龄和真值使用审计字段；D6 只统计，不创建或
+改写全局航迹编号。
+
+冻结 seed `20260810` 的 v2 产物已完成只读兼容验证。结果为准确率 `0.9979317476732161`、短缺口
+`3`、长期重发现 `48`、几何绑定切换 `7` 和交叉可评分 `3/31`。该 episode 没有 v3 时序文件，
+绑定振荡等指标不可用，正式门失败关闭。下一轮由 main 生成真实 v3 并运行至少 10 seeds；D6
+继续离线汇总，不把本次软件接线写成 AirSim P1 已关闭。
+
 ## 2026-08-01 受控末端扰动接入结果
 
 main 已运行一次真实 AirSim SimpleFlight 专项。输入为 seed `1`、`ClockSpeed=0.2`、2 个资源、

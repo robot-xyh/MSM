@@ -1,5 +1,30 @@
 # D6 Evaluation Metrics
 
+## 2026-08-10 D5长距离视觉配准专项离线评估
+
+D6 新增独立的 `d5_long_range_registration` 离线评估器和命令行入口。输入可为单个或多个
+AirSim episode 目录，直接读取 `metrics.json`、`mot_continuity.json` 和
+`associations.csv`；v3 存在 `temporal_binding_events.csv`、`dropout_events.csv` 时再统计
+有界保持、同编号恢复、绑定切换与振荡。评估器不导入 D5 在线算法，不参与关联、任务分配或
+控制，也没有 `global_track_id` 写权限。
+
+指标按 episode 汇总和相机流分别输出。每项均携带 `value/availability/reason/source`。旧 v2
+可以证明的关联准确率、身份切换、短缺口、长期重发现、几何绑定切换、交叉窗口和安全计数继续
+可用；v2 没有时序事件时，有界保持和绑定振荡明确标为不可用，禁止补零。几何交叉预检不进入
+实际交叉窗口分母。
+
+2026-08-10 只读消费原始尺度冻结 AirSim 单 seed `20260810`：20 个目标、50 m/s、20 s、2 个
+相机。结果复现关联准确率 `0.9979317476732161`、可评分 `1934`、错误 `4`、连续可见身份切换
+`0`、短缺口 `3`、长期重发现 `48`、几何绑定切换 `7`、实际交叉可评分 `3/31`，重复分配、在线
+真值使用和全局编号改写均为 `0`。结构门和交叉门按失败关闭：有效短缺口中断为 `3`，绑定振荡
+证据在 v2 不可用，且交叉门要求至少 `10` 个可评分窗口和比例不低于 `0.30`。
+
+无表头空 `associations.csv`、`temporal_binding_events.csv` 或 `dropout_events.csv` 按“空证据、
+指标不可用”处理，不伪造零计数。当前专项单元测试为 `7 passed, 1 warning`，D6 全量回归为
+`1425 passed, 16 skipped, 1 warning in 129.29s`。v3 完整字段和通过门只由合成夹具验证，尚无
+真实 AirSim v3 episode；本实现不关闭 P1，也不替代后续至少 10 seeds 的真实复验。warning 为
+既有 Matplotlib `Axes3D` 环境提示。
+
 ## 2026-08-03 D3/D4/D5 授权来源载荷审计
 
 D6 已实现并真实执行只读 full payload source audit。入口同时绑定输入合同、metadata preflight

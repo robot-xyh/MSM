@@ -1,0 +1,482 @@
+{
+  "binding_switches": [
+    {
+      "camera_id": "Center_CV:0",
+      "frame_index": 455,
+      "local_track_id": "Center_CV:0:lr-mot:0013",
+      "mahalanobis_d2": 0.6476667049782733,
+      "measurement_timestamp": 4.55,
+      "pixel_error_px": 1028.64677889905,
+      "previous_global_track_id": "GT-0011",
+      "proposed_global_track_id": "GT-0012"
+    },
+    {
+      "camera_id": "Center_CV:0",
+      "frame_index": 456,
+      "local_track_id": "Center_CV:0:lr-mot:0013",
+      "mahalanobis_d2": 4.885988030837155e-06,
+      "measurement_timestamp": 4.5600000000000005,
+      "pixel_error_px": 2.9191105367492556,
+      "previous_global_track_id": "GT-0012",
+      "proposed_global_track_id": "GT-0011"
+    },
+    {
+      "camera_id": "Center_CV:0",
+      "frame_index": 465,
+      "local_track_id": "Center_CV:0:lr-mot:0015",
+      "mahalanobis_d2": 0.13679935987255076,
+      "measurement_timestamp": 4.65,
+      "pixel_error_px": 463.05337279328256,
+      "previous_global_track_id": "GT-0013",
+      "proposed_global_track_id": "GT-0014"
+    },
+    {
+      "camera_id": "Interceptor_CV:0",
+      "frame_index": 494,
+      "local_track_id": "Interceptor_CV:0:lr-mot:0014",
+      "mahalanobis_d2": 0.21024988342634024,
+      "measurement_timestamp": 4.94,
+      "pixel_error_px": 395.5060448699803,
+      "previous_global_track_id": "GT-0017",
+      "proposed_global_track_id": "GT-0018"
+    },
+    {
+      "camera_id": "Interceptor_CV:0",
+      "frame_index": 495,
+      "local_track_id": "Interceptor_CV:0:lr-mot:0014",
+      "mahalanobis_d2": 4.839661221879652e-06,
+      "measurement_timestamp": 4.95,
+      "pixel_error_px": 2.245469317832853,
+      "previous_global_track_id": "GT-0018",
+      "proposed_global_track_id": "GT-0017"
+    },
+    {
+      "camera_id": "Interceptor_CV:0",
+      "frame_index": 496,
+      "local_track_id": "Interceptor_CV:0:lr-mot:0014",
+      "mahalanobis_d2": 0.21603153941994901,
+      "measurement_timestamp": 4.96,
+      "pixel_error_px": 400.91745748902815,
+      "previous_global_track_id": "GT-0017",
+      "proposed_global_track_id": "GT-0018"
+    },
+    {
+      "camera_id": "Interceptor_CV:0",
+      "frame_index": 497,
+      "local_track_id": "Interceptor_CV:0:lr-mot:0014",
+      "mahalanobis_d2": 4.841489356248987e-06,
+      "measurement_timestamp": 4.97,
+      "pixel_error_px": 2.245848576720174,
+      "previous_global_track_id": "GT-0018",
+      "proposed_global_track_id": "GT-0017"
+    }
+  ],
+  "incorrect_associations": [
+    {
+      "assigned_global_track_id": "GT-0012",
+      "camera_vehicle_name": "Center_CV",
+      "frame_index": 455,
+      "local_track_id": "Center_CV:0:lr-mot:0013",
+      "mahalanobis_d2": 0.6476667049782733,
+      "measurement_timestamp": 4.55,
+      "pixel_error_px": 1028.64677889905,
+      "truth_global_track_id": "GT-0011"
+    },
+    {
+      "assigned_global_track_id": "GT-0014",
+      "camera_vehicle_name": "Center_CV",
+      "frame_index": 465,
+      "local_track_id": "Center_CV:0:lr-mot:0015",
+      "mahalanobis_d2": 0.13679935987255076,
+      "measurement_timestamp": 4.65,
+      "pixel_error_px": 463.05337279328256,
+      "truth_global_track_id": "GT-0013"
+    },
+    {
+      "assigned_global_track_id": "GT-0018",
+      "camera_vehicle_name": "Interceptor_CV",
+      "frame_index": 494,
+      "local_track_id": "Interceptor_CV:0:lr-mot:0014",
+      "mahalanobis_d2": 0.21024988342634024,
+      "measurement_timestamp": 4.94,
+      "pixel_error_px": 395.5060448699803,
+      "truth_global_track_id": "GT-0017"
+    },
+    {
+      "assigned_global_track_id": "GT-0018",
+      "camera_vehicle_name": "Interceptor_CV",
+      "frame_index": 496,
+      "local_track_id": "Interceptor_CV:0:lr-mot:0014",
+      "mahalanobis_d2": 0.21603153941994901,
+      "measurement_timestamp": 4.96,
+      "pixel_error_px": 400.91745748902815,
+      "truth_global_track_id": "GT-0017"
+    }
+  ],
+  "offline_truth_only": true,
+  "schema_version": "d5-long-range-offline-sidecar-v1",
+  "short_gaps": [
+    {
+      "camera_vehicle_name": "Interceptor_CV",
+      "from_frame_index": 232,
+      "from_local_track_id": "Interceptor_CV:0:lr-mot:0001",
+      "from_timestamp": 2.32,
+      "gap_s": 0.17000000000000037,
+      "same_local_track_id": true,
+      "to_frame_index": 249,
+      "to_local_track_id": "Interceptor_CV:0:lr-mot:0001",
+      "to_timestamp": 2.49,
+      "truth_global_track_id": "GT-0010"
+    },
+    {
+      "camera_vehicle_name": "Interceptor_CV",
+      "from_frame_index": 234,
+      "from_local_track_id": "Interceptor_CV:0:lr-mot:0002",
+      "from_timestamp": 2.34,
+      "gap_s": 0.10000000000000009,
+      "same_local_track_id": true,
+      "to_frame_index": 244,
+      "to_local_track_id": "Interceptor_CV:0:lr-mot:0002",
+      "to_timestamp": 2.44,
+      "truth_global_track_id": "GT-0009"
+    },
+    {
+      "camera_vehicle_name": "Interceptor_CV",
+      "from_frame_index": 236,
+      "from_local_track_id": "Interceptor_CV:0:lr-mot:0004",
+      "from_timestamp": 2.36,
+      "gap_s": 0.06000000000000005,
+      "same_local_track_id": true,
+      "to_frame_index": 242,
+      "to_local_track_id": "Interceptor_CV:0:lr-mot:0004",
+      "to_timestamp": 2.42,
+      "truth_global_track_id": "GT-0008"
+    }
+  ],
+  "truth_labels": [
+    {
+      "camera_vehicle_name": "Center_CV",
+      "frame_index": 232,
+      "local_track_id": "Center_CV:0:lr-mot:0003",
+      "truth_global_track_id": "GT-0009"
+    },
+    {
+      "camera_vehicle_name": "Center_CV",
+      "frame_index": 232,
+      "local_track_id": "Center_CV:0:lr-mot:0004",
+      "truth_global_track_id": "GT-0010"
+    },
+    {
+      "camera_vehicle_name": "Center_CV",
+      "frame_index": 233,
+      "local_track_id": "Center_CV:0:lr-mot:0003",
+      "truth_global_track_id": "GT-0009"
+    },
+    {
+      "camera_vehicle_name": "Center_CV",
+      "frame_index": 233,
+      "local_track_id": "Center_CV:0:lr-mot:0004",
+      "truth_global_track_id": "GT-0010"
+    },
+    {
+      "camera_vehicle_name": "Center_CV",
+      "frame_index": 234,
+      "local_track_id": "Center_CV:0:lr-mot:0003",
+      "truth_global_track_id": "GT-0009"
+    },
+    {
+      "camera_vehicle_name": "Center_CV",
+      "frame_index": 234,
+      "local_track_id": "Center_CV:0:lr-mot:0004",
+      "truth_global_track_id": "GT-0010"
+    },
+    {
+      "camera_vehicle_name": "Center_CV",
+      "frame_index": 235,
+      "local_track_id": "Center_CV:0:lr-mot:0003",
+      "truth_global_track_id": "GT-0009"
+    },
+    {
+      "camera_vehicle_name": "Center_CV",
+      "frame_index": 235,
+      "local_track_id": "Center_CV:0:lr-mot:0004",
+      "truth_global_track_id": "GT-0010"
+    },
+    {
+      "camera_vehicle_name": "Center_CV",
+      "frame_index": 236,
+      "local_track_id": "Center_CV:0:lr-mot:0003",
+      "truth_global_track_id": "GT-0009"
+    },
+    {
+      "camera_vehicle_name": "Center_CV",
+      "frame_index": 236,
+      "local_track_id": "Center_CV:0:lr-mot:0004",
+      "truth_global_track_id": "GT-0010"
+    },
+    {
+      "camera_vehicle_name": "Center_CV",
+      "frame_index": 237,
+      "local_track_id": "Center_CV:0:lr-mot:0004",
+      "truth_global_track_id": "GT-0010"
+    },
+    {
+      "camera_vehicle_name": "Center_CV",
+      "frame_index": 238,
+      "local_track_id": "Center_CV:0:lr-mot:0004",
+      "truth_global_track_id": "GT-0010"
+    },
+    {
+      "camera_vehicle_name": "Center_CV",
+      "frame_index": 239,
+      "local_track_id": "Center_CV:0:lr-mot:0004",
+      "truth_global_track_id": "GT-0010"
+    },
+    {
+      "camera_vehicle_name": "Center_CV",
+      "frame_index": 240,
+      "local_track_id": "Center_CV:0:lr-mot:0004",
+      "truth_global_track_id": "GT-0010"
+    },
+    {
+      "camera_vehicle_name": "Center_CV",
+      "frame_index": 241,
+      "local_track_id": "Center_CV:0:lr-mot:0004",
+      "truth_global_track_id": "GT-0010"
+    },
+    {
+      "camera_vehicle_name": "Center_CV",
+      "frame_index": 453,
+      "local_track_id": "Center_CV:0:lr-mot:0013",
+      "truth_global_track_id": "GT-0011"
+    },
+    {
+      "camera_vehicle_name": "Center_CV",
+      "frame_index": 454,
+      "local_track_id": "Center_CV:0:lr-mot:0013",
+      "truth_global_track_id": "GT-0011"
+    },
+    {
+      "camera_vehicle_name": "Center_CV",
+      "frame_index": 455,
+      "local_track_id": "Center_CV:0:lr-mot:0013",
+      "truth_global_track_id": "GT-0011"
+    },
+    {
+      "camera_vehicle_name": "Center_CV",
+      "frame_index": 456,
+      "local_track_id": "Center_CV:0:lr-mot:0013",
+      "truth_global_track_id": "GT-0011"
+    },
+    {
+      "camera_vehicle_name": "Center_CV",
+      "frame_index": 456,
+      "local_track_id": "Center_CV:0:lr-mot:0014",
+      "truth_global_track_id": "GT-0012"
+    },
+    {
+      "camera_vehicle_name": "Center_CV",
+      "frame_index": 457,
+      "local_track_id": "Center_CV:0:lr-mot:0013",
+      "truth_global_track_id": "GT-0011"
+    },
+    {
+      "camera_vehicle_name": "Center_CV",
+      "frame_index": 457,
+      "local_track_id": "Center_CV:0:lr-mot:0014",
+      "truth_global_track_id": "GT-0012"
+    },
+    {
+      "camera_vehicle_name": "Center_CV",
+      "frame_index": 463,
+      "local_track_id": "Center_CV:0:lr-mot:0015",
+      "truth_global_track_id": "GT-0013"
+    },
+    {
+      "camera_vehicle_name": "Center_CV",
+      "frame_index": 463,
+      "local_track_id": "Center_CV:0:lr-mot:0016",
+      "truth_global_track_id": "GT-0014"
+    },
+    {
+      "camera_vehicle_name": "Center_CV",
+      "frame_index": 464,
+      "local_track_id": "Center_CV:0:lr-mot:0016",
+      "truth_global_track_id": "GT-0014"
+    },
+    {
+      "camera_vehicle_name": "Center_CV",
+      "frame_index": 465,
+      "local_track_id": "Center_CV:0:lr-mot:0015",
+      "truth_global_track_id": "GT-0013"
+    },
+    {
+      "camera_vehicle_name": "Interceptor_CV",
+      "frame_index": 232,
+      "local_track_id": "Interceptor_CV:0:lr-mot:0001",
+      "truth_global_track_id": "GT-0010"
+    },
+    {
+      "camera_vehicle_name": "Interceptor_CV",
+      "frame_index": 233,
+      "local_track_id": "Interceptor_CV:0:lr-mot:0002",
+      "truth_global_track_id": "GT-0009"
+    },
+    {
+      "camera_vehicle_name": "Interceptor_CV",
+      "frame_index": 234,
+      "local_track_id": "Interceptor_CV:0:lr-mot:0002",
+      "truth_global_track_id": "GT-0009"
+    },
+    {
+      "camera_vehicle_name": "Interceptor_CV",
+      "frame_index": 236,
+      "local_track_id": "Interceptor_CV:0:lr-mot:0003",
+      "truth_global_track_id": "GT-0007"
+    },
+    {
+      "camera_vehicle_name": "Interceptor_CV",
+      "frame_index": 236,
+      "local_track_id": "Interceptor_CV:0:lr-mot:0004",
+      "truth_global_track_id": "GT-0008"
+    },
+    {
+      "camera_vehicle_name": "Interceptor_CV",
+      "frame_index": 237,
+      "local_track_id": "Interceptor_CV:0:lr-mot:0003",
+      "truth_global_track_id": "GT-0007"
+    },
+    {
+      "camera_vehicle_name": "Interceptor_CV",
+      "frame_index": 238,
+      "local_track_id": "Interceptor_CV:0:lr-mot:0003",
+      "truth_global_track_id": "GT-0007"
+    },
+    {
+      "camera_vehicle_name": "Interceptor_CV",
+      "frame_index": 239,
+      "local_track_id": "Interceptor_CV:0:lr-mot:0003",
+      "truth_global_track_id": "GT-0007"
+    },
+    {
+      "camera_vehicle_name": "Interceptor_CV",
+      "frame_index": 240,
+      "local_track_id": "Interceptor_CV:0:lr-mot:0003",
+      "truth_global_track_id": "GT-0007"
+    },
+    {
+      "camera_vehicle_name": "Interceptor_CV",
+      "frame_index": 241,
+      "local_track_id": "Interceptor_CV:0:lr-mot:0003",
+      "truth_global_track_id": "GT-0007"
+    },
+    {
+      "camera_vehicle_name": "Interceptor_CV",
+      "frame_index": 242,
+      "local_track_id": "Interceptor_CV:0:lr-mot:0004",
+      "truth_global_track_id": "GT-0008"
+    },
+    {
+      "camera_vehicle_name": "Interceptor_CV",
+      "frame_index": 244,
+      "local_track_id": "Interceptor_CV:0:lr-mot:0002",
+      "truth_global_track_id": "GT-0009"
+    },
+    {
+      "camera_vehicle_name": "Interceptor_CV",
+      "frame_index": 245,
+      "local_track_id": "Interceptor_CV:0:lr-mot:0002",
+      "truth_global_track_id": "GT-0009"
+    },
+    {
+      "camera_vehicle_name": "Interceptor_CV",
+      "frame_index": 246,
+      "local_track_id": "Interceptor_CV:0:lr-mot:0002",
+      "truth_global_track_id": "GT-0009"
+    },
+    {
+      "camera_vehicle_name": "Interceptor_CV",
+      "frame_index": 247,
+      "local_track_id": "Interceptor_CV:0:lr-mot:0002",
+      "truth_global_track_id": "GT-0009"
+    },
+    {
+      "camera_vehicle_name": "Interceptor_CV",
+      "frame_index": 248,
+      "local_track_id": "Interceptor_CV:0:lr-mot:0002",
+      "truth_global_track_id": "GT-0009"
+    },
+    {
+      "camera_vehicle_name": "Interceptor_CV",
+      "frame_index": 249,
+      "local_track_id": "Interceptor_CV:0:lr-mot:0001",
+      "truth_global_track_id": "GT-0010"
+    },
+    {
+      "camera_vehicle_name": "Interceptor_CV",
+      "frame_index": 453,
+      "local_track_id": "Interceptor_CV:0:lr-mot:0011",
+      "truth_global_track_id": "GT-0001"
+    },
+    {
+      "camera_vehicle_name": "Interceptor_CV",
+      "frame_index": 454,
+      "local_track_id": "Interceptor_CV:0:lr-mot:0011",
+      "truth_global_track_id": "GT-0001"
+    },
+    {
+      "camera_vehicle_name": "Interceptor_CV",
+      "frame_index": 493,
+      "local_track_id": "Interceptor_CV:0:lr-mot:0014",
+      "truth_global_track_id": "GT-0017"
+    },
+    {
+      "camera_vehicle_name": "Interceptor_CV",
+      "frame_index": 493,
+      "local_track_id": "Interceptor_CV:0:lr-mot:0015",
+      "truth_global_track_id": "GT-0018"
+    },
+    {
+      "camera_vehicle_name": "Interceptor_CV",
+      "frame_index": 494,
+      "local_track_id": "Interceptor_CV:0:lr-mot:0014",
+      "truth_global_track_id": "GT-0017"
+    },
+    {
+      "camera_vehicle_name": "Interceptor_CV",
+      "frame_index": 495,
+      "local_track_id": "Interceptor_CV:0:lr-mot:0014",
+      "truth_global_track_id": "GT-0017"
+    },
+    {
+      "camera_vehicle_name": "Interceptor_CV",
+      "frame_index": 495,
+      "local_track_id": "Interceptor_CV:0:lr-mot:0015",
+      "truth_global_track_id": "GT-0018"
+    },
+    {
+      "camera_vehicle_name": "Interceptor_CV",
+      "frame_index": 496,
+      "local_track_id": "Interceptor_CV:0:lr-mot:0014",
+      "truth_global_track_id": "GT-0017"
+    },
+    {
+      "camera_vehicle_name": "Interceptor_CV",
+      "frame_index": 497,
+      "local_track_id": "Interceptor_CV:0:lr-mot:0014",
+      "truth_global_track_id": "GT-0017"
+    },
+    {
+      "camera_vehicle_name": "Interceptor_CV",
+      "frame_index": 497,
+      "local_track_id": "Interceptor_CV:0:lr-mot:0015",
+      "truth_global_track_id": "GT-0018"
+    },
+    {
+      "camera_vehicle_name": "Interceptor_CV",
+      "frame_index": 498,
+      "local_track_id": "Interceptor_CV:0:lr-mot:0015",
+      "truth_global_track_id": "GT-0018"
+    }
+  ]
+}

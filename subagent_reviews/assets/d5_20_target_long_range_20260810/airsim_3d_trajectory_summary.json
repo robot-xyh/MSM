@@ -1,0 +1,62 @@
+{
+  "schema_version": "d5-long-range-3d-trajectory-report-v1",
+  "evidence_boundary": {
+    "airsim_actor_positions": "offline_truth_only",
+    "association_event_positions": "offline_reporting_only",
+    "online_association_modified": false
+  },
+  "target_count": 20,
+  "duration_s": 20.0,
+  "center_position_ned_m": [
+    0.0,
+    0.0,
+    -100.0
+  ],
+  "center_altitude_m": 100.0,
+  "target_initial_north_range_m": {
+    "minimum": 2827.819097536546,
+    "maximum": 3187.22750885795
+  },
+  "target_final_north_range_m": {
+    "minimum": 1829.0393513674398,
+    "maximum": 2188.192572247999
+  },
+  "target_all_east_range_m": {
+    "minimum": -262.47162414819087,
+    "maximum": 307.81664763720516
+  },
+  "target_all_altitude_range_m": {
+    "minimum": 80.4786642101788,
+    "maximum": 133.84459108303008
+  },
+  "target_initial_distance_to_center_range_m": {
+    "minimum": 2839.3887251942847,
+    "maximum": 3201.4273240265065
+  },
+  "target_final_distance_to_center_range_m": {
+    "minimum": 1840.7194141564685,
+    "maximum": 2203.2756746051655
+  },
+  "target_path_length_m": {
+    "minimum": 999.9999999999998,
+    "mean": 1000.0,
+    "maximum": 1000.0000000000005
+  },
+  "interceptor_start_ned_m": [
+    2505.466594829908,
+    6.489497482856126,
+    -108.4527707380068
+  ],
+  "interceptor_end_ned_m": [
+    1506.493201266343,
+    8.945833050256121,
+    -108.4527707380068
+  ],
+  "interceptor_path_length_m": 998.9764134514514,
+  "interceptor_displacement_m": 998.9764134514513,
+  "minimum_3d_target_separation_m": 33.81846467696229,
+  "association_event_count_by_camera": {
+    "Center_CV": 197,
+    "Interceptor_CV": 1737
+  }
+}

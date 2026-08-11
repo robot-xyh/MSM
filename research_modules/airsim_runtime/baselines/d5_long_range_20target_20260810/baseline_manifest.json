@@ -1,0 +1,64 @@
+{
+  "core_metrics": {
+    "association_accuracy": 0.9979317476732161,
+    "association_evaluable_count": 1934,
+    "crossing_evaluable_window_count": 3,
+    "crossing_window_count": 31,
+    "duplicate_assignment_count": 0,
+    "geometric_binding_switch_count": 7,
+    "global_track_id_rewrite_count": 0,
+    "id_switch_count": 0,
+    "online_truth_identity_use_count": 0,
+    "reacquisition_count": 48,
+    "seed": 20260810,
+    "short_gap_fragmentation_count": 3,
+    "target_count": 20
+  },
+  "failure_counts": {
+    "binding_switch_count": 7,
+    "crossing_unavailable_reason_counts": {
+      "insufficient_temporal_samples": 1,
+      "missing_pair_observation:GT-0001": 1,
+      "missing_pair_observation:GT-0001,GT-0002": 1,
+      "missing_pair_observation:GT-0002,GT-0003": 1,
+      "missing_pair_observation:GT-0003,GT-0004": 2,
+      "missing_pair_observation:GT-0005,GT-0006": 2,
+      "missing_pair_observation:GT-0005,GT-0008": 1,
+      "missing_pair_observation:GT-0007,GT-0008": 1,
+      "missing_pair_observation:GT-0007,GT-0010": 2,
+      "missing_pair_observation:GT-0009,GT-0010": 2,
+      "missing_pair_observation:GT-0011,GT-0012": 2,
+      "missing_pair_observation:GT-0011,GT-0014": 2,
+      "missing_pair_observation:GT-0013,GT-0014": 1,
+      "missing_pair_observation:GT-0013,GT-0016": 2,
+      "missing_pair_observation:GT-0015,GT-0016": 2,
+      "missing_pair_observation:GT-0015,GT-0018": 2,
+      "missing_pair_observation:GT-0017,GT-0018": 2,
+      "missing_pair_observation:GT-0017,GT-0020": 1
+    },
+    "incorrect_association_count": 4,
+    "short_gap_count": 3
+  },
+  "frozen_fixture_sha256": {
+    "offline_truth_sidecar.json": "a2da6dcbe610177774bd23fe89e1e8e9f3b0fc0035cd73ee27e1af396652f30b",
+    "online_replay.jsonl": "1a9218d84913e3f9ecfe18fd0d0a624d98433509a6b856e42783969c5b565988"
+  },
+  "identity_boundary": {
+    "global_track_id_center_owned": true,
+    "online_actor_or_object_identity_present": false,
+    "truth_sidecar_offline_only": true
+  },
+  "online_fixture_record_count": 70,
+  "scenario_id": "d5_cv_long_range_20target_visual_evidence_20260810",
+  "schema_version": "d5-long-range-baseline-v1",
+  "selected_frame_count": 35,
+  "source_artifact_sha256": {
+    "associations.csv": "2a357823809b1c2108814a9e45a0308b779bd1dc7245bc3fad41acc8e3ac7a3b",
+    "metrics.json": "2871a81921efaa25ca5adb487e9dfda08c28a9caf41029e2c5020136cdac6edf",
+    "mot_continuity.json": "cbb6d49a3db8474340b0c55a590ffe0cd6d368c217371c3f1ec419f27338105a",
+    "mot_offline_score.csv": "1d1c4af23d92352f6b8ba7180caa4cf32713d83e02fac8d71be21bdd873b8d71",
+    "offline_truth.csv": "9944c3ae818a96056b7a7796b793c5e20c6215dc71e2b4635a22bb143b670a9f",
+    "record_manifest.json": "429b40d7a541ce49b8ccb978e394e6b46d65b9b7ee9a81fa078d247714686d6f"
+  },
+  "source_directory": "/home/linux/Documents/MSM/research_modules/airsim_runtime/outputs/d5_cv_long_range_20target_visual_evidence_20260810/coverage_safe"
+}
