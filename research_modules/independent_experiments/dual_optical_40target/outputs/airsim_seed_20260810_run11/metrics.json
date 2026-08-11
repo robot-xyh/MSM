@@ -1,0 +1,62 @@
+{
+  "acceptance": {
+    "fixed_pitch_passed": true,
+    "no_duplicate_match_passed": true,
+    "overall_passed": true,
+    "precision_target_passed": true,
+    "recall_target_passed": true,
+    "spawn_passed": true,
+    "stable_coverage_target_passed": true,
+    "truth_isolation_passed": true
+  },
+  "association_eligible_recall": 0.9,
+  "association_full_target_recall": 0.9,
+  "association_precision": 0.972972972972973,
+  "camera_detection_coverage": {
+    "Optical_A": 1.0,
+    "Optical_B": 1.0
+  },
+  "candidate_count": 2350,
+  "configured_detection_request_rate_hz": 100.0,
+  "connected_d_modules": [],
+  "correct_match_count": 36,
+  "cross_camera_association_wall_ms": 4485.02868101059,
+  "detection_rpc_latency_mean_ms": 1.47140013544683,
+  "detection_rpc_latency_p95_ms": 2.3840862973884214,
+  "detection_rpc_wall_rate_hz": 69.66963920596686,
+  "duplicate_truth_match_count": 0,
+  "eligible_cross_camera_truth_count": 40,
+  "false_match_count": 1,
+  "fixed_pitch_span_deg": {
+    "Optical_A": 0.0,
+    "Optical_B": 0.0
+  },
+  "formal_episode_wall_duration_s": 34.47699783400458,
+  "independent_experiment": true,
+  "keyframe_count": 24,
+  "match_count": 37,
+  "minimum_target_separation_m": 27.08851928759547,
+  "online_truth_leakage_count": 0,
+  "online_truth_leakage_keys": [],
+  "position_error_mean_m": 0.08030544908018379,
+  "position_error_p95_m": 0.09140807343853961,
+  "schema_version": "dual-optical-40target-metrics-v1",
+  "seed": 20260810,
+  "spawned_target_count": 40,
+  "stable_track_count": {
+    "Optical_A": 50,
+    "Optical_B": 47
+  },
+  "stable_track_truth_coverage": {
+    "Optical_A": 1.0,
+    "Optical_B": 1.0
+  },
+  "target_count": 40,
+  "target_scale_multiplier": 2.277743665790053,
+  "target_speed_mps": 50.0,
+  "unmatched_a_count": 13,
+  "unmatched_b_count": 10,
+  "valid_candidate_count": 61,
+  "velocity_error_mean_mps": 0.008106441752602696,
+  "velocity_error_p95_mps": 0.019719089744373565
+}

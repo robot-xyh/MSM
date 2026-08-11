@@ -1,0 +1,63 @@
+{
+  "base_yaw_deg": 26.56505117707799,
+  "camera_validation": {
+    "Optical_A": {
+      "actual_position_ned": [
+        0.0,
+        0.0,
+        -0.0
+      ],
+      "configured_initial_position_ned": [
+        0.0,
+        -1000.0,
+        -100.0
+      ],
+      "expected_position_ned": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "height": 1024,
+      "horizontal_fov_deg": 2.930000066757202,
+      "passed": true,
+      "position_error_m": 0.0,
+      "width": 1280
+    },
+    "Optical_B": {
+      "actual_position_ned": [
+        0.0,
+        0.0,
+        -0.0
+      ],
+      "configured_initial_position_ned": [
+        0.0,
+        1000.0,
+        -100.0
+      ],
+      "expected_position_ned": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "height": 1024,
+      "horizontal_fov_deg": 2.930000066757202,
+      "passed": true,
+      "position_error_m": 0.0,
+      "width": 1280
+    }
+  },
+  "failure_reason": "",
+  "final_longest_extent_m": 3.0000152587890625,
+  "final_scale_multiplier": 2.277743665790053,
+  "fixed_pitch_deg": -0.0,
+  "native_longest_extent_m": 1.3170928955078125,
+  "passed": true,
+  "reported_object_scale": [
+    2.2777435779571533,
+    2.2777435779571533,
+    2.2777435779571533
+  ],
+  "requested_longest_extent_m": 3.0,
+  "spawned_actor_name": "MSM_DualOptical_Calibration_Target",
+  "tolerance_m": 0.15
+}

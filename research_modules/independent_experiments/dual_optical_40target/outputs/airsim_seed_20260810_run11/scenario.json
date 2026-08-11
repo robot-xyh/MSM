@@ -1,0 +1,652 @@
+{
+  "camera": {
+    "effective_ifov_mrad": 0.0399516774089327,
+    "equivalent_focal_length_mm": 300.0,
+    "height": 1024,
+    "horizontal_fov_deg": 2.93,
+    "stated_ifov_mrad": 0.05,
+    "vertical_fov_deg": 2.344183896462723,
+    "width": 1280
+  },
+  "connected_d_modules": [],
+  "independent_experiment": true,
+  "minimum_target_separation_m": 27.08851928759547,
+  "scenario": {
+    "api_port": 41451,
+    "camera_a_name": "Optical_A",
+    "camera_a_position_ned": [
+      0.0,
+      -1000.0,
+      -100.0
+    ],
+    "camera_b_name": "Optical_B",
+    "camera_b_position_ned": [
+      0.0,
+      1000.0,
+      -100.0
+    ],
+    "camera_name": "0",
+    "clock_speed": 0.1,
+    "corridor_center_ned": [
+      2000.0,
+      0.0,
+      -100.0
+    ],
+    "duration_s": 12.0,
+    "max_cross_camera_time_delta_s": 0.2,
+    "sample_rate_hz": 100.0,
+    "scan_half_span_deg": 45.0,
+    "scan_period_s": 1.0,
+    "seed": 20260810,
+    "stable_sweep_count": 4,
+    "target_asset_name": "Quadrotor1",
+    "target_count": 40,
+    "target_dimension_tolerance_m": 0.15,
+    "target_longest_dimension_m": 3.0,
+    "target_speed_mps": 50.0,
+    "track_coast_s": 0.75
+  },
+  "schema_version": "dual-optical-40target-scenario-v1",
+  "target_specs_offline_truth_only": [
+    {
+      "actor_name": "MSM_DualOptical_Target_001",
+      "asset_name": "Quadrotor1",
+      "start_ned": [
+        1770.194203860247,
+        -462.5823215647317,
+        -103.73930684521301
+      ],
+      "truth_id": "TRUTH-001",
+      "velocity_ned": [
+        -49.63869458396343,
+        6.0,
+        0.0
+      ]
+    },
+    {
+      "actor_name": "MSM_DualOptical_Target_002",
+      "asset_name": "Quadrotor1",
+      "start_ned": [
+        1824.6901473957719,
+        -406.38235229089867,
+        -101.63984418840667
+      ],
+      "truth_id": "TRUTH-002",
+      "velocity_ned": [
+        -49.63869458396343,
+        -6.0,
+        0.0
+      ]
+    },
+    {
+      "actor_name": "MSM_DualOptical_Target_003",
+      "asset_name": "Quadrotor1",
+      "start_ned": [
+        2310.325720940894,
+        -398.7671846260119,
+        -113.6462205941038
+      ],
+      "truth_id": "TRUTH-003",
+      "velocity_ned": [
+        -49.63869458396343,
+        6.0,
+        0.0
+      ]
+    },
+    {
+      "actor_name": "MSM_DualOptical_Target_004",
+      "asset_name": "Quadrotor1",
+      "start_ned": [
+        1581.215659588281,
+        -361.12003061412935,
+        -82.55792752881241
+      ],
+      "truth_id": "TRUTH-004",
+      "velocity_ned": [
+        -49.63869458396343,
+        -6.0,
+        0.0
+      ]
+    },
+    {
+      "actor_name": "MSM_DualOptical_Target_005",
+      "asset_name": "Quadrotor1",
+      "start_ned": [
+        1554.2187398337735,
+        -362.73973145575746,
+        -91.5450313160947
+      ],
+      "truth_id": "TRUTH-005",
+      "velocity_ned": [
+        -49.63869458396343,
+        6.0,
+        0.0
+      ]
+    },
+    {
+      "actor_name": "MSM_DualOptical_Target_006",
+      "asset_name": "Quadrotor1",
+      "start_ned": [
+        2229.3220942522908,
+        -309.0971280590421,
+        -112.19347097996283
+      ],
+      "truth_id": "TRUTH-006",
+      "velocity_ned": [
+        -49.63869458396343,
+        -6.0,
+        0.0
+      ]
+    },
+    {
+      "actor_name": "MSM_DualOptical_Target_007",
+      "asset_name": "Quadrotor1",
+      "start_ned": [
+        1743.4170330518743,
+        -306.01382251226255,
+        -100.70333926524904
+      ],
+      "truth_id": "TRUTH-007",
+      "velocity_ned": [
+        -49.63869458396343,
+        6.0,
+        0.0
+      ]
+    },
+    {
+      "actor_name": "MSM_DualOptical_Target_008",
+      "asset_name": "Quadrotor1",
+      "start_ned": [
+        1851.8326622173336,
+        -261.6580005547337,
+        -105.14063476179437
+      ],
+      "truth_id": "TRUTH-008",
+      "velocity_ned": [
+        -49.63869458396343,
+        -6.0,
+        0.0
+      ]
+    },
+    {
+      "actor_name": "MSM_DualOptical_Target_009",
+      "asset_name": "Quadrotor1",
+      "start_ned": [
+        2418.6458345898545,
+        -297.3955355927748,
+        -97.20719814092952
+      ],
+      "truth_id": "TRUTH-009",
+      "velocity_ned": [
+        -49.63869458396343,
+        6.0,
+        0.0
+      ]
+    },
+    {
+      "actor_name": "MSM_DualOptical_Target_010",
+      "asset_name": "Quadrotor1",
+      "start_ned": [
+        1689.5995248697998,
+        -215.72910756608331,
+        -113.31887445835903
+      ],
+      "truth_id": "TRUTH-010",
+      "velocity_ned": [
+        -49.63869458396343,
+        -6.0,
+        0.0
+      ]
+    },
+    {
+      "actor_name": "MSM_DualOptical_Target_011",
+      "asset_name": "Quadrotor1",
+      "start_ned": [
+        2256.6453298387055,
+        -215.83210862414938,
+        -108.83025866716463
+      ],
+      "truth_id": "TRUTH-011",
+      "velocity_ned": [
+        -49.63869458396343,
+        6.0,
+        0.0
+      ]
+    },
+    {
+      "actor_name": "MSM_DualOptical_Target_012",
+      "asset_name": "Quadrotor1",
+      "start_ned": [
+        1635.552755511071,
+        -178.115741258762,
+        -104.81572133912636
+      ],
+      "truth_id": "TRUTH-012",
+      "velocity_ned": [
+        -49.63869458396343,
+        -6.0,
+        0.0
+      ]
+    },
+    {
+      "actor_name": "MSM_DualOptical_Target_013",
+      "asset_name": "Quadrotor1",
+      "start_ned": [
+        1662.5253791728169,
+        -199.67239075252144,
+        -102.31300866487416
+      ],
+      "truth_id": "TRUTH-013",
+      "velocity_ned": [
+        -49.63869458396343,
+        6.0,
+        0.0
+      ]
+    },
+    {
+      "actor_name": "MSM_DualOptical_Target_014",
+      "asset_name": "Quadrotor1",
+      "start_ned": [
+        2391.4988442699005,
+        -130.8219299240294,
+        -99.94831345393803
+      ],
+      "truth_id": "TRUTH-014",
+      "velocity_ned": [
+        -49.63869458396343,
+        -6.0,
+        0.0
+      ]
+    },
+    {
+      "actor_name": "MSM_DualOptical_Target_015",
+      "asset_name": "Quadrotor1",
+      "start_ned": [
+        1527.61852475739,
+        -158.15547304456538,
+        -98.42377475353562
+      ],
+      "truth_id": "TRUTH-015",
+      "velocity_ned": [
+        -49.63869458396343,
+        6.0,
+        0.0
+      ]
+    },
+    {
+      "actor_name": "MSM_DualOptical_Target_016",
+      "asset_name": "Quadrotor1",
+      "start_ned": [
+        2148.2434522342637,
+        -65.90835128644757,
+        -115.37217788489644
+      ],
+      "truth_id": "TRUTH-016",
+      "velocity_ned": [
+        -49.63869458396343,
+        -6.0,
+        0.0
+      ]
+    },
+    {
+      "actor_name": "MSM_DualOptical_Target_017",
+      "asset_name": "Quadrotor1",
+      "start_ned": [
+        2283.5463621267218,
+        -115.32706607049425,
+        -99.25022629765463
+      ],
+      "truth_id": "TRUTH-017",
+      "velocity_ned": [
+        -49.63869458396343,
+        6.0,
+        0.0
+      ]
+    },
+    {
+      "actor_name": "MSM_DualOptical_Target_018",
+      "asset_name": "Quadrotor1",
+      "start_ned": [
+        1905.4615348759514,
+        -19.538871823116715,
+        -110.05587594395337
+      ],
+      "truth_id": "TRUTH-018",
+      "velocity_ned": [
+        -49.63869458396343,
+        -6.0,
+        0.0
+      ]
+    },
+    {
+      "actor_name": "MSM_DualOptical_Target_019",
+      "asset_name": "Quadrotor1",
+      "start_ned": [
+        2364.669611137606,
+        -42.749925395159366,
+        -107.92085094294785
+      ],
+      "truth_id": "TRUTH-019",
+      "velocity_ned": [
+        -49.63869458396343,
+        6.0,
+        0.0
+      ]
+    },
+    {
+      "actor_name": "MSM_DualOptical_Target_020",
+      "asset_name": "Quadrotor1",
+      "start_ned": [
+        1500.5101407807838,
+        15.289212046628254,
+        -92.94497933355338
+      ],
+      "truth_id": "TRUTH-020",
+      "velocity_ned": [
+        -49.63869458396343,
+        -6.0,
+        0.0
+      ]
+    },
+    {
+      "actor_name": "MSM_DualOptical_Target_021",
+      "asset_name": "Quadrotor1",
+      "start_ned": [
+        2337.411716466788,
+        -4.409880601377065,
+        -109.98524176104807
+      ],
+      "truth_id": "TRUTH-021",
+      "velocity_ned": [
+        -49.63869458396343,
+        6.0,
+        0.0
+      ]
+    },
+    {
+      "actor_name": "MSM_DualOptical_Target_022",
+      "asset_name": "Quadrotor1",
+      "start_ned": [
+        2499.8046818383887,
+        60.46047834284195,
+        -82.93646522319438
+      ],
+      "truth_id": "TRUTH-022",
+      "velocity_ned": [
+        -49.63869458396343,
+        -6.0,
+        0.0
+      ]
+    },
+    {
+      "actor_name": "MSM_DualOptical_Target_023",
+      "asset_name": "Quadrotor1",
+      "start_ned": [
+        1932.1729989531427,
+        27.07921902623235,
+        -95.39826623502428
+      ],
+      "truth_id": "TRUTH-023",
+      "velocity_ned": [
+        -49.63869458396343,
+        6.0,
+        0.0
+      ]
+    },
+    {
+      "actor_name": "MSM_DualOptical_Target_024",
+      "asset_name": "Quadrotor1",
+      "start_ned": [
+        2445.307347435888,
+        107.63153619316216,
+        -117.60396296496035
+      ],
+      "truth_id": "TRUTH-024",
+      "velocity_ned": [
+        -49.63869458396343,
+        -6.0,
+        0.0
+      ]
+    },
+    {
+      "actor_name": "MSM_DualOptical_Target_025",
+      "asset_name": "Quadrotor1",
+      "start_ned": [
+        1608.5705454166418,
+        86.92973293775728,
+        -85.86010587040772
+      ],
+      "truth_id": "TRUTH-025",
+      "velocity_ned": [
+        -49.63869458396343,
+        6.0,
+        0.0
+      ]
+    },
+    {
+      "actor_name": "MSM_DualOptical_Target_026",
+      "asset_name": "Quadrotor1",
+      "start_ned": [
+        1878.6125890434664,
+        160.34144540923464,
+        -88.64446277539467
+      ],
+      "truth_id": "TRUTH-026",
+      "velocity_ned": [
+        -49.63869458396343,
+        -6.0,
+        0.0
+      ]
+    },
+    {
+      "actor_name": "MSM_DualOptical_Target_027",
+      "asset_name": "Quadrotor1",
+      "start_ned": [
+        2094.787639310117,
+        139.49041224094333,
+        -104.28317821986661
+      ],
+      "truth_id": "TRUTH-027",
+      "velocity_ned": [
+        -49.63869458396343,
+        6.0,
+        0.0
+      ]
+    },
+    {
+      "actor_name": "MSM_DualOptical_Target_028",
+      "asset_name": "Quadrotor1",
+      "start_ned": [
+        2121.537957164246,
+        182.9639993701059,
+        -91.3619110508727
+      ],
+      "truth_id": "TRUTH-028",
+      "velocity_ned": [
+        -49.63869458396343,
+        -6.0,
+        0.0
+      ]
+    },
+    {
+      "actor_name": "MSM_DualOptical_Target_029",
+      "asset_name": "Quadrotor1",
+      "start_ned": [
+        2526.4836265952977,
+        158.50924813185705,
+        -102.71192263864727
+      ],
+      "truth_id": "TRUTH-029",
+      "velocity_ned": [
+        -49.63869458396343,
+        6.0,
+        0.0
+      ]
+    },
+    {
+      "actor_name": "MSM_DualOptical_Target_030",
+      "asset_name": "Quadrotor1",
+      "start_ned": [
+        1797.8131676876437,
+        226.27160763689776,
+        -84.14550070335747
+      ],
+      "truth_id": "TRUTH-030",
+      "velocity_ned": [
+        -49.63869458396343,
+        -6.0,
+        0.0
+      ]
+    },
+    {
+      "actor_name": "MSM_DualOptical_Target_031",
+      "asset_name": "Quadrotor1",
+      "start_ned": [
+        2175.561966763139,
+        240.01597450357193,
+        -107.8782521661684
+      ],
+      "truth_id": "TRUTH-031",
+      "velocity_ned": [
+        -49.63869458396343,
+        6.0,
+        0.0
+      ]
+    },
+    {
+      "actor_name": "MSM_DualOptical_Target_032",
+      "asset_name": "Quadrotor1",
+      "start_ned": [
+        1473.7903935645863,
+        281.270502879134,
+        -102.94847320601568
+      ],
+      "truth_id": "TRUTH-032",
+      "velocity_ned": [
+        -49.63869458396343,
+        -6.0,
+        0.0
+      ]
+    },
+    {
+      "actor_name": "MSM_DualOptical_Target_033",
+      "asset_name": "Quadrotor1",
+      "start_ned": [
+        2067.371509376625,
+        256.8288507173065,
+        -113.50667452836628
+      ],
+      "truth_id": "TRUTH-033",
+      "velocity_ned": [
+        -49.63869458396343,
+        6.0,
+        0.0
+      ]
+    },
+    {
+      "actor_name": "MSM_DualOptical_Target_034",
+      "asset_name": "Quadrotor1",
+      "start_ned": [
+        2013.4396296004093,
+        346.6174825494187,
+        -102.18504125303772
+      ],
+      "truth_id": "TRUTH-034",
+      "velocity_ned": [
+        -49.63869458396343,
+        -6.0,
+        0.0
+      ]
+    },
+    {
+      "actor_name": "MSM_DualOptical_Target_035",
+      "asset_name": "Quadrotor1",
+      "start_ned": [
+        1986.2501339407916,
+        329.50345933872757,
+        -97.89347013211159
+      ],
+      "truth_id": "TRUTH-035",
+      "velocity_ned": [
+        -49.63869458396343,
+        6.0,
+        0.0
+      ]
+    },
+    {
+      "actor_name": "MSM_DualOptical_Target_036",
+      "asset_name": "Quadrotor1",
+      "start_ned": [
+        2472.7597491386036,
+        370.2259676527824,
+        -100.1101747469498
+      ],
+      "truth_id": "TRUTH-036",
+      "velocity_ned": [
+        -49.63869458396343,
+        -6.0,
+        0.0
+      ]
+    },
+    {
+      "actor_name": "MSM_DualOptical_Target_037",
+      "asset_name": "Quadrotor1",
+      "start_ned": [
+        2040.3427677246234,
+        350.2785186388248,
+        -88.64925633603362
+      ],
+      "truth_id": "TRUTH-037",
+      "velocity_ned": [
+        -49.63869458396343,
+        6.0,
+        0.0
+      ]
+    },
+    {
+      "actor_name": "MSM_DualOptical_Target_038",
+      "asset_name": "Quadrotor1",
+      "start_ned": [
+        2202.524728217268,
+        441.6729376075256,
+        -117.29751121305205
+      ],
+      "truth_id": "TRUTH-038",
+      "velocity_ned": [
+        -49.63869458396343,
+        -6.0,
+        0.0
+      ]
+    },
+    {
+      "actor_name": "MSM_DualOptical_Target_039",
+      "asset_name": "Quadrotor1",
+      "start_ned": [
+        1959.2319554925498,
+        374.4025033886936,
+        -82.82458372693597
+      ],
+      "truth_id": "TRUTH-039",
+      "velocity_ned": [
+        -49.63869458396343,
+        6.0,
+        0.0
+      ]
+    },
+    {
+      "actor_name": "MSM_DualOptical_Target_040",
+      "asset_name": "Quadrotor1",
+      "start_ned": [
+        1716.8111916527075,
+        480.1848293411382,
+        -92.38343990041406
+      ],
+      "truth_id": "TRUTH-040",
+      "velocity_ned": [
+        -49.63869458396343,
+        -6.0,
+        0.0
+      ]
+    }
+  ]
+}

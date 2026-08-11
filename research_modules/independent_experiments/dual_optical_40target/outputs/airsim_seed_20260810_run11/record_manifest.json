@@ -1,0 +1,251 @@
+{
+  "artifacts": {
+    "anonymous_detections": "online/anonymous_detections.csv",
+    "camera_scan": "online/camera_scan.csv",
+    "cross_camera_candidates": "online/cross_camera_candidates.csv",
+    "cross_camera_matches": "online/cross_camera_matches.csv",
+    "detection_truth": "truth/detection_truth.csv",
+    "keyframe_manifest": "keyframes/manifest.csv",
+    "local_track_samples": "online/local_track_samples.csv",
+    "local_tracks": "online/local_tracks.csv",
+    "match_scoring": "truth/match_scoring.csv",
+    "metrics": "metrics.json",
+    "target_trajectories": "truth/target_trajectories.csv",
+    "track_scoring": "truth/track_scoring.csv"
+  },
+  "independent_experiment": true,
+  "keyframes": [
+    {
+      "airsim_image_timestamp": 178641966373532704,
+      "camera_id": "Optical_A",
+      "frame_index": 25,
+      "height": 1024,
+      "measurement_timestamp": 0.25,
+      "path": "keyframes/Optical_A/frame_00025.png",
+      "width": 1280
+    },
+    {
+      "airsim_image_timestamp": 178641966390213696,
+      "camera_id": "Optical_B",
+      "frame_index": 25,
+      "height": 1024,
+      "measurement_timestamp": 0.25,
+      "path": "keyframes/Optical_B/frame_00025.png",
+      "width": 1280
+    },
+    {
+      "airsim_image_timestamp": 178641966493419584,
+      "camera_id": "Optical_A",
+      "frame_index": 75,
+      "height": 1024,
+      "measurement_timestamp": 0.75,
+      "path": "keyframes/Optical_A/frame_00075.png",
+      "width": 1280
+    },
+    {
+      "airsim_image_timestamp": 178641966509071488,
+      "camera_id": "Optical_B",
+      "frame_index": 75,
+      "height": 1024,
+      "measurement_timestamp": 0.75,
+      "path": "keyframes/Optical_B/frame_00075.png",
+      "width": 1280
+    },
+    {
+      "airsim_image_timestamp": 178641966839871296,
+      "camera_id": "Optical_A",
+      "frame_index": 225,
+      "height": 1024,
+      "measurement_timestamp": 2.25,
+      "path": "keyframes/Optical_A/frame_00225.png",
+      "width": 1280
+    },
+    {
+      "airsim_image_timestamp": 178641966856529984,
+      "camera_id": "Optical_B",
+      "frame_index": 225,
+      "height": 1024,
+      "measurement_timestamp": 2.25,
+      "path": "keyframes/Optical_B/frame_00225.png",
+      "width": 1280
+    },
+    {
+      "airsim_image_timestamp": 178641966978007296,
+      "camera_id": "Optical_A",
+      "frame_index": 275,
+      "height": 1024,
+      "measurement_timestamp": 2.75,
+      "path": "keyframes/Optical_A/frame_00275.png",
+      "width": 1280
+    },
+    {
+      "airsim_image_timestamp": 178641966994128320,
+      "camera_id": "Optical_B",
+      "frame_index": 275,
+      "height": 1024,
+      "measurement_timestamp": 2.75,
+      "path": "keyframes/Optical_B/frame_00275.png",
+      "width": 1280
+    },
+    {
+      "airsim_image_timestamp": 178641967333839584,
+      "camera_id": "Optical_A",
+      "frame_index": 425,
+      "height": 1024,
+      "measurement_timestamp": 4.25,
+      "path": "keyframes/Optical_A/frame_00425.png",
+      "width": 1280
+    },
+    {
+      "airsim_image_timestamp": 178641967351057888,
+      "camera_id": "Optical_B",
+      "frame_index": 425,
+      "height": 1024,
+      "measurement_timestamp": 4.25,
+      "path": "keyframes/Optical_B/frame_00425.png",
+      "width": 1280
+    },
+    {
+      "airsim_image_timestamp": 178641967471827712,
+      "camera_id": "Optical_A",
+      "frame_index": 475,
+      "height": 1024,
+      "measurement_timestamp": 4.75,
+      "path": "keyframes/Optical_A/frame_00475.png",
+      "width": 1280
+    },
+    {
+      "airsim_image_timestamp": 178641967487929024,
+      "camera_id": "Optical_B",
+      "frame_index": 475,
+      "height": 1024,
+      "measurement_timestamp": 4.75,
+      "path": "keyframes/Optical_B/frame_00475.png",
+      "width": 1280
+    },
+    {
+      "airsim_image_timestamp": 178641967827791424,
+      "camera_id": "Optical_A",
+      "frame_index": 625,
+      "height": 1024,
+      "measurement_timestamp": 6.25,
+      "path": "keyframes/Optical_A/frame_00625.png",
+      "width": 1280
+    },
+    {
+      "airsim_image_timestamp": 178641967844877600,
+      "camera_id": "Optical_B",
+      "frame_index": 625,
+      "height": 1024,
+      "measurement_timestamp": 6.25,
+      "path": "keyframes/Optical_B/frame_00625.png",
+      "width": 1280
+    },
+    {
+      "airsim_image_timestamp": 178641968010814112,
+      "camera_id": "Optical_A",
+      "frame_index": 675,
+      "height": 1024,
+      "measurement_timestamp": 6.75,
+      "path": "keyframes/Optical_A/frame_00675.png",
+      "width": 1280
+    },
+    {
+      "airsim_image_timestamp": 178641968029591296,
+      "camera_id": "Optical_B",
+      "frame_index": 675,
+      "height": 1024,
+      "measurement_timestamp": 6.75,
+      "path": "keyframes/Optical_B/frame_00675.png",
+      "width": 1280
+    },
+    {
+      "airsim_image_timestamp": 178641968491512896,
+      "camera_id": "Optical_A",
+      "frame_index": 825,
+      "height": 1024,
+      "measurement_timestamp": 8.25,
+      "path": "keyframes/Optical_A/frame_00825.png",
+      "width": 1280
+    },
+    {
+      "airsim_image_timestamp": 178641968510879104,
+      "camera_id": "Optical_B",
+      "frame_index": 825,
+      "height": 1024,
+      "measurement_timestamp": 8.25,
+      "path": "keyframes/Optical_B/frame_00825.png",
+      "width": 1280
+    },
+    {
+      "airsim_image_timestamp": 178641968678489600,
+      "camera_id": "Optical_A",
+      "frame_index": 875,
+      "height": 1024,
+      "measurement_timestamp": 8.75,
+      "path": "keyframes/Optical_A/frame_00875.png",
+      "width": 1280
+    },
+    {
+      "airsim_image_timestamp": 178641968698027104,
+      "camera_id": "Optical_B",
+      "frame_index": 875,
+      "height": 1024,
+      "measurement_timestamp": 8.75,
+      "path": "keyframes/Optical_B/frame_00875.png",
+      "width": 1280
+    },
+    {
+      "airsim_image_timestamp": 178641969169652416,
+      "camera_id": "Optical_A",
+      "frame_index": 1025,
+      "height": 1024,
+      "measurement_timestamp": 10.25,
+      "path": "keyframes/Optical_A/frame_01025.png",
+      "width": 1280
+    },
+    {
+      "airsim_image_timestamp": 178641969191893088,
+      "camera_id": "Optical_B",
+      "frame_index": 1025,
+      "height": 1024,
+      "measurement_timestamp": 10.25,
+      "path": "keyframes/Optical_B/frame_01025.png",
+      "width": 1280
+    },
+    {
+      "airsim_image_timestamp": 178641969347496192,
+      "camera_id": "Optical_A",
+      "frame_index": 1075,
+      "height": 1024,
+      "measurement_timestamp": 10.75,
+      "path": "keyframes/Optical_A/frame_01075.png",
+      "width": 1280
+    },
+    {
+      "airsim_image_timestamp": 178641969367502912,
+      "camera_id": "Optical_B",
+      "frame_index": 1075,
+      "height": 1024,
+      "measurement_timestamp": 10.75,
+      "path": "keyframes/Optical_B/frame_01075.png",
+      "width": 1280
+    }
+  ],
+  "report_artifacts": {
+    "bearing_tracks": "figures/05_local_bearing_tracks.png",
+    "camera_a": "figures/03_camera_a_keyframes.png",
+    "camera_b": "figures/04_camera_b_keyframes.png",
+    "cost_matrix": "figures/06_candidate_cost_matrix.png",
+    "errors": "figures/09_reconstruction_errors.png",
+    "figure_manifest": "figures/figure_manifest.json",
+    "match_graph": "figures/07_hungarian_matches.png",
+    "reconstruction": "figures/08_reconstructed_trajectories_3d.png",
+    "report": "DUAL_OPTICAL_40TARGET_AIRSIM_REPORT_CN.md",
+    "scan": "figures/02_scan_and_detection.png",
+    "scene": "figures/01_scene_geometry_3d.png"
+  },
+  "schema_version": "dual-optical-40target-record-manifest-v1",
+  "settings": "research_modules/independent_experiments/dual_optical_40target/outputs/airsim_seed_20260810_run11/settings.json",
+  "video_generated": false
+}
