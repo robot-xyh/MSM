@@ -132,6 +132,36 @@ from d6_evaluation_metrics import (
 from airsim_runtime.p1_mot_calibration import build_mot_screening_cases
 
 
+def test_real_runtime_recreates_rpc_client_after_startup_refusal(monkeypatch) -> None:
+    class RefusedClient:
+        def ping(self):
+            raise AttributeError("'NoneType' object has no attribute 'send_message'")
+
+    class ReadyClient:
+        def ping(self):
+            return True
+
+    clients = iter((RefusedClient(), ReadyClient()))
+    created = []
+
+    def factory(**_kwargs):
+        client = next(clients)
+        created.append(client)
+        return client
+
+    fake_airsim = SimpleNamespace(VehicleClient=factory)
+    runtime = RealAirSimRuntimeClient(
+        client_factory=factory,
+        airsim_module=fake_airsim,
+    )
+    monkeypatch.setattr("airsim_runtime.real_runtime.time.sleep", lambda _seconds: None)
+
+    runtime.wait_for_connection(0.5)
+
+    assert len(created) == 2
+    assert runtime.client is created[-1]
+
+
 def test_terminal_delivery_candidate_profile_is_explicit_and_opt_in() -> None:
     baseline = BlocksSmokeConfig()
     candidate = replace(

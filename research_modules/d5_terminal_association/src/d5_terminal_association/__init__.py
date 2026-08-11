@@ -40,6 +40,15 @@ from .airsim_geometry import (
     intrinsics_from_width_height_fov,
     rotation_world_to_opencv_camera_from_quaternion,
 )
+from .temporal_geometry import (
+    NON_MEASURED_DECISION_STATES,
+    TEMPORAL_BINDING_EVENTS,
+    TemporalBindingEvent,
+    TemporalGeometricAssociationConfig,
+    TemporalGeometricAssociationResult,
+    TemporalGeometricAssociator,
+    TemporalPredictionRecord,
+)
 from .active_vision import (
     ActiveVisionAction,
     ActiveVisionActionType,
@@ -564,6 +573,13 @@ __all__ = [
     "TerminalObservation",
     "TerminalObservationBus",
     "TerminalStressMetrics",
+    "TEMPORAL_BINDING_EVENTS",
+    "NON_MEASURED_DECISION_STATES",
+    "TemporalBindingEvent",
+    "TemporalGeometricAssociationConfig",
+    "TemporalGeometricAssociationResult",
+    "TemporalGeometricAssociator",
+    "TemporalPredictionRecord",
     "VisualTrackletSummary",
     "BBoxStability",
     "DEFAULT_YOLOV8_WEIGHTS_PATH",

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import Callable
+from dataclasses import replace
 import json
 import math
 import time
@@ -103,6 +104,14 @@ class RealAirSimRuntimeClient:
                     return
             except Exception as exc:  # pragma: no cover - depends on RPC transport
                 last_error = exc
+            # msgpack-rpc can leave its transport without a usable stream after
+            # an initial ECONNREFUSED. A fresh client is required before the
+            # next startup probe; retrying ping() on the same object never
+            # recovers even after Blocks opens the port.
+            try:
+                self.reconnect()
+            except Exception as exc:  # pragma: no cover - depends on RPC transport
+                last_error = exc
             time.sleep(1.0)
         message = "AirSim RPC did not become ready before timeout"
         if last_error is not None:
@@ -116,6 +125,262 @@ class RealAirSimRuntimeClient:
         self.client.reset()
         time.sleep(1.0)
         self.reconnect()
+
+    def set_simulation_paused(self, paused: bool) -> bool:
+        """Pause or resume AirSim through the shared runtime client."""
+
+        try:
+            result = self.client.simPause(bool(paused))
+            return result is not False
+        except Exception:
+            return False
+
+    def continue_simulation_for_time(self, duration_s: float) -> bool:
+        """Advance a paused simulation by a deterministic logical interval."""
+
+        duration_s = float(duration_s)
+        if duration_s <= 0.0:
+            raise ValueError("duration_s must be positive")
+        try:
+            result = self.client.simContinueForTime(duration_s)
+            return result is not False
+        except Exception:
+            try:
+                self.client.simPause(False)
+                time.sleep(duration_s)
+                self.client.simPause(True)
+                return True
+            except Exception:
+                return False
+
+    def set_cv_camera_gimbal_pose(
+        self,
+        *,
+        vehicle_name: str,
+        camera_name: str,
+        yaw_deg: float,
+        pitch_deg: float,
+        roll_deg: float = 0.0,
+    ) -> dict[str, Any]:
+        """Set a camera-relative gimbal pose without rotating its vehicle."""
+
+        pitch = math.radians(float(pitch_deg))
+        roll = math.radians(float(roll_deg))
+        yaw = math.radians(float(yaw_deg))
+        orientation = self._quaternion_from_euler(pitch, roll, yaw)
+        pose = self._pose_from_position_orientation((0.0, 0.0, 0.0), orientation)
+        try:
+            result = self.client.simSetCameraPose(
+                str(camera_name),
+                pose,
+                vehicle_name=str(vehicle_name),
+            )
+            ok = result is not False
+            reason = "updated" if ok else "airsim_returned_false"
+        except Exception as exc:
+            ok = False
+            reason = f"{type(exc).__name__}: {exc}"
+        return {
+            "ok": ok,
+            "reason": reason,
+            "vehicle_name": str(vehicle_name),
+            "camera_name": str(camera_name),
+            "yaw_deg": float(yaw_deg),
+            "pitch_deg": float(pitch_deg),
+            "roll_deg": float(roll_deg),
+            "api": "simSetCameraPose",
+        }
+
+    def set_cv_camera_fov(
+        self,
+        *,
+        vehicle_name: str,
+        camera_name: str,
+        horizontal_fov_deg: float,
+    ) -> dict[str, Any]:
+        """Apply and audit a camera FOV after the AirSim vehicle is created."""
+
+        requested_fov = float(horizontal_fov_deg)
+        try:
+            result = self.client.simSetCameraFov(
+                str(camera_name),
+                requested_fov,
+                vehicle_name=str(vehicle_name),
+            )
+            ok = result is not False
+            reason = "updated" if ok else "airsim_returned_false"
+        except Exception as exc:
+            ok = False
+            reason = f"{type(exc).__name__}: {exc}"
+        return {
+            "ok": ok,
+            "reason": reason,
+            "vehicle_name": str(vehicle_name),
+            "camera_name": str(camera_name),
+            "horizontal_fov_deg": requested_fov,
+            "api": "simSetCameraFov",
+        }
+
+    def set_cv_vehicle_position(
+        self,
+        config: BlocksSmokeConfig,
+        *,
+        vehicle_name: str,
+        position_ned: tuple[float, float, float],
+    ) -> dict[str, Any]:
+        """Move a ComputerVision platform in global NED while keeping attitude level."""
+
+        start = _vehicle_start_offset(config, vehicle_name)
+        local_position = tuple(float(position_ned[index]) - start[index] for index in range(3))
+        orientation = self._quaternion_from_euler(0.0, 0.0, 0.0)
+        pose = self._pose_from_position_orientation(local_position, orientation)
+        try:
+            result = self.client.simSetVehiclePose(
+                pose,
+                ignore_collision=True,
+                vehicle_name=str(vehicle_name),
+            )
+            ok = result is not False
+            reason = "updated" if ok else "airsim_returned_false"
+        except Exception as exc:
+            ok = False
+            reason = f"{type(exc).__name__}: {exc}"
+        return {
+            "ok": ok,
+            "reason": reason,
+            "vehicle_name": str(vehicle_name),
+            "position_ned": tuple(float(value) for value in position_ned),
+            "api": "simSetVehiclePose",
+        }
+
+    def set_actor_target_pose(
+        self,
+        *,
+        actor_name: str,
+        position_ned: tuple[float, float, float],
+        yaw_deg: float = 0.0,
+    ) -> bool:
+        """Move a non-vehicle target actor and orient its mesh along its motion."""
+
+        orientation = self._quaternion_from_euler(0.0, 0.0, math.radians(float(yaw_deg)))
+        pose = self._pose_from_position_orientation(position_ned, orientation)
+        try:
+            return bool(self.client.simSetObjectPose(str(actor_name), pose, True))
+        except Exception:
+            return False
+
+    def cv_camera_info(
+        self,
+        config: BlocksSmokeConfig,
+        *,
+        timestamp: float,
+        vehicle_name: str,
+    ) -> AirSimCameraInfo:
+        """Expose the existing calibrated camera metadata for specialized episodes."""
+
+        return self._camera_info(
+            config,
+            float(timestamp),
+            camera_vehicle_name=str(vehicle_name),
+        )
+
+    def episode_setup_metadata(self) -> dict[str, Any]:
+        """Return a detached view of actor and detection-filter setup evidence."""
+
+        return json.loads(json.dumps(self._episode_setup_metadata))
+
+    def capture_cv_scene_snapshot(
+        self,
+        config: BlocksSmokeConfig,
+        *,
+        frame_index: int,
+        output_dir: Path,
+        vehicle_name: str,
+    ) -> dict[str, Any]:
+        """Save one explicitly requested ComputerVision scene frame as PNG."""
+
+        snapshot_config = replace(
+            config,
+            save_images=True,
+            image_save_interval_frames=1,
+        )
+        return self._capture_image(
+            snapshot_config,
+            int(frame_index),
+            Path(output_dir),
+            camera_vehicle_name=str(vehicle_name),
+        )
+
+    def capture_anonymous_cv_detections(
+        self,
+        config: BlocksSmokeConfig,
+        *,
+        frame_index: int,
+        measurement_timestamp: float,
+        vehicle_name: str,
+    ) -> tuple[tuple[AirSimDetectionBox, ...], tuple[dict[str, Any], ...], dict[str, Any]]:
+        """Capture built-in detections with actor identity isolated to an offline sidecar."""
+
+        started = time.perf_counter()
+        captured, metadata = self._capture_detections_with_backend(
+            config,
+            frame_index=int(frame_index),
+            timestamp=float(measurement_timestamp),
+            camera_vehicle_names=(str(vehicle_name),),
+            backend="airsim",
+        )
+        rpc_latency_s = max(0.0, time.perf_counter() - started)
+        arrival_timestamp = float(measurement_timestamp) + rpc_latency_s
+        online: list[AirSimDetectionBox] = []
+        offline: list[dict[str, Any]] = []
+        for detection in captured:
+            raw_metadata = dict(detection.metadata)
+            actor_name = raw_metadata.pop("offline_truth_actor_name", None)
+            raw_metadata.pop("relative_pose", None)
+            raw_metadata.pop("box3d", None)
+            raw_metadata.pop("offline_truth_only", None)
+            offline.append(
+                {
+                    "detection_id": str(detection.detection_id),
+                    "camera_id": str(detection.camera_id),
+                    "local_track_id": str(detection.local_track_id or ""),
+                    "actor_name": None if actor_name is None else str(actor_name),
+                    "object_id": str(detection.object_id or ""),
+                    "measurement_timestamp": float(measurement_timestamp),
+                    "arrival_timestamp": arrival_timestamp,
+                    "offline_truth_only": True,
+                }
+            )
+            raw_metadata.update(
+                {
+                    "measurement_timestamp": float(measurement_timestamp),
+                    "arrival_timestamp": arrival_timestamp,
+                    "exposure_timestamp": float(measurement_timestamp),
+                    "rpc_latency_s": rpc_latency_s,
+                    "online_truth_identity_used": False,
+                }
+            )
+            online.append(
+                replace(
+                    detection,
+                    object_id="",
+                    timestamp=float(measurement_timestamp),
+                    metadata=raw_metadata,
+                )
+            )
+        return (
+            tuple(online),
+            tuple(offline),
+            {
+                "ok": bool(metadata) and all(bool(item.get("ok")) for item in metadata),
+                "camera_vehicle_name": str(vehicle_name),
+                "measurement_timestamp": float(measurement_timestamp),
+                "arrival_timestamp": arrival_timestamp,
+                "rpc_latency_s": rpc_latency_s,
+                "count": len(online),
+                "backend": "airsim",
+            },
+        )
 
     def prepare_interceptor_control(self, config: BlocksSmokeConfig) -> dict[str, Any]:
         """Enable API control, arm, take off, and settle at intercept altitude."""
@@ -1478,9 +1743,23 @@ class RealAirSimRuntimeClient:
             return False
 
     def _object_id_for_actor_name(self, actor_name: str) -> str | None:
+        # AirSim can append a component/instance suffix to a spawned actor name.
+        # Resolve exact names first, then prefer the longest matching base name
+        # so Actor_11 cannot be classified as Actor_1.
         for object_id, item in self._active_actor_targets.items():
             active_name = str(item["actor_name"])
-            if actor_name == active_name or actor_name.startswith(active_name):
+            if actor_name == active_name:
+                return object_id
+        candidates = sorted(
+            (
+                (str(item["actor_name"]), object_id)
+                for object_id, item in self._active_actor_targets.items()
+            ),
+            key=lambda value: len(value[0]),
+            reverse=True,
+        )
+        for active_name, object_id in candidates:
+            if actor_name.startswith(active_name):
                 return object_id
         return None
 

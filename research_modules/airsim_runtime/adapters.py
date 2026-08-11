@@ -558,7 +558,10 @@ def geometric_local_visual_tracks_from_blocks_frame(frame: AirSimFrame) -> list[
                 local_track_id=local_track_id,
                 center_px=np.array([(x1 + x2) * 0.5, (y1 + y2) * 0.5], dtype=float),
                 bbox=(x1, y1, x2, y2),
-                bearing_rate=np.zeros(2, dtype=float),
+                bearing_rate=np.asarray(
+                    metadata.get("bearing_rate_px_s", (0.0, 0.0)),
+                    dtype=float,
+                ).reshape(2),
                 category=detection.classification_hint,
                 quality=float(detection.confidence),
                 mot_history_length=int(metadata.get("mot_history_length", 1)),
