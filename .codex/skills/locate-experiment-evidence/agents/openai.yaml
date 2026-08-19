@@ -1,0 +1,4 @@
+interface:
+  display_name: "实验结果定位与复现"
+  short_description: "定位MSM实验配置、指标、日志、证据并审计可复现条件"
+  default_prompt: "Use $locate-experiment-evidence to find an MSM experiment, trace its configuration and results, and assess whether it can be reproduced."
