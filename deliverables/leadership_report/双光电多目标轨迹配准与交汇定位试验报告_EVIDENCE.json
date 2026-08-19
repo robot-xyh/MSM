@@ -1,0 +1,1250 @@
+{
+  "schema_version": "dual-optical-leadership-report-evidence-v5",
+  "generated_at": "2026-08-18T16:04:28.700228+00:00",
+  "report": "deliverables/leadership_report/双光电多目标轨迹配准与交汇定位试验报告_CN.md",
+  "reporting_policy": {
+    "window": "final_round",
+    "s180_round": 12,
+    "continuous_360_revolution": 6,
+    "reported_metrics": [
+      "association_precision",
+      "fixed_target_coverage",
+      "final_window_end_to_end_latency_p95_ms"
+    ],
+    "latency_policy": "P95 of end_to_end_ms across exactly five scenes in the reported final round or revolution; timed-out scenes remain included",
+    "s180_routes": [
+      "epipolar_mht",
+      "gnn",
+      "track_superglue"
+    ]
+  },
+  "ideal_360_single_station_matrix": {
+    "status": "pending_test_no_machine_evidence",
+    "scan_span_deg": 360.0,
+    "target_counts": [
+      20,
+      40,
+      60
+    ],
+    "routes": [
+      "epipolar_mht",
+      "gnn",
+      "track_superglue"
+    ],
+    "rows": [
+      {
+        "target_count": 20,
+        "route_name": "epipolar_mht",
+        "route_label_cn": "几何方法",
+        "association_precision": null,
+        "fixed_target_coverage": null,
+        "latency_p95_ms": null,
+        "evidence_status": "pending_test_no_machine_evidence"
+      },
+      {
+        "target_count": 20,
+        "route_name": "gnn",
+        "route_label_cn": "图神经网络",
+        "association_precision": null,
+        "fixed_target_coverage": null,
+        "latency_p95_ms": null,
+        "evidence_status": "pending_test_no_machine_evidence"
+      },
+      {
+        "target_count": 20,
+        "route_name": "track_superglue",
+        "route_label_cn": "增强型图神经网络（航迹级注意力）",
+        "association_precision": null,
+        "fixed_target_coverage": null,
+        "latency_p95_ms": null,
+        "evidence_status": "pending_test_no_machine_evidence"
+      },
+      {
+        "target_count": 40,
+        "route_name": "epipolar_mht",
+        "route_label_cn": "几何方法",
+        "association_precision": null,
+        "fixed_target_coverage": null,
+        "latency_p95_ms": null,
+        "evidence_status": "pending_test_no_machine_evidence"
+      },
+      {
+        "target_count": 40,
+        "route_name": "gnn",
+        "route_label_cn": "图神经网络",
+        "association_precision": null,
+        "fixed_target_coverage": null,
+        "latency_p95_ms": null,
+        "evidence_status": "pending_test_no_machine_evidence"
+      },
+      {
+        "target_count": 40,
+        "route_name": "track_superglue",
+        "route_label_cn": "增强型图神经网络（航迹级注意力）",
+        "association_precision": null,
+        "fixed_target_coverage": null,
+        "latency_p95_ms": null,
+        "evidence_status": "pending_test_no_machine_evidence"
+      },
+      {
+        "target_count": 60,
+        "route_name": "epipolar_mht",
+        "route_label_cn": "几何方法",
+        "association_precision": null,
+        "fixed_target_coverage": null,
+        "latency_p95_ms": null,
+        "evidence_status": "pending_test_no_machine_evidence"
+      },
+      {
+        "target_count": 60,
+        "route_name": "gnn",
+        "route_label_cn": "图神经网络",
+        "association_precision": null,
+        "fixed_target_coverage": null,
+        "latency_p95_ms": null,
+        "evidence_status": "pending_test_no_machine_evidence"
+      },
+      {
+        "target_count": 60,
+        "route_name": "track_superglue",
+        "route_label_cn": "增强型图神经网络（航迹级注意力）",
+        "association_precision": null,
+        "fixed_target_coverage": null,
+        "latency_p95_ms": null,
+        "evidence_status": "pending_test_no_machine_evidence"
+      }
+    ],
+    "prohibited_substitutions": [
+      "s180 ideal-local-track evidence",
+      "correct-local-track conditional subsets",
+      "the single-seed 40-target ranging demonstration"
+    ]
+  },
+  "s180_final_round_rows": [
+    {
+      "target_count": 20,
+      "corruption_level": "clean",
+      "window": "final_round",
+      "route": "epipolar_mht",
+      "evidence_status": "正式",
+      "test_seed_count": 5,
+      "confirmed_output_available": false,
+      "association_precision": 0.0,
+      "fixed_target_coverage": 0.0,
+      "latency_p95_ms": 2067.466203402728,
+      "deadline_miss_count": 5,
+      "tracker_acceptance_passed": true,
+      "tracker_failure_reasons": []
+    },
+    {
+      "target_count": 20,
+      "corruption_level": "clean",
+      "window": "final_round",
+      "route": "gnn",
+      "evidence_status": "正式",
+      "test_seed_count": 5,
+      "confirmed_output_available": true,
+      "association_precision": 0.978021978021978,
+      "fixed_target_coverage": 0.89,
+      "latency_p95_ms": 100.38801557384431,
+      "deadline_miss_count": 0,
+      "tracker_acceptance_passed": true,
+      "tracker_failure_reasons": []
+    },
+    {
+      "target_count": 20,
+      "corruption_level": "clean",
+      "window": "final_round",
+      "route": "track_superglue",
+      "evidence_status": "正式",
+      "test_seed_count": 5,
+      "confirmed_output_available": true,
+      "association_precision": 0.8850574712643678,
+      "fixed_target_coverage": 0.77,
+      "latency_p95_ms": 379.8965623835102,
+      "deadline_miss_count": 0,
+      "tracker_acceptance_passed": true,
+      "tracker_failure_reasons": []
+    },
+    {
+      "target_count": 20,
+      "corruption_level": "light",
+      "window": "final_round",
+      "route": "epipolar_mht",
+      "evidence_status": "正式",
+      "test_seed_count": 5,
+      "confirmed_output_available": false,
+      "association_precision": 0.0,
+      "fixed_target_coverage": 0.0,
+      "latency_p95_ms": 1950.5821520695463,
+      "deadline_miss_count": 5,
+      "tracker_acceptance_passed": true,
+      "tracker_failure_reasons": []
+    },
+    {
+      "target_count": 20,
+      "corruption_level": "light",
+      "window": "final_round",
+      "route": "gnn",
+      "evidence_status": "正式",
+      "test_seed_count": 5,
+      "confirmed_output_available": true,
+      "association_precision": 0.8390804597701149,
+      "fixed_target_coverage": 0.73,
+      "latency_p95_ms": 108.80469877738506,
+      "deadline_miss_count": 0,
+      "tracker_acceptance_passed": true,
+      "tracker_failure_reasons": []
+    },
+    {
+      "target_count": 20,
+      "corruption_level": "light",
+      "window": "final_round",
+      "route": "track_superglue",
+      "evidence_status": "正式",
+      "test_seed_count": 5,
+      "confirmed_output_available": true,
+      "association_precision": 0.8876404494382022,
+      "fixed_target_coverage": 0.79,
+      "latency_p95_ms": 401.28640476614237,
+      "deadline_miss_count": 0,
+      "tracker_acceptance_passed": true,
+      "tracker_failure_reasons": []
+    },
+    {
+      "target_count": 40,
+      "corruption_level": "clean",
+      "window": "final_round",
+      "route": "epipolar_mht",
+      "evidence_status": "诊断",
+      "test_seed_count": 5,
+      "confirmed_output_available": false,
+      "association_precision": 0.0,
+      "fixed_target_coverage": 0.0,
+      "latency_p95_ms": 5174.160856986418,
+      "deadline_miss_count": 5,
+      "tracker_acceptance_passed": false,
+      "tracker_failure_reasons": [
+        "false_reactivation_rate_absolute"
+      ]
+    },
+    {
+      "target_count": 40,
+      "corruption_level": "clean",
+      "window": "final_round",
+      "route": "gnn",
+      "evidence_status": "诊断",
+      "test_seed_count": 5,
+      "confirmed_output_available": true,
+      "association_precision": 0.8956043956043956,
+      "fixed_target_coverage": 0.8150000000000001,
+      "latency_p95_ms": 292.34432361554354,
+      "deadline_miss_count": 0,
+      "tracker_acceptance_passed": false,
+      "tracker_failure_reasons": [
+        "false_reactivation_rate_absolute"
+      ]
+    },
+    {
+      "target_count": 40,
+      "corruption_level": "clean",
+      "window": "final_round",
+      "route": "track_superglue",
+      "evidence_status": "诊断",
+      "test_seed_count": 5,
+      "confirmed_output_available": true,
+      "association_precision": 0.7748344370860927,
+      "fixed_target_coverage": 0.585,
+      "latency_p95_ms": 972.6906284224242,
+      "deadline_miss_count": 0,
+      "tracker_acceptance_passed": false,
+      "tracker_failure_reasons": [
+        "false_reactivation_rate_absolute"
+      ]
+    },
+    {
+      "target_count": 40,
+      "corruption_level": "light",
+      "window": "final_round",
+      "route": "epipolar_mht",
+      "evidence_status": "诊断",
+      "test_seed_count": 5,
+      "confirmed_output_available": false,
+      "association_precision": 0.0,
+      "fixed_target_coverage": 0.0,
+      "latency_p95_ms": 5022.261646063998,
+      "deadline_miss_count": 5,
+      "tracker_acceptance_passed": false,
+      "tracker_failure_reasons": [
+        "false_reactivation_rate_absolute"
+      ]
+    },
+    {
+      "target_count": 40,
+      "corruption_level": "light",
+      "window": "final_round",
+      "route": "gnn",
+      "evidence_status": "诊断",
+      "test_seed_count": 5,
+      "confirmed_output_available": true,
+      "association_precision": 0.8930817610062893,
+      "fixed_target_coverage": 0.71,
+      "latency_p95_ms": 270.2099348185584,
+      "deadline_miss_count": 0,
+      "tracker_acceptance_passed": false,
+      "tracker_failure_reasons": [
+        "false_reactivation_rate_absolute"
+      ]
+    },
+    {
+      "target_count": 40,
+      "corruption_level": "light",
+      "window": "final_round",
+      "route": "track_superglue",
+      "evidence_status": "诊断",
+      "test_seed_count": 5,
+      "confirmed_output_available": true,
+      "association_precision": 0.7905405405405406,
+      "fixed_target_coverage": 0.585,
+      "latency_p95_ms": 954.9561922671273,
+      "deadline_miss_count": 0,
+      "tracker_acceptance_passed": false,
+      "tracker_failure_reasons": [
+        "false_reactivation_rate_absolute"
+      ]
+    },
+    {
+      "target_count": 60,
+      "corruption_level": "clean",
+      "window": "final_round",
+      "route": "epipolar_mht",
+      "evidence_status": "诊断",
+      "test_seed_count": 5,
+      "confirmed_output_available": false,
+      "association_precision": 0.0,
+      "fixed_target_coverage": 0.0,
+      "latency_p95_ms": 9257.857385464013,
+      "deadline_miss_count": 5,
+      "tracker_acceptance_passed": false,
+      "tracker_failure_reasons": [
+        "false_reactivation_rate_absolute",
+        "sweep_runtime_p95_ms"
+      ]
+    },
+    {
+      "target_count": 60,
+      "corruption_level": "clean",
+      "window": "final_round",
+      "route": "gnn",
+      "evidence_status": "诊断",
+      "test_seed_count": 5,
+      "confirmed_output_available": true,
+      "association_precision": 0.9577464788732394,
+      "fixed_target_coverage": 0.9066666666666666,
+      "latency_p95_ms": 509.516286640428,
+      "deadline_miss_count": 0,
+      "tracker_acceptance_passed": false,
+      "tracker_failure_reasons": [
+        "false_reactivation_rate_absolute",
+        "sweep_runtime_p95_ms"
+      ]
+    },
+    {
+      "target_count": 60,
+      "corruption_level": "clean",
+      "window": "final_round",
+      "route": "track_superglue",
+      "evidence_status": "诊断",
+      "test_seed_count": 5,
+      "confirmed_output_available": false,
+      "association_precision": 0.0,
+      "fixed_target_coverage": 0.0,
+      "latency_p95_ms": 1683.9215605985373,
+      "deadline_miss_count": 5,
+      "tracker_acceptance_passed": false,
+      "tracker_failure_reasons": [
+        "false_reactivation_rate_absolute",
+        "sweep_runtime_p95_ms"
+      ]
+    },
+    {
+      "target_count": 60,
+      "corruption_level": "light",
+      "window": "final_round",
+      "route": "epipolar_mht",
+      "evidence_status": "诊断",
+      "test_seed_count": 5,
+      "confirmed_output_available": false,
+      "association_precision": 0.0,
+      "fixed_target_coverage": 0.0,
+      "latency_p95_ms": 9063.332619238645,
+      "deadline_miss_count": 5,
+      "tracker_acceptance_passed": false,
+      "tracker_failure_reasons": [
+        "false_reactivation_rate_absolute",
+        "sweep_runtime_p95_ms"
+      ]
+    },
+    {
+      "target_count": 60,
+      "corruption_level": "light",
+      "window": "final_round",
+      "route": "gnn",
+      "evidence_status": "诊断",
+      "test_seed_count": 5,
+      "confirmed_output_available": true,
+      "association_precision": 0.9461538461538461,
+      "fixed_target_coverage": 0.82,
+      "latency_p95_ms": 504.93680918589234,
+      "deadline_miss_count": 0,
+      "tracker_acceptance_passed": false,
+      "tracker_failure_reasons": [
+        "false_reactivation_rate_absolute",
+        "sweep_runtime_p95_ms"
+      ]
+    },
+    {
+      "target_count": 60,
+      "corruption_level": "light",
+      "window": "final_round",
+      "route": "track_superglue",
+      "evidence_status": "诊断",
+      "test_seed_count": 5,
+      "confirmed_output_available": false,
+      "association_precision": 0.0,
+      "fixed_target_coverage": 0.0,
+      "latency_p95_ms": 1686.1564628314227,
+      "deadline_miss_count": 5,
+      "tracker_acceptance_passed": false,
+      "tracker_failure_reasons": [
+        "false_reactivation_rate_absolute",
+        "sweep_runtime_p95_ms"
+      ]
+    }
+  ],
+  "continuous_360_diagnostics": {
+    "status": "diagnostic_only",
+    "scan_span_deg": 360.0,
+    "scan_period_s": 2.0,
+    "duration_s": 12.0,
+    "clean_light_final_round_rows": [
+      {
+        "route_name": "epipolar_mht",
+        "route_label_cn": "几何方法",
+        "corruption_level": "clean",
+        "revolution_index": 6,
+        "sample_count": 5,
+        "association_precision": 0.9883720930232558,
+        "fixed_target_coverage": 0.85,
+        "latency_p95_ms": 867.8805847885087,
+        "deadline_miss_count": 0
+      },
+      {
+        "route_name": "epipolar_mht",
+        "route_label_cn": "几何方法",
+        "corruption_level": "light",
+        "revolution_index": 6,
+        "sample_count": 5,
+        "association_precision": 0.8545454545454545,
+        "fixed_target_coverage": 0.47,
+        "latency_p95_ms": 997.9332759859972,
+        "deadline_miss_count": 1
+      },
+      {
+        "route_name": "gnn",
+        "route_label_cn": "图神经网络",
+        "corruption_level": "clean",
+        "revolution_index": 6,
+        "sample_count": 5,
+        "association_precision": 0.9146341463414634,
+        "fixed_target_coverage": 0.75,
+        "latency_p95_ms": 75.21605084184557,
+        "deadline_miss_count": 0
+      },
+      {
+        "route_name": "gnn",
+        "route_label_cn": "图神经网络",
+        "corruption_level": "light",
+        "revolution_index": 6,
+        "sample_count": 5,
+        "association_precision": 0.7721518987341772,
+        "fixed_target_coverage": 0.61,
+        "latency_p95_ms": 88.49289659410715,
+        "deadline_miss_count": 0
+      },
+      {
+        "route_name": "track_superglue",
+        "route_label_cn": "增强型图神经网络（航迹级注意力）",
+        "corruption_level": "clean",
+        "revolution_index": 6,
+        "sample_count": 5,
+        "association_precision": 0.922077922077922,
+        "fixed_target_coverage": 0.71,
+        "latency_p95_ms": 241.1706326296553,
+        "deadline_miss_count": 0
+      },
+      {
+        "route_name": "track_superglue",
+        "route_label_cn": "增强型图神经网络（航迹级注意力）",
+        "corruption_level": "light",
+        "revolution_index": 6,
+        "sample_count": 5,
+        "association_precision": 0.8904109589041096,
+        "fixed_target_coverage": 0.65,
+        "latency_p95_ms": 288.4764169692062,
+        "deadline_miss_count": 0
+      }
+    ],
+    "multi_scale_route_matrix_rows": [
+      {
+        "target_count": 20,
+        "corruption_level": "clean",
+        "route_name": "epipolar_mht",
+        "route_label_cn": "几何方法",
+        "test_seed_count": 5,
+        "association_precision": 0.8571428571428571,
+        "fixed_target_coverage": 0.78,
+        "latency_p95_ms": 952.6920174132101,
+        "deadline_miss_count": 0,
+        "confirmed_output_available": true,
+        "evidence_status": "diagnostic"
+      },
+      {
+        "target_count": 20,
+        "corruption_level": "clean",
+        "route_name": "gnn",
+        "route_label_cn": "图神经网络",
+        "test_seed_count": 5,
+        "association_precision": 0.84,
+        "fixed_target_coverage": 0.63,
+        "latency_p95_ms": 78.25082816416398,
+        "deadline_miss_count": 0,
+        "confirmed_output_available": true,
+        "evidence_status": "diagnostic"
+      },
+      {
+        "target_count": 20,
+        "corruption_level": "clean",
+        "route_name": "track_superglue",
+        "route_label_cn": "增强型图神经网络（航迹级注意力）",
+        "test_seed_count": 0,
+        "association_precision": null,
+        "fixed_target_coverage": null,
+        "latency_p95_ms": null,
+        "deadline_miss_count": null,
+        "confirmed_output_available": false,
+        "evidence_status": "not_run"
+      },
+      {
+        "target_count": 20,
+        "corruption_level": "light",
+        "route_name": "epipolar_mht",
+        "route_label_cn": "几何方法",
+        "test_seed_count": 5,
+        "association_precision": null,
+        "fixed_target_coverage": null,
+        "latency_p95_ms": 1083.7181347887963,
+        "deadline_miss_count": 5,
+        "confirmed_output_available": false,
+        "evidence_status": "timeout"
+      },
+      {
+        "target_count": 20,
+        "corruption_level": "light",
+        "route_name": "gnn",
+        "route_label_cn": "图神经网络",
+        "test_seed_count": 5,
+        "association_precision": 0.821917808219178,
+        "fixed_target_coverage": 0.6,
+        "latency_p95_ms": 96.65977399563417,
+        "deadline_miss_count": 0,
+        "confirmed_output_available": true,
+        "evidence_status": "diagnostic"
+      },
+      {
+        "target_count": 20,
+        "corruption_level": "light",
+        "route_name": "track_superglue",
+        "route_label_cn": "增强型图神经网络（航迹级注意力）",
+        "test_seed_count": 0,
+        "association_precision": null,
+        "fixed_target_coverage": null,
+        "latency_p95_ms": null,
+        "deadline_miss_count": null,
+        "confirmed_output_available": false,
+        "evidence_status": "not_run"
+      },
+      {
+        "target_count": 20,
+        "corruption_level": "medium",
+        "route_name": "epipolar_mht",
+        "route_label_cn": "几何方法",
+        "test_seed_count": 5,
+        "association_precision": null,
+        "fixed_target_coverage": null,
+        "latency_p95_ms": 1373.3729953994043,
+        "deadline_miss_count": 5,
+        "confirmed_output_available": false,
+        "evidence_status": "timeout"
+      },
+      {
+        "target_count": 20,
+        "corruption_level": "medium",
+        "route_name": "gnn",
+        "route_label_cn": "图神经网络",
+        "test_seed_count": 5,
+        "association_precision": 0.765625,
+        "fixed_target_coverage": 0.49,
+        "latency_p95_ms": 121.78468342171982,
+        "deadline_miss_count": 0,
+        "confirmed_output_available": true,
+        "evidence_status": "diagnostic"
+      },
+      {
+        "target_count": 20,
+        "corruption_level": "medium",
+        "route_name": "track_superglue",
+        "route_label_cn": "增强型图神经网络（航迹级注意力）",
+        "test_seed_count": 0,
+        "association_precision": null,
+        "fixed_target_coverage": null,
+        "latency_p95_ms": null,
+        "deadline_miss_count": null,
+        "confirmed_output_available": false,
+        "evidence_status": "not_run"
+      },
+      {
+        "target_count": 20,
+        "corruption_level": "heavy",
+        "route_name": "epipolar_mht",
+        "route_label_cn": "几何方法",
+        "test_seed_count": 5,
+        "association_precision": null,
+        "fixed_target_coverage": null,
+        "latency_p95_ms": 1805.0868959748186,
+        "deadline_miss_count": 5,
+        "confirmed_output_available": false,
+        "evidence_status": "timeout"
+      },
+      {
+        "target_count": 20,
+        "corruption_level": "heavy",
+        "route_name": "gnn",
+        "route_label_cn": "图神经网络",
+        "test_seed_count": 5,
+        "association_precision": 0.6935483870967742,
+        "fixed_target_coverage": 0.43,
+        "latency_p95_ms": 171.80412301095203,
+        "deadline_miss_count": 0,
+        "confirmed_output_available": true,
+        "evidence_status": "diagnostic"
+      },
+      {
+        "target_count": 20,
+        "corruption_level": "heavy",
+        "route_name": "track_superglue",
+        "route_label_cn": "增强型图神经网络（航迹级注意力）",
+        "test_seed_count": 0,
+        "association_precision": null,
+        "fixed_target_coverage": null,
+        "latency_p95_ms": null,
+        "deadline_miss_count": null,
+        "confirmed_output_available": false,
+        "evidence_status": "not_run"
+      },
+      {
+        "target_count": 40,
+        "corruption_level": "clean",
+        "route_name": "epipolar_mht",
+        "route_label_cn": "几何方法",
+        "test_seed_count": 0,
+        "association_precision": null,
+        "fixed_target_coverage": null,
+        "latency_p95_ms": null,
+        "deadline_miss_count": null,
+        "confirmed_output_available": false,
+        "evidence_status": "not_run"
+      },
+      {
+        "target_count": 40,
+        "corruption_level": "clean",
+        "route_name": "gnn",
+        "route_label_cn": "图神经网络",
+        "test_seed_count": 5,
+        "association_precision": 0.9166666666666666,
+        "fixed_target_coverage": 0.605,
+        "latency_p95_ms": 193.26851880177855,
+        "deadline_miss_count": 0,
+        "confirmed_output_available": true,
+        "evidence_status": "diagnostic"
+      },
+      {
+        "target_count": 40,
+        "corruption_level": "clean",
+        "route_name": "track_superglue",
+        "route_label_cn": "增强型图神经网络（航迹级注意力）",
+        "test_seed_count": 0,
+        "association_precision": null,
+        "fixed_target_coverage": null,
+        "latency_p95_ms": null,
+        "deadline_miss_count": null,
+        "confirmed_output_available": false,
+        "evidence_status": "not_run"
+      },
+      {
+        "target_count": 40,
+        "corruption_level": "light",
+        "route_name": "epipolar_mht",
+        "route_label_cn": "几何方法",
+        "test_seed_count": 0,
+        "association_precision": null,
+        "fixed_target_coverage": null,
+        "latency_p95_ms": null,
+        "deadline_miss_count": null,
+        "confirmed_output_available": false,
+        "evidence_status": "not_run"
+      },
+      {
+        "target_count": 40,
+        "corruption_level": "light",
+        "route_name": "gnn",
+        "route_label_cn": "图神经网络",
+        "test_seed_count": 5,
+        "association_precision": 0.8,
+        "fixed_target_coverage": 0.5,
+        "latency_p95_ms": 204.16040860582143,
+        "deadline_miss_count": 0,
+        "confirmed_output_available": true,
+        "evidence_status": "diagnostic"
+      },
+      {
+        "target_count": 40,
+        "corruption_level": "light",
+        "route_name": "track_superglue",
+        "route_label_cn": "增强型图神经网络（航迹级注意力）",
+        "test_seed_count": 0,
+        "association_precision": null,
+        "fixed_target_coverage": null,
+        "latency_p95_ms": null,
+        "deadline_miss_count": null,
+        "confirmed_output_available": false,
+        "evidence_status": "not_run"
+      },
+      {
+        "target_count": 40,
+        "corruption_level": "medium",
+        "route_name": "epipolar_mht",
+        "route_label_cn": "几何方法",
+        "test_seed_count": 0,
+        "association_precision": null,
+        "fixed_target_coverage": null,
+        "latency_p95_ms": null,
+        "deadline_miss_count": null,
+        "confirmed_output_available": false,
+        "evidence_status": "not_run"
+      },
+      {
+        "target_count": 40,
+        "corruption_level": "medium",
+        "route_name": "gnn",
+        "route_label_cn": "图神经网络",
+        "test_seed_count": 5,
+        "association_precision": 0.7608695652173914,
+        "fixed_target_coverage": 0.35,
+        "latency_p95_ms": 229.88031164277345,
+        "deadline_miss_count": 0,
+        "confirmed_output_available": true,
+        "evidence_status": "diagnostic"
+      },
+      {
+        "target_count": 40,
+        "corruption_level": "medium",
+        "route_name": "track_superglue",
+        "route_label_cn": "增强型图神经网络（航迹级注意力）",
+        "test_seed_count": 0,
+        "association_precision": null,
+        "fixed_target_coverage": null,
+        "latency_p95_ms": null,
+        "deadline_miss_count": null,
+        "confirmed_output_available": false,
+        "evidence_status": "not_run"
+      },
+      {
+        "target_count": 40,
+        "corruption_level": "heavy",
+        "route_name": "epipolar_mht",
+        "route_label_cn": "几何方法",
+        "test_seed_count": 0,
+        "association_precision": null,
+        "fixed_target_coverage": null,
+        "latency_p95_ms": null,
+        "deadline_miss_count": null,
+        "confirmed_output_available": false,
+        "evidence_status": "not_run"
+      },
+      {
+        "target_count": 40,
+        "corruption_level": "heavy",
+        "route_name": "gnn",
+        "route_label_cn": "图神经网络",
+        "test_seed_count": 5,
+        "association_precision": 0.6707317073170732,
+        "fixed_target_coverage": 0.275,
+        "latency_p95_ms": 270.29280617134646,
+        "deadline_miss_count": 0,
+        "confirmed_output_available": true,
+        "evidence_status": "diagnostic"
+      },
+      {
+        "target_count": 40,
+        "corruption_level": "heavy",
+        "route_name": "track_superglue",
+        "route_label_cn": "增强型图神经网络（航迹级注意力）",
+        "test_seed_count": 0,
+        "association_precision": null,
+        "fixed_target_coverage": null,
+        "latency_p95_ms": null,
+        "deadline_miss_count": null,
+        "confirmed_output_available": false,
+        "evidence_status": "not_run"
+      },
+      {
+        "target_count": 60,
+        "corruption_level": "clean",
+        "route_name": "epipolar_mht",
+        "route_label_cn": "几何方法",
+        "test_seed_count": 0,
+        "association_precision": null,
+        "fixed_target_coverage": null,
+        "latency_p95_ms": null,
+        "deadline_miss_count": null,
+        "confirmed_output_available": false,
+        "evidence_status": "not_run"
+      },
+      {
+        "target_count": 60,
+        "corruption_level": "clean",
+        "route_name": "gnn",
+        "route_label_cn": "图神经网络",
+        "test_seed_count": 5,
+        "association_precision": 0.9428571428571428,
+        "fixed_target_coverage": 0.55,
+        "latency_p95_ms": 305.2174809970893,
+        "deadline_miss_count": 0,
+        "confirmed_output_available": true,
+        "evidence_status": "diagnostic"
+      },
+      {
+        "target_count": 60,
+        "corruption_level": "clean",
+        "route_name": "track_superglue",
+        "route_label_cn": "增强型图神经网络（航迹级注意力）",
+        "test_seed_count": 0,
+        "association_precision": null,
+        "fixed_target_coverage": null,
+        "latency_p95_ms": null,
+        "deadline_miss_count": null,
+        "confirmed_output_available": false,
+        "evidence_status": "not_run"
+      },
+      {
+        "target_count": 60,
+        "corruption_level": "light",
+        "route_name": "epipolar_mht",
+        "route_label_cn": "几何方法",
+        "test_seed_count": 0,
+        "association_precision": null,
+        "fixed_target_coverage": null,
+        "latency_p95_ms": null,
+        "deadline_miss_count": null,
+        "confirmed_output_available": false,
+        "evidence_status": "not_run"
+      },
+      {
+        "target_count": 60,
+        "corruption_level": "light",
+        "route_name": "gnn",
+        "route_label_cn": "图神经网络",
+        "test_seed_count": 5,
+        "association_precision": 0.7727272727272727,
+        "fixed_target_coverage": 0.39666666666666667,
+        "latency_p95_ms": 337.5748037942685,
+        "deadline_miss_count": 0,
+        "confirmed_output_available": true,
+        "evidence_status": "diagnostic"
+      },
+      {
+        "target_count": 60,
+        "corruption_level": "light",
+        "route_name": "track_superglue",
+        "route_label_cn": "增强型图神经网络（航迹级注意力）",
+        "test_seed_count": 0,
+        "association_precision": null,
+        "fixed_target_coverage": null,
+        "latency_p95_ms": null,
+        "deadline_miss_count": null,
+        "confirmed_output_available": false,
+        "evidence_status": "not_run"
+      },
+      {
+        "target_count": 60,
+        "corruption_level": "medium",
+        "route_name": "epipolar_mht",
+        "route_label_cn": "几何方法",
+        "test_seed_count": 0,
+        "association_precision": null,
+        "fixed_target_coverage": null,
+        "latency_p95_ms": null,
+        "deadline_miss_count": null,
+        "confirmed_output_available": false,
+        "evidence_status": "not_run"
+      },
+      {
+        "target_count": 60,
+        "corruption_level": "medium",
+        "route_name": "gnn",
+        "route_label_cn": "图神经网络",
+        "test_seed_count": 5,
+        "association_precision": 0.7756410256410257,
+        "fixed_target_coverage": 0.4033333333333333,
+        "latency_p95_ms": 366.2290434236638,
+        "deadline_miss_count": 0,
+        "confirmed_output_available": true,
+        "evidence_status": "diagnostic"
+      },
+      {
+        "target_count": 60,
+        "corruption_level": "medium",
+        "route_name": "track_superglue",
+        "route_label_cn": "增强型图神经网络（航迹级注意力）",
+        "test_seed_count": 0,
+        "association_precision": null,
+        "fixed_target_coverage": null,
+        "latency_p95_ms": null,
+        "deadline_miss_count": null,
+        "confirmed_output_available": false,
+        "evidence_status": "not_run"
+      },
+      {
+        "target_count": 60,
+        "corruption_level": "heavy",
+        "route_name": "epipolar_mht",
+        "route_label_cn": "几何方法",
+        "test_seed_count": 0,
+        "association_precision": null,
+        "fixed_target_coverage": null,
+        "latency_p95_ms": null,
+        "deadline_miss_count": null,
+        "confirmed_output_available": false,
+        "evidence_status": "not_run"
+      },
+      {
+        "target_count": 60,
+        "corruption_level": "heavy",
+        "route_name": "gnn",
+        "route_label_cn": "图神经网络",
+        "test_seed_count": 5,
+        "association_precision": 0.7226890756302521,
+        "fixed_target_coverage": 0.2866666666666667,
+        "latency_p95_ms": 403.9098093751818,
+        "deadline_miss_count": 0,
+        "confirmed_output_available": true,
+        "evidence_status": "diagnostic"
+      },
+      {
+        "target_count": 60,
+        "corruption_level": "heavy",
+        "route_name": "track_superglue",
+        "route_label_cn": "增强型图神经网络（航迹级注意力）",
+        "test_seed_count": 0,
+        "association_precision": null,
+        "fixed_target_coverage": null,
+        "latency_p95_ms": null,
+        "deadline_miss_count": null,
+        "confirmed_output_available": false,
+        "evidence_status": "not_run"
+      }
+    ],
+    "multi_scale_final_round_rows": [
+      {
+        "target_count": 20,
+        "corruption_level": "clean",
+        "test_seed_count": 5,
+        "association_precision": 0.84,
+        "fixed_target_coverage": 0.63,
+        "latency_p95_ms": 78.25082816416398,
+        "deadline_miss_count": 0
+      },
+      {
+        "target_count": 20,
+        "corruption_level": "light",
+        "test_seed_count": 5,
+        "association_precision": 0.821917808219178,
+        "fixed_target_coverage": 0.6,
+        "latency_p95_ms": 96.65977399563417,
+        "deadline_miss_count": 0
+      },
+      {
+        "target_count": 20,
+        "corruption_level": "medium",
+        "test_seed_count": 5,
+        "association_precision": 0.765625,
+        "fixed_target_coverage": 0.49,
+        "latency_p95_ms": 121.78468342171982,
+        "deadline_miss_count": 0
+      },
+      {
+        "target_count": 20,
+        "corruption_level": "heavy",
+        "test_seed_count": 5,
+        "association_precision": 0.6935483870967742,
+        "fixed_target_coverage": 0.43,
+        "latency_p95_ms": 171.80412301095203,
+        "deadline_miss_count": 0
+      },
+      {
+        "target_count": 40,
+        "corruption_level": "clean",
+        "test_seed_count": 5,
+        "association_precision": 0.9166666666666666,
+        "fixed_target_coverage": 0.605,
+        "latency_p95_ms": 193.26851880177855,
+        "deadline_miss_count": 0
+      },
+      {
+        "target_count": 40,
+        "corruption_level": "light",
+        "test_seed_count": 5,
+        "association_precision": 0.8,
+        "fixed_target_coverage": 0.5,
+        "latency_p95_ms": 204.16040860582143,
+        "deadline_miss_count": 0
+      },
+      {
+        "target_count": 40,
+        "corruption_level": "medium",
+        "test_seed_count": 5,
+        "association_precision": 0.7608695652173914,
+        "fixed_target_coverage": 0.35,
+        "latency_p95_ms": 229.88031164277345,
+        "deadline_miss_count": 0
+      },
+      {
+        "target_count": 40,
+        "corruption_level": "heavy",
+        "test_seed_count": 5,
+        "association_precision": 0.6707317073170732,
+        "fixed_target_coverage": 0.275,
+        "latency_p95_ms": 270.29280617134646,
+        "deadline_miss_count": 0
+      },
+      {
+        "target_count": 60,
+        "corruption_level": "clean",
+        "test_seed_count": 5,
+        "association_precision": 0.9428571428571428,
+        "fixed_target_coverage": 0.55,
+        "latency_p95_ms": 305.2174809970893,
+        "deadline_miss_count": 0
+      },
+      {
+        "target_count": 60,
+        "corruption_level": "light",
+        "test_seed_count": 5,
+        "association_precision": 0.7727272727272727,
+        "fixed_target_coverage": 0.39666666666666667,
+        "latency_p95_ms": 337.5748037942685,
+        "deadline_miss_count": 0
+      },
+      {
+        "target_count": 60,
+        "corruption_level": "medium",
+        "test_seed_count": 5,
+        "association_precision": 0.7756410256410257,
+        "fixed_target_coverage": 0.4033333333333333,
+        "latency_p95_ms": 366.2290434236638,
+        "deadline_miss_count": 0
+      },
+      {
+        "target_count": 60,
+        "corruption_level": "heavy",
+        "test_seed_count": 5,
+        "association_precision": 0.7226890756302521,
+        "fixed_target_coverage": 0.2866666666666667,
+        "latency_p95_ms": 403.9098093751818,
+        "deadline_miss_count": 0
+      }
+    ]
+  },
+  "ranging_demonstration": {
+    "status": "ideal_pose_time_single_seed_chain_demonstration",
+    "seed": 20260810,
+    "target_count": 40,
+    "correct_match_count": 36,
+    "false_match_count": 1,
+    "association_precision": 0.972972972972973,
+    "fixed_target_coverage": 0.9,
+    "position_error_mean_m": 0.08030544908018379,
+    "position_error_p95_m": 0.09140807343853961,
+    "velocity_error_mean_mps": 0.008106441752602696,
+    "velocity_error_p95_mps": 0.019719089744373565
+  },
+  "source_artifacts": [
+    {
+      "path": "research_modules/independent_experiments/dual_optical_online_benchmark/outputs/s180_1s_sector_v1/s180_combined_metrics.json",
+      "sha256": "dc03f60d1172e2f6c23cd0a79a340d4d90c0303274d9ed5984e7e817f026df7f"
+    },
+    {
+      "path": "research_modules/independent_experiments/dual_optical_online_benchmark/outputs/s180_1s_sector_v1/reproduction_manifest.json",
+      "sha256": "63370a0010dedb88dc1570c0cc0983a51d91ee1f9416f63b9bc8c7521836f899"
+    },
+    {
+      "path": "research_modules/independent_experiments/dual_optical_online_benchmark/outputs/clean_light_sealed_rescore_20260817_v2/clean_light_metrics.json",
+      "sha256": "e6caf43da3f06b75a0a2aa83ba418d9b7e4039e6578be86bc6c821c59a691f47"
+    },
+    {
+      "path": "research_modules/independent_experiments/dual_optical_online_benchmark/outputs/scale_funnel_v4/targets_020/dataset/test_manifest.json",
+      "sha256": "a8d06dca27d931bb518bb169c8e17da227cadfdedd251ead36b858ce081a8381"
+    },
+    {
+      "path": "research_modules/independent_experiments/dual_optical_online_benchmark/outputs/scale_funnel_v4/targets_020/dataset/freezes/epipolar_mht/freeze_manifest.json",
+      "sha256": "2c71e7c7e146e348f2566f9f84c0307ddbf96f14ac015c4a08f350ae473b1844"
+    },
+    {
+      "path": "research_modules/independent_experiments/dual_optical_online_benchmark/outputs/scale_funnel_v4/targets_020/dataset/freezes/gnn/freeze_manifest.json",
+      "sha256": "d8c245e9813c7acf0954e478829d8519da7166c4b17055826e21d4665cdaf735"
+    },
+    {
+      "path": "research_modules/independent_experiments/dual_optical_online_benchmark/outputs/scale_funnel_v4/targets_020/dataset/freezes/track_superglue/freeze_manifest.json",
+      "sha256": "9e74d2330ca7e25b863c13870aae53a79e0c1ee63a8c142dfefd964da413f494"
+    },
+    {
+      "path": "research_modules/independent_experiments/dual_optical_online_benchmark/outputs/scale_funnel_v3/summary/scale_funnel_summary.json",
+      "sha256": "b235bc952e3216645d3113d1ba0e26428c147371f8fb119fe67526ab080a9503"
+    },
+    {
+      "path": "research_modules/independent_experiments/dual_optical_online_benchmark/outputs/scale_funnel_v3/targets_020/results/comparison_metrics.json",
+      "sha256": "9aca523c4a4010513d059dd6aa6bcb27a5a486dc5ad138efbe77f74e4df67e4d"
+    },
+    {
+      "path": "research_modules/independent_experiments/dual_optical_online_benchmark/outputs/scale_funnel_v3/targets_040/results/comparison_metrics.json",
+      "sha256": "7befbd904c70008b44b9fd16d5ffc907452c371cfb8acf2cfea976664cf3daa6"
+    },
+    {
+      "path": "research_modules/independent_experiments/dual_optical_online_benchmark/outputs/scale_funnel_v3/targets_060/results/comparison_metrics.json",
+      "sha256": "c49f74591b6b3bec5a7f182aea87b773d3c963b48b599b05ed106c5be11dd825"
+    },
+    {
+      "path": "research_modules/independent_experiments/dual_optical_online_benchmark/outputs/scale_funnel_v3/targets_020/results/failure_diagnostics.json",
+      "sha256": "194ab5d070e8d7b698da17bd26ca8916b2712ee239687b89022dbad5f54287ee"
+    },
+    {
+      "path": "research_modules/independent_experiments/dual_optical_online_benchmark/outputs/scale_funnel_v3/targets_040/results/failure_diagnostics.json",
+      "sha256": "1aa3a7e9c54ae7e46f386c6669fc1507ca7f35ab677fd87e909617d9c2e6742b"
+    },
+    {
+      "path": "research_modules/independent_experiments/dual_optical_online_benchmark/outputs/scale_funnel_v3/targets_060/results/failure_diagnostics.json",
+      "sha256": "9d0a4519001b03c97fdc1bd1465dc0e905d0073af40f5760fdadf6a7766ce7bb"
+    },
+    {
+      "path": "research_modules/independent_experiments/dual_optical_40target/outputs/airsim_seed_20260810_run11/metrics.json",
+      "sha256": "7af7d9415b5fe93f46f0cc6a58d8672411d41fff39b7983a617fbb662e9720ef"
+    },
+    {
+      "path": "research_modules/independent_experiments/dual_optical_40target/outputs/airsim_seed_20260810_run11/scenario.json",
+      "sha256": "487575ef90a56ed4bb1bedc611f6365c5c5150a1c4397bcc8328e6124b3a4982"
+    },
+    {
+      "path": "research_modules/independent_experiments/dual_optical_40target/outputs/airsim_seed_20260810_run11/truth/target_trajectories.csv",
+      "sha256": "6c1a050c1186c97f6626b1b6da06e1db14f7d81e4570013af9054ca3b4b8dc4d"
+    },
+    {
+      "path": "research_modules/independent_experiments/dual_optical_40target/outputs/airsim_seed_20260810_run11/online/cross_camera_matches.csv",
+      "sha256": "3ea35ef982d9e0fd15cd47be20bd8f6417b91984edb8325ed127f49ae33c956a"
+    },
+    {
+      "path": "research_modules/independent_experiments/dual_optical_40target/outputs/airsim_seed_20260810_run11/truth/match_scoring.csv",
+      "sha256": "0027b735cddfccf8d0f9d7a3ac654ab921402e501ae29ae3da4a38c82296c34c"
+    },
+    {
+      "path": "research_modules/independent_experiments/dual_optical_40target/outputs/airsim_seed_20260810_run11/online/anonymous_detections.csv",
+      "sha256": "823e0cf63b4314c6c3634d53a252c8102590522df2e15050c717422638d8e7dd"
+    }
+  ],
+  "generated_artifacts": [
+    {
+      "path": "deliverables/leadership_report/双光电多目标轨迹配准与交汇定位试验报告_CN.md",
+      "sha256": "ebd5f05219b8190d4eaf91f205731ae3eebdb6970dd50ec8f14b2a5a104a412e"
+    },
+    {
+      "path": "deliverables/leadership_report/双光电多目标轨迹配准与交汇定位试验报告_CN.docx",
+      "sha256": "2e477728e93fce8b753663b5183857a13b19cfaef671097b3ce2e52fbbf060dc"
+    },
+    {
+      "path": "deliverables/leadership_report/assets/dual_optical_registration_report/01_algorithm_flow.png",
+      "sha256": "0caee5712db26972d41a8422418634b960f07ba8efaace8a0f9f44283e92f5c8"
+    },
+    {
+      "path": "deliverables/leadership_report/assets/dual_optical_registration_report/02_single_station_tracking.png",
+      "sha256": "bff6b26a972ed5dfd846a99242a0377664bd8342006dcebea1b179951f751227"
+    },
+    {
+      "path": "deliverables/leadership_report/assets/dual_optical_registration_report/03_coplanarity_screening_3d.png",
+      "sha256": "edfa7d3727369a91131d0c6c1b1633198c1b7f98989bc7bd58842d71a2312097"
+    },
+    {
+      "path": "deliverables/leadership_report/assets/dual_optical_registration_report/04a_local_tracks_before_registration.png",
+      "sha256": "d0c67a9791ee564bac8d6fb05878bc4f036216afb010e3b4c23f14c6ab80f226"
+    },
+    {
+      "path": "deliverables/leadership_report/assets/dual_optical_registration_report/04b_candidate_graph_gnn_assignment.png",
+      "sha256": "4a12344be1004b05a7ee5bd7d4235f35a799a6b09093a7ad4179b2dea2afc935"
+    },
+    {
+      "path": "deliverables/leadership_report/assets/dual_optical_registration_report/05_multitime_triangulation_3d.png",
+      "sha256": "e406156aee41a41ccee94a27fd90c3ae5d4d76f347092bb0976dc2a03c6cc7b4"
+    },
+    {
+      "path": "deliverables/leadership_report/assets/dual_optical_registration_report/06_airsim_scene_40_targets_cn.png",
+      "sha256": "4bb16a2b9f0c4b0c2eb052d7bee7f2e2b764e811fe63845ceefb9ddcf9e3a89d"
+    },
+    {
+      "path": "deliverables/leadership_report/assets/dual_optical_registration_report/07_airsim_optical_observations_cn.png",
+      "sha256": "0570a0a6cbe1f5331f9b20679fb14e24bd9f4e3c97e02220836e4bf517fa68f3"
+    },
+    {
+      "path": "deliverables/leadership_report/assets/dual_optical_registration_report/08_s180_selected_results.png",
+      "sha256": "a5083a85dac7032dc7b251ea412489f627fa6be268505dccc1896d38ce80982c"
+    },
+    {
+      "path": "deliverables/leadership_report/assets/dual_optical_registration_report/09_tracking_and_registration_loss.png",
+      "sha256": "7d91380e21d4ca61cc155a6d00034785227c4203767ec2c64cc05ceee4d11582"
+    },
+    {
+      "path": "deliverables/leadership_report/assets/dual_optical_registration_report/10_ranging_reconstruction_and_error.png",
+      "sha256": "72357f7e37b0d5a01d4a8793e1e76c72f4764f55aaf3823e8c35ac9450295f37"
+    },
+    {
+      "path": "deliverables/leadership_report/assets/dual_optical_registration_report/11_360_clean_light_route_comparison.png",
+      "sha256": "7438a57f0f8bf8086eb0bd7d47727780c2a366c299ad1533ae2e05691ba1a7ae"
+    },
+    {
+      "path": "deliverables/leadership_report/assets/dual_optical_registration_report/12_360_multiseed_cascade.png",
+      "sha256": "7ff0bdd974a2b1458b8ee91e81089878688f861e7ad12642b38a6718225177bf"
+    }
+  ],
+  "limitations": [
+    "40- and 60-target S180 rows are diagnostic because the shared local tracker failed acceptance.",
+    "The 40- and 60-target rows use different test scenes and separately trained GNN models; they are not a target-count-only controlled comparison.",
+    "One difficult 40-target seed contributes 12 of the 19 final-round false associations; excluding it yields 95.27% precision.",
+    "The geometry comparison is limited to the unretuned S180 enhanced-geometry baseline.",
+    "The requested 360-degree perfect-local-track 20/40/60 by three-route matrix has no machine evidence; all nine cells remain pending test.",
+    "The 360-degree clean/light route comparison and scale diagnostic use different frozen campaigns and must not be pooled.",
+    "The 20-, 40-, and 60-target 360-degree rows use separately trained GNN models and five test seeds per scale.",
+    "In the multi-scale 360-degree campaign, geometry ran only at 20 targets and track-level attention did not run; absent combinations are recorded as not_run, not zero.",
+    "The 360-degree random-interference table reports final-round metrics for clean, light, medium, and heavy corruption; it does not pool all six revolutions.",
+    "The random 360-degree scenes vary initial geometry and crossings but retain two heading classes (0 and -30 degrees); continuously randomized headings are not validated.",
+    "All association result tables report final-round precision and fixed-target coverage only; intermediate diagnostic metrics remain source evidence but are not shown.",
+    "The 40-target ranging result uses ideal pose/time and one seed and is not an equipment claim."
+  ]
+}
