@@ -1,0 +1,17 @@
+{
+  "schema_version": "dual-optical-100target-lightweight-figures-v1",
+  "report": "DUAL_OPTICAL_100TARGET_LIGHTWEIGHT_REPORT_CN.md",
+  "evidence_status": "historical_formal_expanded_20260820_20260920_run01_not_used_by_formal_v2_report",
+  "current_report_uses_result_figures": false,
+  "note": "These figures belong to the earlier offline expanded comparison and are not evidence for formal_v2_24_6_20.",
+  "figures": [
+    "figures/01_algorithm_flow.png",
+    "figures/02_lightweight_models.png",
+    "figures/03_validation_selection.png",
+    "figures/04_test_metrics.png",
+    "figures/05_error_counts.png",
+    "figures/06_corruption_f1.png",
+    "figures/07_grouped_seed_ci.png",
+    "figures/08_latency.png"
+  ]
+}

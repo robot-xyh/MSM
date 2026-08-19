@@ -1,0 +1,15 @@
+{
+  "schema_version": "dual-optical-100target-gnn-expanded-formal-doc-figures-v1",
+  "report": "DUAL_OPTICAL_100TARGET_GNN_EXPANDED_FORMAL_RESULT_CN.md",
+  "evidence_source": "formal_expanded_20260820_20260920_run01",
+  "figures": [
+    "01_algorithm_flow.png",
+    "02_bipartite_graph.png",
+    "03_corruption_levels.png",
+    "04_f1_by_corruption.png",
+    "05_failure_reasons.png",
+    "06_inference_latency.png",
+    "07_training_history.png",
+    "08_candidate_pr_curve.png"
+  ]
+}

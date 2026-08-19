@@ -1,0 +1,10 @@
+{
+  "schema_version": "dual-optical-100target-gnn-figure-manifest-v1",
+  "report": "DUAL_OPTICAL_100TARGET_GNN_REPORT_CN.md",
+  "formal_metrics_present": false,
+  "figures": [
+    "figures/01_algorithm_flow.png",
+    "figures/02_bipartite_graph.png",
+    "figures/03_corruption_levels.png"
+  ]
+}

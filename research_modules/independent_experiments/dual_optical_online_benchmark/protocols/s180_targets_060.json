@@ -1,0 +1,28 @@
+{
+  "schema_version": "dual-optical-s180-protocol-v1",
+  "protocol_fingerprint": "3f4648b43c36889fd4af4ecd80fceaa8155f5e432f385e3b7b54a2875ea2210c",
+  "protocol": {
+    "train_seeds": [20287001, 20287002, 20287003, 20287004, 20287005, 20287006, 20287007, 20287008],
+    "validation_seeds": [20287101, 20287102],
+    "test_seeds": [20287301, 20287302, 20287303, 20287304, 20287305],
+    "target_count": 60,
+    "target_speed_mps": 50.0,
+    "zero_heading_count": 30,
+    "minus_thirty_heading_count": 30,
+    "duration_s": 12.0,
+    "scan_period_s": 2.0,
+    "scan_span_deg": 180.0,
+    "camera_b_scan_phase_offset_s": 0.0,
+    "deterministic_step_mode": "legacy_wall_yield",
+    "sample_rate_hz": 100.0,
+    "clock_speed": 0.1,
+    "gimbal_fixed_bias_rms_mrad": 0.4,
+    "gimbal_jitter_rms_mrad": 0.3,
+    "online_deadline_ms": 1000.0,
+    "corruption_levels": ["clean", "light"],
+    "scan_profile": "s180_triangle_1s_v1",
+    "scan_mode": "triangle",
+    "scan_half_span_deg": 90.0,
+    "association_round_period_s": 1.0
+  }
+}

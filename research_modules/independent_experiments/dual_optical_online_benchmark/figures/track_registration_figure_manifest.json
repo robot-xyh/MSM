@@ -1,0 +1,76 @@
+{
+  "schema_version": "dual-optical-track-figure-manifest-v1",
+  "source_snapshot": "outputs/scale_funnel_v3/targets_040/dataset/snapshots/test/20284201/medium/revolution_06.json",
+  "source_publication": "outputs/scale_funnel_v3/targets_040/results/publications/20284201/medium/revolution_06_gnn.json",
+  "seed": 20284201,
+  "corruption_level": "medium",
+  "revolution_index": 6,
+  "selected_local_pairs": [
+    {
+      "alias": "relation_1",
+      "track_a_id": "Optical_A-KF-b976e5b854ed",
+      "track_b_id": "Optical_B-KF-fb13a96752f5",
+      "gnn_score": 0.8969719409942627,
+      "joint_fit_rms_mrad": 0.16646826619763624,
+      "joint_fit_speed_mps": 49.963572557717455
+    },
+    {
+      "alias": "relation_2",
+      "track_a_id": "Optical_A-KF-49ad3e100ef4",
+      "track_b_id": "Optical_B-KF-df4a1b9cfff5",
+      "gnn_score": 0.9713829755783081,
+      "joint_fit_rms_mrad": 0.16683296311309598,
+      "joint_fit_speed_mps": 50.00955709313835
+    },
+    {
+      "alias": "relation_3",
+      "track_a_id": "Optical_A-KF-caba6911d27f",
+      "track_b_id": "Optical_B-KF-0ba6b057ebac",
+      "gnn_score": 0.9971068501472473,
+      "joint_fit_rms_mrad": 0.17172750203949538,
+      "joint_fit_speed_mps": 50.03590090616144
+    },
+    {
+      "alias": "relation_4",
+      "track_a_id": "Optical_A-KF-e2ec819a9712",
+      "track_b_id": "Optical_B-KF-3a2abd08520e",
+      "gnn_score": 0.9977854490280151,
+      "joint_fit_rms_mrad": 0.18840998053312616,
+      "joint_fit_speed_mps": 49.9095452293644
+    },
+    {
+      "alias": "relation_5",
+      "track_a_id": "Optical_A-KF-a6814cb396b0",
+      "track_b_id": "Optical_B-KF-f80e3abbde99",
+      "gnn_score": 0.9781422019004822,
+      "joint_fit_rms_mrad": 0.19017605296943932,
+      "joint_fit_speed_mps": 49.96337022078635
+    },
+    {
+      "alias": "relation_6",
+      "track_a_id": "Optical_A-KF-ef7812a68d93",
+      "track_b_id": "Optical_B-KF-1b1d2ea23633",
+      "gnn_score": 0.9999092817306519,
+      "joint_fit_rms_mrad": 0.19649453529528646,
+      "joint_fit_speed_mps": 49.95555746133785
+    }
+  ],
+  "joint_fit_example": {
+    "track_a_id": "Optical_A-KF-49ad3e100ef4",
+    "track_b_id": "Optical_B-KF-df4a1b9cfff5",
+    "gnn_score": 0.9713829755783081,
+    "rms_angular_residual_mrad": 0.16683296311309598,
+    "speed_mps": 50.00955709313835,
+    "design_condition_number": 6.213732110860395
+  },
+  "assignment_example": {
+    "candidate_edge_count": 38,
+    "selected_edge_count": 10
+  },
+  "figures": [
+    "figures/15_local_track_histories.png",
+    "figures/16_joint_track_fit_and_reprojection.png",
+    "figures/17_candidate_graph_to_assignment.png"
+  ],
+  "online_truth_used": false
+}
