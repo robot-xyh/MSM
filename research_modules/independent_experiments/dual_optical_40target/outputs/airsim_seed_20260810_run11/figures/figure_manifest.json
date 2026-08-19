@@ -1,9 +1,12 @@
 {
+  "algorithm_flow": "figures/10_algorithm_flow.png",
+  "association_effect": "figures/12_truth_association_effect.png",
   "bearing_tracks": "figures/05_local_bearing_tracks.png",
   "camera_a": "figures/03_camera_a_keyframes.png",
   "camera_b": "figures/04_camera_b_keyframes.png",
   "cost_matrix": "figures/06_candidate_cost_matrix.png",
   "errors": "figures/09_reconstruction_errors.png",
+  "fit_principle": "figures/11_moving_ray_fit_principle_3d.png",
   "match_graph": "figures/07_hungarian_matches.png",
   "reconstruction": "figures/08_reconstructed_trajectories_3d.png",
   "scan": "figures/02_scan_and_detection.png",
