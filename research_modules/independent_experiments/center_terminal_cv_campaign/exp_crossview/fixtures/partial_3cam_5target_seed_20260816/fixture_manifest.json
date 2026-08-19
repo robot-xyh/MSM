@@ -1,0 +1,9 @@
+{
+  "schema_version": "terminal-crossview-fixture-v1",
+  "scenario_name": "partial_3cam_5target",
+  "seed": 20260816,
+  "frame_count": 7,
+  "target_count": 5,
+  "online_tracks": "local_tracks.jsonl",
+  "offline_truth": "truth/truth_labels.json"
+}

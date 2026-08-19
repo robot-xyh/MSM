@@ -1,0 +1,26 @@
+{
+  "schema_version": "terminal-crossview-calibrations-v1",
+  "cameras": [
+    {
+      "camera_id": "Terminal_CV_01",
+      "width_px": 1920,
+      "height_px": 1080,
+      "horizontal_fov_deg": 19.0,
+      "confidence": 0.93
+    },
+    {
+      "camera_id": "Terminal_CV_02",
+      "width_px": 1920,
+      "height_px": 1080,
+      "horizontal_fov_deg": 19.0,
+      "confidence": 0.9400000000000001
+    },
+    {
+      "camera_id": "Terminal_CV_03",
+      "width_px": 1920,
+      "height_px": 1080,
+      "horizontal_fov_deg": 19.0,
+      "confidence": 0.9500000000000001
+    }
+  ]
+}
