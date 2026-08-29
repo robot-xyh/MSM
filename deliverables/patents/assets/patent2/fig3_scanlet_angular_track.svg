@@ -1,0 +1,257 @@
+<?xml version="1.0" encoding="utf-8" standalone="no"?>
+<!DOCTYPE svg PUBLIC "-//W3C//DTD SVG 1.1//EN"
+  "http://www.w3.org/Graphics/SVG/1.1/DTD/svg11.dtd">
+<svg xmlns:xlink="http://www.w3.org/1999/xlink" width="873.4pt" height="527.8pt" viewBox="0 0 873.4 527.8" xmlns="http://www.w3.org/2000/svg" version="1.1">
+ <metadata>
+  <rdf:RDF xmlns:dc="http://purl.org/dc/elements/1.1/" xmlns:cc="http://creativecommons.org/ns#" xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#">
+   <cc:Work>
+    <dc:type rdf:resource="http://purl.org/dc/dcmitype/StillImage"/>
+    <dc:date>2026-08-29T06:09:19.273335</dc:date>
+    <dc:format>image/svg+xml</dc:format>
+    <dc:creator>
+     <cc:Agent>
+      <dc:title>Matplotlib v3.10.9, https://matplotlib.org/</dc:title>
+     </cc:Agent>
+    </dc:creator>
+   </cc:Work>
+  </rdf:RDF>
+ </metadata>
+ <defs>
+  <style type="text/css">*{stroke-linejoin: round; stroke-linecap: butt}</style>
+ </defs>
+ <g id="figure_1">
+  <g id="patch_1">
+   <path d="M 0 527.8 
+L 873.4 527.8 
+L 873.4 0 
+L 0 0 
+z
+" style="fill: #ffffff"/>
+  </g>
+  <g id="axes_1">
+   <g id="patch_2">
+    <path d="M 808.933333 449.294444 
+L 794.616667 453.21625 
+L 794.616667 449.330097 
+L 64.466667 449.330097 
+L 64.466667 449.258792 
+L 794.616667 449.258792 
+L 794.616667 445.372639 
+z
+" clip-path="url(#p4870c2bd02)" style="stroke: #000000; stroke-linejoin: miter"/>
+   </g>
+   <g id="patch_3">
+    <path d="M 64.466667 64.244444 
+L 68.40375 78.505556 
+L 64.502458 78.505556 
+L 64.502458 449.294444 
+L 64.430875 449.294444 
+L 64.430875 78.505556 
+L 60.529583 78.505556 
+z
+" clip-path="url(#p4870c2bd02)" style="stroke: #000000; stroke-linejoin: miter"/>
+   </g>
+   <g id="patch_4">
+    <path d="M 125.3125 458.992 
+L 232.6875 458.992 
+L 232.6875 99.612 
+L 125.3125 99.612 
+z
+" clip-path="url(#p4870c2bd02)" style="fill: #ffffff; stroke-dasharray: 0.9,1.485; stroke-dashoffset: 0; stroke: #000000; stroke-width: 0.9; stroke-linejoin: miter"/>
+   </g>
+   <g id="patch_5">
+    <path d="M 361.5375 458.992 
+L 468.9125 458.992 
+L 468.9125 99.612 
+L 361.5375 99.612 
+z
+" clip-path="url(#p4870c2bd02)" style="fill: #ffffff; stroke-dasharray: 0.9,1.485; stroke-dashoffset: 0; stroke: #000000; stroke-width: 0.9; stroke-linejoin: miter"/>
+   </g>
+   <g id="patch_6">
+    <path d="M 597.7625 458.992 
+L 705.1375 458.992 
+L 705.1375 99.612 
+L 597.7625 99.612 
+z
+" clip-path="url(#p4870c2bd02)" style="fill: #ffffff; stroke-dasharray: 0.9,1.485; stroke-dashoffset: 0; stroke: #000000; stroke-width: 0.9; stroke-linejoin: miter"/>
+   </g>
+   <g id="patch_7">
+    <path d="M 179 369.075694 
+C 184.695237 369.075694 190.157978 367.385224 194.185118 364.376589 
+C 198.212259 361.367954 200.475 357.286797 200.475 353.031944 
+C 200.475 348.777092 198.212259 344.695935 194.185118 341.6873 
+C 190.157978 338.678665 184.695237 336.988194 179 336.988194 
+C 173.304763 336.988194 167.842022 338.678665 163.814882 341.6873 
+C 159.787741 344.695935 157.525 348.777092 157.525 353.031944 
+C 157.525 357.286797 159.787741 361.367954 163.814882 364.376589 
+C 167.842022 367.385224 173.304763 369.075694 179 369.075694 
+L 179 369.075694 
+z
+" clip-path="url(#p4870c2bd02)" style="fill: none; stroke-dasharray: 3.7,1.6; stroke-dashoffset: 0; stroke: #000000; stroke-linejoin: miter"/>
+   </g>
+   <g id="patch_8">
+    <path d="M 415.225 344.11875 
+C 420.920237 344.11875 426.382978 342.428279 430.410118 339.419644 
+C 434.437259 336.41101 436.7 332.329852 436.7 328.075 
+C 436.7 323.820148 434.437259 319.73899 430.410118 316.730356 
+C 426.382978 313.721721 420.920237 312.03125 415.225 312.03125 
+C 409.529763 312.03125 404.067022 313.721721 400.039882 316.730356 
+C 396.012741 319.73899 393.75 323.820148 393.75 328.075 
+C 393.75 332.329852 396.012741 336.41101 400.039882 339.419644 
+C 404.067022 342.428279 409.529763 344.11875 415.225 344.11875 
+L 415.225 344.11875 
+z
+" clip-path="url(#p4870c2bd02)" style="fill: none; stroke-dasharray: 3.7,1.6; stroke-dashoffset: 0; stroke: #000000; stroke-linejoin: miter"/>
+   </g>
+   <g id="patch_9">
+    <path d="M 651.45 319.161806 
+C 657.145237 319.161806 662.607978 317.471335 666.635118 314.4627 
+C 670.662259 311.454065 672.925 307.372908 672.925 303.118056 
+C 672.925 298.863203 670.662259 294.782046 666.635118 291.773411 
+C 662.607978 288.764776 657.145237 287.074306 651.45 287.074306 
+C 645.754763 287.074306 640.292022 288.764776 636.264882 291.773411 
+C 632.237741 294.782046 629.975 298.863203 629.975 303.118056 
+C 629.975 307.372908 632.237741 311.454065 636.264882 314.4627 
+C 640.292022 317.471335 645.754763 319.161806 651.45 319.161806 
+L 651.45 319.161806 
+z
+" clip-path="url(#p4870c2bd02)" style="fill: none; stroke-dasharray: 3.7,1.6; stroke-dashoffset: 0; stroke: #000000; stroke-linejoin: miter"/>
+   </g>
+   <g id="patch_10">
+    <path d="M 765.983333 300.265833 
+C 768.451269 300.265833 770.818457 299.289117 772.563551 297.550795 
+C 774.308645 295.812472 775.289167 293.45447 775.289167 290.996111 
+C 775.289167 288.537752 774.308645 286.17975 772.563551 284.441428 
+C 770.818457 282.703105 768.451269 281.726389 765.983333 281.726389 
+C 763.515397 281.726389 761.14821 282.703105 759.403115 284.441428 
+C 757.658021 286.17975 756.6775 288.537752 756.6775 290.996111 
+C 756.6775 293.45447 757.658021 295.812472 759.403115 297.550795 
+C 761.14821 299.289117 763.515397 300.265833 765.983333 300.265833 
+L 765.983333 300.265833 
+z
+" clip-path="url(#p4870c2bd02)" style="fill: none; stroke: #000000; stroke-linejoin: miter"/>
+   </g>
+   <g id="line2d_1">
+    <defs>
+     <path id="m6ba98bffb8" d="M -3 3 
+L 3 -3 
+M -3 -3 
+L 3 3 
+" style="stroke: #000000"/>
+    </defs>
+    <g clip-path="url(#p4870c2bd02)">
+     <use xlink:href="#m6ba98bffb8" x="146.7875" y="358.736389" style="stroke: #000000"/>
+     <use xlink:href="#m6ba98bffb8" x="164.683333" y="350.892778" style="stroke: #000000"/>
+     <use xlink:href="#m6ba98bffb8" x="182.579167" y="354.458056" style="stroke: #000000"/>
+     <use xlink:href="#m6ba98bffb8" x="201.906667" y="349.466667" style="stroke: #000000"/>
+    </g>
+   </g>
+   <g id="line2d_2">
+    <path d="M 179 353.388472 
+" clip-path="url(#p4870c2bd02)" style="fill: none; stroke: #1f77b4; stroke-width: 1.5; stroke-linecap: square"/>
+    <defs>
+     <path id="m43512ffbdb" d="M -3.5 3.5 
+L 3.5 3.5 
+L 3.5 -3.5 
+L -3.5 -3.5 
+z
+" style="stroke: #000000; stroke-linejoin: miter"/>
+    </defs>
+    <g clip-path="url(#p4870c2bd02)">
+     <use xlink:href="#m43512ffbdb" x="179" y="353.388472" style="fill: #ffffff; stroke: #000000; stroke-linejoin: miter"/>
+    </g>
+   </g>
+   <g id="line2d_3">
+    <g clip-path="url(#p4870c2bd02)">
+     <use xlink:href="#m6ba98bffb8" x="383.0125" y="333.779444" style="stroke: #000000"/>
+     <use xlink:href="#m6ba98bffb8" x="400.908333" y="325.935833" style="stroke: #000000"/>
+     <use xlink:href="#m6ba98bffb8" x="418.804167" y="329.501111" style="stroke: #000000"/>
+     <use xlink:href="#m6ba98bffb8" x="438.131667" y="324.509722" style="stroke: #000000"/>
+    </g>
+   </g>
+   <g id="line2d_4">
+    <path d="M 415.225 328.431528 
+" clip-path="url(#p4870c2bd02)" style="fill: none; stroke: #ff7f0e; stroke-width: 1.5; stroke-linecap: square"/>
+    <g clip-path="url(#p4870c2bd02)">
+     <use xlink:href="#m43512ffbdb" x="415.225" y="328.431528" style="fill: #ffffff; stroke: #000000; stroke-linejoin: miter"/>
+    </g>
+   </g>
+   <g id="line2d_5">
+    <g clip-path="url(#p4870c2bd02)">
+     <use xlink:href="#m6ba98bffb8" x="619.2375" y="308.8225" style="stroke: #000000"/>
+     <use xlink:href="#m6ba98bffb8" x="637.133333" y="300.978889" style="stroke: #000000"/>
+     <use xlink:href="#m6ba98bffb8" x="655.029167" y="304.544167" style="stroke: #000000"/>
+     <use xlink:href="#m6ba98bffb8" x="674.356667" y="299.552778" style="stroke: #000000"/>
+    </g>
+   </g>
+   <g id="line2d_6">
+    <path d="M 651.45 303.474583 
+" clip-path="url(#p4870c2bd02)" style="fill: none; stroke: #2ca02c; stroke-width: 1.5; stroke-linecap: square"/>
+    <g clip-path="url(#p4870c2bd02)">
+     <use xlink:href="#m43512ffbdb" x="651.45" y="303.474583" style="fill: #ffffff; stroke: #000000; stroke-linejoin: miter"/>
+    </g>
+   </g>
+   <g id="line2d_7">
+    <path d="M 179 353.031944 
+L 415.225 328.075 
+L 651.45 303.118056 
+" clip-path="url(#p4870c2bd02)" style="fill: none; stroke: #000000; stroke-width: 1.6; stroke-linecap: square"/>
+   </g>
+   <g id="line2d_8">
+    <path d="M 651.45 303.118056 
+L 765.983333 290.996111 
+" clip-path="url(#p4870c2bd02)" style="fill: none; stroke-dasharray: 4.44,1.92; stroke-dashoffset: 0; stroke: #000000; stroke-width: 1.2"/>
+   </g>
+   <g id="text_1">
+    <text style="font-size: 13px; font-family: 'Noto Sans CJK JP', 'Droid Sans Fallback', 'DejaVu Sans', sans-serif; text-anchor: middle" x="436.7" y="25.026389" transform="rotate(-0 436.7 25.026389)">图3  同一扫描检测合并及单站角航迹形成</text>
+   </g>
+   <g id="text_2">
+    <text style="font-size: 10px; font-family: 'Noto Sans CJK JP', 'Droid Sans Fallback', 'DejaVu Sans', sans-serif; text-anchor: start" x="801.775" y="469.26" transform="rotate(-0 801.775 469.26)">时间</text>
+   </g>
+   <g id="text_3">
+    <text style="font-size: 10px; font-family: 'Noto Sans CJK JP', 'Droid Sans Fallback', 'DejaVu Sans', sans-serif" transform="translate(35.202708 77.230903) rotate(-90)">方位/俯仰</text>
+   </g>
+   <g id="text_4">
+    <text style="font-size: 9px; font-family: 'Noto Sans CJK JP', 'Droid Sans Fallback', 'DejaVu Sans', sans-serif; text-anchor: middle" x="179" y="424.3375" transform="rotate(-0 179 424.3375)">第1圈</text>
+   </g>
+   <g id="text_5">
+    <text style="font-size: 8px; font-family: 'Noto Sans CJK JP', 'Droid Sans Fallback', 'DejaVu Sans', sans-serif; text-anchor: start" x="187.59" y="340.553472" transform="rotate(-0 187.59 340.553472)">302</text>
+   </g>
+   <g id="text_6">
+    <text style="font-size: 9px; font-family: 'Noto Sans CJK JP', 'Droid Sans Fallback', 'DejaVu Sans', sans-serif; text-anchor: middle" x="415.225" y="424.3375" transform="rotate(-0 415.225 424.3375)">第2圈</text>
+   </g>
+   <g id="text_7">
+    <text style="font-size: 8px; font-family: 'Noto Sans CJK JP', 'Droid Sans Fallback', 'DejaVu Sans', sans-serif; text-anchor: start" x="423.815" y="315.596528" transform="rotate(-0 423.815 315.596528)">303</text>
+   </g>
+   <g id="text_8">
+    <text style="font-size: 9px; font-family: 'Noto Sans CJK JP', 'Droid Sans Fallback', 'DejaVu Sans', sans-serif; text-anchor: middle" x="651.45" y="424.3375" transform="rotate(-0 651.45 424.3375)">第3圈</text>
+   </g>
+   <g id="text_9">
+    <text style="font-size: 8px; font-family: 'Noto Sans CJK JP', 'Droid Sans Fallback', 'DejaVu Sans', sans-serif; text-anchor: start" x="660.04" y="290.639583" transform="rotate(-0 660.04 290.639583)">304</text>
+   </g>
+   <g id="text_10">
+    <text style="font-size: 10px; font-family: 'Noto Sans CJK JP', 'Droid Sans Fallback', 'DejaVu Sans', sans-serif; text-anchor: start" x="85.941667" y="103.4625" transform="rotate(-0 85.941667 103.4625)">同圈相邻匿名检测 301</text>
+   </g>
+   <g id="text_11">
+    <text style="font-size: 10px; font-family: 'Noto Sans CJK JP', 'Droid Sans Fallback', 'DejaVu Sans', sans-serif; text-anchor: start" x="311.429167" y="103.4625" transform="rotate(-0 311.429167 103.4625)">扫描片段 302-304</text>
+   </g>
+   <g id="text_12">
+    <text style="font-size: 10px; font-family: 'Noto Sans CJK JP', 'Droid Sans Fallback', 'DejaVu Sans', sans-serif; text-anchor: start" x="454.595833" y="153.376389" transform="rotate(-0 454.595833 153.376389)">单站角航迹 305</text>
+   </g>
+   <g id="text_13">
+    <text style="font-size: 9px; font-family: 'Noto Sans CJK JP', 'Droid Sans Fallback', 'DejaVu Sans', sans-serif; text-anchor: start" x="454.595833" y="178.333333" transform="rotate(-0 454.595833 178.333333)">状态：[方位，俯仰，方位角速度，俯仰角速度]</text>
+   </g>
+   <g id="text_14">
+    <text style="font-size: 9px; font-family: 'Noto Sans CJK JP', 'Droid Sans Fallback', 'DejaVu Sans', sans-serif; text-anchor: start" x="454.595833" y="199.725" transform="rotate(-0 454.595833 199.725)">虚线椭圆为协方差 306</text>
+   </g>
+   <g id="text_15">
+    <text style="font-size: 9px; font-family: 'Noto Sans CJK JP', 'Droid Sans Fallback', 'DejaVu Sans', sans-serif; text-anchor: start" x="683.6625" y="260.334722" transform="rotate(-0 683.6625 260.334722)">短时漏检预测 307</text>
+   </g>
+  </g>
+ </g>
+ <defs>
+  <clipPath id="p4870c2bd02">
+   <rect x="7.2" y="7.2" width="859" height="513.4"/>
+  </clipPath>
+ </defs>
+</svg>
