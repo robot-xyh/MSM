@@ -1,13 +1,20 @@
 #!/usr/bin/env python3
-"""Integrate the reviewed 4.1, 4.4 and 4.5 material into the scheme template."""
+"""Integrate reviewed sections 4.1, 4.4 and 4.5 into the scheme template.
+
+The script treats the current template as an in-place editing target. It backs up
+the input first, replaces only the three requested body ranges, and verifies that
+all other body nodes, headers, footers, package parts and existing media remain
+unchanged.
+"""
 
 from __future__ import annotations
 
 import argparse
-import copy
 import hashlib
+import json
 import os
 import shutil
+import zipfile
 from pathlib import Path
 from typing import Iterable, Sequence
 
@@ -16,30 +23,36 @@ from docx.enum.table import WD_CELL_VERTICAL_ALIGNMENT
 from docx.enum.text import WD_ALIGN_PARAGRAPH
 from docx.oxml import OxmlElement
 from docx.oxml.ns import qn
-from docx.shared import Inches, Mm, Pt, RGBColor
+from docx.shared import Inches, Pt, RGBColor
 
 
 ROOT = Path(__file__).resolve().parents[3]
-DEFAULT_DOCUMENT = ROOT / "deliverables/leadership_report/方案模板.docx"
-ASSET_DIR = ROOT / "deliverables/leadership_report/assets/scheme_template_material"
-DUAL_OPTICAL_REPORT = ROOT / "deliverables/leadership_report/双光电多目标轨迹配准与交汇定位试验报告_CN.md"
-DUAL_OPTICAL_EVIDENCE = ROOT / "deliverables/leadership_report/双光电多目标轨迹配准与交汇定位试验报告_EVIDENCE.json"
-COOPERATIVE_SEARCH_REPORT = ROOT / "deliverables/leadership_report/协同搜索试验报告_CN.md"
-TERMINAL_ASSOCIATION_REPORT = ROOT / "deliverables/leadership_report/末端目标配准试验报告_CN.md"
-DUAL_OPTICAL_REPORT_ASSET_DIR = ROOT / "deliverables/leadership_report/assets/dual_optical_registration_report"
-CENTER_TERMINAL_REPORT_ASSET_DIR = ROOT / "deliverables/leadership_report/assets/center_terminal_split_reports"
-DUAL_OPTICAL_DIR = ROOT / "research_modules/independent_experiments/dual_optical_online_benchmark"
-DUAL_OPTICAL_RAW_DIR = (
-    ROOT
-    / "research_modules/independent_experiments/dual_optical_40target/outputs/airsim_seed_20260810_run11/figures"
-)
-CENTER_TERMINAL_DIR = (
-    ROOT / "research_modules/independent_experiments/center_terminal_cv_campaign/outputs"
-)
+REPORT_DIR = ROOT / "deliverables/leadership_report"
+DEFAULT_DOCUMENT = REPORT_DIR / "方案模板.docx"
+DUAL_REPORT = REPORT_DIR / "双光电多目标轨迹配准与交汇定位试验报告_CN.md"
+DUAL_EVIDENCE = REPORT_DIR / "双光电多目标轨迹配准与交汇定位试验报告_EVIDENCE.json"
+SEARCH_REPORT = REPORT_DIR / "协同搜索试验报告_CN.md"
+TERMINAL_REPORT = REPORT_DIR / "末端目标配准试验报告_CN.md"
+DUAL_ASSETS = REPORT_DIR / "assets/dual_optical_registration_report"
+TERMINAL_ASSETS = REPORT_DIR / "assets/center_terminal_split_reports"
+SCHEME_ASSETS = REPORT_DIR / "assets/scheme_template_material"
+
+EXPECTED_ORIGINAL_SHA256 = "977df2dc530d153dfd370744b5768e950ef27ea4884c2af5487f065b429d046d"
+BACKUP_DIR = Path("/tmp/MSM_scheme_template_backups")
 
 BODY_FONT = "仿宋"
 HEADING_FONT = "黑体"
 CAPTION_FONT = "楷体"
+
+CONDITION_ORDER = {"clean": 0, "light": 1, "medium": 2, "heavy": 3}
+CONDITION_LABEL = {
+    "clean": "无附加漏检虚警",
+    "light": "轻度干扰",
+    "medium": "中度干扰",
+    "heavy": "重度干扰",
+}
+ROUTE_ORDER = {"epipolar_mht": 0, "gnn": 1}
+ROUTE_LABEL = {"epipolar_mht": "几何方法", "gnn": "图神经网络"}
 
 
 def sha256(path: Path) -> str:
@@ -50,73 +63,89 @@ def sha256(path: Path) -> str:
     return digest.hexdigest()
 
 
-def verify_reviewed_sources() -> None:
-    """Refuse to build from missing or superseded source reports."""
-
-    required_markers = {
-        DUAL_OPTICAL_REPORT: (
-            "### 3.1 360度理想单站条件",
-            "### 3.2 360度实际单站航迹",
-            "### 3.3 180度扫描",
-            "360度理想单站条件下20、40、60目标的三算法矩阵没有现成记录",
-        ),
-        COOPERATIVE_SEARCH_REPORT: (
-            "### 1.2 搜索单元",
-            "### 1.3 搜索收益和一一分配",
-            "20目标/8机",
-            "40目标/50机",
-        ),
-        TERMINAL_ASSOCIATION_REPORT: (
-            "### 1.2 中心线索状态外推",
-            "### 1.6 机间几何代价、图网络和目标簇",
-            "### 3.1 中心交接过程与结果",
-            "### 3.2 机间关联过程与结果",
-        ),
-    }
-    for path, markers in required_markers.items():
-        if not path.is_file():
-            raise FileNotFoundError(path)
-        text = path.read_text(encoding="utf-8")
-        missing = [marker for marker in markers if marker not in text]
-        if missing:
-            raise RuntimeError(f"reviewed source changed: {path.name}; missing {missing}")
-    if not DUAL_OPTICAL_EVIDENCE.is_file():
-        raise FileNotFoundError(DUAL_OPTICAL_EVIDENCE)
+def percent(value: float) -> str:
+    return f"{100.0 * float(value):.1f}%"
 
 
-def outside_target_hash(document: Document) -> str:
-    """Hash body nodes outside 4.1, 4.4 and 4.5 for preservation checks."""
+def milliseconds(value: float) -> str:
+    return f"{float(value):.1f}毫秒"
 
-    boundaries = (
+
+def find_paragraph(document: Document, prefix: str):
+    matches = [p for p in document.paragraphs if p.text.strip().startswith(prefix)]
+    if len(matches) != 1:
+        raise RuntimeError(f"expected one paragraph starting with {prefix!r}, found {len(matches)}")
+    return matches[0]
+
+
+def find_numbered_heading(document: Document, number: str):
+    matches = [
+        paragraph
+        for paragraph in document.paragraphs
+        if paragraph.text.strip() == number or paragraph.text.strip().startswith(number + " ")
+    ]
+    if len(matches) != 1:
+        raise RuntimeError(f"expected one heading numbered {number!r}, found {len(matches)}")
+    return matches[0]
+
+
+def target_boundaries(document: Document):
+    return (
         (find_paragraph(document, "4.1 侦察的想法"), find_paragraph(document, "4.2 火指控的想法")),
         (find_paragraph(document, "4.4 拦截区域搜索"), find_paragraph(document, "4.5 群对群目标配准")),
         (find_paragraph(document, "4.5 群对群目标配准"), find_paragraph(document, "4.3.6 主动降级与分级目标分配")),
     )
+
+
+def update_structural_digest(digest, element) -> None:
+    """Hash XML structure without depending on namespace prefix serialization."""
+
+    digest.update(b"<")
+    digest.update(element.tag.encode("utf-8"))
+    for name, value in sorted(element.attrib.items()):
+        digest.update(b"|")
+        digest.update(name.encode("utf-8"))
+        digest.update(b"=")
+        digest.update(value.encode("utf-8"))
+    digest.update(b">")
+    if element.text:
+        digest.update(element.text.encode("utf-8"))
+    for child in element:
+        update_structural_digest(digest, child)
+        if child.tail:
+            digest.update(child.tail.encode("utf-8"))
+    digest.update(b"</")
+    digest.update(element.tag.encode("utf-8"))
+    digest.update(b">")
+
+
+def outside_target_hash(document: Document) -> str:
+    """Hash every body node outside sections 4.1, 4.4 and 4.5."""
+
     body = document._element.body
     excluded: set[int] = set()
-    for start, end in boundaries:
+    for start, end in target_boundaries(document):
         start_index = body.index(start._p)
         end_index = body.index(end._p)
         excluded.update(range(start_index + 1, end_index))
 
     digest = hashlib.sha256()
     for index, element in enumerate(body.iterchildren()):
-        if index not in excluded and element.tag != qn("w:sectPr"):
-            digest.update(element.xml.encode("utf-8"))
+        if index not in excluded:
+            update_structural_digest(digest, element)
     return digest.hexdigest()
 
 
-def set_a4_page_size(document: Document) -> None:
-    for section in document.sections:
-        section.page_width = Mm(210)
-        section.page_height = Mm(297)
-
-
-def find_paragraph(document: Document, prefix: str):
-    matches = [paragraph for paragraph in document.paragraphs if paragraph.text.strip().startswith(prefix)]
-    if len(matches) != 1:
-        raise RuntimeError(f"expected one paragraph starting with {prefix!r}, found {len(matches)}")
-    return matches[0]
+def target_text(document: Document, start_prefix: str, end_prefix: str) -> str:
+    start = find_paragraph(document, start_prefix)
+    end = find_paragraph(document, end_prefix)
+    body = document._element.body
+    start_index = body.index(start._p)
+    end_index = body.index(end._p)
+    parts: list[str] = []
+    for element in list(body.iterchildren())[start_index + 1 : end_index]:
+        parts.extend(element.xpath(".//w:t/text()"))
+    return "".join(parts)
 
 
 def remove_between(start_paragraph, end_paragraph) -> None:
@@ -126,18 +155,136 @@ def remove_between(start_paragraph, end_paragraph) -> None:
         node.getparent().remove(node)
         node = next_node
     if node is None:
-        raise RuntimeError("section boundary was not found in the same document body")
+        raise RuntimeError("section boundary was not found in the document body")
 
 
 def style_samples(document: Document):
-    by_name = {}
-    for paragraph in document.paragraphs:
-        by_name.setdefault(paragraph.style.name, paragraph.style)
+    styles = {style.name: style for style in document.styles}
     required = ("Normal", "Heading 3", "Heading 4")
-    missing = [name for name in required if name not in by_name]
+    missing = [name for name in required if name not in styles]
     if missing:
         raise RuntimeError(f"missing paragraph styles: {missing}")
-    return by_name
+    return styles
+
+
+def package_hashes(path: Path) -> dict[str, str]:
+    result: dict[str, str] = {}
+    with zipfile.ZipFile(path) as archive:
+        for name in archive.namelist():
+            result[name] = hashlib.sha256(archive.read(name)).hexdigest()
+    return result
+
+
+def verify_package_preservation(before: dict[str, str], after: dict[str, str]) -> dict[str, object]:
+    """Allow document body/relationships and new media, but preserve all old parts."""
+
+    allowed_changed = {
+        "word/document.xml",
+        "word/_rels/document.xml.rels",
+        "[Content_Types].xml",
+        "docProps/core.xml",
+    }
+    preserved_parts = 0
+    for name, old_hash in before.items():
+        if name in allowed_changed:
+            continue
+        if name not in after:
+            raise RuntimeError(f"package part disappeared: {name}")
+        if after[name] != old_hash:
+            raise RuntimeError(f"unrelated package part changed: {name}")
+        preserved_parts += 1
+
+    old_media = {name for name in before if name.startswith("word/media/")}
+    new_media = {name for name in after if name.startswith("word/media/")}
+    missing_media = sorted(old_media - new_media)
+    if missing_media:
+        raise RuntimeError(f"existing media disappeared: {missing_media}")
+    changed_media = sorted(name for name in old_media if before[name] != after[name])
+    if changed_media:
+        raise RuntimeError(f"existing media changed: {changed_media}")
+
+    header_footer = sorted(
+        name
+        for name in before
+        if name.startswith("word/header") or name.startswith("word/footer")
+    )
+    return {
+        "preserved_part_count": preserved_parts,
+        "header_footer_count": len(header_footer),
+        "existing_media_count": len(old_media),
+        "new_media_count": len(new_media - old_media),
+        "new_media_parts": sorted(new_media - old_media),
+    }
+
+
+def markdown_table(path: Path, header: Sequence[str]) -> list[list[str]]:
+    lines = path.read_text(encoding="utf-8").splitlines()
+    expected = "| " + " | ".join(header) + " |"
+    starts = [index for index, line in enumerate(lines) if line.strip() == expected]
+    if len(starts) != 1:
+        raise RuntimeError(f"expected one table {header!r} in {path.name}, found {len(starts)}")
+    rows: list[list[str]] = []
+    for line in lines[starts[0] + 2 :]:
+        stripped = line.strip()
+        if not stripped.startswith("|"):
+            break
+        cells = [cell.strip() for cell in stripped.strip("|").split("|")]
+        if len(cells) != len(header):
+            raise RuntimeError(f"malformed table row in {path.name}: {line}")
+        rows.append(cells)
+    if not rows:
+        raise RuntimeError(f"table {header!r} in {path.name} is empty")
+    return rows
+
+
+def verify_reviewed_sources() -> dict[str, object]:
+    required = {
+        DUAL_REPORT: (
+            "本次结果全部来自`report_replay_20260819_v2`确定性离线复算",
+            "### 3.1 360度理想单站条件",
+            "### 3.2 360度实际单站航迹",
+            "### 3.3 180度扫描",
+            "当前主要卡点是单站航迹连续性",
+        ),
+        SEARCH_REPORT: (
+            "中心线索精度和召回率均设为100%",
+            "不设置错误线索、重复线索、漏检目标和空白走廊",
+            "3个规模×3个误差档×5个seed，共45组",
+            "没有重新启动AirSim",
+        ),
+        TERMINAL_REPORT: (
+            "p_C = R_C^G R_G^B R_B^N (p_N - o_C^N)",
+            "### 2.2 图网络参数诊断",
+            "### 2.3 五项评价",
+            "当前证据不支持用同一组择优参数替换稀疏几何默认路径",
+        ),
+    }
+    for path, markers in required.items():
+        if not path.is_file():
+            raise FileNotFoundError(path)
+        content = path.read_text(encoding="utf-8")
+        missing = [marker for marker in markers if marker not in content]
+        if missing:
+            raise RuntimeError(f"reviewed source changed: {path.name}; missing {missing}")
+
+    with DUAL_EVIDENCE.open(encoding="utf-8") as stream:
+        evidence = json.load(stream)
+    if evidence.get("schema_version") != "dual-optical-leadership-report-evidence-v6":
+        raise RuntimeError("unexpected dual-optical evidence schema")
+    completeness = evidence.get("matrix_completeness", {})
+    expected_counts = {
+        "complete": True,
+        "continuous_360_group_count": 24,
+        "oracle_360_group_count": 6,
+        "s180_group_count": 24,
+        "seed_count_per_group": 5,
+        "total_group_count": 54,
+    }
+    if any(completeness.get(key) != value for key, value in expected_counts.items()):
+        raise RuntimeError(f"dual-optical evidence matrix is incomplete: {completeness}")
+    if len(evidence.get("matrix_summary_rows", [])) != 54:
+        raise RuntimeError("dual-optical evidence must contain 54 summary rows")
+    return evidence
 
 
 class SectionWriter:
@@ -146,7 +293,7 @@ class SectionWriter:
         self.anchor = anchor
         self.styles = styles
 
-    def _place(self, element):
+    def _place(self, element) -> None:
         self.anchor._p.addprevious(element)
 
     def paragraph(
@@ -154,29 +301,22 @@ class SectionWriter:
         text: str,
         *,
         style: str = "Normal",
-        bold_prefix: str | None = None,
         align: WD_ALIGN_PARAGRAPH | None = None,
         first_line: bool = True,
         keep_with_next: bool = False,
     ):
         paragraph = self.document.add_paragraph()
         paragraph.style = self.styles[style]
-        if bold_prefix and text.startswith(bold_prefix):
-            run = paragraph.add_run(bold_prefix)
-            run.bold = True
-            paragraph.add_run(text[len(bold_prefix) :])
-        else:
-            paragraph.add_run(text)
+        paragraph.add_run(text)
         paragraph.alignment = align if align is not None else WD_ALIGN_PARAGRAPH.JUSTIFY
-        paragraph.paragraph_format.line_spacing = Pt(28)
+        paragraph.paragraph_format.line_spacing = Pt(25)
         paragraph.paragraph_format.space_after = Pt(0)
         paragraph.paragraph_format.first_line_indent = Pt(28) if first_line and style == "Normal" else Pt(0)
         paragraph.paragraph_format.keep_with_next = keep_with_next
         for run in paragraph.runs:
-            run.font.name = HEADING_FONT if style.startswith("Heading") else BODY_FONT
-            run._element.get_or_add_rPr().rFonts.set(
-                qn("w:eastAsia"), HEADING_FONT if style.startswith("Heading") else BODY_FONT
-            )
+            font = HEADING_FONT if style.startswith("Heading") else BODY_FONT
+            run.font.name = font
+            run._element.get_or_add_rPr().rFonts.set(qn("w:eastAsia"), font)
             run.font.size = Pt(14)
         self._place(paragraph._p)
         return paragraph
@@ -200,20 +340,17 @@ class SectionWriter:
         paragraph = self.document.add_paragraph()
         paragraph.style = self.styles["Normal"]
         paragraph.alignment = WD_ALIGN_PARAGRAPH.CENTER
-        paragraph.paragraph_format.line_spacing = Pt(24)
+        paragraph.paragraph_format.line_spacing = Pt(22)
         paragraph.paragraph_format.space_before = Pt(2)
         paragraph.paragraph_format.space_after = Pt(2)
         run = paragraph.add_run(text)
         run.font.name = "Cambria Math"
         run._element.get_or_add_rPr().rFonts.set(qn("w:eastAsia"), "Cambria Math")
-        run.font.size = Pt(12.5)
+        run.font.size = Pt(12)
         self._place(paragraph._p)
         return paragraph
 
-    def image(self, filename: str, caption: str, *, width: float = 6.15):
-        self.image_path(ASSET_DIR / filename, caption, width=width)
-
-    def image_path(self, path: Path, caption: str, *, width: float = 6.15):
+    def image(self, path: Path, caption: str, *, width: float = 5.9) -> None:
         if not path.is_file():
             raise FileNotFoundError(path)
         paragraph = self.document.add_paragraph()
@@ -226,27 +363,11 @@ class SectionWriter:
         self._place(paragraph._p)
         self.caption(caption)
 
-    def cloned_image(self, paragraph_element, caption: str):
-        clone = copy.deepcopy(paragraph_element)
-        properties = clone.get_or_add_pPr()
-        style = properties.find(qn("w:pStyle"))
-        if style is None:
-            style = OxmlElement("w:pStyle")
-            properties.insert(0, style)
-        style.set(qn("w:val"), self.styles["Normal"].style_id)
-        justification = properties.find(qn("w:jc"))
-        if justification is None:
-            justification = OxmlElement("w:jc")
-            properties.append(justification)
-        justification.set(qn("w:val"), "center")
-        self._place(clone)
-        self.caption(caption)
-
-    def caption(self, text: str):
+    def caption(self, text: str) -> None:
         paragraph = self.document.add_paragraph()
         paragraph.style = self.styles["Normal"]
         paragraph.alignment = WD_ALIGN_PARAGRAPH.CENTER
-        paragraph.paragraph_format.line_spacing = Pt(20)
+        paragraph.paragraph_format.line_spacing = Pt(19)
         paragraph.paragraph_format.space_after = Pt(4)
         paragraph.paragraph_format.first_line_indent = Pt(0)
         run = paragraph.add_run(text)
@@ -261,7 +382,7 @@ class SectionWriter:
         rows: Iterable[Sequence[str]],
         *,
         widths: Sequence[float] | None = None,
-        font_size: float = 9.5,
+        font_size: float = 8.2,
     ):
         row_data = [list(map(str, row)) for row in rows]
         table = self.document.add_table(rows=1, cols=len(headers))
@@ -314,7 +435,7 @@ class SectionWriter:
         paragraph.alignment = WD_ALIGN_PARAGRAPH.CENTER
         paragraph.paragraph_format.space_before = Pt(1)
         paragraph.paragraph_format.space_after = Pt(1)
-        paragraph.paragraph_format.line_spacing = Pt(15)
+        paragraph.paragraph_format.line_spacing = Pt(14)
         run = paragraph.add_run(value)
         run.font.name = "黑体" if header else "宋体"
         run._element.get_or_add_rPr().rFonts.set(qn("w:eastAsia"), "黑体" if header else "宋体")
@@ -340,701 +461,640 @@ class SectionWriter:
             properties.append(OxmlElement("w:cantSplit"))
 
 
-def write_section_41(writer: SectionWriter) -> None:
-    writer.heading("4.1.1 场景及存在的问题")
-    writer.paragraph(
-        "群目标侦察需要在较短时间内给出目标数量、空间位置和连续航迹。单台无源光电设备只能测得目标方位和俯仰，缺少可靠距离；逐个使用激光测距时，目标数量增加会直接拉长更新周期。按单目标测距0.2秒估算，100个目标完成一轮测距约需20秒，50米/秒目标在此期间可前进约1000米。该更新速度难以支撑后续区域搜索和拦截交接。"
+def evidence_rows(evidence: dict[str, object], profile: str) -> list[dict[str, object]]:
+    rows = [row for row in evidence["matrix_summary_rows"] if row["profile"] == profile]
+    rows.sort(
+        key=lambda row: (
+            int(row["target_count"]),
+            CONDITION_ORDER[str(row["condition"])],
+            ROUTE_ORDER[str(row["route_name"])],
+        )
     )
-    writer.heading("4.1.2 存在的难点")
-    writer.paragraph(
-        "双站光电可以利用视线交会补足距离，但群目标条件下必须先把两站的局部航迹正确对上号。目标在远距离图像中只有少量像素，外观难以区分；两台云台按各自周期周扫，同一目标的观测时刻通常不同；目标交叉、漏检、虚警和云台姿态偏差还会造成多条候选关系。配错一条航迹后，交会位置、速度和后续目标编号都会随之错误。处理流程还要满足在线时限，不能把全部航迹组合直接交给学习模型。"
-    )
-    writer.heading("4.1.3 拟采用的方案")
-    writer.paragraph(
-        "采用“单站先成轨、双站再配准、配准后定位”的处理顺序。两站先把一次扫过中的连续检测合并成扫描片段，再把相邻扫描周期的片段连接为本站局部航迹。双站处理按拍摄时刻进行时间对齐，利用共面性、极线关系和运动连续性排除不可能组合。图神经网络只对保留下来的候选关系评分，匈牙利算法形成一一对应；最近三圈中至少两圈保持同一关系后，双站视线才进入位置和速度联合拟合。"
-    )
-    writer.image(
-        "02_gnn_matching_process.png",
-        "图4.1-1  双站光电配准与定位流程。几何筛选负责确定候选范围，图神经网络只在候选范围内排序。",
-    )
+    return rows
 
-    writer.heading("4.1.4 单站局部航迹")
-    writer.paragraph(
-        "光电云台连续扫过目标时，同一目标会在若干相邻图像中重复出现。系统先按拍摄时间、角位置和运动方向把这些检测合并成一个扫描片段，避免把一次扫过中的多帧检测重复计成多个目标。扫描片段保存检测框中心、拍摄时刻、云台姿态、目标单位视线和测量质量，不依赖检测框面积判断身份。"
-    )
-    writer.paragraph(
-        "相邻扫描周期之间按角位置和角速度预测连接片段，形成本站局部航迹。航迹记录观测次数、持续时间、最近命中比例、方位和俯仰变化率、方向误差以及漏检情况。短时漏检时可在限定窗口内保持；超过保持时间后停止发布，防止长期外推形成虚假目标。两站的局部编号各自独立，不能直接作为跨站身份。"
-    )
 
-    writer.heading("4.1.5 时间对齐和几何筛选")
-    writer.paragraph(
-        "双站周扫通常不能在同一时刻看到同一目标。算法以图像拍摄时间为准，把两条局部航迹外推到共同参考时刻，再比较空间关系。消息到达时间单独用于评估通信延迟，不参与视线几何计算。像素坐标经相机内参、镜头畸变、云台角度和站址姿态换算为世界坐标系中的单位视线。"
-    )
-    writer.formula("r₍共面₎ = |bᵀ(d_A × d_B)| / (‖b‖·‖d_A × d_B‖ + ε)")
-    writer.paragraph(
-        "式中，b为两站基线，d_A和d_B为两站单位视线。同一目标对应的两条视线应与基线接近共面。残差明显超限的组合直接排除；接近门限的组合继续比较多时刻残差变化、观测时间重叠、角速度差、视线交会夹角、重投影误差和拟合速度。视线近似平行或目标沿不利方向排列时，系统保留多个候选，不强行确定身份。"
-    )
-    writer.image(
-        "01_epipolar_geometry.png",
-        "图4.1-2  共面性和极线筛选原理。正确候选的双站视线接近同一极平面，明显偏离的组合提前排除。",
-    )
-
-    writer.heading("4.1.6 候选关系图和图神经网络")
-    writer.paragraph(
-        "几何筛选后，把A站和B站局部航迹分别放在关系图两侧。每条航迹是一个节点，只有通过时间和几何条件的两条航迹之间才建立候选边。20条A站航迹和20条B站航迹理论上有400种组合，几何门控先删除大部分不可能组合，图神经网络只处理剩余的稀疏候选图。"
-    )
-    writer.image(
-        "06_candidate_graph_assignment.png",
-        "图4.1-3  候选关系图和一一配准。左侧保留有物理可能的候选边，右侧为整体分配后的对应关系。",
-    )
-    writer.paragraph(
-        "节点信息反映单条航迹是否稳定，包括航迹长度、连续性、角运动、方向误差和漏检比例；边信息反映两条航迹能否由同一目标产生，包括共面性残差、时间重叠、重投影误差、视线夹角、拟合速度和运动一致性。图神经网络进行两轮信息交换，使每条候选边在评分时能够同时考虑周围竞争关系。例如一条B站航迹与两条A站航迹都接近时，网络会结合这两条A站航迹的其他候选关系调整排序。"
-    )
-    writer.image(
-        "03_gnn_message_passing.png",
-        "图4.1-4  图神经网络的信息交换过程。评分同时利用候选本身和相邻候选的竞争关系。",
-    )
-    writer.paragraph(
-        "网络输出0至1之间的同目标评分。该评分不直接生成目标编号，也不参与三角定位。候选评分与几何代价共同形成代价矩阵，匈牙利算法从全部候选中选择总体代价较小的一一组合，并为证据不足的航迹保留“暂不匹配”选项。单圈结果只作为候选，连续多个扫描周期一致后才发布稳定关系。"
-    )
-    writer.image(
-        "04_gnn_assignment_example.png",
-        "图4.1-5  候选评分和匈牙利一一分配。证据不足的航迹保持未匹配，避免弱关系被强制确认。",
-    )
-
-    writer.heading("4.1.7 双站联合定位")
-    writer.paragraph(
-        "配准确认后，将同一目标在多个时刻的双站视线一起用于位置和速度拟合。设目标在参考时刻的位置为p₀、速度为v，第k条观测的相机位置和单位视线分别为cₖ、dₖ，按视线垂直方向误差进行加权最小二乘估计："
-    )
-    writer.formula("min Σₖ ‖(I − dₖdₖᵀ)[p₀ + v(tₖ − t₀) − cₖ]‖²_Wₖ")
-    writer.paragraph(
-        "权重由方向测量误差、云台姿态质量和时间误差确定。多时刻联合拟合允许使用不同扫描时刻的观测，不要求两站逐帧同步。输出包括参考时刻位置、速度、协方差和拟合条件数。拟合结果还要重新投影到A、B站图像；重投影残差持续偏大时撤销结果，并检查配准、时间同步和相机标定。"
-    )
-    writer.image(
-        "05_joint_fit_reprojection.png",
-        "图4.1-6  双站多时刻联合拟合与重投影检查。几何退化时扩大误差范围，不发布虚假的高精度坐标。",
-    )
-
-    writer.heading("4.1.8 AirSim仿真验证")
-    writer.heading("试验条件", level=4)
-    writer.paragraph(
-        "试验采用AirSim计算机视觉模式。两台固定光电节点横向间隔2千米，目标走廊位于双站前方约2千米。目标采用长度约3米的无人机网格，以50米/秒飞行，空间位置前后错列并存在轨迹交叉。相机分辨率为1280×1024，焦距300毫米。360度试验按2秒一圈连续周扫并观察6圈；180度试验按1秒一次单程扫描并观察12轮。三种方法统一保留共面筛选、匈牙利一一分配和连续确认。"
-    )
-    writer.image_path(
-        DUAL_OPTICAL_RAW_DIR / "01_scene_geometry_3d.png",
-        "图4.1-7  双站光电和群目标场景原图。两站从不同方向观察前后错列、航迹交叉的来袭目标。",
-        width=4.8,
-    )
-
-    writer.heading("360度理想单站条件", level=4)
-    writer.paragraph(
-        "理想单站条件用于单独核对双站算法：先保证两台光电内部的目标编号全部正确，再比较20、40、60目标下几何方法、图神经网络和增强型图神经网络的跨站配准。该九项矩阵尚未形成机器记录，不能用180度试验或单站正确子集替代。表中的待测试不代表结果为零。"
-    )
-    writer.table(
-        ("目标数", "方法", "最后一圈关联精度", "最后一圈目标覆盖度", "处理耗时P95", "证据状态"),
+def single_station_rows(evidence: dict[str, object], profile: str) -> list[tuple[str, ...]]:
+    unique: dict[tuple[int, str], dict[str, object]] = {}
+    for row in evidence_rows(evidence, profile):
+        unique.setdefault((int(row["target_count"]), str(row["condition"])), row)
+    return [
         (
-            ("20", "几何方法", "待测试", "待测试", "待测试", "无机器记录"),
-            ("20", "图神经网络", "待测试", "待测试", "待测试", "无机器记录"),
-            ("20", "增强型图神经网络", "待测试", "待测试", "待测试", "无机器记录"),
-            ("40", "几何方法", "待测试", "待测试", "待测试", "无机器记录"),
-            ("40", "图神经网络", "待测试", "待测试", "待测试", "无机器记录"),
-            ("40", "增强型图神经网络", "待测试", "待测试", "待测试", "无机器记录"),
-            ("60", "几何方法", "待测试", "待测试", "待测试", "无机器记录"),
-            ("60", "图神经网络", "待测试", "待测试", "待测试", "无机器记录"),
-            ("60", "增强型图神经网络", "待测试", "待测试", "待测试", "无机器记录"),
-        ),
-        widths=(0.55, 1.2, 1.25, 1.25, 1.05, 1.2),
-        font_size=8.4,
-    )
+            str(target_count),
+            CONDITION_LABEL[condition],
+            percent(row["single_station_precision"]),
+            percent(row["single_station_coverage"]),
+        )
+        for (target_count, condition), row in sorted(
+            unique.items(), key=lambda item: (item[0][0], CONDITION_ORDER[item[0][1]])
+        )
+    ]
 
-    writer.heading("360度实际单站航迹", level=4)
-    writer.paragraph(
-        "第一组对照复用20目标、5个测试场景的同一批匿名单站航迹，只统计第6圈。无干扰时几何方法的精度和覆盖度最高；轻度干扰时增强型图神经网络的两项指标最高；基础图神经网络处理时间最短。几何方法在轻度干扰下有1个场景超过1000毫秒期限。"
-    )
-    writer.table(
-        ("方法", "条件", "最后一圈精度", "最后一圈覆盖度", "处理耗时P95", "证据状态"),
+
+def dual_station_rows(evidence: dict[str, object], profile: str) -> list[tuple[str, ...]]:
+    return [
         (
-            ("几何方法", "无干扰", "98.8%", "85.0%", "867.9毫秒", "封存回放，诊断"),
-            ("几何方法", "轻度干扰", "85.5%", "47.0%", "997.9毫秒", "诊断；1/5超时"),
-            ("图神经网络", "无干扰", "91.5%", "75.0%", "75.2毫秒", "封存回放，诊断"),
-            ("图神经网络", "轻度干扰", "77.2%", "61.0%", "88.5毫秒", "封存回放，诊断"),
-            ("增强型图神经网络", "无干扰", "92.2%", "71.0%", "241.2毫秒", "封存回放，诊断"),
-            ("增强型图神经网络", "轻度干扰", "89.0%", "65.0%", "288.5毫秒", "封存回放，诊断"),
-        ),
-        widths=(1.35, 0.8, 1.0, 1.0, 1.0, 1.35),
-        font_size=8.4,
-    )
-    writer.image_path(
-        DUAL_OPTICAL_REPORT_ASSET_DIR / "11_360_clean_light_route_comparison.png",
-        "图4.1-8  二十目标360度周扫第6圈的无干扰与轻度干扰对照。",
-    )
-
-    writer.paragraph(
-        "第二组冻结各规模模型并使用5个随机场景，加入无干扰、轻度、中度和重度四档条件。只有图神经网络形成20、40、60目标的完整分规模记录。20目标几何方法仅无干扰形成结果，另外三档均为5/5超时；40和60目标几何方法未开展，增强型图神经网络在本批次全部未开展。"
-    )
-    writer.table(
-        ("目标数", "条件", "图网络精度", "图网络覆盖度", "处理耗时P95", "其他路线状态"),
-        (
-            ("20", "无干扰", "84.0%", "63.0%", "78.3毫秒", "几何85.7%/78.0%；增强型未开展"),
-            ("20", "轻度", "82.2%", "60.0%", "96.7毫秒", "几何5/5超时；增强型未开展"),
-            ("20", "中度", "76.6%", "49.0%", "121.8毫秒", "几何5/5超时；增强型未开展"),
-            ("20", "重度", "69.4%", "43.0%", "171.8毫秒", "几何5/5超时；增强型未开展"),
-            ("40", "无干扰", "91.7%", "60.5%", "193.3毫秒", "几何、增强型未开展"),
-            ("40", "轻度", "80.0%", "50.0%", "204.2毫秒", "几何、增强型未开展"),
-            ("40", "中度", "76.1%", "35.0%", "229.9毫秒", "几何、增强型未开展"),
-            ("40", "重度", "67.1%", "27.5%", "270.3毫秒", "几何、增强型未开展"),
-            ("60", "无干扰", "94.3%", "55.0%", "305.2毫秒", "几何、增强型未开展"),
-            ("60", "轻度", "77.3%", "39.7%", "337.6毫秒", "几何、增强型未开展"),
-            ("60", "中度", "77.6%", "40.3%", "366.2毫秒", "几何、增强型未开展"),
-            ("60", "重度", "72.3%", "28.7%", "403.9毫秒", "几何、增强型未开展"),
-        ),
-        widths=(0.55, 0.65, 0.9, 0.95, 1.05, 2.05),
-        font_size=8.0,
-    )
-    writer.image_path(
-        DUAL_OPTICAL_REPORT_ASSET_DIR / "12_360_multiseed_cascade.png",
-        "图4.1-9  三百六十度周扫在无干扰及轻、中、重度随机干扰下的结果。",
-    )
-    writer.paragraph(
-        "随机干扰先造成单站断轨、错误重接和重复建轨，随后才表现为双站精度和覆盖度下降。两站没有形成对应的正确局部航迹时，跨站评分无法从后端补回；单站航迹基本完整但覆盖仍有损失的场景，还需继续校准跨站评分和连续确认。"
-    )
-
-    writer.heading("180度扫描", level=4)
-    writer.paragraph(
-        "180度扫描每秒形成一次关联结果，重访频率高于2秒一圈的360度周扫。下表每个单元格依次给出最后一轮精度、覆盖度和处理耗时P95。图神经网络六组均按时形成结果；几何方法六组全部超时；增强型图神经网络在20和40目标形成结果，60目标全部超时。"
-    )
-    writer.table(
-        ("目标数", "条件", "几何方法", "图神经网络", "增强型图神经网络", "证据状态"),
-        (
-            ("20", "无干扰", "超时/2067.5毫秒", "97.8%/89.0%/100.4毫秒", "88.5%/77.0%/379.9毫秒", "正式"),
-            ("20", "轻度", "超时/1950.6毫秒", "83.9%/73.0%/108.8毫秒", "88.8%/79.0%/401.3毫秒", "正式"),
-            ("40", "无干扰", "超时/5174.2毫秒", "89.6%/81.5%/292.3毫秒", "77.5%/58.5%/972.7毫秒", "诊断"),
-            ("40", "轻度", "超时/5022.3毫秒", "89.3%/71.0%/270.2毫秒", "79.1%/58.5%/955.0毫秒", "诊断"),
-            ("60", "无干扰", "超时/9257.9毫秒", "95.8%/90.7%/509.5毫秒", "超时/1683.9毫秒", "诊断"),
-            ("60", "轻度", "超时/9063.3毫秒", "94.6%/82.0%/504.9毫秒", "超时/1686.2毫秒", "诊断"),
-        ),
-        widths=(0.5, 0.65, 1.15, 1.55, 1.55, 0.65),
-        font_size=7.8,
-    )
-    writer.image_path(
-        DUAL_OPTICAL_REPORT_ASSET_DIR / "08_s180_selected_results.png",
-        "图4.1-10  一百八十度扫描三种方法的最终一轮结果。",
-    )
-    writer.paragraph(
-        "20目标轻度干扰下，180度图神经网络精度和覆盖度为83.9%和73.0%，360度同输入诊断批次为77.2%和61.0%。现有结果支持提高重访频率有利于维持关联，但两批数据不是同一种子、同一模型的单变量试验，差值不能全部归因于扫描范围。40和60目标180度结果还受单站航迹器验收状态限制。"
-    )
-
-    writer.heading("40目标交汇定位", level=4)
-    writer.paragraph(
-        "40目标理想演示形成37条双站关系，其中36条正确、1条错误。正确关系进入交汇定位后，平均位置误差为0.080米，95%位置误差不超过0.091米；平均速度误差为0.0081米/秒，95%速度误差不超过0.0197米/秒。"
-    )
-    writer.table(
-        ("正确关系", "错误关系", "关联精度", "固定目标覆盖度", "平均/95%位置误差", "平均/95%速度误差"),
-        (("36", "1", "97.3%", "90.0%", "0.080/0.091米", "0.0081/0.0197米/秒"),),
-        widths=(0.75, 0.75, 0.8, 1.0, 1.35, 1.55),
-        font_size=8.6,
-    )
-    writer.image_path(
-        DUAL_OPTICAL_REPORT_ASSET_DIR / "10_ranging_reconstruction_and_error.png",
-        "图4.1-11  正确配准关系的三维轨迹重建和误差分布。",
-    )
-
-    writer.heading("证据边界", level=4)
-    writer.paragraph(
-        "360度理想单站九项矩阵仍待测试；360度分规模随机干扰只有图神经网络形成完整记录，其他路线按未开展或超时列示；180度40和60目标结果属于诊断。40目标厘米级定位误差来自理想位姿、理想时间和仿真检测条件，不代表设备定位能力。识别输入来自AirSim检测接口，漏检和虚警按试验协议注入，后续还需加入安装测量误差、云台偏差、时间同步误差和真实检测中心偏差。"
-    )
-    writer.heading("4.1.9 输出内容")
-    writer.paragraph(
-        "双光电处理结果向后续环节提供目标临时编号、位置、速度、六维协方差、最近拍摄时间、消息到达时间、支持该结果的双站局部航迹、配准质量、定位质量、标定版本和有效期。结果过期、几何退化或配准冲突时，状态降为待确认，不发布精确点目标。"
-    )
+            str(row["target_count"]),
+            CONDITION_LABEL[str(row["condition"])],
+            ROUTE_LABEL[str(row["route_name"])],
+            percent(row["offline_completed_precision"]),
+            percent(row["offline_completed_coverage"]),
+            percent(row["on_time_coverage"]),
+            milliseconds(row["latency_p95_ms"]),
+            f"{row['timeout_count']}/{row['sample_count']}",
+        )
+        for row in evidence_rows(evidence, profile)
+    ]
 
 
-def write_section_44(writer: SectionWriter, original_region_image) -> None:
-    writer.heading("4.4.1 场景及存在的问题")
+def write_section_41(writer: SectionWriter, evidence: dict[str, object]) -> None:
+    writer.heading("4.1.1 场景与难点")
     writer.paragraph(
-        "中心双光电能够给出目标数量区间、主要来袭方向、粗略空间范围和信息时刻，部分目标可以形成带位置、速度和误差范围的源航迹，其余目标只能形成较宽的方位或概率区域。本节按中心关联精度80%、召回率80%的设计工况组织搜索。以100个真实目标为例，中心可能漏掉约20个目标，已发布线索也可能含有错误关联、重复航迹或虚假目标。拦截无人机只能依靠这些粗线索飞向目标附近，不能把一条中心线索直接视为一个已经确认的机载目标。"
+        "两台固定光电从不同位置连续扫描同一来袭空域。每台设备先看到目标在本机图像中的方向变化，不能仅凭单帧图像判断距离，也不能直接知道另一台设备中的哪条航迹与自己对应。目标数量增加、航迹交叉、扫描不同步和短时漏检会使一条航迹同时出现多个候选。双站一旦配错，后续交汇位置和速度都会随之错误。"
     )
-    writer.heading("4.4.2 存在的难点")
     writer.paragraph(
-        "机载光电达到稳定识别像素后，可用于搜索和确认的时间只有数秒；距离继续缩短时目标像素增大，单个视场覆盖范围却迅速减小。中心漏检目标没有对应的指向线索，必须通过空档搜索发现。多架无人机若同时跟随同一条错误线索，会造成重复覆盖并留下未搜索区域。搜索还要处理云台转向、平台到达、视场重叠、连续复访和已锁定任务占用，资源数量不足时首先出现的是区域漏扫，后续配准无法补偿没有被观察的空域。"
+        "处理难点集中在两个环节。第一，窄视场周扫使目标每圈只短时出现，单站需要把相邻帧和相邻扫描圈稳定接成同一条航迹。第二，两站局部编号彼此独立，必须在有限处理时间内完成候选筛选和整体一一配准。现有试验表明，双站方法在理想单站输入下可以贯通，实际链路的主要损失来自单站断轨、错误重接、重复建轨和混合航迹。"
     )
-    writer.heading("4.4.3 拟采用的方案")
+
+    writer.heading("4.1.2 方法流程")
     writer.paragraph(
-        "搜索任务面向目标概率区域和可能通道，不按中心航迹逐条固定分配无人机。中心向各机下发同一版本的概率区域、候选源航迹、目标数量区间和任务有效期。各机把区域划分为带方位、距离和高度层的搜索单元，交换已观察单元、未发现记录、候选短航迹、云台状态和信息时刻。线索搜索机检查高概率区域，空档搜索机覆盖中心未成轨通道，交叉复核机从第二方向观察疑似目标，机动预备机接续未完成单元。发现目标后转入连续跟踪，剩余搜索任务由其他无人机滚动接替。"
+        "处理顺序为单站成轨、共面候选筛选、跨站关系评分、匈牙利一一分配、多圈确认和交汇定位。共面筛选利用两站基线和两条空间视线应处于同一平面的关系，先排除明显不可能的组合。保留下来的候选可采用冻结权重的几何评分，也可由图神经网络综合多时刻运动和周边竞争关系给出评分。匈牙利算法从整批候选中选择不冲突的一一关系，证据不足的航迹允许保持未匹配。"
     )
     writer.image(
-        "08_center_interceptor_search_architecture.png",
-        "图4.4-1  中心粗线索下的协同搜索。多派出的无人机展开到不同区域和观察方向，角色随搜索结果滚动调整。",
-    )
-    writer.image_path(
-        CENTER_TERMINAL_REPORT_ASSET_DIR / "01_search_flow.png",
-        "图4.4-2  协同搜索计算流程。中心线索和空白走廊统一形成搜索单元，再进行滚动分配和连续确认。",
-    )
-    writer.cloned_image(
-        original_region_image,
-        "图4.4-3  区域重划示意。区域边界、重点通道和机动余量作为搜索单元划分依据。",
+        DUAL_ASSETS / "01_algorithm_flow.png",
+        "图4.1-1  双光电多目标轨迹配准与交汇定位流程",
     )
 
-    writer.heading("中心线索与搜索单元数量", level=4)
+    writer.heading("4.1.3 单站航迹")
     writer.paragraph(
-        "设真实目标数为N，正确中心线索数为T，中心发布线索总数为S。召回率T/N和精度T/S均按80%构造，因此T=0.8N、S=N；错误线索和中心漏掉的目标均为0.2N。正确线索和错误线索都生成线索搜索单元。中心漏检目标没有对应线索，另在来袭走廊铺设max(5，向上取整0.4N)个空白单元。"
-    )
-    writer.table(
-        ("场景", "正确线索", "错误线索", "中心漏掉", "空白单元", "总搜索单元"),
-        (
-            ("20目标/8机", "16", "4", "4", "8", "28"),
-            ("20目标/30机", "16", "4", "4", "8", "28"),
-            ("40目标/50机", "32", "8", "8", "16", "56"),
-        ),
-        widths=(1.2, 0.9, 0.9, 0.9, 0.9, 1.0),
-        font_size=9.0,
-    )
-    writer.paragraph(
-        "每条线索先按p(t)=p₀+vΔt外推到规划时刻，再按三个方向的max(30米，3√Pᵢᵢ)确定搜索半宽。本轮位置标准差为1米，采用30米下限。空白单元分布在北向2500至3500米、东向负650至650米、高度负220至负70米的来袭走廊，概率取0.32，只表示需要观察，不表示已发现目标。"
-    )
-
-    writer.heading("4.4.4 交接位置和搜索窗口")
-    writer.paragraph(
-        "交接分四段进行。约5千米时下发概率区域、候选源航迹和预测交会点；约3千米时根据最新线索重划搜索责任，并将云台预置到预测方向；对3米级目标，约1.4千米是机载可见光达到10像素的建议稳定识别距离，此后形成机载局部航迹；约400至500米前完成连续确认，后续以稳定跟踪为主。上述距离是按当前方案参数计算的建议值，需通过多组仿真和真实光电试验标定。"
-    )
-    writer.table(
-        ("距离区间", "50米/秒目标", "155米/秒目标", "主要工作"),
-        (
-            ("5千米至1.4千米", "约24.5秒", "约14.3秒", "飞向预测交会点、更新线索、云台预置"),
-            ("3千米至1.4千米", "约10.9秒", "约6.3秒", "小范围预搜索和责任重划"),
-            ("1.4千米至500米", "约6.1秒", "约3.6秒", "可见光搜索、局部成轨和多机复核"),
-            ("500米至接近目标", "约3.4秒", "约2.0秒", "稳定跟踪和末段接管"),
-        ),
-        widths=(1.3, 1.1, 1.1, 2.7),
-    )
-    writer.paragraph(
-        "扣除信息传输、云台转向和连续确认后，50米/秒目标约有4.5至5秒用于机载视觉搜索，155米/秒高速目标约有2至3秒。该窗口只支持在预测误差范围内执行有限观察动作。对更小的穿越机目标，达到10像素的距离更短，现有宽视场通道不适合承担大范围首次搜索。"
-    )
-
-    writer.heading("4.4.5 搜索区域和任务分配")
-    writer.paragraph(
-        "中心线索先按信息时刻外推到当前时刻，并根据位置、速度、协方差、目标机动能力和通信延迟形成三维概率区域。已成轨目标对应较小的预测椭圆，尚未稳定成轨的目标保留为较宽的方向扇区或空间块。概率区域按方位、距离和高度层划分为搜索单元，每个单元记录目标存在概率、预计目标数、最近观察时刻、观察质量、预计成像像素、可执行平台和任务有效期。"
-    )
-    writer.paragraph(
-        "按视场尺寸划分扫描条带的计算继续作为搜索单元设计依据，执行平台采用拦截无人机自身双光云台。可见光全视场约19度乘11度，适合较远距离搜索；红外全视场约22度乘18度，进入有效成像距离后用于热目标复核和连续跟踪。可见光在1400米斜距的理想覆盖约469米乘270米，按20%重叠覆盖1平方千米单一高度层约需15个视场。距离缩短到500米后，同一区域约需104个视场，因此广域搜索应尽量前置，近距阶段只做预测区域凝视和局部补扫。"
+        "光电扫过目标时，连续检测先合并成一次扫描片段；下一圈重访时，再根据方位、俯仰、角速度、时间间隔和预测误差恢复原航迹。短时漏检期间保留休眠状态，目标交叉且关系不清时只保留少量候选，等待后续观测消解。单站若把一个目标拆成多条航迹，双站后端只能在这些碎片之间选择；若两目标被错误接成一条航迹，跨站多时刻关系也会被污染。"
     )
     writer.image(
-        "09_interceptor_search_cell_allocation.png",
-        "图4.4-4  拦截无人机搜索单元分配。单元根据目标概率、观察条件和平台任务状态滚动调整。",
-    )
-    writer.formula("Uᵢⱼ = 3pⱼ + 4Gᵢⱼ − 0.8C_转向 − C_到达 − 4C_重复，Gᵢⱼ = pⱼVᵢⱼQⱼ")
-    writer.paragraph(
-        "式中，p为单元概率，V为相机在700米观察距离上能够覆盖该单元的比例，Q=1/(1+n)反映既有覆盖次数n；其余三项分别扣除云台转向、到达观察位置和刚刚重复观察的代价。19度水平视场在700米处的名义覆盖宽度约234.3米，面积较大的空白单元一次不容易看全，需要后续复访。"
-    )
-    writer.paragraph(
-        "有M台相机、K个有效单元时，先建立M×K收益矩阵，再增加M个空闲列，得到M×(K+M)矩阵，空闲收益为负0.05。匈牙利算法一次求解全部占用冲突，使每台相机每轮最多承担一个单元，每个真实单元最多分给一台相机。所有真实单元收益低于空闲项时，相机保持待命。"
+        DUAL_ASSETS / "02_single_station_tracking.png",
+        "图4.1-2  单站检测形成局部航迹及断轨风险",
     )
 
-    writer.heading("4.4.6 未发现信息和连续复访")
+    writer.heading("4.1.4 双站候选与配准")
     writer.paragraph(
-        "一次扫过没有发现目标，只能降低该单元的目标概率。目标成像不足、云台未稳定、遮挡明显或扫描过快时，未发现记录的证据强度较低；连续多次高质量凝视仍未发现时，概率才明显下降。简化更新可写为："
+        "系统按照图像拍摄时刻校正设备位置、安装关系和云台姿态，把检测框中心转换为空间单位视线。设两站基线为b，两条视线为d_A和d_B，同一目标对应关系的归一化共面残差应接近零："
     )
-    writer.formula("p⁺ = p(1 − P_D) / (1 − pP_D)")
+    writer.formula("r = |bᵀ(d_A × d_B)| / (‖b‖·‖d_A × d_B‖ + ε)")
     writer.paragraph(
-        "检测到候选后先形成局部短航迹，并把目标方向、拍摄时间和预测区域发给邻机。邻机形成第二视角或同机连续多帧确认后，再进入目标配准。该处理能够避免把一次低质量未发现直接写成空域清空，也能防止单帧虚警立即占用拦截资源。"
+        "共面筛选只缩小候选范围。目标密集且运动方向接近时，多组航迹仍可能同时通过门限。几何方法比较多时刻共面残差、运动方向、角速度和交汇稳定性；图神经网络把A、B两站航迹作为两侧节点，把通过筛选的组合连成候选边，同时考虑每条候选与周边竞争候选的关系。网络评分不直接生成身份，仍需经过带空缺项的一一分配和连续多圈确认。"
     )
     writer.image(
-        "10_search_probability_update.png",
-        "图4.4-5  未发现信息的概率更新。高质量凝视和快速扫过具有不同的证据强度。",
-    )
-    writer.paragraph(
-        "试验中的局部确认采用确定性短航迹。当前检测与上一帧航迹的检测框中心距离超过180像素时排除，其余候选由匈牙利算法一一连接。每个单元连续观察3帧，帧间隔0.1秒；同一匿名航迹连续2帧达到10像素才生成确认记录。中间漏掉一帧时，前后两次检测不能直接拼成连续确认。"
-    )
-
-    writer.heading("4.4.7 AirSim仿真验证")
-    writer.heading("试验条件", level=4)
-    writer.paragraph(
-        "试验设置20目标/8机、20目标/30机和40目标/50机三组场景。目标采用长度3米的无人机网格模型，以50米/秒移动；拦截无人机采用AirSim计算机视觉相机节点，不包含飞行动力学。机载相机分辨率1920×1080，水平视场19度，标称观察距离700米。检测框最长边达到10像素记为可识别，连续两帧满足条件才形成确认。中心线索精度和召回率固定为80%，三组均使用随机种子20260816，运行18秒，状态步长0.1秒，仿真时钟倍率0.1。"
-    )
-    writer.heading("试验过程", level=4)
-    writer.paragraph(
-        "20目标场景包含16条正确线索、4条错误线索、4个中心漏检目标和8个空白搜索单元，共28个搜索单元；40目标场景包含32条正确线索、8条错误线索、8个中心漏检目标和16个空白单元，共56个搜索单元。三组均执行三轮滚动分配。在线计算读取匿名检测框、拍摄时间、相机位姿和相机参数，真实目标编号只在试验结束后用于核对。"
+        DUAL_ASSETS / "03_coplanarity_screening_3d.png",
+        "图4.1-3  双站视线的三维共面候选筛选",
     )
     writer.image(
-        "13_airsim_validation_chain.png",
-        "图4.4-6  三组AirSim试验计算链路。搜索、中心结果交接和机间配准在同一进程中分段运行。",
+        DUAL_ASSETS / "04b_candidate_graph_gnn_assignment.png",
+        "图4.1-4  图神经网络评分和一一分配后的航迹关系",
     )
-    writer.heading("试验结果", level=4)
-    writer.table(
-        ("场景", "搜索单元", "三轮容量/实际分配", "唯一覆盖", "10像素/确认", "中心漏检补获", "平均规划时间"),
-        (
-            ("20目标/8机", "28", "24/24", "24", "20/19", "3/4", "2.758毫秒"),
-            ("20目标/30机", "28", "90/44", "28", "20/20", "4/4", "11.739毫秒"),
-            ("40目标/50机", "56", "150/88", "56", "40/40", "8/8", "35.753毫秒"),
-        ),
-        widths=(1.0, 0.75, 1.15, 0.8, 0.95, 0.95, 1.1),
-        font_size=8.6,
+
+    writer.heading("4.1.5 交汇定位")
+    writer.paragraph(
+        "双站关系确认后，系统把相邻时刻的两条视线配对。两条视线受离散采样和小幅误差影响，通常不会严格相交，取最近点连线的中点作为位置；多个时刻的位置再进行短时运动拟合，得到速度和拟合残差。交会角过小、两条视线分离过大或位置跳变时，结果保持待确认。配准回答两站是否看到同一目标，定位只处理已经确认的关系。"
     )
     writer.image(
-        "14_airsim_search_capacity.png",
-        "图4.4-7  搜索容量对比。20目标/8机场景的三轮任务槽少于搜索单元数量。",
-    )
-    writer.image(
-        "15_airsim_search_results.png",
-        "图4.4-8  目标可见和连续确认结果。达到10像素只表示目标曾经可见，连续确认才可进入后续交接。",
-    )
-    writer.paragraph(
-        "20目标/8机三轮只有24个任务槽，无法覆盖28个搜索单元，最终留下4个单元未搜索。20个目标都曾达到10像素，但只有19个通过连续确认，中心漏掉的4个目标补获3个。20目标/30机首轮覆盖全部28个单元，40目标/50机在第二轮补齐剩余单元，两组均完成全部目标连续确认，并补获中心漏掉的全部目标。"
-    )
-    writer.paragraph(
-        "本轮结果表明，搜索容量是首先需要满足的条件。无人机数量乘搜索轮次小于待覆盖单元数时，应增加搜索轮次、合并低价值单元或调整责任区。资源充足后，空白搜索单元和滚动复访能够补回部分中心漏检目标。表中计算时间不含通信排队、无人机飞行、云台稳定和图像识别处理，不能作为机载处理器指标。"
-    )
-    writer.heading("4.4.8 后续验证")
-    writer.paragraph(
-        "后续试验将逐项加入航迹过期、重复线索、方位偏差、导航误差、云台误差、漏检、虚警和通信延迟，每个规模至少运行10个独立随机种子。确定性基线稳定后，再比较强化学习搜索策略。学习策略只选择已有搜索单元、观察方式和停留时间，云台限位、任务边界、最低重访频率和已锁定目标保持由确定性规则控制。"
+        DUAL_ASSETS / "05_multitime_triangulation_3d.png",
+        "图4.1-5  多时刻双视线交汇定位原理",
     )
 
-
-def write_section_45(writer: SectionWriter, original_images: Sequence) -> None:
-    writer.heading("4.5.1 场景及存在的问题")
-    writer.paragraph(
-        "拦截无人机进入目标附近后，每架相机只能看到群目标的一部分，且相邻视场存在重叠。可见光全视场约19度乘11度，按目标横向间隔100米估算，1400米距离通常可见4至5个横向目标，500米距离收窄到1至2个。不同无人机为同一目标建立的本地编号互不相同；中心源航迹在80%精度、80%召回率工况下也不能作为机载视觉真值。系统必须把中心源航迹、各机匿名局部航迹和机间共同观测整理成一致关系，才能进行末段任务核对。"
-    )
-    writer.table(
-        ("交战距离", "可见光视场", "横向可见目标数", "纵向层数"),
-        (
-            ("1400米", "469米×270米", "4～5", "1～2"),
-            ("1000米", "335米×193米", "3～4", "1～2"),
-            ("500米", "167米×96米", "1～2", "1"),
-            ("300米", "100米×58米", "1", "1"),
-        ),
-        widths=(1.2, 1.8, 1.5, 1.2),
-    )
-    writer.cloned_image(
-        original_images[0],
-        "图4.5-1  多架拦截无人机看到不同目标子集。各机本地编号不同，需要找出共同目标、独有目标和待复核关系。",
-    )
-
-    writer.heading("4.5.2 存在的难点")
-    writer.paragraph(
-        "同一目标在不同相机中的像素位置、运动方向和目标框大小通常不同，像素坐标不能直接比较。拍摄时刻不一致、相机位姿误差、通信延迟、遮挡和检测框抖动会产生多个候选；目标数量和相机数量增加后，全部相机两两比较会形成大量没有共同视场的无效组合。目标交叉时，两种身份排列在单帧内可能都成立。没有共同目标、可信源航迹或可靠时空交接时，几何方法和图神经网络都不能凭空建立关系。"
-    )
-
-    writer.heading("4.5.3 拟采用的方案")
-    writer.paragraph(
-        "配准分为中心结果交接和机间跨视角配准两条链路。中心结果先按拍摄时刻外推，并通过拦截机位置、机体姿态、云台角度和相机参数投影到图像平面，形成带误差范围的预测区域。机载检测在预测区域内形成匿名局部航迹，再用时间、几何和运动条件筛选。机间配准先按责任区和视场重叠选择需要比较的相机对，再比较两机局部航迹的单位视线、交会位置、重投影和运动连续性。少量候选使用最近邻或匈牙利算法；密集候选由图神经网络调整排序，最终仍由一一分配和连续多帧确认决定是否绑定。"
-    )
-    writer.image_path(
-        CENTER_TERMINAL_REPORT_ASSET_DIR / "06_terminal_flow.png",
-        "图4.5-2  多无人机视觉配准流程。各机先形成局部航迹，再进行跨视角候选筛选和整体分配。",
-    )
-    writer.cloned_image(
-        original_images[2],
-        "图4.5-3  匈牙利算法的多视角一一配准。候选门控后建立代价矩阵，避免多条航迹占用同一对象。",
-    )
-    writer.cloned_image(
-        original_images[3],
-        "图4.5-4  图神经网络辅助配准。网络调整候选边排序，几何门限和一一约束继续保留。",
-    )
-
-    writer.heading("4.5.4 中心源航迹投影")
-    writer.heading("状态外推和误差增长", level=4)
-    writer.paragraph(
-        "中心源航迹包含北东地坐标系中的位置、速度、六维协方差、测量时刻、消息到达时刻、有效期和源编号。状态写成x=[p，v]。系统以图像拍摄时刻为基准，先按匀速模型外推位置和速度，再按白噪声加速度模型增加过程不确定度。线索时间越旧，预测位置范围越大；到达时间只用于检查通信延迟，不能替代拍摄时间参与几何计算。"
-    )
-    writer.formula("x(t) = Fx₀，P(t) = FP₀Fᵀ + Q，F = [[I，ΔtI]，[0，I]]")
-    writer.paragraph(
-        "试验中加速度标准差取0.5米/秒²。过程噪声的位置块随时间差四次方增长，位置与速度交叉块随三次方增长，速度块随二次方增长。该数值只用于本轮仿真标定，实际系统需要根据目标机动和中心测量误差重新确定。"
-    )
-
-    writer.heading("坐标转换和像面预测", level=4)
-    writer.paragraph(
-        "外推位置先减去拦截机位置，再依次经过机体、云台和相机安装旋转，得到AirSim相机坐标。相机x轴朝前、y轴朝图像右侧、z轴朝下；相机安装在机体前方0.5米。每帧读取最终相机位置和姿态，避免只使用初始设置值。针孔投影为："
-    )
-    writer.formula("û = cₓ + fₓy_c/x_c，v̂ = cᵧ + fᵧz_c/x_c")
-    writer.paragraph(
-        "投影雅可比矩阵把中心位置协方差转换到图像平面，再与投影噪声和本地检测中心噪声相加形成像面协方差S。中心定位误差、拦截机导航误差、机体姿态误差、云台误差、时间误差和检测误差因此统一表现为预测椭圆。云台先指向椭圆中心；椭圆超过一个视场时，再按概率从高到低执行局部扫描。"
-    )
-    writer.formula("S = JP_位置Jᵀ + R_投影 + R_本地，d_M² = (z − ẑ)ᵀS⁻¹(z − ẑ)")
-    writer.image(
-        "12_center_interceptor_direct_registration.png",
-        "图4.5-5  中心源航迹与机载局部航迹直接配准。低质量或过期线索不进入绑定。",
-    )
-
-    writer.heading("候选门控和一一绑定", level=4)
-    writer.table(
-        ("检查项", "试验门限", "处理作用"),
-        (
-            ("机载识别", "检测框最长边不小于10像素", "排除没有稳定识别条件的检测"),
-            ("线索时效", "已经到达且处于有效期", "阻止未来信息和过期信息参与"),
-            ("像面范围", "预测点位于当前图像内", "排除当前相机不可见线索"),
-            ("马氏距离", "d_M²不大于9.2103", "按预测椭圆自适应收紧或放宽"),
-            ("像面运动", "速度差不大于80像素/秒", "排除位置接近但运动方向不符的候选"),
-        ),
-        widths=(1.2, 2.0, 3.0),
-    )
-    writer.paragraph(
-        "若有S条中心线索和L条机载局部航迹，先形成S×L个真实候选，再为每条中心线索增加一个专用未匹配列，最终矩阵为S×(L+S)。几何代价由马氏距离和归一化像面运动残差组成；已确认源航迹若切换到其他局部航迹，增加4.0的切换代价；每条源航迹的未匹配项代价为12.0。匈牙利算法在整幅矩阵上同时选择，使一条源航迹最多绑定一条局部航迹，一条局部航迹也不会被多条源航迹重复占用。"
-    )
-    writer.formula("C_几何 = d_M² + (像面速度残差/80)²")
-    writer.paragraph(
-        "图神经网络对照只处理已经通过硬门控的候选，输出同目标概率P_图，并按C_最终=C_几何−2log(P_图)修正代价。网络不能放回已经被时间、像面或运动门限拒绝的关系。系统连续采集5帧，最近3帧中至少2帧保持同一对应后才正式绑定。机载侧只保存源编号与本地编号的关系，不改写中心源编号。"
-    )
-    writer.image_path(
-        CENTER_TERMINAL_DIR
-        / "airsim_m50_n40_scale_v2_20260816/center_handover/figures/projection_ellipse_matching.png",
-        "图4.5-6  四十目标/五十机回放中的中心预测椭圆与机载局部检测原图。圆点为局部检测，椭圆表示中心线索投影后的不确定范围。",
-    )
-    writer.image_path(
-        CENTER_TERMINAL_DIR
-        / "airsim_m50_n40_scale_v2_20260816/center_handover/figures/matching_cost_matrix.png",
-        "图4.5-7  四十目标/五十机回放中的候选代价矩阵原图。空白位置表示未通过门控，保留位置再进入整体一一分配。",
-    )
-
-    writer.heading("4.5.5 机间跨视角配准")
-    writer.heading("本机局部航迹和视线交会", level=4)
-    writer.paragraph(
-        "每架无人机先在本相机内把匿名检测框连接为局部短航迹。检测框中心经过相机内参反投影为相机坐标中的单位视线，再利用每帧相机姿态转换到北东地坐标系。不同相机的检测不要求完全同步，两条局部航迹在0.16秒范围内插值或选取最近观测，至少取得3个有效交会样本。"
-    )
-    writer.formula("d_c = normalize([1，(u−cₓ)/fₓ，(v−cᵧ)/fᵧ])，d_n = normalize(R_nc d_c)")
-    writer.paragraph(
-        "两台相机的视线分别写成o_a+s d_a和o_b+t d_b。算法求两条视线的正深度最近点，取最近点中点作为该时刻的三角交会位置；两最近点距离反映视线分离误差，视线夹角反映三角定位的几何强度。交会中点随时间进行直线拟合，拟合误差和运动转角用于排除偶然交会或方向矛盾。"
-    )
-    writer.formula("δ=o_b−o_a，c=d_a·d_b，D=1−c²")
-    writer.formula("s=[δ·d_a−c(δ·d_b)]/D，t=[c(δ·d_a)−δ·d_b]/D")
-    writer.formula("q_a=o_a+s d_a，q_b=o_b+t d_b，q_中=(q_a+q_b)/2，e_分离=‖q_a−q_b‖")
-    writer.image_path(
-        CENTER_TERMINAL_DIR
-        / "airsim_m30_n20_scale_20260816/crossview/figures/01_ned_top_and_height_views.png",
-        "图4.5-8  二十目标/三十机回放的北东地平面和高度关系原图。灰线表示不同相机局部航迹之间形成的候选空间关系。",
-    )
-
-    writer.heading("几何门控和关系代价", level=4)
-    writer.table(
-        ("检查项", "试验门限", "作用"),
-        (
-            ("图像识别", "最长边不小于10像素", "排除尺寸不足的检测"),
-            ("时间对齐", "不超过0.16秒", "限制插值和最近观测时间差"),
-            ("航迹交接间隔", "不超过0.65秒", "排除长期未更新的航迹"),
-            ("有效交会样本", "不少于3个", "避免单帧偶然交会"),
-            ("视线夹角", "不小于0.35度", "排除近似平行视线"),
-            ("视线分离", "不大于2米", "要求双视线在空间接近"),
-            ("重投影误差", "不大于8像素", "核对交会点回到两幅图像的位置"),
-            ("运动拟合误差", "不大于5米", "排除不连续三维运动"),
-            ("运动转角", "不大于55度", "排除方向明显矛盾"),
-            ("尺度对数差", "不大于0.28", "核对成像尺度和估计距离"),
-        ),
-        widths=(1.2, 1.7, 3.3),
-        font_size=9,
-    )
-    writer.paragraph(
-        "通过硬门控后，几何代价综合视线分离、重投影、时间差、运动拟合、转角、尺度和观测质量七项误差。各项按对应门限归一化并限制最大值，防止单项异常完全支配结果。图神经网络仍只在几何白名单内调整候选排序："
-    )
-    writer.formula(
-        "C_几何 = 0.24C_分离 + 0.20C_重投影 + 0.10C_时间 + 0.18C_运动 + 0.12C_转角 + 0.08C_尺度 + 0.08C_质量"
-    )
-    writer.paragraph(
-        "几何基线直接使用C_几何。图神经网络输出同目标概率P_图后，采用C_最终=0.55C_几何+0.45(1−P_图)融合。每个相机对建立包含未匹配项的代价矩阵，再用匈牙利算法执行一一配对；最近3帧中至少2次保持同一关系后确认。证据不足的局部航迹继续保留为未匹配。"
-    )
-    writer.image_path(
-        CENTER_TERMINAL_DIR
-        / "airsim_m30_n20_scale_20260816/crossview/figures/04_candidate_costs.png",
-        "图4.5-9  二十目标/三十机回放的跨视角候选代价分布原图。低代价候选进入一一配对，高代价候选保持拒绝。",
-    )
-
-    writer.heading("稀疏相机图和目标簇合并", level=4)
-    writer.paragraph(
-        "相机数量增加后，先按责任区和视场重叠构建稀疏相机图。同一责任区的相机对保留；相邻责任区只有在共同观测时刻存在视锥重叠时才保留；不相邻责任区直接排除。若第i、j台相机分别有m_i、m_j条活动局部航迹，全量候选数近似为所有相机对m_i×m_j之和。8、30、50台相机分别对应28、435和1225个全量相机对，必须在精细几何计算前压缩。"
-    )
-    writer.formula("单帧候选边数 E = Σᵢ<ⱼ mᵢmⱼ，相机对数量 = M(M−1)/2")
-    writer.paragraph(
-        "确认关系按代价从小到大合并为跨相机目标簇。同一目标簇不允许出现同一相机的两条局部航迹，防止一台相机内部的两个目标被合并。两个已经成熟的目标簇准备合并时，至少需要两个不同相机对提供支持；只有2帧的短航迹进入成熟目标簇时，需要该簇内至少两台相机共同支持。该条件用于阻断一条偶然错误关系在多机网络中扩散。"
-    )
-
-    writer.heading("4.5.6 两目标交叉和部分可见")
-    writer.paragraph(
-        "两架拦截机同时看到两个接近目标时，系统同时比较两种完整排列。每种排列都计算两机视线交会位置、与中心预测的归一化残差、重投影误差、速度连续性和后续多帧一致性。两种排列的证据差距未达到门限时，不强行选择；一架无人机保持稳定跟踪，另一架可小幅侧向机动以增大观察夹角，待目标分离或取得新一轮中心预测后再确认。"
-    )
-    writer.paragraph(
-        "A机和B机没有共同目标时，系统保留各自局部航迹，不建立跨机关系。目标从A机视场离开后，A机发布最后视线、角速度、拍摄时刻和预测走廊，B机在预计到达时间内搜索该走廊。中心没有对应源航迹的新目标可由两机通过时间对齐、视线交会和运动连续性形成区域临时候选编号，再上报中心去重和注册。临时候选编号只维持本地搜索连续性。"
-    )
-
-    writer.heading("4.5.7 AirSim仿真验证")
-    writer.heading("试验条件", level=4)
-    writer.paragraph(
-        "中心交接和机间配准沿用4.4的三组AirSim场景：20目标/8机、20目标/30机和40目标/50机。目标长度3米、速度50米/秒，机载相机1920×1080、水平视场19度，检测框最长边达到10像素并连续两帧后进入局部航迹。中心线索精度和召回率固定为80%。三组使用同一随机种子20260816，每个规模正式采集一次。"
-    )
+    writer.heading("4.1.6 试验条件")
     writer.table(
         ("项目", "试验设置"),
         (
-            ("仿真模式", "AirSim计算机视觉模式"),
-            ("中心相机", "2台，1280×1024，水平视场3.67度"),
-            ("机载相机", "1920×1080，水平视场19度，相机前移0.5米"),
-            ("目标", "长度3米的无人机网格，速度50米/秒"),
-            ("中心线索", "精度80%、召回率80%，位置标准差1米、速度标准差0.2米/秒"),
-            ("识别输入", "AirSim检测元数据；在线去除Actor名称；最长边不小于10像素"),
-            ("图网络", "独立合成数据训练；AirSim种子20260816只作留出回放"),
+            ("光电布置", "两台固定光电，横向基线2千米，高度均为100米"),
+            ("相机", "1280×1024，等效焦距300毫米，水平视场2.93度，垂直视场约2.344度"),
+            ("采样", "检测和云台记录100赫兹；AirSim仿真时钟倍率0.1"),
+            ("目标", "20、40、60个长度3米的无人机网格目标，速度50米/秒"),
+            ("航向", "每组一半沿0度方向，一半沿负30度方向；前后位置和交叉关系随随机种子变化"),
+            ("360度扫描", "2秒连续周扫一圈，12秒共6圈，统计第6圈"),
+            ("180度扫描", "1秒单程扫过180度，2秒往返，12秒形成12轮，统计第12轮"),
+            ("云台误差", "0.4毫弧度固定偏差和0.3毫弧度逐帧随机抖动"),
+            ("样本", "每个目标规模、干扰等级和方法均为5个随机种子"),
         ),
-        widths=(1.35, 4.85),
-        font_size=9.0,
+        widths=(1.2, 5.0),
+        font_size=8.7,
     )
     writer.table(
-        ("批次", "中心正确/错误/漏检线索", "机载相机", "主要检查内容"),
+        ("干扰等级", "随机漏检率", "每台每秒瞬时虚警", "每台持续虚假航迹"),
         (
-            ("20目标/8机", "16/4/4", "8", "资源受限时的中心交接和小规模跨视角关系"),
-            ("20目标/30机", "16/4/4", "30", "相机数量增加后的候选膨胀和学习评分增益"),
-            ("40目标/50机", "32/8/8", "50", "密集目标和大规模相机网络的稀疏化效果"),
+            ("无附加漏检虚警", "0", "0", "0"),
+            ("轻度", "3%", "2个", "0"),
+            ("中度", "7%", "4个", "1条"),
+            ("重度", "12%", "8个", "2条"),
         ),
-        widths=(1.2, 1.65, 0.9, 2.6),
-    )
-    writer.heading("对照方案", level=4)
-    writer.paragraph(
-        "中心交接设置两条路线。几何路线使用时效、像面、马氏距离和运动门控，再执行匈牙利分配与多帧确认；图神经网络路线只在同一候选白名单内修正代价。机间配准设置全相机几何、全相机图网络、稀疏相机图几何和稀疏相机图图网络四种对照。全相机路线用于观察候选膨胀，稀疏路线按责任区和视场先筛相机对。"
-    )
-    writer.heading("试验过程", level=4)
-    writer.paragraph(
-        "三个专项在同一个AirSim Blocks进程中按重置分段运行。中心交接先按图像时刻外推源航迹并投影到各机图像，使用五项门控、未匹配项和匈牙利算法完成一一分配。机间配准把匿名检测框连接为局部航迹，完成时间对齐、视线交会、重投影、运动拟合和目标簇合并。图神经网络对照复用保存的匿名观测离线计算，没有重新运行场景。真实目标编号只在全部输出完成后用于离线评分。"
-    )
-    writer.heading("中心交接结果", level=4)
-    writer.table(
-        ("场景", "方法", "正确绑定", "错误绑定", "绑定精度", "绑定召回率", "中位复算时间"),
-        (
-            ("20目标/8机", "几何", "16", "0", "1.0000", "1.0000", "2.391秒"),
-            ("20目标/8机", "图神经网络", "16", "0", "1.0000", "1.0000", "2.460秒"),
-            ("20目标/30机", "几何", "14", "0", "1.0000", "0.8750", "2.751秒"),
-            ("20目标/30机", "图神经网络", "14", "0", "1.0000", "0.8750", "2.882秒"),
-            ("40目标/50机", "几何", "31", "1", "0.9688", "0.9688", "15.819秒"),
-            ("40目标/50机", "图神经网络", "31", "0", "1.0000", "0.9688", "15.862秒"),
-        ),
-        widths=(0.9, 1.0, 0.7, 0.7, 0.8, 0.85, 1.0),
-        font_size=8.5,
+        widths=(1.7, 1.3, 1.6, 1.6),
+        font_size=8.7,
     )
     writer.image(
-        "16_airsim_handover_results.png",
-        "图4.5-10  中心结果交接对照。图神经网络在40目标/50机回放中拒绝了1条错误绑定。",
-    )
-    writer.paragraph(
-        "三组正确绑定数分别为16、14和31。资源数量增加没有自动提高中心交接召回率。40目标/50机中，几何方法接受了1条连续落入预测区的错误线索，图神经网络对照拒绝了该关系，同时保留31条正确绑定。该结果只有一个AirSim随机种子，默认路径仍采用几何白名单、匈牙利分配和多帧确认。"
+        DUAL_ASSETS / "06_airsim_scene_40_targets_cn.png",
+        "图4.1-6  双站光电与多方向运动目标仿真场景",
     )
 
-    writer.heading("机间配准结果", level=4)
+    writer.heading("4.1.7 试验过程与评价口径")
+    writer.paragraph(
+        "本轮结果来自保存观测的确定性离线复算，共含360度理想单站6组、360度实际单站24组和180度扫描24组，每组5个随机种子。只统计最后一圈或最后一轮，不合并前期过渡数据。真实身份仅用于离线评分和理想单站诊断，不进入实际配准输入。"
+    )
     writer.table(
-        ("场景", "全部/稀疏相机对", "全量/稀疏候选边", "候选减少", "全部/稀疏几何时间"),
+        ("指标", "计算口径"),
         (
-            ("20目标/8机", "28/16", "5,778/3,296", "43.0%", "12.43/8.87秒"),
-            ("20目标/30机", "435/267", "85,847/52,635", "38.7%", "139.78/97.82秒"),
-            ("40目标/50机", "1,225/403", "1,104,646/375,236", "66.0%", "1842.79/770.99秒"),
+            ("单站精度", "两站各航迹的主导真实观测数÷全部有标签观测数"),
+            ("单站覆盖度", "身份正确的单站航迹数÷两站目标机会总数"),
+            ("双站质量精度", "正确双站关系数÷全部输出双站关系数"),
+            ("双站质量覆盖度", "正确配准目标数÷目标总数"),
+            ("按时覆盖度", "1000毫秒内正确配准目标数÷目标总数"),
+            ("处理耗时P95", "5个随机种子最后窗口耗时的最近秩95%分位"),
         ),
-        widths=(1.15, 1.25, 1.55, 0.85, 1.45),
-        font_size=8.8,
+        widths=(1.6, 4.6),
+        font_size=8.7,
+    )
+    writer.paragraph(
+        "超过1000毫秒后形成的关系仍保留其离线质量，用于判断算法是否配对正确；按时覆盖度记为0。这样可以把算法质量和在线处理能力分开，避免把超时后得到的正确关系写成实时结果。"
+    )
+
+    writer.heading("4.1.8 360度理想单站结果")
+    writer.paragraph(
+        "理想单站条件按离线真实身份把每个目标在每台光电的观测归成一条正确航迹，单站精度和覆盖度均为100%。该组只隔离检查双站候选、评分、一一分配和多圈确认，不代表实际单站航迹器已经达到完全正确。"
+    )
+    writer.table(
+        ("目标数", "方法", "质量精度", "质量覆盖度", "按时覆盖度", "耗时P95", "超时"),
+        [(row[0], *row[2:]) for row in dual_station_rows(evidence, "oracle_360")],
+        widths=(0.55, 1.05, 0.85, 0.9, 0.9, 1.05, 0.7),
+        font_size=7.9,
     )
     writer.image(
-        "17_airsim_camera_pair_sparsification.png",
-        "图4.5-11  相机对和候选边压缩。40目标/50机场景在精细计算前排除了66%的候选边。",
+        DUAL_ASSETS / "13_v2_oracle_quality_timing.png",
+        "图4.1-7  360度理想单站条件下的双站质量与耗时",
     )
+    writer.paragraph(
+        "六组均形成有效关系，说明双站链路在20至60目标范围内具备理论可行性。两种方法没有全面一致的质量排序：20和40目标的几何覆盖度较高；60目标图神经网络达到99.3%的质量精度和98.7%的质量覆盖度。时效差异明确，几何方法所有随机种子均超过1000毫秒，图神经网络全部按时。"
+    )
+
+    writer.heading("4.1.9 360度实际单站结果")
+    writer.paragraph(
+        "实际单站复算直接使用封存的匿名局部航迹，不按真实身份修复断轨、错误重接或重复建轨。两种跨站方法读取完全相同的单站输入。下表先列单站结果，再列对应的双站结果。"
+    )
+    writer.heading("单站航迹", level=4)
     writer.table(
-        ("场景", "方法", "正确/错误/漏配", "关系精度/召回率", "身份混合"),
+        ("目标数", "干扰条件", "单站精度", "单站覆盖度"),
+        single_station_rows(evidence, "continuous_360"),
+        widths=(0.8, 2.1, 1.35, 1.35),
+        font_size=8.4,
+    )
+    writer.image(
+        DUAL_ASSETS / "14_v2_continuous_single_station.png",
+        "图4.1-8  360度实际单站航迹精度和覆盖度",
+    )
+    writer.heading("双站配准", level=4)
+    writer.table(
+        ("目标数", "干扰", "方法", "质量精度", "质量覆盖", "按时覆盖", "耗时P95", "超时"),
+        dual_station_rows(evidence, "continuous_360"),
+        widths=(0.45, 0.85, 0.9, 0.75, 0.78, 0.78, 0.95, 0.55),
+        font_size=7.0,
+    )
+    writer.image(
+        DUAL_ASSETS / "15_v2_continuous_dual_matrix.png",
+        "图4.1-9  360度实际单站条件下两种方法的最终质量",
+    )
+    writer.paragraph(
+        "无附加漏检虚警时，单站覆盖度从20目标的91.5%下降到40目标的80.2%和60目标的73.2%。同条件下，几何方法双站覆盖度从理想输入的93.0%、87.5%、84.0%下降到66.0%、41.5%、36.7%；图神经网络由82.0%、79.5%、98.7%下降到56.0%、50.5%、41.7%。实际360度中，单站覆盖度与双站覆盖度的相关系数为0.903和0.613，说明前级航迹连续性是主要限制。"
+    )
+    writer.paragraph(
+        "实际质量仍随场景变化。20目标四档条件下几何方法覆盖较高；40目标无附加和轻度条件下图神经网络较高；60目标两种方法随干扰等级交替占优。几何方法全部超时，图神经网络全部按时，因此当前应同时保留质量和时效两套判断，不能声称图神经网络在所有场景全面优于几何方法。"
+    )
+
+    writer.heading("4.1.10 180度扫描结果")
+    writer.paragraph(
+        "180度方案把目标来袭扇区作为已知范围，云台1秒扫过180度后反向返回，12秒形成12轮。无附加和轻度条件来自封存观测，中度和重度在同一匿名观测上按固定策略进行离线干扰复算。"
+    )
+    writer.heading("单站航迹", level=4)
+    writer.table(
+        ("目标数", "干扰条件", "单站精度", "单站覆盖度"),
+        single_station_rows(evidence, "s180"),
+        widths=(0.8, 2.1, 1.35, 1.35),
+        font_size=8.4,
+    )
+    writer.image(
+        DUAL_ASSETS / "16_v2_s180_single_station.png",
+        "图4.1-10  180度扫描的单站航迹精度和覆盖度",
+    )
+    writer.heading("双站配准", level=4)
+    writer.table(
+        ("目标数", "干扰", "方法", "质量精度", "质量覆盖", "按时覆盖", "耗时P95", "超时"),
+        dual_station_rows(evidence, "s180"),
+        widths=(0.45, 0.85, 0.9, 0.75, 0.78, 0.78, 0.95, 0.55),
+        font_size=7.0,
+    )
+    writer.image(
+        DUAL_ASSETS / "16b_v2_s180_dual_matrix.png",
+        "图4.1-11  180度扫描条件下两种方法的最终质量",
+    )
+    writer.paragraph(
+        "缩小扫描扇区提高了目标方向的重访频率。60目标无附加漏检虚警时，图神经网络双站覆盖度由360度实际单站条件的41.7%提高到81.0%。几何方法12组全部超时，图神经网络12组全部按时。扇区扫描没有自动消除跨站损失，例如20目标中度干扰下单站覆盖度为100.0%，图神经网络双站覆盖度为61.0%，该部分仍需校准候选评分和连续确认。"
+    )
+    writer.image(
+        DUAL_ASSETS / "17_v2_latency_deadline.png",
+        "图4.1-12  三类复算耗时与1000毫秒处理期限",
+    )
+
+    writer.heading("4.1.11 结果判断")
+    writer.paragraph(
+        "双站配准在理想单站输入下已经形成20、40、60目标的完整结果，图神经网络在较大规模下兼顾质量和处理时限。实际周扫的首要问题仍是单站航迹连续性。下一步应先降低断轨、错误重接和混合航迹，再在相同匿名输入上比较几何与图神经网络。交汇定位的厘米级误差只来自理想位姿和理想时间的单次仿真演示，不能作为设备定位指标。"
+    )
+
+
+def write_section_44(writer: SectionWriter) -> None:
+    search_rows = markdown_table(
+        SEARCH_REPORT,
         (
-            ("20目标/8机", "全相机几何", "30/0/2", "1.0000/0.9375", "0"),
-            ("20目标/8机", "稀疏几何", "30/0/2", "1.0000/0.9375", "0"),
-            ("20目标/8机", "稀疏图网络", "30/0/2", "1.0000/0.9375", "0"),
-            ("20目标/30机", "全相机几何", "558/302/71", "0.6488/0.8871", "5"),
-            ("20目标/30机", "稀疏几何", "564/198/65", "0.7402/0.8967", "4"),
-            ("20目标/30机", "稀疏图网络", "571/142/58", "0.8008/0.9078", "2"),
-            ("40目标/50机", "全相机几何", "3538/2537/794", "0.5824/0.8167", "18"),
-            ("40目标/50机", "全相机图网络", "4031/2094/301", "0.6581/0.9305", "7"),
-            ("40目标/50机", "稀疏几何", "4031/16/301", "0.9960/0.9305", "0"),
-            ("40目标/50机", "稀疏图网络", "4031/16/301", "0.9960/0.9305", "0"),
+            "场景",
+            "位置误差σ",
+            "发现率均值/最差",
+            "连续确认均值/最差",
+            "视锥概率覆盖",
+            "重复确认",
+            "未执行任务均值",
+            "首次发现均值",
+            "规划P95均值",
         ),
-        widths=(1.15, 1.25, 1.35, 1.4, 0.8),
+    )
+    if len(search_rows) != 9:
+        raise RuntimeError(f"expected 9 cooperative-search rows, found {len(search_rows)}")
+
+    writer.heading("4.4.1 场景与难点")
+    writer.paragraph(
+        "本节限定中心已经正确识别全部目标，每个目标只有一条正确线索。中心不提供足以直接交战的精确位置，只给出粗位置、速度、信息时刻和协方差。拦截无人机需要在18秒预算内飞到合适观察位置，调整云台，逐步检查预测区域，并把一次看到目标转成连续两帧确认。"
+    )
+    writer.paragraph(
+        "粗位置误差会扩大相机需要检查的范围。资源较少时，平台可能来不及覆盖全部高概率子单元；资源较多时，多机又可能重复观察相邻区域。分配需要同时考虑目标概率、平台飞行时间、云台转向、观察时间和重复占用。本轮不设置错误线索、重复线索、中心漏检目标或空白走廊，只验证正确线索存在较大位置误差时的责任区搜索。"
+    )
+
+    writer.heading("4.4.2 三倍标准差预测区域")
+    writer.paragraph(
+        "每条线索先按保存速度外推到规划时刻，再在北、东、地三个方向取三倍位置标准差，形成包含大部分位置概率的三维预测区域。误差标准差取30米、60米和100米，对应各轴半宽约90米、180米和300米。每条线索单独形成预测区域，线索之间不依靠真实目标编号合并。"
+    )
+    writer.paragraph(
+        "相机分辨率为1920×1080，水平视场19度，垂直视场10.75度。在700米观察距离上，单视场覆盖约234.28米×131.78米，相邻视场保留20%重叠。预测区域横向和高度方向按实际视场足迹划分子单元，深度方向保留完整三倍标准差范围。误差越大，子单元数量越多，搜索任务随之增加。"
+    )
+    writer.image(
+        TERMINAL_ASSETS / "search100_02_cells_3d.png",
+        "图4.4-1  中心粗位置三倍标准差区域与实际视场子单元",
+    )
+
+    writer.heading("4.4.3 概率更新与云台扫描")
+    writer.paragraph(
+        "每个子单元的初始优先级由高斯分布在该范围内的概率质量确定，中心区域优先，边缘区域次之。无人机到达观察点后，云台指向子单元中心并稳定观察0.3秒，每0.1秒形成一帧，共采集3帧。平台飞行与云台转动可同时进行，离线模型采用97米/秒平台速度上限和200度/秒云台转速上限。"
+    )
+    writer.paragraph(
+        "目标进入真实视锥且检测框最长边不小于10像素时，生成匿名检测；同一短航迹连续2帧满足门限后确认该目标。一次观察没有发现目标时，只把真实视锥已经覆盖的概率质量从待搜索集合中扣除，不把整条线索区域清空。确认目标后关闭该线索剩余子单元。由于本轮没有随机漏检和虚警，这一更新用于核对搜索几何和资源容量，不代表真实探测概率已经标定。"
+    )
+
+    writer.heading("4.4.4 滚动一一分配")
+    writer.paragraph(
+        "每次有无人机空闲时，系统重新建立无人机到候选子单元的收益矩阵。收益同时考虑子单元概率、预计完成时间和飞行距离："
+    )
+    writer.formula("U = 12p + 1.5/(1+T) − 0.018T − 0.00005D")
+    writer.paragraph(
+        "式中，p为子单元概率质量，T为飞行、转向和观察总时间，D为平台到观察点的距离。预计完成时间超过18秒的组合不下发。匈牙利算法一次处理整张收益矩阵，保证一架无人机同一轮只接一个子单元，一个子单元同一轮只分给一架无人机。完成观察后立即更新剩余概率和平台状态，再滚动计算下一项任务。"
+    )
+    writer.image(
+        TERMINAL_ASSETS / "search100_01_flow.png",
+        "图4.4-2  粗位置线索条件下的协同搜索与滚动分配流程",
+    )
+
+    writer.heading("4.4.5 试验条件")
+    writer.table(
+        ("项目", "设置"),
+        (
+            ("试验性质", "保存AirSim目标轨迹上的确定性离线搜索调度，未重新启动AirSim"),
+            ("规模", "20目标/8机、20目标/30机、40目标/50机"),
+            ("中心线索", "精度和召回率均为100%，每个目标恰有一条正确线索"),
+            ("误差档", "北、东、地各轴位置标准差30米、60米、100米，截断在±3σ"),
+            ("随机种子", "20260816至20260820，每档5个随机种子"),
+            ("目标", "保存记录中的3米网格目标，速度约50米/秒；0.8秒后按保存速度外推"),
+            ("机载相机", "1920×1080，水平视场19度，垂直视场10.75度，观察距离700米"),
+            ("观察与预算", "每点0.3秒、3帧；10像素门限；连续2帧确认；总预算18秒"),
+            ("检测干扰", "不额外注入随机漏检和虚警"),
+        ),
+        widths=(1.25, 4.95),
         font_size=8.6,
     )
-    writer.image(
-        "18_airsim_crossview_comparison.png",
-        "图4.5-12  跨视角配准方法对照。稀疏相机图先减少无共同视场关系，再进行几何和学习评分。",
+
+    writer.heading("4.4.6 试验过程")
+    writer.paragraph(
+        "三种规模分别在30米、60米和100米误差档运行5个随机种子，共45组。每组先生成三倍标准差预测区域和视场子单元，再按平台运动、云台转向和观察时间滚动分配。任务获得分配不等于已经观察，只有平台完成运动、真实视锥覆盖相应空间并取得连续图像后，才计入发现和确认。"
     )
     writer.paragraph(
-        "20目标/8机中，各种设置的关联质量相同，稀疏相机图只减少计算量。20目标/30机中，稀疏几何把错误关系从302条降到198条，图神经网络进一步降到142条，身份混合由4个降到2个。40目标/50机中，稀疏几何把关系精度从0.5824提高到0.9960，并将身份混合从18个降到0；图神经网络没有继续改善质量，复算时间反而增加。当前最稳定的改进是先限制需要比较的相机范围。"
+        "离线观测器使用保存的目标位置生成匿名检测。真实目标编号不参与子单元生成、收益计算、分配或关闭判断，45组在线记录的真实身份泄漏数为0。目标轨迹在保存记录结束后按恒速外推，平台和云台采用速度上限模型，因此本轮验证的是调度和几何可见性，不是新AirSim在线飞行试验。"
     )
 
-    writer.heading("4.5.8 证据边界和后续验证")
-    writer.paragraph(
-        "三组AirSim观测均使用随机种子20260816，每个规模只正式采集一次。识别输入为AirSim检测元数据，尚未接入真实可见光或红外探测器；试验未注入导航误差、云台姿态误差、时间同步偏差、相机标定漂移、真实漏检虚警、通信丢包和飞行动力学。图神经网络只使用合成数据训练，AirSim观测用于留出回放。40目标/50机复算时间包含关联、审计输出和制图，不能作为处理器部署指标。"
-    )
-    writer.paragraph(
-        "后续按单项误差注入、10个以上独立随机种子和真实双光记录三个层次开展验证。默认路径保留责任区与视场稀疏相机图、几何门限、匈牙利一一分配和多帧确认。图神经网络只有在多组未见场景中稳定减少错误关系且满足处理时限后，才进入在线试验。仿真结果属于算法链路证据，不能写成装备实测或飞行试验能力。"
-    )
-
-
-def image_before_caption(document: Document, *caption_prefixes: str):
-    """Capture an existing useful image by its visible caption, not package media name."""
-
-    paragraphs = document.paragraphs
-    captions = [
-        index
-        for index, paragraph in enumerate(paragraphs)
-        if any(paragraph.text.strip().startswith(prefix) for prefix in caption_prefixes)
-    ]
-    if len(captions) != 1:
-        raise RuntimeError(f"expected one caption matching {caption_prefixes}, found {len(captions)}")
-    for index in range(captions[0] - 1, max(-1, captions[0] - 5), -1):
-        if paragraphs[index]._p.xpath(".//a:blip/@r:embed"):
-            return copy.deepcopy(paragraphs[index]._p)
-    raise RuntimeError(f"image not found before caption {caption_prefixes}")
-
-
-def capture_existing_images(document: Document):
-    return {
-        "region_repartition": image_before_caption(
-            document,
-            "图4.4-2  区域重划",
-            "图4.4-3  区域重划",
+    writer.heading("4.4.7 试验结果")
+    writer.table(
+        (
+            "场景",
+            "误差σ",
+            "发现均值/最差",
+            "连续确认均值/最差",
+            "视锥概率覆盖",
+            "重复确认",
+            "未执行任务",
+            "首次发现",
+            "规划P95",
         ),
-        "multicamera_subset": image_before_caption(document, "图4.5-1  多架拦截无人机"),
-        "multicamera_flow": image_before_caption(document, "图4.5-2  多无人机视觉配准流程"),
-        "hungarian": image_before_caption(document, "图4.5-3  匈牙利算法"),
-        "gnn": image_before_caption(document, "图4.5-4  图神经网络辅助配准"),
-    }
+        search_rows,
+        widths=(0.85, 0.5, 0.95, 1.15, 0.75, 0.7, 0.75, 0.7, 0.7),
+        font_size=6.6,
+    )
+    writer.image(
+        TERMINAL_ASSETS / "search100_03_results.png",
+        "图4.4-3  三种粗位置误差下的目标发现与连续确认",
+    )
+    writer.paragraph(
+        "20目标/8机是资源最紧张的场景。30米误差档连续确认率为100%；60米为97%，最差随机种子90%；100米为91%，最差随机种子80%，预算结束平均仍有24.6个有效子单元未执行。20目标/30机和40目标/50机在30、60、100米三档误差下均达到100%连续确认。"
+    )
+    writer.paragraph(
+        "100米误差档中，20目标/30机和40目标/50机的视锥概率覆盖分别为61.3%和59.6%，目标仍全部确认。原因是目标一旦连续确认，其余子单元按规则关闭，视锥概率覆盖不是整片空域覆盖率。重复确认比例为71.1%至93.2%，说明相邻子单元和多机共同视场带来较多复核，也占用了部分搜索容量。"
+    )
+    writer.image(
+        TERMINAL_ASSETS / "search100_04_coverage_budget.png",
+        "图4.4-4  真实视锥覆盖与18秒预算内剩余任务",
+    )
+    writer.image(
+        TERMINAL_ASSETS / "search100_05_timing.png",
+        "图4.4-5  首次发现时间与滚动分配计算时间",
+    )
+
+    writer.heading("4.4.8 结果边界")
+    writer.paragraph(
+        "结果说明，在中心线索全部正确、目标尺寸3米、无随机漏检和虚警的限定条件下，滚动一一分配能够把粗位置和协方差转换为可执行搜索任务。30米误差下8架无人机完成20目标搜索；误差扩大后8机资源出现漏搜，30机搜索20目标和50机搜索40目标仍完成全部连续确认。"
+    )
+    writer.paragraph(
+        "本轮45组均为保存AirSim轨迹上的离线复算，没有新启动AirSim。目标后续运动采用线性外推，平台和云台采用上限模型，尚未加入加速度、航迹冲突、导航误差、云台稳定时间、真实图像检测波动和通信延迟。上述结果只能作为搜索调度和几何覆盖证据。"
+    )
 
 
-def validate_target_headings(document: Document) -> None:
-    expected = (
-        *(f"4.1.{index}" for index in range(1, 10)),
+def write_section_45(writer: SectionWriter) -> None:
+    parameter_rows = markdown_table(
+        TERMINAL_REPORT,
+        ("参数", "搜索范围", "选定值"),
+    )
+    handover_rows = markdown_table(
+        TERMINAL_REPORT,
+        ("场景", "正确绑定", "错误绑定", "精度", "召回率", "原复算时间"),
+    )
+    metric_rows = markdown_table(
+        TERMINAL_REPORT,
+        (
+            "场景",
+            "方法",
+            "机会目标",
+            "关系精度",
+            "等权纯度",
+            "等权完整度",
+            "独立纯净簇",
+            "混合目标",
+            "未完成目标",
+        ),
+    )
+    runtime_rows = markdown_table(
+        TERMINAL_REPORT,
+        ("场景", "方法", "保留相机对", "候选边", "无缓存耗时"),
+    )
+    if (len(parameter_rows), len(handover_rows), len(metric_rows), len(runtime_rows)) != (3, 3, 6, 6):
+        raise RuntimeError("unexpected terminal-association source table shape")
+
+    writer.heading("4.5.1 场景与难点")
+    writer.paragraph(
+        "拦截无人机进入目标附近后，每架相机只能看到群目标的一部分。不同无人机为同一目标建立的本地编号互不相同，中心航迹位于北东地坐标系，机载检测位于图像坐标系。无人机在运动，云台也在转动，同一目标在不同图像中的位置和运动方向均会变化。姿态时刻、安装偏移或旋转方向处理错误，会使中心预测点整体偏离检测框；多机之间还可能把相邻目标错误合并。"
+    )
+    writer.paragraph(
+        "末端按责任区和实际视场保持稀疏，只比较可能存在共同视场的相机对。没有足够几何证据时，航迹保持未匹配。中心交接解决“中心航迹与哪条机载航迹对应”，机间配准解决“多架无人机看到的局部航迹是否属于同一目标”，两条链路均使用拍摄时刻状态、硬几何门控、一一分配和连续多帧确认。"
+    )
+    writer.image(
+        TERMINAL_ASSETS / "06_terminal_flow.png",
+        "图4.5-1  中心航迹交接与拦截无人机之间的末端配准流程",
+    )
+
+    writer.heading("4.5.2 测量时刻状态")
+    writer.paragraph(
+        "中心位置、速度和协方差先外推到图像的测量时刻。机体位置、机体姿态和云台姿态也按同一测量时刻插值，插值必须同时具有拍摄时刻前后的姿态样本；任一侧缺失或时间间隔超限时停止建立关系。消息到达时刻只用于判断通信是否过期，不能替代图像拍摄时刻参与几何计算。"
+    )
+    writer.formula("x(t) = Fx₀，P(t) = FP₀Fᵀ + Q")
+    writer.paragraph(
+        "现有三组AirSim保存回放已经把拍摄时刻的最终相机光心和姿态写入观测，因此按合成相机位姿、安装偏移为零的兼容方式读取。完整安装偏移和姿态插值已经形成可测试计算链，但旧回放没有验证非零安装偏移。"
+    )
+
+    writer.heading("4.5.3 完整坐标转换")
+    writer.paragraph(
+        "旋转方向固定为：R_B^N把北东地坐标转到机体坐标，R_G^B把机体坐标转到云台坐标，R_C^G把云台坐标转到相机坐标。目标点从北东地坐标转入相机坐标的完整关系为："
+    )
+    writer.formula("p_C = R_C^G R_G^B R_B^N (p_N − o_C^N)")
+    writer.paragraph(
+        "相机光心不是机体参考点。视线起点同时包含机体位置、机体到云台转轴的偏移和云台转轴到相机光心的安装偏移："
+    )
+    writer.formula("o_C^N = p_B^N + R_N^B (r_fix^B + r_G^B + R_B^G r_C^G)")
+    writer.paragraph(
+        "相机采用前、右、下坐标。检测框中心先按相机内参反投影为相机系单位视线，再用同一旋转链转回北东地坐标。正投影和反投影必须使用同一光心、同一拍摄时刻和同一旋转方向。"
+    )
+    writer.image(
+        TERMINAL_ASSETS / "07_terminal_pose_chain.png",
+        "图4.5-2  机体、云台和相机之间的完整旋转链与安装偏移",
+    )
+
+    writer.heading("4.5.4 联合误差传播与中心交接")
+    writer.paragraph(
+        "像面预测范围同时考虑中心航迹位置误差、无人机导航位置误差、机体姿态误差、云台角误差、检测框中心误差和时间误差。把这些误差组成联合状态，通过投影函数的雅可比矩阵传播到图像平面，得到预测椭圆。线索时间越旧、姿态越不确定，预测椭圆越大。"
+    )
+    writer.formula("S_image = J_image Σ_x J_imageᵀ + R_projection")
+    writer.formula("d² = (z − z_hat)ᵀ S_image⁻¹ (z − z_hat)")
+    writer.paragraph(
+        "外推后的中心状态投到机载图像后，先检查线索有效期、预测点是否位于图像内、检测框是否达到10像素、归一化像面残差和像面运动是否通过门限。通过硬门控的候选进入带未匹配项的匈牙利一一分配，最近3帧中至少2帧保持同一关系后正式交接。"
+    )
+    writer.image(
+        SCHEME_ASSETS / "12_center_interceptor_direct_registration.png",
+        "图4.5-3  中心源航迹向机载局部航迹的投影和一一交接",
+    )
+    writer.heading("中心交接保存回放结果", level=4)
+    writer.table(
+        ("场景", "正确绑定", "错误绑定", "精度", "召回率", "原复算时间"),
+        handover_rows,
+        widths=(1.2, 0.85, 0.85, 0.8, 0.8, 1.2),
+        font_size=8.4,
+    )
+    writer.paragraph(
+        "中心交接结果沿用三组已有匿名观测，与4.4的100%正确线索搜索矩阵属于不同专项，不混合统计。20目标/8机和20目标/30机没有错误绑定；40目标/50机形成31条正确绑定和1条错误绑定。旧回放没有保存导航、机体和云台误差序列，因此该表不能作为非零姿态误差条件下的稳定性结论。"
+    )
+
+    writer.heading("4.5.5 拦截无人机之间的配准")
+    writer.paragraph(
+        "各机先在本相机内把匿名检测连接成局部短航迹。两条航迹按测量时刻对齐后，将检测中心反投影为空间单位视线，计算多个时刻的双视线交会、重投影误差和运动一致性。硬门控检查时间差、交会角、视线分离、重投影、运动拟合和目标尺度。通过门控的候选使用几何代价，或由图神经网络给出同目标概率并修正代价；最终仍执行相机对内匈牙利一一分配、最近3帧至少2帧确认和同一相机唯一性约束。"
+    )
+    writer.image(
+        TERMINAL_ASSETS / "10_crossview_rays.png",
+        "图4.5-4  两机视线交会与多时刻运动核对",
+    )
+    writer.paragraph(
+        "相机数量增加后，先按责任区和实际视场重叠构建稀疏相机关系。无共同视场的相机对不进入精细计算。确认的局部关系再合并为目标簇，同一目标簇不允许出现同一相机的两条航迹；成熟目标簇合并需要多个不同相机对共同支持，防止一条偶然错误关系扩散到整个目标簇。"
+    )
+    writer.image(
+        SCHEME_ASSETS / "11_multicamera_subset_scenario.png",
+        "图4.5-5  多架拦截无人机分别观察不同目标子集",
+    )
+
+    writer.heading("4.5.6 图网络诊断参数")
+    writer.paragraph(
+        "图网络只在通过硬门控的候选中调整排序，不读取真实目标编号，也不能恢复被时间或几何门限拒绝的关系。本轮只搜索图网络概率阈值、几何与图网络融合权重和未匹配代价，网络权重、硬门控、一一匹配和多帧确认均保持不变。"
+    )
+    writer.table(
+        ("参数", "搜索范围", "选定值"),
+        parameter_rows,
+        widths=(1.7, 3.1, 1.2),
+        font_size=8.6,
+    )
+    writer.paragraph(
+        "选定值为图网络概率阈值0.05、图网络融合权重0.25、未匹配代价0.85。36组组合直接在三组随机种子20260816的单次保存回放上择优，属于同批诊断，不是独立留出验证。该参数只能用于说明图网络在已有歧义候选上的可能作用，不能据此替换默认方法。"
+    )
+
+    writer.heading("4.5.7 评价口径与结果")
+    writer.paragraph(
+        "评价分母只包含至少被两台相机看到、具备配准机会的真实目标。航迹关系精度统计输出关系中正确关系的比例。每目标等权纯度表示一个目标最佳目标簇中有多少成员确属该目标；每目标等权完整度表示该目标应合并的局部航迹有多少进入最佳目标簇。每个目标只计一次。独立纯净目标簇要求该目标全部可评分航迹进入同一簇且没有混入其他目标。另行统计身份混合目标数和未完成配准目标数。"
+    )
+    writer.image(
+        TERMINAL_ASSETS / "15_terminal_target_metric.png",
+        "图4.5-6  关系级与目标级配准评价口径",
+    )
+    writer.table(
+        (
+            "场景",
+            "方法",
+            "机会目标",
+            "关系精度",
+            "等权纯度",
+            "等权完整度",
+            "独立纯净簇比例",
+            "混合目标",
+            "未完成目标",
+        ),
+        metric_rows,
+        widths=(0.75, 0.85, 0.55, 0.65, 0.65, 0.65, 0.75, 0.55, 0.65),
+        font_size=6.7,
+    )
+    writer.table(
+        ("场景", "方法", "保留相机对", "候选边", "无缓存耗时"),
+        runtime_rows,
+        widths=(1.15, 1.2, 1.15, 1.2, 1.25),
+        font_size=8.2,
+    )
+    writer.image(
+        TERMINAL_ASSETS / "12_terminal_metric_comparison.png",
+        "图4.5-7  稀疏几何与同批择优图网络的目标级结果",
+    )
+    writer.paragraph(
+        "20目标/30机中，图网络把关系精度由0.7402提高到0.9736，身份混合目标由7个降为0，等权完整度为0.9587，说明该场景的歧义候选排序获得了明显改善。20目标/8机中，图网络虽然保持关系精度1.0000，但等权完整度降至0.2500，并有15个目标未完成配准。40目标/50机中，图网络关系精度由0.9960小幅提高到0.9971，等权完整度却由0.9710降至0.5666。"
+    )
+
+    writer.heading("4.5.8 阶段判断")
+    writer.paragraph(
+        "完整旋转链、安装偏移、测量时刻状态和联合误差传播已经形成可测试计算关系。旧AirSim回放只验证合成相机位姿和零安装偏移兼容路径，导航误差、机体姿态误差、云台角误差和时间漂移仍需重新注入。"
+    )
+    writer.paragraph(
+        "当前默认方法继续采用责任区与实际视场稀疏候选、硬几何门控、匈牙利一一分配和多帧确认。图网络在20目标/30机场景改善明显，在另外两个场景损失较多完整度；同批单随机种子择优也不具备独立验证效力。现有证据不支持图网络全面优于几何方法或替换默认路径。"
+    )
+
+
+def validate_integrated_content(document: Document) -> None:
+    expected_headings = (
+        *(f"4.1.{index}" for index in range(1, 12)),
         *(f"4.4.{index}" for index in range(1, 9)),
         *(f"4.5.{index}" for index in range(1, 9)),
     )
-    for prefix in expected:
-        find_paragraph(document, prefix)
+    for number in expected_headings:
+        find_numbered_heading(document, number)
+
+    section_41 = target_text(document, "4.1 侦察的想法", "4.2 火指控的想法")
+    section_44 = target_text(document, "4.4 拦截区域搜索", "4.5 群对群目标配准")
+    section_45 = target_text(document, "4.5 群对群目标配准", "4.3.6 主动降级与分级目标分配")
+
+    required_41 = (
+        "360度理想单站",
+        "360度实际单站",
+        "180度扫描",
+        "最后一圈或最后一轮",
+        "1000毫秒",
+        "99.3%",
+        "98.7%",
+        "主要限制",
+    )
+    required_44 = (
+        "精度和召回率均为100%",
+        "每个目标恰有一条正确线索",
+        "三倍标准差",
+        "实际视场足迹",
+        "45组",
+        "真实身份泄漏数为0",
+        "未重新启动AirSim",
+    )
+    required_45 = (
+        "p_C = R_C^G R_G^B R_B^N (p_N − o_C^N)",
+        "测量时刻",
+        "安装偏移",
+        "导航位置误差",
+        "图网络概率阈值0.05",
+        "融合权重0.25",
+        "未匹配代价0.85",
+        "不是独立留出验证",
+        "默认方法继续采用",
+    )
+    for label, text, markers in (
+        ("4.1", section_41, required_41),
+        ("4.4", section_44, required_44),
+        ("4.5", section_45, required_45),
+    ):
+        missing = [marker for marker in markers if marker not in text]
+        if missing:
+            raise RuntimeError(f"integrated section {label} is missing {missing}")
+
+    forbidden = (
+        "增强型图神经网络",
+        "全相机",
+        "中心线索精度和召回率固定为80%",
+        "空白走廊单元",
+    )
+    combined = section_41 + section_44 + section_45
+    present = [marker for marker in forbidden if marker in combined]
+    if present:
+        raise RuntimeError(f"integrated sections retain superseded wording: {present}")
 
 
-def integrate(document_path: Path, output_path: Path, backup_path: Path | None) -> tuple[str, str]:
+def choose_backup_path(document_path: Path, before_sha: str, requested: Path | None) -> Path:
+    if requested is not None:
+        return requested.resolve()
+    BACKUP_DIR.mkdir(parents=True, exist_ok=True)
+    return BACKUP_DIR / f"{document_path.stem}.{before_sha[:16]}.docx"
+
+
+def backup_document(document_path: Path, backup_path: Path) -> None:
+    backup_path.parent.mkdir(parents=True, exist_ok=True)
+    if backup_path.exists():
+        if sha256(backup_path) != sha256(document_path):
+            raise RuntimeError(f"backup path already contains a different document: {backup_path}")
+        return
+    shutil.copy2(document_path, backup_path)
+
+
+def integrate(document_path: Path, output_path: Path, requested_backup: Path | None) -> dict[str, object]:
     if not document_path.is_file():
         raise FileNotFoundError(document_path)
-    verify_reviewed_sources()
-    for asset in (
-        "01_epipolar_geometry.png",
-        "02_gnn_matching_process.png",
-        "03_gnn_message_passing.png",
-        "04_gnn_assignment_example.png",
-        "05_joint_fit_reprojection.png",
-        "06_candidate_graph_assignment.png",
-        "07_v4_20target_results_cn.png",
-        "08_center_interceptor_search_architecture.png",
-        "09_interceptor_search_cell_allocation.png",
-        "10_search_probability_update.png",
-        "12_center_interceptor_direct_registration.png",
-        "13_airsim_validation_chain.png",
-        "14_airsim_search_capacity.png",
-        "15_airsim_search_results.png",
-        "16_airsim_handover_results.png",
-        "17_airsim_camera_pair_sparsification.png",
-        "18_airsim_crossview_comparison.png",
-    ):
-        if not (ASSET_DIR / asset).is_file():
-            raise FileNotFoundError(ASSET_DIR / asset)
+    evidence = verify_reviewed_sources()
 
-    if backup_path is not None:
-        backup_path.parent.mkdir(parents=True, exist_ok=True)
-        shutil.copy2(document_path, backup_path)
+    before_sha = sha256(document_path)
+    backup_path = choose_backup_path(document_path, before_sha, requested_backup)
+    backup_document(document_path, backup_path)
+    package_before = package_hashes(document_path)
 
     document = Document(document_path)
     styles = style_samples(document)
-    existing_images = capture_existing_images(document)
     outside_before = outside_target_hash(document)
 
     heading_41 = find_paragraph(document, "4.1 侦察的想法")
@@ -1047,30 +1107,44 @@ def integrate(document_path: Path, output_path: Path, backup_path: Path | None) 
     remove_between(heading_44, heading_45)
     remove_between(heading_45, heading_after_45)
 
-    write_section_41(SectionWriter(document, heading_42, styles))
-    write_section_44(SectionWriter(document, heading_45, styles), existing_images["region_repartition"])
-    write_section_45(
-        SectionWriter(document, heading_after_45, styles),
-        (
-            existing_images["multicamera_subset"],
-            existing_images["multicamera_flow"],
-            existing_images["hungarian"],
-            existing_images["gnn"],
-        ),
-    )
+    write_section_41(SectionWriter(document, heading_42, styles), evidence)
+    write_section_44(SectionWriter(document, heading_45, styles))
+    write_section_45(SectionWriter(document, heading_after_45, styles))
+    validate_integrated_content(document)
 
-    validate_target_headings(document)
-    outside_after = outside_target_hash(document)
-    if outside_before != outside_after:
-        raise RuntimeError("content outside 4.1, 4.4 and 4.5 changed during integration")
-    set_a4_page_size(document)
+    outside_after_in_memory = outside_target_hash(document)
+    if outside_before != outside_after_in_memory:
+        raise RuntimeError("content outside sections 4.1, 4.4 and 4.5 changed in memory")
 
     output_path.parent.mkdir(parents=True, exist_ok=True)
     temporary = output_path.with_name(output_path.name + ".tmp.docx")
+    if temporary.exists():
+        temporary.unlink()
     document.save(temporary)
-    Document(temporary)
+
+    saved = Document(temporary)
+    validate_integrated_content(saved)
+    outside_after_saved = outside_target_hash(saved)
+    if outside_before != outside_after_saved:
+        temporary.unlink(missing_ok=True)
+        raise RuntimeError("saved document changed body content outside sections 4.1, 4.4 and 4.5")
+
+    package_after = package_hashes(temporary)
+    package_result = verify_package_preservation(package_before, package_after)
     os.replace(temporary, output_path)
-    return outside_before, outside_after
+
+    return {
+        "document": str(output_path),
+        "backup": str(backup_path),
+        "sha256_before": before_sha,
+        "sha256_after": sha256(output_path),
+        "started_from_expected_original": before_sha == EXPECTED_ORIGINAL_SHA256,
+        "outside_sha256_before": outside_before,
+        "outside_sha256_after_in_memory": outside_after_in_memory,
+        "outside_sha256_after_saved": outside_after_saved,
+        "dual_matrix_groups": evidence["matrix_completeness"]["total_group_count"],
+        **package_result,
+    }
 
 
 def main() -> None:
@@ -1082,17 +1156,12 @@ def main() -> None:
 
     document_path = args.document.resolve()
     output_path = (args.output or document_path).resolve()
-    backup_path = args.backup.resolve() if args.backup else None
-    before = sha256(document_path)
-    outside_before, outside_after = integrate(document_path, output_path, backup_path)
-    after = sha256(output_path)
-    print(f"document={output_path}")
-    print(f"sha256_before={before}")
-    print(f"sha256_after={after}")
-    print(f"outside_sha256_before={outside_before}")
-    print(f"outside_sha256_after={outside_after}")
-    if backup_path:
-        print(f"backup={backup_path}")
+    result = integrate(document_path, output_path, args.backup)
+    for key, value in result.items():
+        if isinstance(value, list):
+            print(f"{key}={','.join(map(str, value))}")
+        else:
+            print(f"{key}={value}")
 
 
 if __name__ == "__main__":

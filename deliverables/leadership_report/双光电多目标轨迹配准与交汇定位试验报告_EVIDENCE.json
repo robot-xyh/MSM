@@ -1,1089 +1,1746 @@
 {
-  "schema_version": "dual-optical-leadership-report-evidence-v5",
-  "generated_at": "2026-08-18T16:04:28.700228+00:00",
+  "schema_version": "dual-optical-leadership-report-evidence-v6",
+  "generated_at": "2026-08-19T16:09:33.786610+00:00",
   "report": "deliverables/leadership_report/双光电多目标轨迹配准与交汇定位试验报告_CN.md",
-  "reporting_policy": {
-    "window": "final_round",
-    "s180_round": 12,
-    "continuous_360_revolution": 6,
-    "reported_metrics": [
-      "association_precision",
-      "fixed_target_coverage",
-      "final_window_end_to_end_latency_p95_ms"
-    ],
-    "latency_policy": "P95 of end_to_end_ms across exactly five scenes in the reported final round or revolution; timed-out scenes remain included",
-    "s180_routes": [
-      "epipolar_mht",
-      "gnn",
-      "track_superglue"
-    ]
+  "authoritative_matrix_run": "research_modules/independent_experiments/dual_optical_online_benchmark/outputs/report_replay_20260819_v2",
+  "matrix_completeness": {
+    "complete": true,
+    "continuous_360_group_count": 24,
+    "oracle_360_group_count": 6,
+    "s180_group_count": 24,
+    "seed_count_per_group": 5,
+    "total_group_count": 54
   },
-  "ideal_360_single_station_matrix": {
-    "status": "pending_test_no_machine_evidence",
-    "scan_span_deg": 360.0,
-    "target_counts": [
-      20,
-      40,
-      60
-    ],
+  "reporting_policy": {
+    "summary_window": "last_revolution_or_last_round",
+    "continuous_360_final_round": 6,
+    "s180_final_round": 12,
+    "seed_count_per_group": 5,
+    "deadline_ms": 1000.0,
+    "quality_after_deadline_retained": true,
+    "late_result_on_time_coverage": 0.0,
+    "single_station_precision": "dominant real observations / all labeled observations at both stations",
+    "single_station_coverage": "identity-correct local tracks / (2 * fixed target count)",
+    "dual_station_precision": "correct confirmed relations / all confirmed relations",
+    "dual_station_coverage": "unique correctly confirmed targets / fixed target count",
     "routes": [
       "epipolar_mht",
-      "gnn",
-      "track_superglue"
-    ],
-    "rows": [
-      {
-        "target_count": 20,
-        "route_name": "epipolar_mht",
-        "route_label_cn": "几何方法",
-        "association_precision": null,
-        "fixed_target_coverage": null,
-        "latency_p95_ms": null,
-        "evidence_status": "pending_test_no_machine_evidence"
-      },
-      {
-        "target_count": 20,
-        "route_name": "gnn",
-        "route_label_cn": "图神经网络",
-        "association_precision": null,
-        "fixed_target_coverage": null,
-        "latency_p95_ms": null,
-        "evidence_status": "pending_test_no_machine_evidence"
-      },
-      {
-        "target_count": 20,
-        "route_name": "track_superglue",
-        "route_label_cn": "增强型图神经网络（航迹级注意力）",
-        "association_precision": null,
-        "fixed_target_coverage": null,
-        "latency_p95_ms": null,
-        "evidence_status": "pending_test_no_machine_evidence"
-      },
-      {
-        "target_count": 40,
-        "route_name": "epipolar_mht",
-        "route_label_cn": "几何方法",
-        "association_precision": null,
-        "fixed_target_coverage": null,
-        "latency_p95_ms": null,
-        "evidence_status": "pending_test_no_machine_evidence"
-      },
-      {
-        "target_count": 40,
-        "route_name": "gnn",
-        "route_label_cn": "图神经网络",
-        "association_precision": null,
-        "fixed_target_coverage": null,
-        "latency_p95_ms": null,
-        "evidence_status": "pending_test_no_machine_evidence"
-      },
-      {
-        "target_count": 40,
-        "route_name": "track_superglue",
-        "route_label_cn": "增强型图神经网络（航迹级注意力）",
-        "association_precision": null,
-        "fixed_target_coverage": null,
-        "latency_p95_ms": null,
-        "evidence_status": "pending_test_no_machine_evidence"
-      },
-      {
-        "target_count": 60,
-        "route_name": "epipolar_mht",
-        "route_label_cn": "几何方法",
-        "association_precision": null,
-        "fixed_target_coverage": null,
-        "latency_p95_ms": null,
-        "evidence_status": "pending_test_no_machine_evidence"
-      },
-      {
-        "target_count": 60,
-        "route_name": "gnn",
-        "route_label_cn": "图神经网络",
-        "association_precision": null,
-        "fixed_target_coverage": null,
-        "latency_p95_ms": null,
-        "evidence_status": "pending_test_no_machine_evidence"
-      },
-      {
-        "target_count": 60,
-        "route_name": "track_superglue",
-        "route_label_cn": "增强型图神经网络（航迹级注意力）",
-        "association_precision": null,
-        "fixed_target_coverage": null,
-        "latency_p95_ms": null,
-        "evidence_status": "pending_test_no_machine_evidence"
-      }
-    ],
-    "prohibited_substitutions": [
-      "s180 ideal-local-track evidence",
-      "correct-local-track conditional subsets",
-      "the single-seed 40-target ranging demonstration"
+      "gnn"
     ]
   },
-  "s180_final_round_rows": [
+  "matrix_summary_rows": [
     {
+      "condition": "clean",
+      "correct_match_count": 66,
+      "dual_station_residual_loss_count": 18,
+      "evidence_statuses": [
+        "offline_replay"
+      ],
+      "latency_p95_ms": 1702.225114000612,
+      "offline_completed_coverage": 0.66,
+      "offline_completed_precision": 0.8571428571428571,
+      "on_time_coverage": 0.0,
+      "output_match_count": 77,
+      "profile": "continuous_360",
+      "protocol_bridge_applied": false,
+      "route_name": "epipolar_mht",
+      "sample_count": 5,
+      "seeds": [
+        20282201,
+        20282202,
+        20282203,
+        20282204,
+        20282205
+      ],
+      "single_station_coverage": 0.915,
+      "single_station_duplicate_track_count": 4,
+      "single_station_missing_identity_count": 17,
+      "single_station_mixed_track_count": 38,
+      "single_station_precision": 0.9467802022352315,
       "target_count": 20,
-      "corruption_level": "clean",
-      "window": "final_round",
-      "route": "epipolar_mht",
-      "evidence_status": "正式",
-      "test_seed_count": 5,
-      "confirmed_output_available": false,
-      "association_precision": 0.0,
-      "fixed_target_coverage": 0.0,
-      "latency_p95_ms": 2067.466203402728,
-      "deadline_miss_count": 5,
-      "tracker_acceptance_passed": true,
-      "tracker_failure_reasons": []
+      "timeout_count": 5
     },
     {
+      "condition": "clean",
+      "correct_match_count": 56,
+      "dual_station_residual_loss_count": 28,
+      "evidence_statuses": [
+        "offline_replay"
+      ],
+      "latency_p95_ms": 76.64294500136748,
+      "offline_completed_coverage": 0.56,
+      "offline_completed_precision": 0.7466666666666667,
+      "on_time_coverage": 0.56,
+      "output_match_count": 75,
+      "profile": "continuous_360",
+      "protocol_bridge_applied": false,
+      "route_name": "gnn",
+      "sample_count": 5,
+      "seeds": [
+        20282201,
+        20282202,
+        20282203,
+        20282204,
+        20282205
+      ],
+      "single_station_coverage": 0.915,
+      "single_station_duplicate_track_count": 4,
+      "single_station_missing_identity_count": 17,
+      "single_station_mixed_track_count": 38,
+      "single_station_precision": 0.9467802022352315,
       "target_count": 20,
-      "corruption_level": "clean",
-      "window": "final_round",
-      "route": "gnn",
-      "evidence_status": "正式",
-      "test_seed_count": 5,
-      "confirmed_output_available": true,
-      "association_precision": 0.978021978021978,
-      "fixed_target_coverage": 0.89,
-      "latency_p95_ms": 100.38801557384431,
-      "deadline_miss_count": 0,
-      "tracker_acceptance_passed": true,
-      "tracker_failure_reasons": []
+      "timeout_count": 0
     },
     {
+      "condition": "heavy",
+      "correct_match_count": 40,
+      "dual_station_residual_loss_count": 21,
+      "evidence_statuses": [
+        "offline_replay"
+      ],
+      "latency_p95_ms": 3162.7678770018974,
+      "offline_completed_coverage": 0.4,
+      "offline_completed_precision": 0.7407407407407407,
+      "on_time_coverage": 0.0,
+      "output_match_count": 54,
+      "profile": "continuous_360",
+      "protocol_bridge_applied": false,
+      "route_name": "epipolar_mht",
+      "sample_count": 5,
+      "seeds": [
+        20282201,
+        20282202,
+        20282203,
+        20282204,
+        20282205
+      ],
+      "single_station_coverage": 0.785,
+      "single_station_duplicate_track_count": 2,
+      "single_station_missing_identity_count": 43,
+      "single_station_mixed_track_count": 89,
+      "single_station_precision": 0.47432216905901115,
       "target_count": 20,
-      "corruption_level": "clean",
-      "window": "final_round",
-      "route": "track_superglue",
-      "evidence_status": "正式",
-      "test_seed_count": 5,
-      "confirmed_output_available": true,
-      "association_precision": 0.8850574712643678,
-      "fixed_target_coverage": 0.77,
-      "latency_p95_ms": 379.8965623835102,
-      "deadline_miss_count": 0,
-      "tracker_acceptance_passed": true,
-      "tracker_failure_reasons": []
+      "timeout_count": 5
     },
     {
+      "condition": "heavy",
+      "correct_match_count": 34,
+      "dual_station_residual_loss_count": 27,
+      "evidence_statuses": [
+        "offline_replay"
+      ],
+      "latency_p95_ms": 165.76083499967353,
+      "offline_completed_coverage": 0.34,
+      "offline_completed_precision": 0.5483870967741935,
+      "on_time_coverage": 0.34,
+      "output_match_count": 62,
+      "profile": "continuous_360",
+      "protocol_bridge_applied": false,
+      "route_name": "gnn",
+      "sample_count": 5,
+      "seeds": [
+        20282201,
+        20282202,
+        20282203,
+        20282204,
+        20282205
+      ],
+      "single_station_coverage": 0.785,
+      "single_station_duplicate_track_count": 2,
+      "single_station_missing_identity_count": 43,
+      "single_station_mixed_track_count": 89,
+      "single_station_precision": 0.47432216905901115,
       "target_count": 20,
-      "corruption_level": "light",
-      "window": "final_round",
-      "route": "epipolar_mht",
-      "evidence_status": "正式",
-      "test_seed_count": 5,
-      "confirmed_output_available": false,
-      "association_precision": 0.0,
-      "fixed_target_coverage": 0.0,
-      "latency_p95_ms": 1950.5821520695463,
-      "deadline_miss_count": 5,
-      "tracker_acceptance_passed": true,
-      "tracker_failure_reasons": []
+      "timeout_count": 0
     },
     {
+      "condition": "light",
+      "correct_match_count": 59,
+      "dual_station_residual_loss_count": 15,
+      "evidence_statuses": [
+        "offline_replay"
+      ],
+      "latency_p95_ms": 1983.148554001673,
+      "offline_completed_coverage": 0.59,
+      "offline_completed_precision": 0.8805970149253731,
+      "on_time_coverage": 0.0,
+      "output_match_count": 67,
+      "profile": "continuous_360",
+      "protocol_bridge_applied": false,
+      "route_name": "epipolar_mht",
+      "sample_count": 5,
+      "seeds": [
+        20282201,
+        20282202,
+        20282203,
+        20282204,
+        20282205
+      ],
+      "single_station_coverage": 0.865,
+      "single_station_duplicate_track_count": 2,
+      "single_station_missing_identity_count": 27,
+      "single_station_mixed_track_count": 52,
+      "single_station_precision": 0.8020446096654275,
       "target_count": 20,
-      "corruption_level": "light",
-      "window": "final_round",
-      "route": "gnn",
-      "evidence_status": "正式",
-      "test_seed_count": 5,
-      "confirmed_output_available": true,
-      "association_precision": 0.8390804597701149,
-      "fixed_target_coverage": 0.73,
-      "latency_p95_ms": 108.80469877738506,
-      "deadline_miss_count": 0,
-      "tracker_acceptance_passed": true,
-      "tracker_failure_reasons": []
+      "timeout_count": 5
     },
     {
+      "condition": "light",
+      "correct_match_count": 51,
+      "dual_station_residual_loss_count": 23,
+      "evidence_statuses": [
+        "offline_replay"
+      ],
+      "latency_p95_ms": 94.22590299800504,
+      "offline_completed_coverage": 0.51,
+      "offline_completed_precision": 0.6986301369863014,
+      "on_time_coverage": 0.51,
+      "output_match_count": 73,
+      "profile": "continuous_360",
+      "protocol_bridge_applied": false,
+      "route_name": "gnn",
+      "sample_count": 5,
+      "seeds": [
+        20282201,
+        20282202,
+        20282203,
+        20282204,
+        20282205
+      ],
+      "single_station_coverage": 0.865,
+      "single_station_duplicate_track_count": 2,
+      "single_station_missing_identity_count": 27,
+      "single_station_mixed_track_count": 52,
+      "single_station_precision": 0.8020446096654275,
       "target_count": 20,
-      "corruption_level": "light",
-      "window": "final_round",
-      "route": "track_superglue",
-      "evidence_status": "正式",
-      "test_seed_count": 5,
-      "confirmed_output_available": true,
-      "association_precision": 0.8876404494382022,
-      "fixed_target_coverage": 0.79,
-      "latency_p95_ms": 401.28640476614237,
-      "deadline_miss_count": 0,
-      "tracker_acceptance_passed": true,
-      "tracker_failure_reasons": []
+      "timeout_count": 0
     },
     {
+      "condition": "medium",
+      "correct_match_count": 51,
+      "dual_station_residual_loss_count": 17,
+      "evidence_statuses": [
+        "offline_replay"
+      ],
+      "latency_p95_ms": 2421.1869870014198,
+      "offline_completed_coverage": 0.51,
+      "offline_completed_precision": 0.8225806451612904,
+      "on_time_coverage": 0.0,
+      "output_match_count": 62,
+      "profile": "continuous_360",
+      "protocol_bridge_applied": false,
+      "route_name": "epipolar_mht",
+      "sample_count": 5,
+      "seeds": [
+        20282201,
+        20282202,
+        20282203,
+        20282204,
+        20282205
+      ],
+      "single_station_coverage": 0.84,
+      "single_station_duplicate_track_count": 1,
+      "single_station_missing_identity_count": 32,
+      "single_station_mixed_track_count": 72,
+      "single_station_precision": 0.6484312148028962,
+      "target_count": 20,
+      "timeout_count": 5
+    },
+    {
+      "condition": "medium",
+      "correct_match_count": 40,
+      "dual_station_residual_loss_count": 28,
+      "evidence_statuses": [
+        "offline_replay"
+      ],
+      "latency_p95_ms": 121.35436400058097,
+      "offline_completed_coverage": 0.4,
+      "offline_completed_precision": 0.5970149253731343,
+      "on_time_coverage": 0.4,
+      "output_match_count": 67,
+      "profile": "continuous_360",
+      "protocol_bridge_applied": false,
+      "route_name": "gnn",
+      "sample_count": 5,
+      "seeds": [
+        20282201,
+        20282202,
+        20282203,
+        20282204,
+        20282205
+      ],
+      "single_station_coverage": 0.84,
+      "single_station_duplicate_track_count": 1,
+      "single_station_missing_identity_count": 32,
+      "single_station_mixed_track_count": 72,
+      "single_station_precision": 0.6484312148028962,
+      "target_count": 20,
+      "timeout_count": 0
+    },
+    {
+      "condition": "clean",
+      "correct_match_count": 83,
+      "dual_station_residual_loss_count": 48,
+      "evidence_statuses": [
+        "offline_replay_diagnostic"
+      ],
+      "latency_p95_ms": 4111.028073002672,
+      "offline_completed_coverage": 0.415,
+      "offline_completed_precision": 0.5971223021582733,
+      "on_time_coverage": 0.0,
+      "output_match_count": 139,
+      "profile": "continuous_360",
+      "protocol_bridge_applied": false,
+      "route_name": "epipolar_mht",
+      "sample_count": 5,
+      "seeds": [
+        20284201,
+        20284202,
+        20284203,
+        20284204,
+        20284205
+      ],
+      "single_station_coverage": 0.8025,
+      "single_station_duplicate_track_count": 5,
+      "single_station_missing_identity_count": 79,
+      "single_station_mixed_track_count": 137,
+      "single_station_precision": 0.8892998678996037,
       "target_count": 40,
-      "corruption_level": "clean",
-      "window": "final_round",
-      "route": "epipolar_mht",
-      "evidence_status": "诊断",
-      "test_seed_count": 5,
-      "confirmed_output_available": false,
-      "association_precision": 0.0,
-      "fixed_target_coverage": 0.0,
-      "latency_p95_ms": 5174.160856986418,
-      "deadline_miss_count": 5,
-      "tracker_acceptance_passed": false,
-      "tracker_failure_reasons": [
-        "false_reactivation_rate_absolute"
-      ]
+      "timeout_count": 5
     },
     {
+      "condition": "clean",
+      "correct_match_count": 101,
+      "dual_station_residual_loss_count": 30,
+      "evidence_statuses": [
+        "offline_replay_diagnostic"
+      ],
+      "latency_p95_ms": 199.8295830017014,
+      "offline_completed_coverage": 0.505,
+      "offline_completed_precision": 0.7651515151515151,
+      "on_time_coverage": 0.505,
+      "output_match_count": 132,
+      "profile": "continuous_360",
+      "protocol_bridge_applied": false,
+      "route_name": "gnn",
+      "sample_count": 5,
+      "seeds": [
+        20284201,
+        20284202,
+        20284203,
+        20284204,
+        20284205
+      ],
+      "single_station_coverage": 0.8025,
+      "single_station_duplicate_track_count": 5,
+      "single_station_missing_identity_count": 79,
+      "single_station_mixed_track_count": 137,
+      "single_station_precision": 0.8892998678996037,
       "target_count": 40,
-      "corruption_level": "clean",
-      "window": "final_round",
-      "route": "gnn",
-      "evidence_status": "诊断",
-      "test_seed_count": 5,
-      "confirmed_output_available": true,
-      "association_precision": 0.8956043956043956,
-      "fixed_target_coverage": 0.8150000000000001,
-      "latency_p95_ms": 292.34432361554354,
-      "deadline_miss_count": 0,
-      "tracker_acceptance_passed": false,
-      "tracker_failure_reasons": [
-        "false_reactivation_rate_absolute"
-      ]
+      "timeout_count": 0
     },
     {
+      "condition": "heavy",
+      "correct_match_count": 50,
+      "dual_station_residual_loss_count": 43,
+      "evidence_statuses": [
+        "offline_replay_diagnostic"
+      ],
+      "latency_p95_ms": 5775.8221680014685,
+      "offline_completed_coverage": 0.25,
+      "offline_completed_precision": 0.6024096385542169,
+      "on_time_coverage": 0.0,
+      "output_match_count": 83,
+      "profile": "continuous_360",
+      "protocol_bridge_applied": false,
+      "route_name": "epipolar_mht",
+      "sample_count": 5,
+      "seeds": [
+        20284201,
+        20284202,
+        20284203,
+        20284204,
+        20284205
+      ],
+      "single_station_coverage": 0.6725,
+      "single_station_duplicate_track_count": 3,
+      "single_station_missing_identity_count": 131,
+      "single_station_mixed_track_count": 219,
+      "single_station_precision": 0.5754991680532446,
       "target_count": 40,
-      "corruption_level": "clean",
-      "window": "final_round",
-      "route": "track_superglue",
-      "evidence_status": "诊断",
-      "test_seed_count": 5,
-      "confirmed_output_available": true,
-      "association_precision": 0.7748344370860927,
-      "fixed_target_coverage": 0.585,
-      "latency_p95_ms": 972.6906284224242,
-      "deadline_miss_count": 0,
-      "tracker_acceptance_passed": false,
-      "tracker_failure_reasons": [
-        "false_reactivation_rate_absolute"
-      ]
+      "timeout_count": 5
     },
     {
+      "condition": "heavy",
+      "correct_match_count": 38,
+      "dual_station_residual_loss_count": 55,
+      "evidence_statuses": [
+        "offline_replay_diagnostic"
+      ],
+      "latency_p95_ms": 270.551465000608,
+      "offline_completed_coverage": 0.19,
+      "offline_completed_precision": 0.4691358024691358,
+      "on_time_coverage": 0.19,
+      "output_match_count": 81,
+      "profile": "continuous_360",
+      "protocol_bridge_applied": false,
+      "route_name": "gnn",
+      "sample_count": 5,
+      "seeds": [
+        20284201,
+        20284202,
+        20284203,
+        20284204,
+        20284205
+      ],
+      "single_station_coverage": 0.6725,
+      "single_station_duplicate_track_count": 3,
+      "single_station_missing_identity_count": 131,
+      "single_station_mixed_track_count": 219,
+      "single_station_precision": 0.5754991680532446,
       "target_count": 40,
-      "corruption_level": "light",
-      "window": "final_round",
-      "route": "epipolar_mht",
-      "evidence_status": "诊断",
-      "test_seed_count": 5,
-      "confirmed_output_available": false,
-      "association_precision": 0.0,
-      "fixed_target_coverage": 0.0,
-      "latency_p95_ms": 5022.261646063998,
-      "deadline_miss_count": 5,
-      "tracker_acceptance_passed": false,
-      "tracker_failure_reasons": [
-        "false_reactivation_rate_absolute"
-      ]
+      "timeout_count": 0
     },
     {
+      "condition": "light",
+      "correct_match_count": 74,
+      "dual_station_residual_loss_count": 49,
+      "evidence_statuses": [
+        "offline_replay_diagnostic"
+      ],
+      "latency_p95_ms": 4358.182985000894,
+      "offline_completed_coverage": 0.37,
+      "offline_completed_precision": 0.6434782608695652,
+      "on_time_coverage": 0.0,
+      "output_match_count": 115,
+      "profile": "continuous_360",
+      "protocol_bridge_applied": false,
+      "route_name": "epipolar_mht",
+      "sample_count": 5,
+      "seeds": [
+        20284201,
+        20284202,
+        20284203,
+        20284204,
+        20284205
+      ],
+      "single_station_coverage": 0.7825,
+      "single_station_duplicate_track_count": 5,
+      "single_station_missing_identity_count": 87,
+      "single_station_mixed_track_count": 156,
+      "single_station_precision": 0.8210262828535669,
       "target_count": 40,
-      "corruption_level": "light",
-      "window": "final_round",
-      "route": "gnn",
-      "evidence_status": "诊断",
-      "test_seed_count": 5,
-      "confirmed_output_available": true,
-      "association_precision": 0.8930817610062893,
-      "fixed_target_coverage": 0.71,
-      "latency_p95_ms": 270.2099348185584,
-      "deadline_miss_count": 0,
-      "tracker_acceptance_passed": false,
-      "tracker_failure_reasons": [
-        "false_reactivation_rate_absolute"
-      ]
+      "timeout_count": 5
     },
     {
+      "condition": "light",
+      "correct_match_count": 84,
+      "dual_station_residual_loss_count": 39,
+      "evidence_statuses": [
+        "offline_replay_diagnostic"
+      ],
+      "latency_p95_ms": 211.33936700061895,
+      "offline_completed_coverage": 0.42,
+      "offline_completed_precision": 0.65625,
+      "on_time_coverage": 0.42,
+      "output_match_count": 128,
+      "profile": "continuous_360",
+      "protocol_bridge_applied": false,
+      "route_name": "gnn",
+      "sample_count": 5,
+      "seeds": [
+        20284201,
+        20284202,
+        20284203,
+        20284204,
+        20284205
+      ],
+      "single_station_coverage": 0.7825,
+      "single_station_duplicate_track_count": 5,
+      "single_station_missing_identity_count": 87,
+      "single_station_mixed_track_count": 156,
+      "single_station_precision": 0.8210262828535669,
       "target_count": 40,
-      "corruption_level": "light",
-      "window": "final_round",
-      "route": "track_superglue",
-      "evidence_status": "诊断",
-      "test_seed_count": 5,
-      "confirmed_output_available": true,
-      "association_precision": 0.7905405405405406,
-      "fixed_target_coverage": 0.585,
-      "latency_p95_ms": 954.9561922671273,
-      "deadline_miss_count": 0,
-      "tracker_acceptance_passed": false,
-      "tracker_failure_reasons": [
-        "false_reactivation_rate_absolute"
-      ]
+      "timeout_count": 0
     },
     {
-      "target_count": 60,
-      "corruption_level": "clean",
-      "window": "final_round",
-      "route": "epipolar_mht",
-      "evidence_status": "诊断",
-      "test_seed_count": 5,
-      "confirmed_output_available": false,
-      "association_precision": 0.0,
-      "fixed_target_coverage": 0.0,
-      "latency_p95_ms": 9257.857385464013,
-      "deadline_miss_count": 5,
-      "tracker_acceptance_passed": false,
-      "tracker_failure_reasons": [
-        "false_reactivation_rate_absolute",
-        "sweep_runtime_p95_ms"
-      ]
+      "condition": "medium",
+      "correct_match_count": 52,
+      "dual_station_residual_loss_count": 35,
+      "evidence_statuses": [
+        "offline_replay_diagnostic"
+      ],
+      "latency_p95_ms": 4971.422718001122,
+      "offline_completed_coverage": 0.26,
+      "offline_completed_precision": 0.611764705882353,
+      "on_time_coverage": 0.0,
+      "output_match_count": 85,
+      "profile": "continuous_360",
+      "protocol_bridge_applied": false,
+      "route_name": "epipolar_mht",
+      "sample_count": 5,
+      "seeds": [
+        20284201,
+        20284202,
+        20284203,
+        20284204,
+        20284205
+      ],
+      "single_station_coverage": 0.6625,
+      "single_station_duplicate_track_count": 3,
+      "single_station_missing_identity_count": 135,
+      "single_station_mixed_track_count": 213,
+      "single_station_precision": 0.6757396449704142,
+      "target_count": 40,
+      "timeout_count": 5
     },
     {
-      "target_count": 60,
-      "corruption_level": "clean",
-      "window": "final_round",
-      "route": "gnn",
-      "evidence_status": "诊断",
-      "test_seed_count": 5,
-      "confirmed_output_available": true,
-      "association_precision": 0.9577464788732394,
-      "fixed_target_coverage": 0.9066666666666666,
-      "latency_p95_ms": 509.516286640428,
-      "deadline_miss_count": 0,
-      "tracker_acceptance_passed": false,
-      "tracker_failure_reasons": [
-        "false_reactivation_rate_absolute",
-        "sweep_runtime_p95_ms"
-      ]
+      "condition": "medium",
+      "correct_match_count": 52,
+      "dual_station_residual_loss_count": 35,
+      "evidence_statuses": [
+        "offline_replay_diagnostic"
+      ],
+      "latency_p95_ms": 234.58898499666248,
+      "offline_completed_coverage": 0.26,
+      "offline_completed_precision": 0.5591397849462365,
+      "on_time_coverage": 0.26,
+      "output_match_count": 93,
+      "profile": "continuous_360",
+      "protocol_bridge_applied": false,
+      "route_name": "gnn",
+      "sample_count": 5,
+      "seeds": [
+        20284201,
+        20284202,
+        20284203,
+        20284204,
+        20284205
+      ],
+      "single_station_coverage": 0.6625,
+      "single_station_duplicate_track_count": 3,
+      "single_station_missing_identity_count": 135,
+      "single_station_mixed_track_count": 213,
+      "single_station_precision": 0.6757396449704142,
+      "target_count": 40,
+      "timeout_count": 0
     },
     {
+      "condition": "clean",
+      "correct_match_count": 110,
+      "dual_station_residual_loss_count": 52,
+      "evidence_statuses": [
+        "offline_replay_diagnostic"
+      ],
+      "latency_p95_ms": 7269.393623999349,
+      "offline_completed_coverage": 0.36666666666666664,
+      "offline_completed_precision": 0.6111111111111112,
+      "on_time_coverage": 0.0,
+      "output_match_count": 180,
+      "profile": "continuous_360",
+      "protocol_bridge_applied": false,
+      "route_name": "epipolar_mht",
+      "sample_count": 5,
+      "seeds": [
+        20286201,
+        20286202,
+        20286203,
+        20286204,
+        20286205
+      ],
+      "single_station_coverage": 0.7316666666666667,
+      "single_station_duplicate_track_count": 4,
+      "single_station_missing_identity_count": 161,
+      "single_station_mixed_track_count": 249,
+      "single_station_precision": 0.8516695957820738,
       "target_count": 60,
-      "corruption_level": "clean",
-      "window": "final_round",
-      "route": "track_superglue",
-      "evidence_status": "诊断",
-      "test_seed_count": 5,
-      "confirmed_output_available": false,
-      "association_precision": 0.0,
-      "fixed_target_coverage": 0.0,
-      "latency_p95_ms": 1683.9215605985373,
-      "deadline_miss_count": 5,
-      "tracker_acceptance_passed": false,
-      "tracker_failure_reasons": [
-        "false_reactivation_rate_absolute",
-        "sweep_runtime_p95_ms"
-      ]
+      "timeout_count": 5
     },
     {
+      "condition": "clean",
+      "correct_match_count": 125,
+      "dual_station_residual_loss_count": 37,
+      "evidence_statuses": [
+        "offline_replay_diagnostic"
+      ],
+      "latency_p95_ms": 312.088237998978,
+      "offline_completed_coverage": 0.4166666666666667,
+      "offline_completed_precision": 0.7142857142857143,
+      "on_time_coverage": 0.4166666666666667,
+      "output_match_count": 175,
+      "profile": "continuous_360",
+      "protocol_bridge_applied": false,
+      "route_name": "gnn",
+      "sample_count": 5,
+      "seeds": [
+        20286201,
+        20286202,
+        20286203,
+        20286204,
+        20286205
+      ],
+      "single_station_coverage": 0.7316666666666667,
+      "single_station_duplicate_track_count": 4,
+      "single_station_missing_identity_count": 161,
+      "single_station_mixed_track_count": 249,
+      "single_station_precision": 0.8516695957820738,
       "target_count": 60,
-      "corruption_level": "light",
-      "window": "final_round",
-      "route": "epipolar_mht",
-      "evidence_status": "诊断",
-      "test_seed_count": 5,
-      "confirmed_output_available": false,
-      "association_precision": 0.0,
-      "fixed_target_coverage": 0.0,
-      "latency_p95_ms": 9063.332619238645,
-      "deadline_miss_count": 5,
-      "tracker_acceptance_passed": false,
-      "tracker_failure_reasons": [
-        "false_reactivation_rate_absolute",
-        "sweep_runtime_p95_ms"
-      ]
+      "timeout_count": 0
     },
     {
+      "condition": "heavy",
+      "correct_match_count": 68,
+      "dual_station_residual_loss_count": 47,
+      "evidence_statuses": [
+        "offline_replay_diagnostic"
+      ],
+      "latency_p95_ms": 8932.193082000595,
+      "offline_completed_coverage": 0.22666666666666666,
+      "offline_completed_precision": 0.4755244755244755,
+      "on_time_coverage": 0.0,
+      "output_match_count": 143,
+      "profile": "continuous_360",
+      "protocol_bridge_applied": false,
+      "route_name": "epipolar_mht",
+      "sample_count": 5,
+      "seeds": [
+        20286201,
+        20286202,
+        20286203,
+        20286204,
+        20286205
+      ],
+      "single_station_coverage": 0.6316666666666667,
+      "single_station_duplicate_track_count": 3,
+      "single_station_missing_identity_count": 221,
+      "single_station_mixed_track_count": 338,
+      "single_station_precision": 0.6202786377708979,
       "target_count": 60,
-      "corruption_level": "light",
-      "window": "final_round",
-      "route": "gnn",
-      "evidence_status": "诊断",
-      "test_seed_count": 5,
-      "confirmed_output_available": true,
-      "association_precision": 0.9461538461538461,
-      "fixed_target_coverage": 0.82,
-      "latency_p95_ms": 504.93680918589234,
-      "deadline_miss_count": 0,
-      "tracker_acceptance_passed": false,
-      "tracker_failure_reasons": [
-        "false_reactivation_rate_absolute",
-        "sweep_runtime_p95_ms"
-      ]
+      "timeout_count": 5
     },
     {
+      "condition": "heavy",
+      "correct_match_count": 67,
+      "dual_station_residual_loss_count": 48,
+      "evidence_statuses": [
+        "offline_replay_diagnostic"
+      ],
+      "latency_p95_ms": 395.58916900205077,
+      "offline_completed_coverage": 0.22333333333333333,
+      "offline_completed_precision": 0.5630252100840336,
+      "on_time_coverage": 0.22333333333333333,
+      "output_match_count": 119,
+      "profile": "continuous_360",
+      "protocol_bridge_applied": false,
+      "route_name": "gnn",
+      "sample_count": 5,
+      "seeds": [
+        20286201,
+        20286202,
+        20286203,
+        20286204,
+        20286205
+      ],
+      "single_station_coverage": 0.6316666666666667,
+      "single_station_duplicate_track_count": 3,
+      "single_station_missing_identity_count": 221,
+      "single_station_mixed_track_count": 338,
+      "single_station_precision": 0.6202786377708979,
       "target_count": 60,
-      "corruption_level": "light",
-      "window": "final_round",
-      "route": "track_superglue",
-      "evidence_status": "诊断",
-      "test_seed_count": 5,
-      "confirmed_output_available": false,
-      "association_precision": 0.0,
-      "fixed_target_coverage": 0.0,
-      "latency_p95_ms": 1686.1564628314227,
-      "deadline_miss_count": 5,
-      "tracker_acceptance_passed": false,
-      "tracker_failure_reasons": [
-        "false_reactivation_rate_absolute",
-        "sweep_runtime_p95_ms"
-      ]
+      "timeout_count": 0
+    },
+    {
+      "condition": "light",
+      "correct_match_count": 82,
+      "dual_station_residual_loss_count": 71,
+      "evidence_statuses": [
+        "offline_replay_diagnostic"
+      ],
+      "latency_p95_ms": 7564.756396997836,
+      "offline_completed_coverage": 0.2733333333333333,
+      "offline_completed_precision": 0.543046357615894,
+      "on_time_coverage": 0.0,
+      "output_match_count": 151,
+      "profile": "continuous_360",
+      "protocol_bridge_applied": false,
+      "route_name": "epipolar_mht",
+      "sample_count": 5,
+      "seeds": [
+        20286201,
+        20286202,
+        20286203,
+        20286204,
+        20286205
+      ],
+      "single_station_coverage": 0.7116666666666667,
+      "single_station_duplicate_track_count": 1,
+      "single_station_missing_identity_count": 173,
+      "single_station_mixed_track_count": 278,
+      "single_station_precision": 0.7851622874806801,
+      "target_count": 60,
+      "timeout_count": 5
+    },
+    {
+      "condition": "light",
+      "correct_match_count": 88,
+      "dual_station_residual_loss_count": 65,
+      "evidence_statuses": [
+        "offline_replay_diagnostic"
+      ],
+      "latency_p95_ms": 354.0808309990098,
+      "offline_completed_coverage": 0.29333333333333333,
+      "offline_completed_precision": 0.5641025641025641,
+      "on_time_coverage": 0.29333333333333333,
+      "output_match_count": 156,
+      "profile": "continuous_360",
+      "protocol_bridge_applied": false,
+      "route_name": "gnn",
+      "sample_count": 5,
+      "seeds": [
+        20286201,
+        20286202,
+        20286203,
+        20286204,
+        20286205
+      ],
+      "single_station_coverage": 0.7116666666666667,
+      "single_station_duplicate_track_count": 1,
+      "single_station_missing_identity_count": 173,
+      "single_station_mixed_track_count": 278,
+      "single_station_precision": 0.7851622874806801,
+      "target_count": 60,
+      "timeout_count": 0
+    },
+    {
+      "condition": "medium",
+      "correct_match_count": 99,
+      "dual_station_residual_loss_count": 55,
+      "evidence_statuses": [
+        "offline_replay_diagnostic"
+      ],
+      "latency_p95_ms": 8080.141358997935,
+      "offline_completed_coverage": 0.33,
+      "offline_completed_precision": 0.5657142857142857,
+      "on_time_coverage": 0.0,
+      "output_match_count": 175,
+      "profile": "continuous_360",
+      "protocol_bridge_applied": false,
+      "route_name": "epipolar_mht",
+      "sample_count": 5,
+      "seeds": [
+        20286201,
+        20286202,
+        20286203,
+        20286204,
+        20286205
+      ],
+      "single_station_coverage": 0.7133333333333334,
+      "single_station_duplicate_track_count": 2,
+      "single_station_missing_identity_count": 172,
+      "single_station_mixed_track_count": 276,
+      "single_station_precision": 0.7221945963865407,
+      "target_count": 60,
+      "timeout_count": 5
+    },
+    {
+      "condition": "medium",
+      "correct_match_count": 91,
+      "dual_station_residual_loss_count": 63,
+      "evidence_statuses": [
+        "offline_replay_diagnostic"
+      ],
+      "latency_p95_ms": 360.43639200215694,
+      "offline_completed_coverage": 0.30333333333333334,
+      "offline_completed_precision": 0.5833333333333334,
+      "on_time_coverage": 0.30333333333333334,
+      "output_match_count": 156,
+      "profile": "continuous_360",
+      "protocol_bridge_applied": false,
+      "route_name": "gnn",
+      "sample_count": 5,
+      "seeds": [
+        20286201,
+        20286202,
+        20286203,
+        20286204,
+        20286205
+      ],
+      "single_station_coverage": 0.7133333333333334,
+      "single_station_duplicate_track_count": 2,
+      "single_station_missing_identity_count": 172,
+      "single_station_mixed_track_count": 276,
+      "single_station_precision": 0.7221945963865407,
+      "target_count": 60,
+      "timeout_count": 0
+    },
+    {
+      "condition": "clean",
+      "correct_match_count": 93,
+      "dual_station_residual_loss_count": 7,
+      "evidence_statuses": [
+        "offline_oracle_diagnostic"
+      ],
+      "latency_p95_ms": 1557.4478809976426,
+      "offline_completed_coverage": 0.93,
+      "offline_completed_precision": 0.9893617021276596,
+      "on_time_coverage": 0.0,
+      "output_match_count": 94,
+      "profile": "oracle_360",
+      "protocol_bridge_applied": false,
+      "route_name": "epipolar_mht",
+      "sample_count": 5,
+      "seeds": [
+        20282201,
+        20282202,
+        20282203,
+        20282204,
+        20282205
+      ],
+      "single_station_coverage": 1.0,
+      "single_station_duplicate_track_count": 0,
+      "single_station_missing_identity_count": 0,
+      "single_station_mixed_track_count": 0,
+      "single_station_precision": 1.0,
+      "target_count": 20,
+      "timeout_count": 5
+    },
+    {
+      "condition": "clean",
+      "correct_match_count": 82,
+      "dual_station_residual_loss_count": 18,
+      "evidence_statuses": [
+        "offline_oracle_diagnostic"
+      ],
+      "latency_p95_ms": 70.90040700131794,
+      "offline_completed_coverage": 0.82,
+      "offline_completed_precision": 0.9111111111111111,
+      "on_time_coverage": 0.82,
+      "output_match_count": 90,
+      "profile": "oracle_360",
+      "protocol_bridge_applied": false,
+      "route_name": "gnn",
+      "sample_count": 5,
+      "seeds": [
+        20282201,
+        20282202,
+        20282203,
+        20282204,
+        20282205
+      ],
+      "single_station_coverage": 1.0,
+      "single_station_duplicate_track_count": 0,
+      "single_station_missing_identity_count": 0,
+      "single_station_mixed_track_count": 0,
+      "single_station_precision": 1.0,
+      "target_count": 20,
+      "timeout_count": 0
+    },
+    {
+      "condition": "clean",
+      "correct_match_count": 175,
+      "dual_station_residual_loss_count": 25,
+      "evidence_statuses": [
+        "offline_oracle_diagnostic"
+      ],
+      "latency_p95_ms": 4190.773432997958,
+      "offline_completed_coverage": 0.875,
+      "offline_completed_precision": 0.8928571428571429,
+      "on_time_coverage": 0.0,
+      "output_match_count": 196,
+      "profile": "oracle_360",
+      "protocol_bridge_applied": false,
+      "route_name": "epipolar_mht",
+      "sample_count": 5,
+      "seeds": [
+        20284201,
+        20284202,
+        20284203,
+        20284204,
+        20284205
+      ],
+      "single_station_coverage": 1.0,
+      "single_station_duplicate_track_count": 0,
+      "single_station_missing_identity_count": 0,
+      "single_station_mixed_track_count": 0,
+      "single_station_precision": 1.0,
+      "target_count": 40,
+      "timeout_count": 5
+    },
+    {
+      "condition": "clean",
+      "correct_match_count": 159,
+      "dual_station_residual_loss_count": 41,
+      "evidence_statuses": [
+        "offline_oracle_diagnostic"
+      ],
+      "latency_p95_ms": 178.77210000006016,
+      "offline_completed_coverage": 0.795,
+      "offline_completed_precision": 0.9244186046511628,
+      "on_time_coverage": 0.795,
+      "output_match_count": 172,
+      "profile": "oracle_360",
+      "protocol_bridge_applied": false,
+      "route_name": "gnn",
+      "sample_count": 5,
+      "seeds": [
+        20284201,
+        20284202,
+        20284203,
+        20284204,
+        20284205
+      ],
+      "single_station_coverage": 1.0,
+      "single_station_duplicate_track_count": 0,
+      "single_station_missing_identity_count": 0,
+      "single_station_mixed_track_count": 0,
+      "single_station_precision": 1.0,
+      "target_count": 40,
+      "timeout_count": 0
+    },
+    {
+      "condition": "clean",
+      "correct_match_count": 252,
+      "dual_station_residual_loss_count": 48,
+      "evidence_statuses": [
+        "offline_oracle_diagnostic"
+      ],
+      "latency_p95_ms": 6253.914154000086,
+      "offline_completed_coverage": 0.84,
+      "offline_completed_precision": 0.8719723183391004,
+      "on_time_coverage": 0.0,
+      "output_match_count": 289,
+      "profile": "oracle_360",
+      "protocol_bridge_applied": false,
+      "route_name": "epipolar_mht",
+      "sample_count": 5,
+      "seeds": [
+        20286201,
+        20286202,
+        20286203,
+        20286204,
+        20286205
+      ],
+      "single_station_coverage": 1.0,
+      "single_station_duplicate_track_count": 0,
+      "single_station_missing_identity_count": 0,
+      "single_station_mixed_track_count": 0,
+      "single_station_precision": 1.0,
+      "target_count": 60,
+      "timeout_count": 5
+    },
+    {
+      "condition": "clean",
+      "correct_match_count": 296,
+      "dual_station_residual_loss_count": 4,
+      "evidence_statuses": [
+        "offline_oracle_diagnostic"
+      ],
+      "latency_p95_ms": 332.0409539992397,
+      "offline_completed_coverage": 0.9866666666666667,
+      "offline_completed_precision": 0.9932885906040269,
+      "on_time_coverage": 0.9866666666666667,
+      "output_match_count": 298,
+      "profile": "oracle_360",
+      "protocol_bridge_applied": false,
+      "route_name": "gnn",
+      "sample_count": 5,
+      "seeds": [
+        20286201,
+        20286202,
+        20286203,
+        20286204,
+        20286205
+      ],
+      "single_station_coverage": 1.0,
+      "single_station_duplicate_track_count": 0,
+      "single_station_missing_identity_count": 0,
+      "single_station_mixed_track_count": 0,
+      "single_station_precision": 1.0,
+      "target_count": 60,
+      "timeout_count": 0
+    },
+    {
+      "condition": "clean",
+      "correct_match_count": 95,
+      "dual_station_residual_loss_count": 5,
+      "evidence_statuses": [
+        "offline_interference_replay_diagnostic"
+      ],
+      "latency_p95_ms": 3446.6487579993554,
+      "offline_completed_coverage": 0.95,
+      "offline_completed_precision": 0.9895833333333334,
+      "on_time_coverage": 0.0,
+      "output_match_count": 96,
+      "profile": "s180",
+      "protocol_bridge_applied": false,
+      "route_name": "epipolar_mht",
+      "sample_count": 5,
+      "seeds": [
+        20283301,
+        20283302,
+        20283303,
+        20283304,
+        20283305
+      ],
+      "single_station_coverage": 1.0,
+      "single_station_duplicate_track_count": 0,
+      "single_station_missing_identity_count": 0,
+      "single_station_mixed_track_count": 0,
+      "single_station_precision": 0.9940010432968179,
+      "target_count": 20,
+      "timeout_count": 5
+    },
+    {
+      "condition": "clean",
+      "correct_match_count": 89,
+      "dual_station_residual_loss_count": 11,
+      "evidence_statuses": [
+        "offline_interference_replay_diagnostic"
+      ],
+      "latency_p95_ms": 136.21047599735903,
+      "offline_completed_coverage": 0.89,
+      "offline_completed_precision": 0.978021978021978,
+      "on_time_coverage": 0.89,
+      "output_match_count": 91,
+      "profile": "s180",
+      "protocol_bridge_applied": true,
+      "route_name": "gnn",
+      "sample_count": 5,
+      "seeds": [
+        20283301,
+        20283302,
+        20283303,
+        20283304,
+        20283305
+      ],
+      "single_station_coverage": 1.0,
+      "single_station_duplicate_track_count": 0,
+      "single_station_missing_identity_count": 0,
+      "single_station_mixed_track_count": 0,
+      "single_station_precision": 0.9940010432968179,
+      "target_count": 20,
+      "timeout_count": 0
+    },
+    {
+      "condition": "heavy",
+      "correct_match_count": 84,
+      "dual_station_residual_loss_count": 14,
+      "evidence_statuses": [
+        "offline_interference_replay_diagnostic"
+      ],
+      "latency_p95_ms": 3336.247540999466,
+      "offline_completed_coverage": 0.84,
+      "offline_completed_precision": 0.9655172413793104,
+      "on_time_coverage": 0.0,
+      "output_match_count": 87,
+      "profile": "s180",
+      "protocol_bridge_applied": false,
+      "route_name": "epipolar_mht",
+      "sample_count": 5,
+      "seeds": [
+        20283301,
+        20283302,
+        20283303,
+        20283304,
+        20283305
+      ],
+      "single_station_coverage": 0.99,
+      "single_station_duplicate_track_count": 0,
+      "single_station_missing_identity_count": 2,
+      "single_station_mixed_track_count": 35,
+      "single_station_precision": 0.829136690647482,
+      "target_count": 20,
+      "timeout_count": 5
+    },
+    {
+      "condition": "heavy",
+      "correct_match_count": 62,
+      "dual_station_residual_loss_count": 36,
+      "evidence_statuses": [
+        "offline_interference_replay_diagnostic"
+      ],
+      "latency_p95_ms": 122.25543100066716,
+      "offline_completed_coverage": 0.62,
+      "offline_completed_precision": 0.7654320987654321,
+      "on_time_coverage": 0.62,
+      "output_match_count": 81,
+      "profile": "s180",
+      "protocol_bridge_applied": true,
+      "route_name": "gnn",
+      "sample_count": 5,
+      "seeds": [
+        20283301,
+        20283302,
+        20283303,
+        20283304,
+        20283305
+      ],
+      "single_station_coverage": 0.99,
+      "single_station_duplicate_track_count": 0,
+      "single_station_missing_identity_count": 2,
+      "single_station_mixed_track_count": 35,
+      "single_station_precision": 0.829136690647482,
+      "target_count": 20,
+      "timeout_count": 0
+    },
+    {
+      "condition": "light",
+      "correct_match_count": 95,
+      "dual_station_residual_loss_count": 5,
+      "evidence_statuses": [
+        "offline_interference_replay_diagnostic"
+      ],
+      "latency_p95_ms": 3248.3151399974304,
+      "offline_completed_coverage": 0.95,
+      "offline_completed_precision": 0.9693877551020408,
+      "on_time_coverage": 0.0,
+      "output_match_count": 98,
+      "profile": "s180",
+      "protocol_bridge_applied": false,
+      "route_name": "epipolar_mht",
+      "sample_count": 5,
+      "seeds": [
+        20283301,
+        20283302,
+        20283303,
+        20283304,
+        20283305
+      ],
+      "single_station_coverage": 1.0,
+      "single_station_duplicate_track_count": 0,
+      "single_station_missing_identity_count": 0,
+      "single_station_mixed_track_count": 12,
+      "single_station_precision": 0.9673684210526315,
+      "target_count": 20,
+      "timeout_count": 5
+    },
+    {
+      "condition": "light",
+      "correct_match_count": 73,
+      "dual_station_residual_loss_count": 27,
+      "evidence_statuses": [
+        "offline_interference_replay_diagnostic"
+      ],
+      "latency_p95_ms": 96.8999270007771,
+      "offline_completed_coverage": 0.73,
+      "offline_completed_precision": 0.8390804597701149,
+      "on_time_coverage": 0.73,
+      "output_match_count": 87,
+      "profile": "s180",
+      "protocol_bridge_applied": true,
+      "route_name": "gnn",
+      "sample_count": 5,
+      "seeds": [
+        20283301,
+        20283302,
+        20283303,
+        20283304,
+        20283305
+      ],
+      "single_station_coverage": 1.0,
+      "single_station_duplicate_track_count": 0,
+      "single_station_missing_identity_count": 0,
+      "single_station_mixed_track_count": 12,
+      "single_station_precision": 0.9673684210526315,
+      "target_count": 20,
+      "timeout_count": 0
+    },
+    {
+      "condition": "medium",
+      "correct_match_count": 91,
+      "dual_station_residual_loss_count": 9,
+      "evidence_statuses": [
+        "offline_interference_replay_diagnostic"
+      ],
+      "latency_p95_ms": 2930.0849190003646,
+      "offline_completed_coverage": 0.91,
+      "offline_completed_precision": 0.9479166666666666,
+      "on_time_coverage": 0.0,
+      "output_match_count": 96,
+      "profile": "s180",
+      "protocol_bridge_applied": false,
+      "route_name": "epipolar_mht",
+      "sample_count": 5,
+      "seeds": [
+        20283301,
+        20283302,
+        20283303,
+        20283304,
+        20283305
+      ],
+      "single_station_coverage": 1.0,
+      "single_station_duplicate_track_count": 0,
+      "single_station_missing_identity_count": 0,
+      "single_station_mixed_track_count": 11,
+      "single_station_precision": 0.9217043941411451,
+      "target_count": 20,
+      "timeout_count": 5
+    },
+    {
+      "condition": "medium",
+      "correct_match_count": 61,
+      "dual_station_residual_loss_count": 39,
+      "evidence_statuses": [
+        "offline_interference_replay_diagnostic"
+      ],
+      "latency_p95_ms": 105.34701600045082,
+      "offline_completed_coverage": 0.61,
+      "offline_completed_precision": 0.8472222222222222,
+      "on_time_coverage": 0.61,
+      "output_match_count": 72,
+      "profile": "s180",
+      "protocol_bridge_applied": true,
+      "route_name": "gnn",
+      "sample_count": 5,
+      "seeds": [
+        20283301,
+        20283302,
+        20283303,
+        20283304,
+        20283305
+      ],
+      "single_station_coverage": 1.0,
+      "single_station_duplicate_track_count": 0,
+      "single_station_missing_identity_count": 0,
+      "single_station_mixed_track_count": 11,
+      "single_station_precision": 0.9217043941411451,
+      "target_count": 20,
+      "timeout_count": 0
+    },
+    {
+      "condition": "clean",
+      "correct_match_count": 148,
+      "dual_station_residual_loss_count": 30,
+      "evidence_statuses": [
+        "offline_interference_replay_diagnostic"
+      ],
+      "latency_p95_ms": 8825.816997999937,
+      "offline_completed_coverage": 0.74,
+      "offline_completed_precision": 0.8087431693989071,
+      "on_time_coverage": 0.0,
+      "output_match_count": 183,
+      "profile": "s180",
+      "protocol_bridge_applied": false,
+      "route_name": "epipolar_mht",
+      "sample_count": 5,
+      "seeds": [
+        20285301,
+        20285302,
+        20285303,
+        20285304,
+        20285305
+      ],
+      "single_station_coverage": 0.94,
+      "single_station_duplicate_track_count": 0,
+      "single_station_missing_identity_count": 24,
+      "single_station_mixed_track_count": 23,
+      "single_station_precision": 0.969633232548968,
+      "target_count": 40,
+      "timeout_count": 5
+    },
+    {
+      "condition": "clean",
+      "correct_match_count": 154,
+      "dual_station_residual_loss_count": 24,
+      "evidence_statuses": [
+        "offline_interference_replay_diagnostic"
+      ],
+      "latency_p95_ms": 241.85962000046857,
+      "offline_completed_coverage": 0.77,
+      "offline_completed_precision": 0.8461538461538461,
+      "on_time_coverage": 0.77,
+      "output_match_count": 182,
+      "profile": "s180",
+      "protocol_bridge_applied": true,
+      "route_name": "gnn",
+      "sample_count": 5,
+      "seeds": [
+        20285301,
+        20285302,
+        20285303,
+        20285304,
+        20285305
+      ],
+      "single_station_coverage": 0.94,
+      "single_station_duplicate_track_count": 0,
+      "single_station_missing_identity_count": 24,
+      "single_station_mixed_track_count": 23,
+      "single_station_precision": 0.969633232548968,
+      "target_count": 40,
+      "timeout_count": 0
+    },
+    {
+      "condition": "heavy",
+      "correct_match_count": 122,
+      "dual_station_residual_loss_count": 49,
+      "evidence_statuses": [
+        "offline_interference_replay_diagnostic"
+      ],
+      "latency_p95_ms": 7619.758379001723,
+      "offline_completed_coverage": 0.61,
+      "offline_completed_precision": 0.7625,
+      "on_time_coverage": 0.0,
+      "output_match_count": 160,
+      "profile": "s180",
+      "protocol_bridge_applied": false,
+      "route_name": "epipolar_mht",
+      "sample_count": 5,
+      "seeds": [
+        20285301,
+        20285302,
+        20285303,
+        20285304,
+        20285305
+      ],
+      "single_station_coverage": 0.9275,
+      "single_station_duplicate_track_count": 0,
+      "single_station_missing_identity_count": 29,
+      "single_station_mixed_track_count": 50,
+      "single_station_precision": 0.8853359628116636,
+      "target_count": 40,
+      "timeout_count": 5
+    },
+    {
+      "condition": "heavy",
+      "correct_match_count": 108,
+      "dual_station_residual_loss_count": 63,
+      "evidence_statuses": [
+        "offline_interference_replay_diagnostic"
+      ],
+      "latency_p95_ms": 269.47944299899973,
+      "offline_completed_coverage": 0.54,
+      "offline_completed_precision": 0.72,
+      "on_time_coverage": 0.54,
+      "output_match_count": 150,
+      "profile": "s180",
+      "protocol_bridge_applied": true,
+      "route_name": "gnn",
+      "sample_count": 5,
+      "seeds": [
+        20285301,
+        20285302,
+        20285303,
+        20285304,
+        20285305
+      ],
+      "single_station_coverage": 0.9275,
+      "single_station_duplicate_track_count": 0,
+      "single_station_missing_identity_count": 29,
+      "single_station_mixed_track_count": 50,
+      "single_station_precision": 0.8853359628116636,
+      "target_count": 40,
+      "timeout_count": 0
+    },
+    {
+      "condition": "light",
+      "correct_match_count": 140,
+      "dual_station_residual_loss_count": 41,
+      "evidence_statuses": [
+        "offline_interference_replay_diagnostic"
+      ],
+      "latency_p95_ms": 8135.018979999586,
+      "offline_completed_coverage": 0.7,
+      "offline_completed_precision": 0.813953488372093,
+      "on_time_coverage": 0.0,
+      "output_match_count": 172,
+      "profile": "s180",
+      "protocol_bridge_applied": false,
+      "route_name": "epipolar_mht",
+      "sample_count": 5,
+      "seeds": [
+        20285301,
+        20285302,
+        20285303,
+        20285304,
+        20285305
+      ],
+      "single_station_coverage": 0.95,
+      "single_station_duplicate_track_count": 0,
+      "single_station_missing_identity_count": 20,
+      "single_station_mixed_track_count": 28,
+      "single_station_precision": 0.9543557290965397,
+      "target_count": 40,
+      "timeout_count": 5
+    },
+    {
+      "condition": "light",
+      "correct_match_count": 136,
+      "dual_station_residual_loss_count": 45,
+      "evidence_statuses": [
+        "offline_interference_replay_diagnostic"
+      ],
+      "latency_p95_ms": 253.35705100224004,
+      "offline_completed_coverage": 0.68,
+      "offline_completed_precision": 0.8553459119496856,
+      "on_time_coverage": 0.68,
+      "output_match_count": 159,
+      "profile": "s180",
+      "protocol_bridge_applied": true,
+      "route_name": "gnn",
+      "sample_count": 5,
+      "seeds": [
+        20285301,
+        20285302,
+        20285303,
+        20285304,
+        20285305
+      ],
+      "single_station_coverage": 0.95,
+      "single_station_duplicate_track_count": 0,
+      "single_station_missing_identity_count": 20,
+      "single_station_mixed_track_count": 28,
+      "single_station_precision": 0.9543557290965397,
+      "target_count": 40,
+      "timeout_count": 0
+    },
+    {
+      "condition": "medium",
+      "correct_match_count": 135,
+      "dual_station_residual_loss_count": 48,
+      "evidence_statuses": [
+        "offline_interference_replay_diagnostic"
+      ],
+      "latency_p95_ms": 8477.237316001265,
+      "offline_completed_coverage": 0.675,
+      "offline_completed_precision": 0.8282208588957055,
+      "on_time_coverage": 0.0,
+      "output_match_count": 163,
+      "profile": "s180",
+      "protocol_bridge_applied": false,
+      "route_name": "epipolar_mht",
+      "sample_count": 5,
+      "seeds": [
+        20285301,
+        20285302,
+        20285303,
+        20285304,
+        20285305
+      ],
+      "single_station_coverage": 0.9575,
+      "single_station_duplicate_track_count": 0,
+      "single_station_missing_identity_count": 17,
+      "single_station_mixed_track_count": 34,
+      "single_station_precision": 0.9244845008876144,
+      "target_count": 40,
+      "timeout_count": 5
+    },
+    {
+      "condition": "medium",
+      "correct_match_count": 129,
+      "dual_station_residual_loss_count": 54,
+      "evidence_statuses": [
+        "offline_interference_replay_diagnostic"
+      ],
+      "latency_p95_ms": 257.89206999979797,
+      "offline_completed_coverage": 0.645,
+      "offline_completed_precision": 0.7962962962962963,
+      "on_time_coverage": 0.645,
+      "output_match_count": 162,
+      "profile": "s180",
+      "protocol_bridge_applied": true,
+      "route_name": "gnn",
+      "sample_count": 5,
+      "seeds": [
+        20285301,
+        20285302,
+        20285303,
+        20285304,
+        20285305
+      ],
+      "single_station_coverage": 0.9575,
+      "single_station_duplicate_track_count": 0,
+      "single_station_missing_identity_count": 17,
+      "single_station_mixed_track_count": 34,
+      "single_station_precision": 0.9244845008876144,
+      "target_count": 40,
+      "timeout_count": 0
+    },
+    {
+      "condition": "clean",
+      "correct_match_count": 220,
+      "dual_station_residual_loss_count": 38,
+      "evidence_statuses": [
+        "offline_interference_replay_diagnostic"
+      ],
+      "latency_p95_ms": 15358.416416002001,
+      "offline_completed_coverage": 0.7333333333333333,
+      "offline_completed_precision": 0.8270676691729323,
+      "on_time_coverage": 0.0,
+      "output_match_count": 266,
+      "profile": "s180",
+      "protocol_bridge_applied": false,
+      "route_name": "epipolar_mht",
+      "sample_count": 5,
+      "seeds": [
+        20287301,
+        20287302,
+        20287303,
+        20287304,
+        20287305
+      ],
+      "single_station_coverage": 0.9283333333333333,
+      "single_station_duplicate_track_count": 0,
+      "single_station_missing_identity_count": 43,
+      "single_station_mixed_track_count": 48,
+      "single_station_precision": 0.9556823168056165,
+      "target_count": 60,
+      "timeout_count": 5
+    },
+    {
+      "condition": "clean",
+      "correct_match_count": 243,
+      "dual_station_residual_loss_count": 15,
+      "evidence_statuses": [
+        "offline_interference_replay_diagnostic"
+      ],
+      "latency_p95_ms": 468.6792749998858,
+      "offline_completed_coverage": 0.81,
+      "offline_completed_precision": 0.8556338028169014,
+      "on_time_coverage": 0.81,
+      "output_match_count": 284,
+      "profile": "s180",
+      "protocol_bridge_applied": true,
+      "route_name": "gnn",
+      "sample_count": 5,
+      "seeds": [
+        20287301,
+        20287302,
+        20287303,
+        20287304,
+        20287305
+      ],
+      "single_station_coverage": 0.9283333333333333,
+      "single_station_duplicate_track_count": 0,
+      "single_station_missing_identity_count": 43,
+      "single_station_mixed_track_count": 48,
+      "single_station_precision": 0.9556823168056165,
+      "target_count": 60,
+      "timeout_count": 0
+    },
+    {
+      "condition": "heavy",
+      "correct_match_count": 174,
+      "dual_station_residual_loss_count": 66,
+      "evidence_statuses": [
+        "offline_interference_replay_diagnostic"
+      ],
+      "latency_p95_ms": 13276.503594999667,
+      "offline_completed_coverage": 0.58,
+      "offline_completed_precision": 0.7372881355932204,
+      "on_time_coverage": 0.0,
+      "output_match_count": 236,
+      "profile": "s180",
+      "protocol_bridge_applied": false,
+      "route_name": "epipolar_mht",
+      "sample_count": 5,
+      "seeds": [
+        20287301,
+        20287302,
+        20287303,
+        20287304,
+        20287305
+      ],
+      "single_station_coverage": 0.8916666666666667,
+      "single_station_duplicate_track_count": 1,
+      "single_station_missing_identity_count": 65,
+      "single_station_mixed_track_count": 109,
+      "single_station_precision": 0.8859757841548289,
+      "target_count": 60,
+      "timeout_count": 5
+    },
+    {
+      "condition": "heavy",
+      "correct_match_count": 174,
+      "dual_station_residual_loss_count": 66,
+      "evidence_statuses": [
+        "offline_interference_replay_diagnostic"
+      ],
+      "latency_p95_ms": 473.72465299849864,
+      "offline_completed_coverage": 0.58,
+      "offline_completed_precision": 0.8130841121495327,
+      "on_time_coverage": 0.58,
+      "output_match_count": 214,
+      "profile": "s180",
+      "protocol_bridge_applied": true,
+      "route_name": "gnn",
+      "sample_count": 5,
+      "seeds": [
+        20287301,
+        20287302,
+        20287303,
+        20287304,
+        20287305
+      ],
+      "single_station_coverage": 0.8916666666666667,
+      "single_station_duplicate_track_count": 1,
+      "single_station_missing_identity_count": 65,
+      "single_station_mixed_track_count": 109,
+      "single_station_precision": 0.8859757841548289,
+      "target_count": 60,
+      "timeout_count": 0
+    },
+    {
+      "condition": "light",
+      "correct_match_count": 190,
+      "dual_station_residual_loss_count": 48,
+      "evidence_statuses": [
+        "offline_interference_replay_diagnostic"
+      ],
+      "latency_p95_ms": 14684.631472999172,
+      "offline_completed_coverage": 0.6333333333333333,
+      "offline_completed_precision": 0.8016877637130801,
+      "on_time_coverage": 0.0,
+      "output_match_count": 237,
+      "profile": "s180",
+      "protocol_bridge_applied": false,
+      "route_name": "epipolar_mht",
+      "sample_count": 5,
+      "seeds": [
+        20287301,
+        20287302,
+        20287303,
+        20287304,
+        20287305
+      ],
+      "single_station_coverage": 0.89,
+      "single_station_duplicate_track_count": 1,
+      "single_station_missing_identity_count": 66,
+      "single_station_mixed_track_count": 83,
+      "single_station_precision": 0.9403847890886099,
+      "target_count": 60,
+      "timeout_count": 5
+    },
+    {
+      "condition": "light",
+      "correct_match_count": 213,
+      "dual_station_residual_loss_count": 25,
+      "evidence_statuses": [
+        "offline_interference_replay_diagnostic"
+      ],
+      "latency_p95_ms": 479.4315950020973,
+      "offline_completed_coverage": 0.71,
+      "offline_completed_precision": 0.8192307692307692,
+      "on_time_coverage": 0.71,
+      "output_match_count": 260,
+      "profile": "s180",
+      "protocol_bridge_applied": true,
+      "route_name": "gnn",
+      "sample_count": 5,
+      "seeds": [
+        20287301,
+        20287302,
+        20287303,
+        20287304,
+        20287305
+      ],
+      "single_station_coverage": 0.89,
+      "single_station_duplicate_track_count": 1,
+      "single_station_missing_identity_count": 66,
+      "single_station_mixed_track_count": 83,
+      "single_station_precision": 0.9403847890886099,
+      "target_count": 60,
+      "timeout_count": 0
+    },
+    {
+      "condition": "medium",
+      "correct_match_count": 202,
+      "dual_station_residual_loss_count": 45,
+      "evidence_statuses": [
+        "offline_interference_replay_diagnostic"
+      ],
+      "latency_p95_ms": 14074.960669997381,
+      "offline_completed_coverage": 0.6733333333333333,
+      "offline_completed_precision": 0.7984189723320159,
+      "on_time_coverage": 0.0,
+      "output_match_count": 253,
+      "profile": "s180",
+      "protocol_bridge_applied": false,
+      "route_name": "epipolar_mht",
+      "sample_count": 5,
+      "seeds": [
+        20287301,
+        20287302,
+        20287303,
+        20287304,
+        20287305
+      ],
+      "single_station_coverage": 0.905,
+      "single_station_duplicate_track_count": 1,
+      "single_station_missing_identity_count": 57,
+      "single_station_mixed_track_count": 78,
+      "single_station_precision": 0.9230057375532111,
+      "target_count": 60,
+      "timeout_count": 5
+    },
+    {
+      "condition": "medium",
+      "correct_match_count": 206,
+      "dual_station_residual_loss_count": 41,
+      "evidence_statuses": [
+        "offline_interference_replay_diagnostic"
+      ],
+      "latency_p95_ms": 494.2903769988334,
+      "offline_completed_coverage": 0.6866666666666666,
+      "offline_completed_precision": 0.7923076923076923,
+      "on_time_coverage": 0.6866666666666666,
+      "output_match_count": 260,
+      "profile": "s180",
+      "protocol_bridge_applied": true,
+      "route_name": "gnn",
+      "sample_count": 5,
+      "seeds": [
+        20287301,
+        20287302,
+        20287303,
+        20287304,
+        20287305
+      ],
+      "single_station_coverage": 0.905,
+      "single_station_duplicate_track_count": 1,
+      "single_station_missing_identity_count": 57,
+      "single_station_mixed_track_count": 78,
+      "single_station_precision": 0.9230057375532111,
+      "target_count": 60,
+      "timeout_count": 0
     }
   ],
-  "continuous_360_diagnostics": {
-    "status": "diagnostic_only",
-    "scan_span_deg": 360.0,
-    "scan_period_s": 2.0,
-    "duration_s": 12.0,
-    "clean_light_final_round_rows": [
-      {
-        "route_name": "epipolar_mht",
-        "route_label_cn": "几何方法",
-        "corruption_level": "clean",
-        "revolution_index": 6,
-        "sample_count": 5,
-        "association_precision": 0.9883720930232558,
-        "fixed_target_coverage": 0.85,
-        "latency_p95_ms": 867.8805847885087,
-        "deadline_miss_count": 0
-      },
-      {
-        "route_name": "epipolar_mht",
-        "route_label_cn": "几何方法",
-        "corruption_level": "light",
-        "revolution_index": 6,
-        "sample_count": 5,
-        "association_precision": 0.8545454545454545,
-        "fixed_target_coverage": 0.47,
-        "latency_p95_ms": 997.9332759859972,
-        "deadline_miss_count": 1
-      },
-      {
-        "route_name": "gnn",
-        "route_label_cn": "图神经网络",
-        "corruption_level": "clean",
-        "revolution_index": 6,
-        "sample_count": 5,
-        "association_precision": 0.9146341463414634,
-        "fixed_target_coverage": 0.75,
-        "latency_p95_ms": 75.21605084184557,
-        "deadline_miss_count": 0
-      },
-      {
-        "route_name": "gnn",
-        "route_label_cn": "图神经网络",
-        "corruption_level": "light",
-        "revolution_index": 6,
-        "sample_count": 5,
-        "association_precision": 0.7721518987341772,
-        "fixed_target_coverage": 0.61,
-        "latency_p95_ms": 88.49289659410715,
-        "deadline_miss_count": 0
-      },
-      {
-        "route_name": "track_superglue",
-        "route_label_cn": "增强型图神经网络（航迹级注意力）",
-        "corruption_level": "clean",
-        "revolution_index": 6,
-        "sample_count": 5,
-        "association_precision": 0.922077922077922,
-        "fixed_target_coverage": 0.71,
-        "latency_p95_ms": 241.1706326296553,
-        "deadline_miss_count": 0
-      },
-      {
-        "route_name": "track_superglue",
-        "route_label_cn": "增强型图神经网络（航迹级注意力）",
-        "corruption_level": "light",
-        "revolution_index": 6,
-        "sample_count": 5,
-        "association_precision": 0.8904109589041096,
-        "fixed_target_coverage": 0.65,
-        "latency_p95_ms": 288.4764169692062,
-        "deadline_miss_count": 0
-      }
-    ],
-    "multi_scale_route_matrix_rows": [
-      {
-        "target_count": 20,
-        "corruption_level": "clean",
-        "route_name": "epipolar_mht",
-        "route_label_cn": "几何方法",
-        "test_seed_count": 5,
-        "association_precision": 0.8571428571428571,
-        "fixed_target_coverage": 0.78,
-        "latency_p95_ms": 952.6920174132101,
-        "deadline_miss_count": 0,
-        "confirmed_output_available": true,
-        "evidence_status": "diagnostic"
-      },
-      {
-        "target_count": 20,
-        "corruption_level": "clean",
-        "route_name": "gnn",
-        "route_label_cn": "图神经网络",
-        "test_seed_count": 5,
-        "association_precision": 0.84,
-        "fixed_target_coverage": 0.63,
-        "latency_p95_ms": 78.25082816416398,
-        "deadline_miss_count": 0,
-        "confirmed_output_available": true,
-        "evidence_status": "diagnostic"
-      },
-      {
-        "target_count": 20,
-        "corruption_level": "clean",
-        "route_name": "track_superglue",
-        "route_label_cn": "增强型图神经网络（航迹级注意力）",
-        "test_seed_count": 0,
-        "association_precision": null,
-        "fixed_target_coverage": null,
-        "latency_p95_ms": null,
-        "deadline_miss_count": null,
-        "confirmed_output_available": false,
-        "evidence_status": "not_run"
-      },
-      {
-        "target_count": 20,
-        "corruption_level": "light",
-        "route_name": "epipolar_mht",
-        "route_label_cn": "几何方法",
-        "test_seed_count": 5,
-        "association_precision": null,
-        "fixed_target_coverage": null,
-        "latency_p95_ms": 1083.7181347887963,
-        "deadline_miss_count": 5,
-        "confirmed_output_available": false,
-        "evidence_status": "timeout"
-      },
-      {
-        "target_count": 20,
-        "corruption_level": "light",
-        "route_name": "gnn",
-        "route_label_cn": "图神经网络",
-        "test_seed_count": 5,
-        "association_precision": 0.821917808219178,
-        "fixed_target_coverage": 0.6,
-        "latency_p95_ms": 96.65977399563417,
-        "deadline_miss_count": 0,
-        "confirmed_output_available": true,
-        "evidence_status": "diagnostic"
-      },
-      {
-        "target_count": 20,
-        "corruption_level": "light",
-        "route_name": "track_superglue",
-        "route_label_cn": "增强型图神经网络（航迹级注意力）",
-        "test_seed_count": 0,
-        "association_precision": null,
-        "fixed_target_coverage": null,
-        "latency_p95_ms": null,
-        "deadline_miss_count": null,
-        "confirmed_output_available": false,
-        "evidence_status": "not_run"
-      },
-      {
-        "target_count": 20,
-        "corruption_level": "medium",
-        "route_name": "epipolar_mht",
-        "route_label_cn": "几何方法",
-        "test_seed_count": 5,
-        "association_precision": null,
-        "fixed_target_coverage": null,
-        "latency_p95_ms": 1373.3729953994043,
-        "deadline_miss_count": 5,
-        "confirmed_output_available": false,
-        "evidence_status": "timeout"
-      },
-      {
-        "target_count": 20,
-        "corruption_level": "medium",
-        "route_name": "gnn",
-        "route_label_cn": "图神经网络",
-        "test_seed_count": 5,
-        "association_precision": 0.765625,
-        "fixed_target_coverage": 0.49,
-        "latency_p95_ms": 121.78468342171982,
-        "deadline_miss_count": 0,
-        "confirmed_output_available": true,
-        "evidence_status": "diagnostic"
-      },
-      {
-        "target_count": 20,
-        "corruption_level": "medium",
-        "route_name": "track_superglue",
-        "route_label_cn": "增强型图神经网络（航迹级注意力）",
-        "test_seed_count": 0,
-        "association_precision": null,
-        "fixed_target_coverage": null,
-        "latency_p95_ms": null,
-        "deadline_miss_count": null,
-        "confirmed_output_available": false,
-        "evidence_status": "not_run"
-      },
-      {
-        "target_count": 20,
-        "corruption_level": "heavy",
-        "route_name": "epipolar_mht",
-        "route_label_cn": "几何方法",
-        "test_seed_count": 5,
-        "association_precision": null,
-        "fixed_target_coverage": null,
-        "latency_p95_ms": 1805.0868959748186,
-        "deadline_miss_count": 5,
-        "confirmed_output_available": false,
-        "evidence_status": "timeout"
-      },
-      {
-        "target_count": 20,
-        "corruption_level": "heavy",
-        "route_name": "gnn",
-        "route_label_cn": "图神经网络",
-        "test_seed_count": 5,
-        "association_precision": 0.6935483870967742,
-        "fixed_target_coverage": 0.43,
-        "latency_p95_ms": 171.80412301095203,
-        "deadline_miss_count": 0,
-        "confirmed_output_available": true,
-        "evidence_status": "diagnostic"
-      },
-      {
-        "target_count": 20,
-        "corruption_level": "heavy",
-        "route_name": "track_superglue",
-        "route_label_cn": "增强型图神经网络（航迹级注意力）",
-        "test_seed_count": 0,
-        "association_precision": null,
-        "fixed_target_coverage": null,
-        "latency_p95_ms": null,
-        "deadline_miss_count": null,
-        "confirmed_output_available": false,
-        "evidence_status": "not_run"
-      },
-      {
-        "target_count": 40,
-        "corruption_level": "clean",
-        "route_name": "epipolar_mht",
-        "route_label_cn": "几何方法",
-        "test_seed_count": 0,
-        "association_precision": null,
-        "fixed_target_coverage": null,
-        "latency_p95_ms": null,
-        "deadline_miss_count": null,
-        "confirmed_output_available": false,
-        "evidence_status": "not_run"
-      },
-      {
-        "target_count": 40,
-        "corruption_level": "clean",
-        "route_name": "gnn",
-        "route_label_cn": "图神经网络",
-        "test_seed_count": 5,
-        "association_precision": 0.9166666666666666,
-        "fixed_target_coverage": 0.605,
-        "latency_p95_ms": 193.26851880177855,
-        "deadline_miss_count": 0,
-        "confirmed_output_available": true,
-        "evidence_status": "diagnostic"
-      },
-      {
-        "target_count": 40,
-        "corruption_level": "clean",
-        "route_name": "track_superglue",
-        "route_label_cn": "增强型图神经网络（航迹级注意力）",
-        "test_seed_count": 0,
-        "association_precision": null,
-        "fixed_target_coverage": null,
-        "latency_p95_ms": null,
-        "deadline_miss_count": null,
-        "confirmed_output_available": false,
-        "evidence_status": "not_run"
-      },
-      {
-        "target_count": 40,
-        "corruption_level": "light",
-        "route_name": "epipolar_mht",
-        "route_label_cn": "几何方法",
-        "test_seed_count": 0,
-        "association_precision": null,
-        "fixed_target_coverage": null,
-        "latency_p95_ms": null,
-        "deadline_miss_count": null,
-        "confirmed_output_available": false,
-        "evidence_status": "not_run"
-      },
-      {
-        "target_count": 40,
-        "corruption_level": "light",
-        "route_name": "gnn",
-        "route_label_cn": "图神经网络",
-        "test_seed_count": 5,
-        "association_precision": 0.8,
-        "fixed_target_coverage": 0.5,
-        "latency_p95_ms": 204.16040860582143,
-        "deadline_miss_count": 0,
-        "confirmed_output_available": true,
-        "evidence_status": "diagnostic"
-      },
-      {
-        "target_count": 40,
-        "corruption_level": "light",
-        "route_name": "track_superglue",
-        "route_label_cn": "增强型图神经网络（航迹级注意力）",
-        "test_seed_count": 0,
-        "association_precision": null,
-        "fixed_target_coverage": null,
-        "latency_p95_ms": null,
-        "deadline_miss_count": null,
-        "confirmed_output_available": false,
-        "evidence_status": "not_run"
-      },
-      {
-        "target_count": 40,
-        "corruption_level": "medium",
-        "route_name": "epipolar_mht",
-        "route_label_cn": "几何方法",
-        "test_seed_count": 0,
-        "association_precision": null,
-        "fixed_target_coverage": null,
-        "latency_p95_ms": null,
-        "deadline_miss_count": null,
-        "confirmed_output_available": false,
-        "evidence_status": "not_run"
-      },
-      {
-        "target_count": 40,
-        "corruption_level": "medium",
-        "route_name": "gnn",
-        "route_label_cn": "图神经网络",
-        "test_seed_count": 5,
-        "association_precision": 0.7608695652173914,
-        "fixed_target_coverage": 0.35,
-        "latency_p95_ms": 229.88031164277345,
-        "deadline_miss_count": 0,
-        "confirmed_output_available": true,
-        "evidence_status": "diagnostic"
-      },
-      {
-        "target_count": 40,
-        "corruption_level": "medium",
-        "route_name": "track_superglue",
-        "route_label_cn": "增强型图神经网络（航迹级注意力）",
-        "test_seed_count": 0,
-        "association_precision": null,
-        "fixed_target_coverage": null,
-        "latency_p95_ms": null,
-        "deadline_miss_count": null,
-        "confirmed_output_available": false,
-        "evidence_status": "not_run"
-      },
-      {
-        "target_count": 40,
-        "corruption_level": "heavy",
-        "route_name": "epipolar_mht",
-        "route_label_cn": "几何方法",
-        "test_seed_count": 0,
-        "association_precision": null,
-        "fixed_target_coverage": null,
-        "latency_p95_ms": null,
-        "deadline_miss_count": null,
-        "confirmed_output_available": false,
-        "evidence_status": "not_run"
-      },
-      {
-        "target_count": 40,
-        "corruption_level": "heavy",
-        "route_name": "gnn",
-        "route_label_cn": "图神经网络",
-        "test_seed_count": 5,
-        "association_precision": 0.6707317073170732,
-        "fixed_target_coverage": 0.275,
-        "latency_p95_ms": 270.29280617134646,
-        "deadline_miss_count": 0,
-        "confirmed_output_available": true,
-        "evidence_status": "diagnostic"
-      },
-      {
-        "target_count": 40,
-        "corruption_level": "heavy",
-        "route_name": "track_superglue",
-        "route_label_cn": "增强型图神经网络（航迹级注意力）",
-        "test_seed_count": 0,
-        "association_precision": null,
-        "fixed_target_coverage": null,
-        "latency_p95_ms": null,
-        "deadline_miss_count": null,
-        "confirmed_output_available": false,
-        "evidence_status": "not_run"
-      },
-      {
-        "target_count": 60,
-        "corruption_level": "clean",
-        "route_name": "epipolar_mht",
-        "route_label_cn": "几何方法",
-        "test_seed_count": 0,
-        "association_precision": null,
-        "fixed_target_coverage": null,
-        "latency_p95_ms": null,
-        "deadline_miss_count": null,
-        "confirmed_output_available": false,
-        "evidence_status": "not_run"
-      },
-      {
-        "target_count": 60,
-        "corruption_level": "clean",
-        "route_name": "gnn",
-        "route_label_cn": "图神经网络",
-        "test_seed_count": 5,
-        "association_precision": 0.9428571428571428,
-        "fixed_target_coverage": 0.55,
-        "latency_p95_ms": 305.2174809970893,
-        "deadline_miss_count": 0,
-        "confirmed_output_available": true,
-        "evidence_status": "diagnostic"
-      },
-      {
-        "target_count": 60,
-        "corruption_level": "clean",
-        "route_name": "track_superglue",
-        "route_label_cn": "增强型图神经网络（航迹级注意力）",
-        "test_seed_count": 0,
-        "association_precision": null,
-        "fixed_target_coverage": null,
-        "latency_p95_ms": null,
-        "deadline_miss_count": null,
-        "confirmed_output_available": false,
-        "evidence_status": "not_run"
-      },
-      {
-        "target_count": 60,
-        "corruption_level": "light",
-        "route_name": "epipolar_mht",
-        "route_label_cn": "几何方法",
-        "test_seed_count": 0,
-        "association_precision": null,
-        "fixed_target_coverage": null,
-        "latency_p95_ms": null,
-        "deadline_miss_count": null,
-        "confirmed_output_available": false,
-        "evidence_status": "not_run"
-      },
-      {
-        "target_count": 60,
-        "corruption_level": "light",
-        "route_name": "gnn",
-        "route_label_cn": "图神经网络",
-        "test_seed_count": 5,
-        "association_precision": 0.7727272727272727,
-        "fixed_target_coverage": 0.39666666666666667,
-        "latency_p95_ms": 337.5748037942685,
-        "deadline_miss_count": 0,
-        "confirmed_output_available": true,
-        "evidence_status": "diagnostic"
-      },
-      {
-        "target_count": 60,
-        "corruption_level": "light",
-        "route_name": "track_superglue",
-        "route_label_cn": "增强型图神经网络（航迹级注意力）",
-        "test_seed_count": 0,
-        "association_precision": null,
-        "fixed_target_coverage": null,
-        "latency_p95_ms": null,
-        "deadline_miss_count": null,
-        "confirmed_output_available": false,
-        "evidence_status": "not_run"
-      },
-      {
-        "target_count": 60,
-        "corruption_level": "medium",
-        "route_name": "epipolar_mht",
-        "route_label_cn": "几何方法",
-        "test_seed_count": 0,
-        "association_precision": null,
-        "fixed_target_coverage": null,
-        "latency_p95_ms": null,
-        "deadline_miss_count": null,
-        "confirmed_output_available": false,
-        "evidence_status": "not_run"
-      },
-      {
-        "target_count": 60,
-        "corruption_level": "medium",
-        "route_name": "gnn",
-        "route_label_cn": "图神经网络",
-        "test_seed_count": 5,
-        "association_precision": 0.7756410256410257,
-        "fixed_target_coverage": 0.4033333333333333,
-        "latency_p95_ms": 366.2290434236638,
-        "deadline_miss_count": 0,
-        "confirmed_output_available": true,
-        "evidence_status": "diagnostic"
-      },
-      {
-        "target_count": 60,
-        "corruption_level": "medium",
-        "route_name": "track_superglue",
-        "route_label_cn": "增强型图神经网络（航迹级注意力）",
-        "test_seed_count": 0,
-        "association_precision": null,
-        "fixed_target_coverage": null,
-        "latency_p95_ms": null,
-        "deadline_miss_count": null,
-        "confirmed_output_available": false,
-        "evidence_status": "not_run"
-      },
-      {
-        "target_count": 60,
-        "corruption_level": "heavy",
-        "route_name": "epipolar_mht",
-        "route_label_cn": "几何方法",
-        "test_seed_count": 0,
-        "association_precision": null,
-        "fixed_target_coverage": null,
-        "latency_p95_ms": null,
-        "deadline_miss_count": null,
-        "confirmed_output_available": false,
-        "evidence_status": "not_run"
-      },
-      {
-        "target_count": 60,
-        "corruption_level": "heavy",
-        "route_name": "gnn",
-        "route_label_cn": "图神经网络",
-        "test_seed_count": 5,
-        "association_precision": 0.7226890756302521,
-        "fixed_target_coverage": 0.2866666666666667,
-        "latency_p95_ms": 403.9098093751818,
-        "deadline_miss_count": 0,
-        "confirmed_output_available": true,
-        "evidence_status": "diagnostic"
-      },
-      {
-        "target_count": 60,
-        "corruption_level": "heavy",
-        "route_name": "track_superglue",
-        "route_label_cn": "增强型图神经网络（航迹级注意力）",
-        "test_seed_count": 0,
-        "association_precision": null,
-        "fixed_target_coverage": null,
-        "latency_p95_ms": null,
-        "deadline_miss_count": null,
-        "confirmed_output_available": false,
-        "evidence_status": "not_run"
-      }
-    ],
-    "multi_scale_final_round_rows": [
-      {
-        "target_count": 20,
-        "corruption_level": "clean",
-        "test_seed_count": 5,
-        "association_precision": 0.84,
-        "fixed_target_coverage": 0.63,
-        "latency_p95_ms": 78.25082816416398,
-        "deadline_miss_count": 0
-      },
-      {
-        "target_count": 20,
-        "corruption_level": "light",
-        "test_seed_count": 5,
-        "association_precision": 0.821917808219178,
-        "fixed_target_coverage": 0.6,
-        "latency_p95_ms": 96.65977399563417,
-        "deadline_miss_count": 0
-      },
-      {
-        "target_count": 20,
-        "corruption_level": "medium",
-        "test_seed_count": 5,
-        "association_precision": 0.765625,
-        "fixed_target_coverage": 0.49,
-        "latency_p95_ms": 121.78468342171982,
-        "deadline_miss_count": 0
-      },
-      {
-        "target_count": 20,
-        "corruption_level": "heavy",
-        "test_seed_count": 5,
-        "association_precision": 0.6935483870967742,
-        "fixed_target_coverage": 0.43,
-        "latency_p95_ms": 171.80412301095203,
-        "deadline_miss_count": 0
-      },
-      {
-        "target_count": 40,
-        "corruption_level": "clean",
-        "test_seed_count": 5,
-        "association_precision": 0.9166666666666666,
-        "fixed_target_coverage": 0.605,
-        "latency_p95_ms": 193.26851880177855,
-        "deadline_miss_count": 0
-      },
-      {
-        "target_count": 40,
-        "corruption_level": "light",
-        "test_seed_count": 5,
-        "association_precision": 0.8,
-        "fixed_target_coverage": 0.5,
-        "latency_p95_ms": 204.16040860582143,
-        "deadline_miss_count": 0
-      },
-      {
-        "target_count": 40,
-        "corruption_level": "medium",
-        "test_seed_count": 5,
-        "association_precision": 0.7608695652173914,
-        "fixed_target_coverage": 0.35,
-        "latency_p95_ms": 229.88031164277345,
-        "deadline_miss_count": 0
-      },
-      {
-        "target_count": 40,
-        "corruption_level": "heavy",
-        "test_seed_count": 5,
-        "association_precision": 0.6707317073170732,
-        "fixed_target_coverage": 0.275,
-        "latency_p95_ms": 270.29280617134646,
-        "deadline_miss_count": 0
-      },
-      {
-        "target_count": 60,
-        "corruption_level": "clean",
-        "test_seed_count": 5,
-        "association_precision": 0.9428571428571428,
-        "fixed_target_coverage": 0.55,
-        "latency_p95_ms": 305.2174809970893,
-        "deadline_miss_count": 0
-      },
-      {
-        "target_count": 60,
-        "corruption_level": "light",
-        "test_seed_count": 5,
-        "association_precision": 0.7727272727272727,
-        "fixed_target_coverage": 0.39666666666666667,
-        "latency_p95_ms": 337.5748037942685,
-        "deadline_miss_count": 0
-      },
-      {
-        "target_count": 60,
-        "corruption_level": "medium",
-        "test_seed_count": 5,
-        "association_precision": 0.7756410256410257,
-        "fixed_target_coverage": 0.4033333333333333,
-        "latency_p95_ms": 366.2290434236638,
-        "deadline_miss_count": 0
-      },
-      {
-        "target_count": 60,
-        "corruption_level": "heavy",
-        "test_seed_count": 5,
-        "association_precision": 0.7226890756302521,
-        "fixed_target_coverage": 0.2866666666666667,
-        "latency_p95_ms": 403.9098093751818,
-        "deadline_miss_count": 0
-      }
-    ]
-  },
+  "correlations": [
+    {
+      "case_count": 60,
+      "profile": "continuous_360",
+      "route_name": "epipolar_mht",
+      "single_station_coverage_vs_dual_coverage_pearson": 0.9031804906026063,
+      "single_station_precision_vs_dual_coverage_pearson": 0.4734394169137962
+    },
+    {
+      "case_count": 60,
+      "profile": "continuous_360",
+      "route_name": "gnn",
+      "single_station_coverage_vs_dual_coverage_pearson": 0.612560855984965,
+      "single_station_precision_vs_dual_coverage_pearson": 0.5152951449954184
+    },
+    {
+      "case_count": 60,
+      "profile": "s180",
+      "route_name": "epipolar_mht",
+      "single_station_coverage_vs_dual_coverage_pearson": 0.8389787692332829,
+      "single_station_precision_vs_dual_coverage_pearson": 0.3763642465265785
+    },
+    {
+      "case_count": 60,
+      "profile": "s180",
+      "route_name": "gnn",
+      "single_station_coverage_vs_dual_coverage_pearson": 0.2151573886239823,
+      "single_station_precision_vs_dual_coverage_pearson": 0.5673977049358266
+    }
+  ],
   "ranging_demonstration": {
-    "status": "ideal_pose_time_single_seed_chain_demonstration",
     "seed": 20260810,
     "target_count": 40,
     "correct_match_count": 36,
     "false_match_count": 1,
     "association_precision": 0.972972972972973,
-    "fixed_target_coverage": 0.9,
+    "association_full_target_recall": 0.9,
     "position_error_mean_m": 0.08030544908018379,
     "position_error_p95_m": 0.09140807343853961,
     "velocity_error_mean_mps": 0.008106441752602696,
@@ -1091,60 +1748,32 @@
   },
   "source_artifacts": [
     {
-      "path": "research_modules/independent_experiments/dual_optical_online_benchmark/outputs/s180_1s_sector_v1/s180_combined_metrics.json",
-      "sha256": "dc03f60d1172e2f6c23cd0a79a340d4d90c0303274d9ed5984e7e817f026df7f"
+      "path": "research_modules/independent_experiments/dual_optical_online_benchmark/outputs/report_replay_20260819_v2/matrix_completeness.json",
+      "sha256": "5657752145d6253a69dda396e08a301b1c9c2066156c83c6a45d025b48b45595"
     },
     {
-      "path": "research_modules/independent_experiments/dual_optical_online_benchmark/outputs/s180_1s_sector_v1/reproduction_manifest.json",
-      "sha256": "63370a0010dedb88dc1570c0cc0983a51d91ee1f9416f63b9bc8c7521836f899"
+      "path": "research_modules/independent_experiments/dual_optical_online_benchmark/outputs/report_replay_20260819_v2/combined_summary.json",
+      "sha256": "dcde8b0c2ac0107de10acce05c031ccfece36e31ebb5ba642640231ee4669980"
     },
     {
-      "path": "research_modules/independent_experiments/dual_optical_online_benchmark/outputs/clean_light_sealed_rescore_20260817_v2/clean_light_metrics.json",
-      "sha256": "e6caf43da3f06b75a0a2aa83ba418d9b7e4039e6578be86bc6c821c59a691f47"
+      "path": "research_modules/independent_experiments/dual_optical_online_benchmark/outputs/report_replay_20260819_v2/combined_final_case_metrics.csv",
+      "sha256": "3af9c252503aae2bc6f7e14a174004cd913385453bd04b189a39d7edf51157c8"
     },
     {
-      "path": "research_modules/independent_experiments/dual_optical_online_benchmark/outputs/scale_funnel_v4/targets_020/dataset/test_manifest.json",
-      "sha256": "a8d06dca27d931bb518bb169c8e17da227cadfdedd251ead36b858ce081a8381"
+      "path": "research_modules/independent_experiments/dual_optical_online_benchmark/outputs/report_replay_20260819_v2/reproduction_manifest.json",
+      "sha256": "021ab1d2fe22d81014c5ee81e72f9d9d97137b07a4abff6ff7f6d161071c2915"
     },
     {
-      "path": "research_modules/independent_experiments/dual_optical_online_benchmark/outputs/scale_funnel_v4/targets_020/dataset/freezes/epipolar_mht/freeze_manifest.json",
-      "sha256": "2c71e7c7e146e348f2566f9f84c0307ddbf96f14ac015c4a08f350ae473b1844"
+      "path": "research_modules/independent_experiments/dual_optical_online_benchmark/outputs/report_replay_20260819_v2/oracle_360/round_metrics.csv",
+      "sha256": "8325e0919ffa2c5cc617141550aad3024aebd46fa619c0a893dee3b88a8e7172"
     },
     {
-      "path": "research_modules/independent_experiments/dual_optical_online_benchmark/outputs/scale_funnel_v4/targets_020/dataset/freezes/gnn/freeze_manifest.json",
-      "sha256": "d8c245e9813c7acf0954e478829d8519da7166c4b17055826e21d4665cdaf735"
+      "path": "research_modules/independent_experiments/dual_optical_online_benchmark/outputs/report_replay_20260819_v2/continuous_360/round_metrics.csv",
+      "sha256": "1f66394eefd846c4d6ea66e0d330dd51581f100ab8886cb55931bd5b0ab3bcd3"
     },
     {
-      "path": "research_modules/independent_experiments/dual_optical_online_benchmark/outputs/scale_funnel_v4/targets_020/dataset/freezes/track_superglue/freeze_manifest.json",
-      "sha256": "9e74d2330ca7e25b863c13870aae53a79e0c1ee63a8c142dfefd964da413f494"
-    },
-    {
-      "path": "research_modules/independent_experiments/dual_optical_online_benchmark/outputs/scale_funnel_v3/summary/scale_funnel_summary.json",
-      "sha256": "b235bc952e3216645d3113d1ba0e26428c147371f8fb119fe67526ab080a9503"
-    },
-    {
-      "path": "research_modules/independent_experiments/dual_optical_online_benchmark/outputs/scale_funnel_v3/targets_020/results/comparison_metrics.json",
-      "sha256": "9aca523c4a4010513d059dd6aa6bcb27a5a486dc5ad138efbe77f74e4df67e4d"
-    },
-    {
-      "path": "research_modules/independent_experiments/dual_optical_online_benchmark/outputs/scale_funnel_v3/targets_040/results/comparison_metrics.json",
-      "sha256": "7befbd904c70008b44b9fd16d5ffc907452c371cfb8acf2cfea976664cf3daa6"
-    },
-    {
-      "path": "research_modules/independent_experiments/dual_optical_online_benchmark/outputs/scale_funnel_v3/targets_060/results/comparison_metrics.json",
-      "sha256": "c49f74591b6b3bec5a7f182aea87b773d3c963b48b599b05ed106c5be11dd825"
-    },
-    {
-      "path": "research_modules/independent_experiments/dual_optical_online_benchmark/outputs/scale_funnel_v3/targets_020/results/failure_diagnostics.json",
-      "sha256": "194ab5d070e8d7b698da17bd26ca8916b2712ee239687b89022dbad5f54287ee"
-    },
-    {
-      "path": "research_modules/independent_experiments/dual_optical_online_benchmark/outputs/scale_funnel_v3/targets_040/results/failure_diagnostics.json",
-      "sha256": "1aa3a7e9c54ae7e46f386c6669fc1507ca7f35ab677fd87e909617d9c2e6742b"
-    },
-    {
-      "path": "research_modules/independent_experiments/dual_optical_online_benchmark/outputs/scale_funnel_v3/targets_060/results/failure_diagnostics.json",
-      "sha256": "9d0a4519001b03c97fdc1bd1465dc0e905d0073af40f5760fdadf6a7766ce7bb"
+      "path": "research_modules/independent_experiments/dual_optical_online_benchmark/outputs/report_replay_20260819_v2/s180_derived/round_metrics.csv",
+      "sha256": "f2467b632801f99be56ed2c0a2be18dee8cf8c5d4534d148773cbca72624adb5"
     },
     {
       "path": "research_modules/independent_experiments/dual_optical_40target/outputs/airsim_seed_20260810_run11/metrics.json",
@@ -1155,30 +1784,18 @@
       "sha256": "487575ef90a56ed4bb1bedc611f6365c5c5150a1c4397bcc8328e6124b3a4982"
     },
     {
-      "path": "research_modules/independent_experiments/dual_optical_40target/outputs/airsim_seed_20260810_run11/truth/target_trajectories.csv",
-      "sha256": "6c1a050c1186c97f6626b1b6da06e1db14f7d81e4570013af9054ca3b4b8dc4d"
-    },
-    {
-      "path": "research_modules/independent_experiments/dual_optical_40target/outputs/airsim_seed_20260810_run11/online/cross_camera_matches.csv",
-      "sha256": "3ea35ef982d9e0fd15cd47be20bd8f6417b91984edb8325ed127f49ae33c956a"
-    },
-    {
-      "path": "research_modules/independent_experiments/dual_optical_40target/outputs/airsim_seed_20260810_run11/truth/match_scoring.csv",
-      "sha256": "0027b735cddfccf8d0f9d7a3ac654ab921402e501ae29ae3da4a38c82296c34c"
-    },
-    {
-      "path": "research_modules/independent_experiments/dual_optical_40target/outputs/airsim_seed_20260810_run11/online/anonymous_detections.csv",
-      "sha256": "823e0cf63b4314c6c3634d53a252c8102590522df2e15050c717422638d8e7dd"
+      "path": "deliverables/leadership_report/tools/build_dual_optical_registration_report.py",
+      "sha256": "73b02cae5f6aa26bf99e19e9add2397cbe23ee9091e98e892b205f5814315062"
     }
   ],
   "generated_artifacts": [
     {
       "path": "deliverables/leadership_report/双光电多目标轨迹配准与交汇定位试验报告_CN.md",
-      "sha256": "ebd5f05219b8190d4eaf91f205731ae3eebdb6970dd50ec8f14b2a5a104a412e"
+      "sha256": "59e715d2f4675785f2c34a718027584113fac071226f153020012ac45991ed09"
     },
     {
       "path": "deliverables/leadership_report/双光电多目标轨迹配准与交汇定位试验报告_CN.docx",
-      "sha256": "2e477728e93fce8b753663b5183857a13b19cfaef671097b3ce2e52fbbf060dc"
+      "sha256": "023e7f7152249d50e06f490d3b7d000b55c5ad82798d188c5107a3f3c19d500d"
     },
     {
       "path": "deliverables/leadership_report/assets/dual_optical_registration_report/01_algorithm_flow.png",
@@ -1213,38 +1830,44 @@
       "sha256": "0570a0a6cbe1f5331f9b20679fb14e24bd9f4e3c97e02220836e4bf517fa68f3"
     },
     {
-      "path": "deliverables/leadership_report/assets/dual_optical_registration_report/08_s180_selected_results.png",
-      "sha256": "a5083a85dac7032dc7b251ea412489f627fa6be268505dccc1896d38ce80982c"
-    },
-    {
-      "path": "deliverables/leadership_report/assets/dual_optical_registration_report/09_tracking_and_registration_loss.png",
-      "sha256": "7d91380e21d4ca61cc155a6d00034785227c4203767ec2c64cc05ceee4d11582"
-    },
-    {
       "path": "deliverables/leadership_report/assets/dual_optical_registration_report/10_ranging_reconstruction_and_error.png",
       "sha256": "72357f7e37b0d5a01d4a8793e1e76c72f4764f55aaf3823e8c35ac9450295f37"
     },
     {
-      "path": "deliverables/leadership_report/assets/dual_optical_registration_report/11_360_clean_light_route_comparison.png",
-      "sha256": "7438a57f0f8bf8086eb0bd7d47727780c2a366c299ad1533ae2e05691ba1a7ae"
+      "path": "deliverables/leadership_report/assets/dual_optical_registration_report/13_v2_oracle_quality_timing.png",
+      "sha256": "46614f09cdd57bebada37b724d223ef1f2a6b4c5c697c2d02c38322117520d9c"
     },
     {
-      "path": "deliverables/leadership_report/assets/dual_optical_registration_report/12_360_multiseed_cascade.png",
-      "sha256": "7ff0bdd974a2b1458b8ee91e81089878688f861e7ad12642b38a6718225177bf"
+      "path": "deliverables/leadership_report/assets/dual_optical_registration_report/14_v2_continuous_single_station.png",
+      "sha256": "bec82400ec53556fde9bae78f8f9902f105093215e06acaf30a0f99d000e7f6c"
+    },
+    {
+      "path": "deliverables/leadership_report/assets/dual_optical_registration_report/15_v2_continuous_dual_matrix.png",
+      "sha256": "8124c992a43f3be9ea26650ca310e20ca9e402532970d67cd35694645ce5ad73"
+    },
+    {
+      "path": "deliverables/leadership_report/assets/dual_optical_registration_report/16_v2_s180_single_station.png",
+      "sha256": "8790a0a7a7dc24f9d5b9298021a899507184b7e82e4c5ce3d11771c002745ef8"
+    },
+    {
+      "path": "deliverables/leadership_report/assets/dual_optical_registration_report/16b_v2_s180_dual_matrix.png",
+      "sha256": "205367b712a2b728539aad64d6d0827145b90e73fdb3515e66240ebdf2207c82"
+    },
+    {
+      "path": "deliverables/leadership_report/assets/dual_optical_registration_report/17_v2_latency_deadline.png",
+      "sha256": "4ee1fbead3e083ba337fb7c0165af8cc18bd0ccd7bf018a80c5686685ec0c380"
+    },
+    {
+      "path": "deliverables/leadership_report/assets/dual_optical_registration_report/18_v2_local_dual_correlation.png",
+      "sha256": "c1a5ee77fd8e62e1a8feeda9c9a1e03405aacab38d5cb91975077c2cea112053"
     }
   ],
   "limitations": [
-    "40- and 60-target S180 rows are diagnostic because the shared local tracker failed acceptance.",
-    "The 40- and 60-target rows use different test scenes and separately trained GNN models; they are not a target-count-only controlled comparison.",
-    "One difficult 40-target seed contributes 12 of the 19 final-round false associations; excluding it yields 95.27% precision.",
-    "The geometry comparison is limited to the unretuned S180 enhanced-geometry baseline.",
-    "The requested 360-degree perfect-local-track 20/40/60 by three-route matrix has no machine evidence; all nine cells remain pending test.",
-    "The 360-degree clean/light route comparison and scale diagnostic use different frozen campaigns and must not be pooled.",
-    "The 20-, 40-, and 60-target 360-degree rows use separately trained GNN models and five test seeds per scale.",
-    "In the multi-scale 360-degree campaign, geometry ran only at 20 targets and track-level attention did not run; absent combinations are recorded as not_run, not zero.",
-    "The 360-degree random-interference table reports final-round metrics for clean, light, medium, and heavy corruption; it does not pool all six revolutions.",
-    "The random 360-degree scenes vary initial geometry and crossings but retain two heading classes (0 and -30 degrees); continuously randomized headings are not validated.",
-    "All association result tables report final-round precision and fixed-target coverage only; intermediate diagnostic metrics remain source evidence but are not shown.",
-    "The 40-target ranging result uses ideal pose/time and one seed and is not an equipment claim."
+    "All 54 matrix groups are deterministic offline replays of preserved AirSim evidence, not new AirSim runs.",
+    "The 360-degree 40/60-target geometry route uses a pre-existing cross-scale diagnostic freeze.",
+    "S180 medium/heavy observations are deterministic offline corruption replays.",
+    "The ideal-local-track matrix uses offline labels to construct one local track per observed target and camera; it is a diagnostic upper-bound input.",
+    "The 40-target ranging demonstration uses ideal pose/time and one seed and is separate from the 54-group matrix.",
+    "Latency is machine-dependent; quality metrics are deterministic for the preserved inputs and frozen routes."
   ]
 }
