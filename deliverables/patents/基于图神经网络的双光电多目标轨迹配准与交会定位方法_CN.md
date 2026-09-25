@@ -386,11 +386,11 @@ $$
 [0062] 如图6所示，对于确认的双站航迹关系，在共同参考时刻分别取得A站光心601、B站光心602及对应单位视线603、604：
 
 $$
-\boldsymbol L_A(\lambda_A)=\boldsymbol o_A+lambda_A\boldsymbol d_A，
+\boldsymbol L_A(\lambda_A)=\boldsymbol o_A+\lambda_A\boldsymbol d_A，
 $$
 
 $$
-\boldsymbol L_B(\lambda_B)=\boldsymbol o_B+lambda_B\boldsymbol d_B。
+\boldsymbol L_B(\lambda_B)=\boldsymbol o_B+\lambda_B\boldsymbol d_B。
 $$
 
 [0063] 由于测量误差，两条视线一般不严格相交。令 $\boldsymbol w=\boldsymbol o_A-\boldsymbol o_B$，并定义：
