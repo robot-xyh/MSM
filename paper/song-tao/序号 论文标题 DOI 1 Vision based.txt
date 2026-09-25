@@ -1,0 +1,21 @@
+序号	论文标题	DOI
+1	Vision-based swarm tracking of multiple UAVs in air-to-air scenarios	10.1016/j.cja.2025.103558
+2	Flight envelope constrained UAV shipboard landing control within an identified quiescent period	10.1016/j.cja.2025.103463
+3	Image-based fixed-time visual servoing control for UAV landing on a moving platform with visibility constraints	
+4	Range-Only UWB 6D Pose Estimator for Micro UAVs: Performance Analysis	
+5	Level-Aware Consistent Multilevel Map Translation From Satellite Imagery	10.1109/TGRS.2022.3221978
+6	基于视觉图像的空对空多无人机目标跟踪	10.7527/S1000-6893.2023.29379
+7	Topology Optimizationfor structure with multigradient materials	
+8	Optimal terminal-velocity-control guidance for intercepting non-cooperative maneuvering quadcopter	10.1002/rob.22059
+9	Drone Detection and Pose Estimation Using Relational Graph Networks	10.3390/s19061479
+10	Optimal spatial-temporal cooperative guidance againsta maneuvering target	10.1016/j.jfranklin.2023.07.026
+11	SCT-MOT: Enhancing Air-to-Air Multiple UAVs Tracking with Swarm-Coupled Motion and Trajectory Guidance	10.48550/arXiv.2604.06883
+12	Drift-Free 4DoF Pose Estimation for UAVs: Minimizing UWB Devices With IMU Integration	
+13	Design, performance optimization, and experiments of a tail-propeller layout multi-rotor UAV	10.1016/j.ast.2025.111406
+14	Optimal field-of-view and impact-angle constrained guidance against a maneuvering target	
+15	Optimal 3-D Coverage-based Cooperative Guidance for Intercepting a Highly Maneuvering Target	
+16	Adaptive-dynamic-programming-based cooperative active defense guidance against a guided attacker	10.1016/j.ast.2026.112315
+17	Scalable Cooperative Decision-Making in Multi-UAV Confronta... (图截断)	
+18	Enhanced missile hit probability actor-critic algorithm for auton... (图截断)	
+19	Autonomous Dogfight Decision-Making for Air Combat Based... (图截断)	10.3390/aerospace12030265
+20	Image-based visual servoing tracking control of a quadrotor with target estimation
