@@ -2,7 +2,8 @@
 
 This independent campaign validates three separable AirSim problems:
 
-1. probability-cell search from center cues with 80% precision and 80% recall;
+1. probability-cell search under either the legacy 80/80 cue fixture or the
+   perfect-cue coarse-position offline protocol;
 2. center dual-optical cue to terminal-camera track association;
 3. anonymous cross-camera association between interceptor camera nodes.
 
@@ -18,6 +19,109 @@ Blocks 1.8.1 accepts the requested per-camera image dimensions but reports the
 default 90-degree FOV immediately after startup. Main therefore applies 3.67
 degrees to the center cameras and 19 degrees to terminal cameras through
 `simSetCameraFov` after startup and every reset, then records an API audit.
+
+## Post-search center handover error campaign on 2026-08-20
+
+Main completed a center-to-terminal registration campaign that starts after
+cooperative search has already found every target. Center source precision and
+recall are fixed at 1.0 and resources are one-to-one with 20, 40, or 60 targets.
+The camera is 1920x1080 with a 19-degree horizontal FOV, the target is 3 m and
+50 m/s, and the observation range is about 700 m. The reported recall is
+conditional on search success and is not an end-to-end system probability.
+
+The offline matrix contains 480 scenario combinations and two association
+backends, producing 960 per-seed rows over ten seeds. It crosses 5 m satellite
+and 50 m visual-navigation radial P95 position error, normal and degraded
+attitude/gimbal profiles, ideal and light detector conditions, and anonymous
+versus geometry-validated coarse-ID handover. Light corruption uses 3% misses,
+two false alarms per camera per second, and 0.25 px center noise.
+
+For normal attitude, satellite navigation, and light detector corruption, the
+anonymous geometry recall at 20/40/60 targets was 0.970/0.915/0.925. With a
+validated coarse ID it was 0.975/0.953/0.965. Under 50 m visual navigation and
+the degraded attitude profile, anonymous geometry recall fell to
+0.860/0.710/0.615; the validated coarse-ID path reached
+0.935/0.920/0.855. Across all combinations geometry averaged 0.950 precision
+and 0.915 recall.
+
+The previously frozen GNN averaged 0.438 precision and 0.025 recall because its
+training distribution did not contain the new navigation, attitude, gimbal,
+and detector errors; it is rejected for this campaign. The result does not
+show that graph scoring is inherently unusable. It shows that the old model
+cannot be transferred into this error regime without retraining and held-out
+calibration, and that 60 targets are outside its trained scale.
+
+One real ComputerVision `simGetDetections` representative also completed at
+each requested scale with no saved PNGs. The first attempt exposed a Blocks
+1.8.1 startup-reset crash; the runner now resets only between episodes. The
+primary reproducible result remains the offline matrix under
+`outputs/center_handover_sensor_error_20260820/`, graded B by the evidence
+locator. The three one-seed AirSim roots are separate interface evidence and
+currently grade C because complete runtime provenance was not frozen.
+
+## Terminal registration diagnostic on 2026-08-19
+
+The center-handover geometry now exposes the complete NED-to-body,
+body-to-gimbal, and gimbal-to-camera rotation chain, separate body-to-gimbal
+and gimbal-to-optical-center offsets, measurement-time pose interpolation, and
+numerical covariance propagation for navigation, attitude, gimbal, and pixel
+errors. Saved 20260816 AirSim observations contain a composite camera pose at
+measurement time and are therefore replayed with zero installation offsets;
+non-zero offsets and pose-error sequences are covered by unit tests, not by a
+new AirSim run.
+
+Cross-view offline scoring now reports relation precision plus target-equal
+purity, completeness, exact clean-cluster rate, mixed-identity target count,
+and opportunity targets that never formed a cross-view relation. A 36-point
+diagnostic sweep varied only GNN probability threshold, GNN/geometry fusion
+weight, and unmatched cost on the three report replays. The selected values
+were 0.05, 0.25, and 0.85. They removed mixed identities, but reduced
+target-equal completeness to 0.25 in 20/8 and 0.5666 in 40/50. The same values
+improved 20/30 relation precision from 0.7402 to 0.9736. Because selection used
+the report replays themselves, this is diagnostic test-set tuning and not an
+independent validation. Sparse geometry remains the default.
+
+Evidence and exact input hashes are under
+`outputs/terminal_gnn_diagnostic_selection_20260819_v2/`. The terminal report
+generator has a `--terminal-only` path so report updates do not rewrite the
+perfect-cue search report.
+
+## Perfect-cue offline search matrix on 2026-08-19
+
+The search package now has a second, deliberately separate validation
+protocol. It assumes one correct center cue per real target, with source
+precision and recall both equal to 1.0, then injects seeded N/E/D position
+errors with per-axis sigma values of 30, 60, and 100 metres. There are no
+ghost, duplicate, or missed cues in this protocol.
+
+The completed matrix contains 45 deterministic offline replays: three scales
+(20 targets/8 resources, 20/30, and 40/50), three position-error levels, and
+five cue-error seeds 20260816 through 20260820. The 20/8 mean consecutive
+confirmation rates were 1.00, 0.97, and 0.91 for the 30, 60, and 100 metre
+levels. The other two scales reached 1.00 in all three levels. Online truth
+leakage was zero in all 45 runs.
+
+An assignment is not counted as an observation. A resource must reach the
+camera pose under the 97 m/s platform-speed assumption, satisfy the 200 deg/s
+gimbal-rate assumption, and complete three 0.1-second frames inside the
+18-second budget. Observation scoring then applies the real pinhole frustum,
+the 10-pixel gate, and two consecutive frames. The camera is 1920 by 1080
+pixels with a 19-degree horizontal FOV and a derived 10.75-degree vertical FOV.
+
+The input is saved AirSim actor motion, not five new AirSim flights. Existing
+motion logs end at 0.8 seconds and are extrapolated for the remaining 17.2
+seconds using their saved velocities. Resources start from a forward staging
+line at N=2100 m; 97 m/s and 200 deg/s are simulation assumptions, not measured
+equipment performance. No random detector miss, false alarm, navigation error,
+collision constraint, or communication delay is injected. A visual search
+confirmation closes a cue task but does not prove source-to-local identity;
+that binding remains a terminal-registration responsibility.
+
+Machine-readable evidence is under
+`outputs/offline_search_100pct_cues_20260819/`. It contains 45 run directories,
+`matrix.csv`, `matrix_summary.json`, input hashes, anonymous online records,
+separate truth labels, figures, and a reproduction manifest. The Chinese
+leadership report is `deliverables/leadership_report/协同搜索试验报告_CN.md`.
 
 ## Validation state
 

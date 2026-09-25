@@ -34,8 +34,10 @@ class CampaignScenario:
             raise ValueError("target_count must be divisible by five for exact 80/80 fixtures")
         if self.target_speed_mps <= 0.0 or self.duration_s <= 0.0 or self.dt_s <= 0.0:
             raise ValueError("scenario timing and speed must be positive")
-        if not math.isclose(self.source_precision, 0.8) or not math.isclose(self.source_recall, 0.8):
-            raise ValueError("this campaign freezes source precision and recall at 0.8")
+        if not 0.0 < self.source_precision <= 1.0:
+            raise ValueError("source_precision must be within (0, 1]")
+        if not 0.0 < self.source_recall <= 1.0:
+            raise ValueError("source_recall must be within (0, 1]")
 
 
 @dataclass(frozen=True)

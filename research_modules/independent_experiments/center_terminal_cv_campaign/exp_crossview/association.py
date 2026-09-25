@@ -47,6 +47,73 @@ class CandidateEdgeScorer(Protocol):
     ) -> Mapping[tuple[str, str], float]: ...
 
 
+class PairCandidateCache:
+    """In-memory geometry cache for diagnostic parameter sweeps on one replay."""
+
+    def __init__(self) -> None:
+        self._values: dict[tuple[object, ...], tuple[CandidateEdge, ...]] = {}
+        self.hit_count = 0
+        self.miss_count = 0
+
+    @staticmethod
+    def _history_signature(
+        histories: Mapping[str, Sequence[LocalVisualTrackRecord]],
+    ) -> tuple[tuple[object, ...], ...]:
+        return tuple(
+            (
+                local_id,
+                len(history),
+                float(history[0].measurement_timestamp),
+                float(history[-1].measurement_timestamp),
+            )
+            for local_id, history in sorted(histories.items())
+        )
+
+    @staticmethod
+    def _geometry_signature(config: CrossViewConfig) -> tuple[object, ...]:
+        return (
+            config.maximum_alignment_offset_s,
+            config.maximum_handoff_gap_s,
+            config.minimum_intersection_angle_deg,
+            config.maximum_ray_separation_m,
+            config.maximum_reprojection_error_px,
+            config.maximum_motion_fit_error_m,
+            config.maximum_motion_turn_deg,
+            config.maximum_scale_geometry_log_error,
+            config.minimum_geometry_samples,
+        )
+
+    def build(
+        self,
+        histories_a: Mapping[str, Sequence[LocalVisualTrackRecord]],
+        histories_b: Mapping[str, Sequence[LocalVisualTrackRecord]],
+        calibration_a: CameraCalibration,
+        calibration_b: CameraCalibration,
+        config: CrossViewConfig,
+    ) -> tuple[CandidateEdge, ...]:
+        key = (
+            calibration_a.camera_id,
+            calibration_b.camera_id,
+            self._history_signature(histories_a),
+            self._history_signature(histories_b),
+            self._geometry_signature(config),
+        )
+        cached = self._values.get(key)
+        if cached is not None:
+            self.hit_count += 1
+            return cached
+        self.miss_count += 1
+        generated = build_pair_candidates(
+            histories_a,
+            histories_b,
+            calibration_a,
+            calibration_b,
+            config,
+        )
+        self._values[key] = generated
+        return generated
+
+
 def _angular_pixel_error(
     midpoint: np.ndarray,
     origin: np.ndarray,
@@ -286,13 +353,19 @@ def _solve_pair_assignment(
                     )
                     if not 0.0 <= probability <= 1.0:
                         raise ValueError("GNN probabilities must be within [0, 1]")
-                    final_cost = (
-                        (1.0 - config.gnn_probability_weight) * candidate.geometry_cost
-                        + config.gnn_probability_weight * (1.0 - probability)
-                    )
+                    if probability < config.gnn_probability_threshold:
+                        reasons.append("gnn_probability_below_threshold")
+                    else:
+                        final_cost = (
+                            (1.0 - config.gnn_probability_weight) * candidate.geometry_cost
+                            + config.gnn_probability_weight * (1.0 - probability)
+                        )
                 else:
                     final_cost = candidate.geometry_cost
-                if locked_a_to_b.get(candidate.track_a_id) == candidate.track_b_id:
+                if (
+                    final_cost is not None
+                    and locked_a_to_b.get(candidate.track_a_id) == candidate.track_b_id
+                ):
                     final_cost = max(0.0, final_cost - config.confirmed_pair_cost_bonus)
         enriched_candidate = replace(
             candidate,
@@ -591,6 +664,7 @@ class CrossViewAssociator:
         camera_pair_plan: CameraPairPlan | None = None,
         output_mode: str = "detailed",
         candidate_sample_limit: int = 200,
+        candidate_cache: PairCandidateCache | None = None,
     ) -> None:
         self.calibrations = dict(calibrations)
         self.config = config or CrossViewConfig()
@@ -601,6 +675,7 @@ class CrossViewAssociator:
         )
         self.output_mode = output_mode
         self.candidate_sample_limit = int(candidate_sample_limit)
+        self.candidate_cache = candidate_cache
         if backend == "gnn" and scorer is None:
             raise ValueError("gnn backend requires a scorer")
         if output_mode not in {"detailed", "audit"}:
@@ -666,7 +741,12 @@ class CrossViewAssociator:
                 if not self.camera_pair_plan.allows(camera_a, camera_b):
                     continue
                 camera_pair_evaluation_count += 1
-                candidates = build_pair_candidates(
+                candidate_builder = (
+                    self.candidate_cache.build
+                    if self.candidate_cache is not None
+                    else build_pair_candidates
+                )
+                candidates = candidate_builder(
                     active[camera_a],
                     active[camera_b],
                     self.calibrations[camera_a],
@@ -881,6 +961,7 @@ def associate_crossview_tracks(
     camera_pair_plan: CameraPairPlan | None = None,
     output_mode: str = "detailed",
     candidate_sample_limit: int = 200,
+    candidate_cache: PairCandidateCache | None = None,
 ) -> CrossViewResult:
     return CrossViewAssociator(
         calibrations,
@@ -890,4 +971,5 @@ def associate_crossview_tracks(
         camera_pair_plan=camera_pair_plan,
         output_mode=output_mode,
         candidate_sample_limit=candidate_sample_limit,
+        candidate_cache=candidate_cache,
     ).run(records)

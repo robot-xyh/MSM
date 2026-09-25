@@ -1,5 +1,38 @@
 # Center Handover Experiment Plan
 
+## Completed on 2026-08-20
+
+- [x] Define the post-search metric condition with one correct center source
+  and one interceptor camera per target at 20, 40, and 60 target scale.
+- [x] Inject 5 m satellite and 50 m visual-navigation radial P95 position error,
+  normal/degraded body and gimbal error, and one degree of accumulated yaw
+  drift after 200 seconds.
+- [x] Compare ideal detection with 3% misses, two false alarms per camera per
+  second, and 0.25 px center noise, both with and without a geometry-validated
+  coarse source ID.
+- [x] Complete ten seeds over 480 scenario combinations and two backends,
+  preserving all 960 rows, 96 aggregates, source snapshot, model hashes,
+  figures, representative decisions, and replay manifest.
+- [x] Run one real AirSim `simGetDetections` representative at 20, 40, and 60
+  targets without saving PNG frames. Fix the runner so the first episode does
+  not reset immediately after Blocks startup.
+- [x] Establish geometry as the only usable baseline for the current error
+  distribution. The old frozen GNN averaged 0.025 recall and remains rejected
+  pending separate retraining and held-out validation.
+- [x] Run the full center-handover test directory: 41 passed on 2026-08-20.
+
+## Completed on 2026-08-19
+
+- [x] Define and test the complete NED/body/gimbal/camera rotation direction.
+- [x] Add separate gimbal-pivot and optical-center installation offsets while
+  preserving composite-pose replay compatibility.
+- [x] Interpolate body and gimbal pose at image measurement time and fail
+  closed for missing/late pose evidence; use arrival time only for freshness.
+- [x] Propagate center-track, navigation, body-attitude, gimbal-angle, and
+  pixel-center covariance to the image and to a world-ray covariance.
+- [ ] Capture decomposed non-zero installation offsets and pose-error streams
+  in AirSim; current evidence beyond unit tests remains unavailable.
+
 ## Completed on 2026-08-16
 
 - [x] Consume shared `SourceCueRecord` and `LocalVisualTrackRecord` contracts.
@@ -113,16 +146,19 @@
 
 ## Remaining main-owned validation
 
-- [ ] Run ten held-out 20-target AirSim seeds with `simGetDetections` boxes.
-- [ ] Repeat the identical-frame geometry/GNN comparison over independent
-  AirSim seeds before drawing statistical conclusions.
-- [ ] Add navigation, gimbal, timestamp, and detector error sensitivity only
-  after the ideal handover baseline remains stable.
+- [ ] Run independent AirSim seeds at 20, 40, and 60 targets. The 2026-08-20
+  AirSim evidence has one seed per scale and does not calibrate a distribution.
+- [ ] Record navigation, body-attitude, gimbal, and timestamp errors from the
+  runtime or hardware stream. The completed matrix injects these errors during
+  deterministic offline replay.
+- [ ] Retrain and calibrate a separate GNN on the new error distribution,
+  include 60-target training samples, and keep all evaluation seeds held out.
 - [ ] Add an explicit ghost-source exclusion stage using source existence,
   source-to-source conflict, and independent camera support before confirming
   a dense-scene binding.
 
-The geometry path now has multiple runs of one real AirSim seed, including one
-five-frame result. Multi-seed calibration and error sensitivity remain
-main-owned because they require Blocks launch, actor movement, episode reset,
-camera placement, and campaign-level log collection.
+The geometry path now has a complete ten-seed offline error matrix and one real
+AirSim representative at each requested scale. Multi-seed AirSim calibration,
+runtime-originated sensor errors, and a separately trained error-aware GNN
+remain main-owned because they require Blocks launch, actor movement, episode
+reset, camera placement, and campaign-level log collection.

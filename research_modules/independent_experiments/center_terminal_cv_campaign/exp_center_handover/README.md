@@ -27,6 +27,72 @@ mandatory. `torch_geometric` is not required. GNN mode requires an explicitly
 provided saved model through `model_path` or `--model-path`; the experiment
 entry point does not start a training campaign automatically.
 
+## Measurement-time mount and covariance update
+
+On 2026-08-19 the geometry implementation was extended with explicit matrix
+directions: `R_B^N` maps NED to body, `R_G^B` maps body to gimbal, and `R_C^G`
+maps gimbal to camera. The optical center includes a body-to-gimbal-pivot
+offset and a gimbal-pivot-to-camera offset. Pose interpolation uses samples
+bracketing the image `measurement_timestamp`; message arrival time is checked
+only for freshness. Missing brackets and excessive sample gaps fail closed.
+
+An optional numerical-Jacobian path propagates source-position, platform
+navigation, body-attitude, gimbal-angle, and pixel-center covariance to the
+image. It also produces origin/direction covariance for later two-ray
+intersection. Existing AirSim replays expose only the already-composed camera
+origin and attitude, so they use the documented zero-offset compatibility path.
+The new non-zero offset and covariance behavior is unit-tested but has not yet
+been validated with injected AirSim navigation or gimbal errors.
+
+## Post-search sensor-error campaign on 2026-08-20
+
+The new error campaign is conditioned on cooperative search already having
+found every target. Center source precision and recall are both 1.0, each
+target has one interceptor camera at about 700 m, and the reported metric is
+`P(center-to-terminal association succeeds | search found the target)`. It does
+not multiply the result by search success and it does not involve D1-D3.
+
+The completed deterministic offline matrix covers 20, 40, and 60 targets, ten
+seeds, anonymous versus geometry-validated coarse source IDs, normal versus
+degraded attitude, 5 m satellite versus 50 m visual-navigation radial P95
+position error, ideal versus light detector corruption, and geometry versus
+the previously frozen GNN. Light corruption is a 3% miss probability, two
+false alarms per camera per second, and 0.25 px detection-center sigma. There
+are 480 scenario combinations and 960 backend rows; low-result rows are
+retained.
+
+With satellite navigation, normal attitude, and light detector corruption,
+anonymous geometry reached mean precision/recall of 1.000/0.970 at 20 targets,
+0.950/0.915 at 40, and 0.965/0.925 at 60. A geometrically validated coarse ID
+raised recall to 0.975, 0.953, and 0.965 respectively. Under the combined
+50 m visual-navigation, degraded-attitude, and light-corruption condition,
+anonymous geometry recall fell to 0.860, 0.710, and 0.615; the validated coarse
+ID path recovered it to 0.935, 0.920, and 0.855.
+
+The frozen GNN was trained only on the earlier 20/40-target synthetic
+distribution and was not retrained for navigation, body-attitude, gimbal, or
+detector errors. Across the full matrix its mean precision was 0.438 and recall
+was 0.025, versus 0.950 and 0.915 for geometry. This is distribution-shift
+evidence: the frozen model is not usable for this error campaign. The 60-target
+GNN rows are also an unseen-scale test and must not be presented as calibrated
+performance.
+
+Main also completed one real `simGetDetections` ComputerVision representative
+run at each of 20, 40, and 60 targets using seed `20260820`; no PNG frames were
+saved. Normal satellite-profile geometry recall was 0.800, 0.775, and 0.667.
+These single-seed runs prove the camera/FOV/detection-box path reaches the same
+associator, but navigation, attitude, and gimbal errors are still applied in
+offline replay. They are interface evidence, not multi-seed performance.
+
+The primary evidence is
+`../outputs/center_handover_sensor_error_20260820/`. It contains the protocol,
+source snapshot, frozen model and hashes, 960-row metrics, 96-row aggregates,
+four representative decision traces, figures, and a reproduction manifest.
+The evidence locator graded it B: deterministic offline replay and rescoring
+are available, while full simulator equality is not. The three AirSim roots
+end in `_n20_retry01`, `_n40`, and `_n60` and currently grade C because they do
+not contain a full runtime source snapshot.
+
 The synthetic trainer covers both 20-target and 40-target fixtures and at
 least three ordered frames. Existing motion-residual and motion-availability
 edge features are populated from prior-frame observations instead of being
@@ -283,3 +349,9 @@ All three scenarios are offline replays of the same AirSim seed `20260816`.
 They are not independent-seed statistics and do not establish equipment or
 production performance. The frozen GNN remains an optional experimental path;
 geometry remains the fail-closed gate and the default deterministic baseline.
+
+On 2026-08-20, the full center-handover test directory passed 41 tests. This
+includes the sensor-error fixture, covariance-envelope, coarse-ID fallback,
+linearized covariance, AirSim replay-isolation, first-episode lifecycle, and
+executed-scale report checks. The test result validates implementation
+behavior; it does not replace the experiment metrics above.

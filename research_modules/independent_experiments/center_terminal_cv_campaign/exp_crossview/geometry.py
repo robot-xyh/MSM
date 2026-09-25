@@ -127,6 +127,57 @@ def closest_ray_intersection(
     )
 
 
+def propagate_ray_intersection_covariance(
+    origin_a: Sequence[float],
+    direction_a: Sequence[float],
+    ray_a_covariance: np.ndarray,
+    origin_b: Sequence[float],
+    direction_b: Sequence[float],
+    ray_b_covariance: np.ndarray,
+    *,
+    minimum_angle_deg: float = 0.1,
+) -> tuple[np.ndarray, np.ndarray]:
+    """Propagate two [origin, direction] covariances to the 3-D midpoint."""
+
+    covariance_a = np.asarray(ray_a_covariance, dtype=float)
+    covariance_b = np.asarray(ray_b_covariance, dtype=float)
+    if covariance_a.shape != (6, 6) or covariance_b.shape != (6, 6):
+        raise ValueError("ray covariance must be 6 by 6")
+    state = np.concatenate(
+        (
+            np.asarray(origin_a, dtype=float),
+            normalize(direction_a),
+            np.asarray(origin_b, dtype=float),
+            normalize(direction_b),
+        )
+    )
+    nominal = closest_ray_intersection(state[:3], state[3:6], state[6:9], state[9:12])
+    if nominal.angle_deg < minimum_angle_deg:
+        raise ValueError("ray intersection angle is too small for covariance propagation")
+
+    def midpoint(value: np.ndarray) -> np.ndarray:
+        return closest_ray_intersection(
+            value[:3], value[3:6], value[6:9], value[9:12]
+        ).midpoint_ned_m
+
+    steps = np.asarray((1.0e-3,) * 3 + (1.0e-6,) * 3 + (1.0e-3,) * 3 + (1.0e-6,) * 3)
+    jacobian = np.zeros((3, 12), dtype=float)
+    for index, step in enumerate(steps):
+        plus = state.copy()
+        minus = state.copy()
+        plus[index] += step
+        minus[index] -= step
+        jacobian[:, index] = (midpoint(plus) - midpoint(minus)) / (2.0 * step)
+    input_covariance = np.zeros((12, 12), dtype=float)
+    input_covariance[:6, :6] = covariance_a
+    input_covariance[6:, 6:] = covariance_b
+    output_covariance = jacobian @ input_covariance @ jacobian.T
+    output_covariance = (output_covariance + output_covariance.T) / 2.0
+    eigenvalues, eigenvectors = np.linalg.eigh(output_covariance)
+    output_covariance = eigenvectors @ np.diag(np.maximum(eigenvalues, 0.0)) @ eigenvectors.T
+    return nominal.midpoint_ned_m, output_covariance
+
+
 def recognition_extent(record: LocalVisualTrackRecord) -> float:
     x1, y1, x2, y2 = (float(value) for value in record.bbox_xyxy)
     return max(x2 - x1, y2 - y1)

@@ -112,6 +112,30 @@ def test_gnn_cost_fusion_keeps_fixed_geometry_weight_and_hard_gate() -> None:
         )
 
 
+def test_gnn_probability_threshold_only_filters_geometry_whitelist() -> None:
+    bundle = build_fixture("two_by_two_crossing")
+    rejected = associate_crossview_tracks(
+        bundle.records,
+        bundle.calibrations,
+        config=CrossViewConfig(gnn_probability_threshold=0.81),
+        backend="gnn",
+        scorer=_ConstantScorer(0.8),
+    )
+    assert rejected.matches == ()
+    assert any(
+        "gnn_probability_below_threshold" in candidate.reject_reasons
+        for candidate in rejected.candidates
+    )
+    accepted = associate_crossview_tracks(
+        bundle.records,
+        bundle.calibrations,
+        config=CrossViewConfig(gnn_probability_threshold=0.8),
+        backend="gnn",
+        scorer=_ConstantScorer(0.8),
+    )
+    assert accepted.matches
+
+
 def test_training_validation_seeds_are_disjoint_and_model_round_trips(tmp_path: Path) -> None:
     model_dir = train_and_save(
         tmp_path / "model",

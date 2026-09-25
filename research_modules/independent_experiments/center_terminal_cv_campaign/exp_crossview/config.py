@@ -72,6 +72,7 @@ class CrossViewConfig:
     confirmation_window_frames: int = 3
     unmatched_cost: float = 1.05
     confirmed_pair_cost_bonus: float = 0.35
+    gnn_probability_threshold: float = 0.0
     gnn_probability_weight: float = 0.45
     mature_cluster_min_size: int = 2
     mature_cluster_min_cross_camera_pairs: int = 2
@@ -124,6 +125,8 @@ class CrossViewConfig:
             raise ValueError("confirmed_pair_cost_bonus is invalid")
         if not 0.0 <= self.gnn_probability_weight <= 1.0:
             raise ValueError("gnn_probability_weight must be within [0, 1]")
+        if not 0.0 <= self.gnn_probability_threshold <= 1.0:
+            raise ValueError("gnn_probability_threshold must be within [0, 1]")
 
     def to_dict(self) -> dict[str, object]:
         return asdict(self)

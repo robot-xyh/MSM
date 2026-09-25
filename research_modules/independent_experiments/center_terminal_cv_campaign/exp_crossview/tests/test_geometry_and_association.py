@@ -2,12 +2,14 @@ from __future__ import annotations
 
 from dataclasses import replace
 
+import numpy as np
 import pytest
 
 from research_modules.independent_experiments.center_terminal_cv_campaign.exp_crossview.association import (
     _UnionFind,
     _attach_short_tracks_by_cluster_consensus,
     _cluster_confirmed_links,
+    PairCandidateCache,
     associate_crossview_tracks,
 )
 from research_modules.independent_experiments.center_terminal_cv_campaign.exp_crossview.config import (
@@ -15,7 +17,9 @@ from research_modules.independent_experiments.center_terminal_cv_campaign.exp_cr
 )
 from research_modules.independent_experiments.center_terminal_cv_campaign.exp_crossview.contracts import (
     CandidateEdge,
+    OfflineTruthLabels,
     PairMatch,
+    UnifiedTargetCluster,
     assert_online_anonymous,
 )
 from research_modules.independent_experiments.center_terminal_cv_campaign.exp_crossview.evaluation import (
@@ -27,6 +31,7 @@ from research_modules.independent_experiments.center_terminal_cv_campaign.exp_cr
 from research_modules.independent_experiments.center_terminal_cv_campaign.exp_crossview.geometry import (
     closest_ray_intersection,
     pixel_to_world_ray,
+    propagate_ray_intersection_covariance,
 )
 
 
@@ -106,6 +111,18 @@ def test_pinhole_backprojection_and_ray_intersection() -> None:
     assert intersection.depth_b_m > 0.0
     assert intersection.separation_m < 1.0
 
+    midpoint, covariance = propagate_ray_intersection_covariance(
+        first.ray_origin_ned_m,
+        first.ray_direction_ned,
+        np.diag((0.25, 0.25, 0.25, 1.0e-7, 1.0e-7, 1.0e-7)),
+        other.ray_origin_ned_m,
+        other.ray_direction_ned,
+        np.diag((0.25, 0.25, 0.25, 1.0e-7, 1.0e-7, 1.0e-7)),
+    )
+    assert midpoint == pytest.approx(intersection.midpoint_ned_m)
+    assert covariance.shape == (3, 3)
+    assert np.min(np.linalg.eigvalsh(covariance)) > -1.0e-8
+
 
 def test_two_camera_two_crossing_targets_do_not_swap_identity() -> None:
     bundle = build_fixture("two_by_two_crossing")
@@ -115,7 +132,47 @@ def test_two_camera_two_crossing_targets_do_not_swap_identity() -> None:
     assert result.metrics.association_precision == 1.0
     assert result.metrics.association_recall == 1.0
     assert result.metrics.id_switch_count == 0
+    assert result.metrics.opportunity_target_count == 2
+    assert result.metrics.target_equal_mean_purity == 1.0
+    assert result.metrics.target_equal_mean_completeness == 1.0
+    assert result.metrics.independently_correct_target_rate == 1.0
+    assert result.metrics.mixed_identity_target_count == 0
+    assert result.metrics.unregistered_opportunity_target_count == 0
     assert sorted(len(cluster.member_track_keys) for cluster in result.clusters) == [2, 2]
+
+
+def test_target_equal_metrics_are_not_dominated_by_one_large_clean_cluster() -> None:
+    base_bundle = build_fixture("two_by_two_crossing")
+    base = associate_crossview_tracks(base_bundle.records, base_bundle.calibrations)
+    target_a = tuple(f"A{index}::L1" for index in range(1, 6))
+    target_b = ("B1::L1", "B2::L1")
+    result = replace(
+        base,
+        clusters=(
+            UnifiedTargetCluster(
+                cluster_id="A-CLEAN",
+                member_track_keys=target_a,
+                camera_ids=tuple(f"A{index}" for index in range(1, 6)),
+            ),
+        ),
+        unresolved_track_keys=target_b,
+        pending_relations=(),
+    )
+    truth = OfflineTruthLabels(
+        track_to_target={
+            **{key: "TARGET-A" for key in target_a},
+            **{key: "TARGET-B" for key in target_b},
+        },
+        target_trajectories_ned_m={},
+        scenario_name="target-equal-test",
+        seed=1,
+    )
+    scored = score_with_offline_truth(result, truth)
+    assert scored.metrics.association_recall == pytest.approx(10.0 / 11.0)
+    assert scored.metrics.target_equal_mean_purity == pytest.approx(0.5)
+    assert scored.metrics.target_equal_mean_completeness == pytest.approx(0.5)
+    assert scored.metrics.independently_correct_target_rate == pytest.approx(0.5)
+    assert scored.metrics.unregistered_opportunity_target_count == 1
 
 
 def test_no_common_target_stays_unresolved_without_forced_merge() -> None:
@@ -324,3 +381,24 @@ def test_audit_candidate_retention_does_not_change_association_decisions() -> No
     assert audit.metrics == detailed.metrics
     assert len(audit.candidates) <= 2
     assert audit.audit.omitted_candidate_count > 0
+
+
+def test_candidate_cache_reuses_geometry_across_gnn_tuning_parameters() -> None:
+    bundle = build_fixture("partial_3cam_5target")
+    cache = PairCandidateCache()
+    first = associate_crossview_tracks(
+        bundle.records,
+        bundle.calibrations,
+        candidate_cache=cache,
+    )
+    assert cache.miss_count > 0
+    misses = cache.miss_count
+    second = associate_crossview_tracks(
+        bundle.records,
+        bundle.calibrations,
+        config=CrossViewConfig(unmatched_cost=0.9, gnn_probability_weight=0.7),
+        candidate_cache=cache,
+    )
+    assert cache.miss_count == misses
+    assert cache.hit_count > 0
+    assert first.audit.candidate_stage_counts["generated"] == second.audit.candidate_stage_counts["generated"]

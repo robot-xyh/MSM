@@ -44,6 +44,104 @@ def _relation_sets(
     return truth_relations, predicted_relations
 
 
+def _observed_track_keys(result: CrossViewResult) -> set[str]:
+    observed = {
+        member
+        for cluster in result.clusters
+        for member in cluster.member_track_keys
+    } | set(result.unresolved_track_keys)
+    for pending in result.pending_relations:
+        observed.update((pending.key_a, pending.key_b))
+    return observed
+
+
+def build_target_equal_cluster_metrics(
+    result: CrossViewResult,
+    truth: OfflineTruthLabels,
+) -> dict[str, int | float | None]:
+    """Score each observable target once, regardless of its number of tracks."""
+
+    observed = _observed_track_keys(result)
+    available_truth = {
+        key: target
+        for key, target in truth.track_to_target.items()
+        if key in observed
+    }
+    tracks_by_target: dict[str, set[str]] = {}
+    for key, target in available_truth.items():
+        tracks_by_target.setdefault(target, set()).add(key)
+    eligible = {
+        target: tracks
+        for target, tracks in tracks_by_target.items()
+        if len({split_track_key(key)[0] for key in tracks}) >= 2
+    }
+    if not eligible:
+        return {
+            "opportunity_target_count": 0,
+            "target_equal_mean_purity": None,
+            "target_equal_mean_completeness": None,
+            "independently_correct_target_count": 0,
+            "independently_correct_target_rate": None,
+            "mixed_identity_target_count": 0,
+            "unregistered_opportunity_target_count": 0,
+        }
+
+    cluster_members = [set(cluster.member_track_keys) for cluster in result.clusters]
+    purities: list[float] = []
+    completenesses: list[float] = []
+    independently_correct = 0
+    unregistered = 0
+    mixed_targets: set[str] = set()
+    for members in cluster_members:
+        identities = {
+            available_truth[member]
+            for member in members
+            if member in available_truth
+        }
+        if len(identities) > 1:
+            mixed_targets.update(identity for identity in identities if identity in eligible)
+
+    for target, target_tracks in sorted(eligible.items()):
+        options = []
+        for members in cluster_members:
+            correct = len(members & target_tracks)
+            if correct == 0:
+                continue
+            labelled_members = {member for member in members if member in available_truth}
+            purity = correct / len(labelled_members) if labelled_members else 0.0
+            completeness = correct / len(target_tracks)
+            options.append((correct, purity, completeness, members, labelled_members))
+        if not options:
+            purities.append(0.0)
+            completenesses.append(0.0)
+            unregistered += 1
+            continue
+        best = max(options, key=lambda item: (item[0], item[1], item[2]))
+        correct, purity, completeness, members, labelled_members = best
+        purities.append(float(purity))
+        completenesses.append(float(completeness))
+        if correct < 2:
+            unregistered += 1
+        if (
+            members == target_tracks
+            and labelled_members == members
+            and purity == 1.0
+            and completeness == 1.0
+        ):
+            independently_correct += 1
+
+    count = len(eligible)
+    return {
+        "opportunity_target_count": count,
+        "target_equal_mean_purity": sum(purities) / count,
+        "target_equal_mean_completeness": sum(completenesses) / count,
+        "independently_correct_target_count": independently_correct,
+        "independently_correct_target_rate": independently_correct / count,
+        "mixed_identity_target_count": len(mixed_targets),
+        "unregistered_opportunity_target_count": unregistered,
+    }
+
+
 def score_with_offline_truth(
     result: CrossViewResult,
     truth: OfflineTruthLabels,
@@ -67,6 +165,7 @@ def score_with_offline_truth(
         > 1
         for cluster in result.clusters
     )
+    target_metrics = build_target_equal_cluster_metrics(result, truth)
     metrics = replace(
         result.metrics,
         true_positive_relations=true_positive,
@@ -75,6 +174,7 @@ def score_with_offline_truth(
         association_precision=precision,
         association_recall=recall,
         id_switch_count=id_switches,
+        **target_metrics,
         availability={**result.metrics.availability, "truth_metrics": True},
     )
     return replace(result, metrics=metrics)

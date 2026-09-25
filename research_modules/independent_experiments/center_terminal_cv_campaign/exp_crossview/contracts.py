@@ -171,6 +171,13 @@ class CrossViewMetrics:
     association_precision: float | None = None
     association_recall: float | None = None
     id_switch_count: int | None = None
+    opportunity_target_count: int | None = None
+    target_equal_mean_purity: float | None = None
+    target_equal_mean_completeness: float | None = None
+    independently_correct_target_count: int | None = None
+    independently_correct_target_rate: float | None = None
+    mixed_identity_target_count: int | None = None
+    unregistered_opportunity_target_count: int | None = None
     availability: Mapping[str, bool] = field(default_factory=dict)
 
     def to_dict(self) -> dict[str, Any]:
@@ -229,6 +236,13 @@ class CrossViewResult:
                     "association_precision",
                     "association_recall",
                     "id_switch_count",
+                    "opportunity_target_count",
+                    "target_equal_mean_purity",
+                    "target_equal_mean_completeness",
+                    "independently_correct_target_count",
+                    "independently_correct_target_rate",
+                    "mixed_identity_target_count",
+                    "unregistered_opportunity_target_count",
                 }
             },
             "audit": self.audit.to_dict(),

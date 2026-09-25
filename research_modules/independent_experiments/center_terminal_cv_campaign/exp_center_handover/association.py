@@ -5,14 +5,22 @@ from __future__ import annotations
 from collections import defaultdict, deque
 from dataclasses import asdict, dataclass, field
 import math
-from typing import Callable, Iterable, Mapping, Sequence
+from typing import Callable, Iterable, Mapping, MutableMapping, Sequence
 
 import numpy as np
 from scipy.optimize import linear_sum_assignment
 
 from ..common import AssociationRecord, LocalVisualTrackRecord, SourceCueRecord
 from ..common.recognition import DEFAULT_RECOGNITION_EXTENT_PX
-from .geometry import CameraModel, ProjectionError, camera_for_observation, project_source_cue
+from .geometry import (
+    CameraModel,
+    ProjectedSourceCue,
+    ProjectionError,
+    ProjectionUncertainty,
+    camera_for_observation,
+    project_source_cue,
+    projection_support_intersects_image,
+)
 
 
 @dataclass(frozen=True)
@@ -29,6 +37,10 @@ class AssociationConfig:
     switch_penalty: float = 4.0
     confirmation_window_frames: int = 3
     confirmation_required_frames: int = 2
+    projection_support_sigma: float = 2.447746830680816
+    projection_uncertainty_method: str = "numerical"
+    coarse_hint_validation_d2: float = 9.210340371976184
+    coarse_hint_bonus: float = 2.0
 
     def __post_init__(self) -> None:
         positive = (
@@ -39,6 +51,8 @@ class AssociationConfig:
             self.projection_noise_px,
             self.dummy_cost,
             self.forbidden_cost,
+            self.projection_support_sigma,
+            self.coarse_hint_validation_d2,
         )
         if any(value <= 0.0 for value in positive):
             raise ValueError("association thresholds and costs must be positive")
@@ -46,6 +60,12 @@ class AssociationConfig:
             raise ValueError("confirmation count must fit within the confirmation window")
         if self.dummy_cost >= self.forbidden_cost:
             raise ValueError("dummy_cost must be lower than forbidden_cost")
+        if self.coarse_hint_bonus < 0.0:
+            raise ValueError("coarse_hint_bonus cannot be negative")
+        if self.projection_uncertainty_method not in {"numerical", "linearized"}:
+            raise ValueError(
+                "projection_uncertainty_method must be numerical or linearized"
+            )
 
 
 @dataclass
@@ -73,6 +93,10 @@ class CandidateEvaluation:
     eligible: bool
     reject_reasons: tuple[str, ...]
     gnn_probability: float | None = None
+    projection_mean_in_frame: bool = False
+    projection_support_intersects_frame: bool = False
+    coarse_hint_relation: bool = False
+    coarse_hint_validated: bool = False
 
     def to_dict(self) -> dict[str, object]:
         return asdict(self)
@@ -87,6 +111,9 @@ class FrameAssociationResult:
     selected_pairs: tuple[tuple[str, str], ...]
     confirmed_pairs: tuple[tuple[str, str], ...]
     unregistered_local_track_ids: tuple[str, ...]
+    coarse_hint_count: int = 0
+    validated_coarse_hint_count: int = 0
+    fallback_coarse_hint_count: int = 0
 
 
 CandidateScorer = Callable[
@@ -104,12 +131,16 @@ class CenterHandoverAssociator:
         *,
         config: AssociationConfig | None = None,
         candidate_scorer: CandidateScorer | None = None,
+        use_coarse_hints: bool = False,
+        projection_cache: MutableMapping[tuple[object, ...], ProjectedSourceCue] | None = None,
     ) -> None:
         self.camera_models = dict(camera_models)
         if not self.camera_models:
             raise ValueError("at least one camera model is required")
         self.config = config or AssociationConfig()
         self.candidate_scorer = candidate_scorer
+        self.use_coarse_hints = bool(use_coarse_hints)
+        self._projection_cache = projection_cache if projection_cache is not None else {}
         self._frame_index = 0
         self._local_history: dict[tuple[str, str], tuple[float, np.ndarray]] = {}
         self._confirmation_history: dict[tuple[str, str], deque[bool]] = {}
@@ -140,6 +171,14 @@ class CenterHandoverAssociator:
                 probability = min(max(float(probabilities.get(candidate.candidate_id, 0.0)), 1.0e-6), 1.0 - 1.0e-6)
                 candidate.gnn_probability = probability
                 candidate.assignment_cost = candidate.baseline_cost - 2.0 * math.log(probability)
+
+        hint_count = validated_hint_count = 0
+        if self.use_coarse_hints:
+            hint_count, validated_hint_count = self._apply_coarse_hint_prior(
+                candidates,
+                source_cues,
+                local_tracks,
+            )
 
         selected_indices, unmatched_source_indices, unmatched_local_indices = self._assign(
             len(source_cues), len(local_tracks), candidates
@@ -231,9 +270,67 @@ class CenterHandoverAssociator:
             unregistered_local_track_ids=tuple(
                 sorted(local_tracks[index].local_track_id for index in unmatched_local_indices)
             ),
+            coarse_hint_count=hint_count,
+            validated_coarse_hint_count=validated_hint_count,
+            fallback_coarse_hint_count=hint_count - validated_hint_count,
         )
         self._frame_index += 1
         return result
+
+    def _apply_coarse_hint_prior(
+        self,
+        candidates: Sequence[CandidateEvaluation],
+        sources: Sequence[SourceCueRecord],
+        locals_: Sequence[LocalVisualTrackRecord],
+    ) -> tuple[int, int]:
+        """Validate search cue IDs and use them only as a soft assignment prior.
+
+        All candidate edges remain available to the Hungarian assignment. An
+        absent, stale, geometrically inconsistent, or duplicate hint receives
+        no bonus and therefore falls back to the same global N-to-N problem as
+        the no-hint mode.
+        """
+
+        source_ids = {source.source_track_id for source in sources}
+        hints: dict[int, str] = {}
+        for local_index, local in enumerate(locals_):
+            raw = local.metadata.get("coarse_source_track_id")
+            if raw is None:
+                continue
+            hint = str(raw).strip()
+            if hint:
+                hints[local_index] = hint
+        if not hints:
+            return 0, 0
+
+        hint_multiplicity: dict[str, int] = defaultdict(int)
+        for hint in hints.values():
+            hint_multiplicity[hint] += 1
+        by_pair = {
+            (candidate.source_track_id, candidate.local_index): candidate
+            for candidate in candidates
+        }
+        validated = 0
+        for local_index, hint in hints.items():
+            candidate = by_pair.get((hint, local_index))
+            if candidate is not None:
+                candidate.coarse_hint_relation = True
+            if (
+                hint not in source_ids
+                or hint_multiplicity[hint] != 1
+                or candidate is None
+                or not candidate.eligible
+                or candidate.mahalanobis_d2 is None
+                or candidate.mahalanobis_d2 > self.config.coarse_hint_validation_d2
+            ):
+                continue
+            candidate.coarse_hint_validated = True
+            candidate.assignment_cost = max(
+                0.0,
+                candidate.assignment_cost - self.config.coarse_hint_bonus,
+            )
+            validated += 1
+        return len(hints), validated
 
     def _evaluate_candidates(
         self,
@@ -242,6 +339,19 @@ class CenterHandoverAssociator:
         local_velocities: Mapping[tuple[str, str], np.ndarray | None],
     ) -> list[CandidateEvaluation]:
         candidates: list[CandidateEvaluation] = []
+        camera_contexts: dict[
+            int,
+            tuple[CameraModel | None, ProjectionUncertainty | None],
+        ] = {}
+        for local_index, local in enumerate(locals_):
+            base_camera = self.camera_models.get(local.camera_id)
+            if base_camera is None:
+                camera_contexts[local_index] = (None, None)
+            else:
+                camera_contexts[local_index] = _camera_and_uncertainty_for_local(
+                    base_camera,
+                    local,
+                )
         for source_index, source in enumerate(sources):
             for local_index, local in enumerate(locals_):
                 candidate_id = f"F{self._frame_index:04d}-S{source_index:03d}-L{local_index:03d}"
@@ -270,26 +380,52 @@ class CenterHandoverAssociator:
                 motion_residual: float | None = None
                 geometry_passed = False
                 motion_passed = True
+                projection_mean_in_frame = False
+                projection_support_intersects_frame = False
                 baseline_cost = self.config.forbidden_cost
-                base_camera = self.camera_models.get(local.camera_id)
-                if base_camera is None:
+                observed_camera, projection_uncertainty = camera_contexts[local_index]
+                if observed_camera is None:
                     reasons.append("camera_model_missing")
                 elif age >= -1.0e-9:
-                    observed_camera = camera_for_observation(
-                        base_camera,
-                        local.ray_origin_ned_m,
-                        local.camera_yaw_pitch_roll_deg,
-                    )
                     try:
-                        projection = project_source_cue(
-                            source,
-                            observed_camera,
-                            local.measurement_timestamp,
-                            acceleration_sigma_mps2=self.config.acceleration_sigma_mps2,
-                            projection_noise_px=self.config.projection_noise_px,
+                        cache_key = (
+                            source.source_track_id,
+                            local.camera_id,
+                            float(local.measurement_timestamp),
+                            self.config.acceleration_sigma_mps2,
+                            self.config.projection_noise_px,
+                            self.config.projection_uncertainty_method,
                         )
+                        projection = self._projection_cache.get(cache_key)
+                        if projection is None:
+                            projection = project_source_cue(
+                                source,
+                                observed_camera,
+                                local.measurement_timestamp,
+                                acceleration_sigma_mps2=self.config.acceleration_sigma_mps2,
+                                projection_noise_px=self.config.projection_noise_px,
+                                uncertainty=projection_uncertainty,
+                                require_in_frame=False,
+                                uncertainty_method=self.config.projection_uncertainty_method,
+                            )
+                            self._projection_cache[cache_key] = projection
                         projected_center = projection.center_px
                         prediction_covariance = np.asarray(projection.covariance_px2, dtype=float)
+                        projection_mean_in_frame = _point_in_image(
+                            projected_center,
+                            observed_camera,
+                        )
+                        projection_support_intersects_frame = (
+                            projection_mean_in_frame
+                            or projection_support_intersects_image(
+                                projected_center,
+                                prediction_covariance,
+                                observed_camera.intrinsics,
+                                sigma_scale=self.config.projection_support_sigma,
+                            )
+                        )
+                        if not projection_support_intersects_frame:
+                            reasons.append("projection_support_outside_image")
                         local_covariance = _local_covariance(local, self.config.local_measurement_sigma_px)
                         innovation_covariance = prediction_covariance + local_covariance
                         residual = np.asarray(local.center_px, dtype=float) - np.asarray(projected_center, dtype=float)
@@ -298,7 +434,10 @@ class CenterHandoverAssociator:
                             tuple(float(value) for value in row) for row in prediction_covariance
                         )  # type: ignore[assignment]
                         residual_tuple = tuple(float(value) for value in residual)
-                        geometry_passed = mahalanobis_d2 <= self.config.mahalanobis_gate_d2
+                        geometry_passed = (
+                            projection_support_intersects_frame
+                            and mahalanobis_d2 <= self.config.mahalanobis_gate_d2
+                        )
                         if not geometry_passed:
                             reasons.append("mahalanobis_gate_rejected")
                         local_velocity = local_velocities[(local.camera_id, local.local_track_id)]
@@ -347,6 +486,8 @@ class CenterHandoverAssociator:
                         recognition_passed=recognized,
                         eligible=eligible,
                         reject_reasons=tuple(dict.fromkeys(reasons)),
+                        projection_mean_in_frame=projection_mean_in_frame,
+                        projection_support_intersects_frame=projection_support_intersects_frame,
                     )
                 )
         return candidates
@@ -428,6 +569,94 @@ def _local_covariance(local: LocalVisualTrackRecord, fallback_sigma_px: float) -
     if covariance.shape != (2, 2) or not np.all(np.isfinite(covariance)):
         raise ValueError("center_covariance_px2 must be a finite 2 by 2 matrix")
     return (covariance + covariance.T) / 2.0
+
+
+def _camera_and_uncertainty_for_local(
+    base: CameraModel,
+    local: LocalVisualTrackRecord,
+) -> tuple[CameraModel, ProjectionUncertainty | None]:
+    pose_raw = local.metadata.get("reported_camera_pose")
+    uncertainty_raw = local.metadata.get("projection_uncertainty")
+    if not isinstance(pose_raw, Mapping):
+        return (
+            camera_for_observation(
+                base,
+                local.ray_origin_ned_m,
+                local.camera_yaw_pitch_roll_deg,
+            ),
+            None,
+        )
+    camera = CameraModel(
+        camera_id=base.camera_id,
+        intrinsics=base.intrinsics,
+        body_position_ned_m=_vector3(pose_raw, "body_position_ned_m"),
+        body_yaw_pitch_roll_deg=_vector3(pose_raw, "body_yaw_pitch_roll_deg"),
+        gimbal_yaw_pitch_roll_deg=_vector3(
+            pose_raw,
+            "gimbal_yaw_pitch_roll_deg",
+            default=(0.0, 0.0, 0.0),
+        ),
+        camera_yaw_pitch_roll_gimbal_deg=base.camera_yaw_pitch_roll_gimbal_deg,
+        gimbal_pivot_offset_body_m=base.gimbal_pivot_offset_body_m,
+        camera_offset_gimbal_m=base.camera_offset_gimbal_m,
+        camera_offset_body_m=base.camera_offset_body_m,
+        pose_representation="decomposed_mount",
+    )
+    if uncertainty_raw is None:
+        return camera, None
+    if not isinstance(uncertainty_raw, Mapping):
+        raise ValueError("projection_uncertainty metadata must be a mapping")
+    uncertainty = ProjectionUncertainty(
+        navigation_position_covariance_m2=_matrix_tuple(
+            uncertainty_raw.get("navigation_position_covariance_m2"),
+            size=3,
+        ),
+        body_attitude_covariance_rad2=_matrix_tuple(
+            uncertainty_raw.get("body_attitude_covariance_rad2"),
+            size=3,
+        ),
+        gimbal_angle_covariance_rad2=_matrix_tuple(
+            uncertainty_raw.get("gimbal_angle_covariance_rad2"),
+            size=3,
+        ),
+        pixel_center_covariance_px2=_matrix_tuple(
+            uncertainty_raw.get("pixel_center_covariance_px2"),
+            size=2,
+        ),
+    )
+    return camera, uncertainty
+
+
+def _vector3(
+    value: Mapping[str, object],
+    key: str,
+    *,
+    default: tuple[float, float, float] | None = None,
+) -> tuple[float, float, float]:
+    raw = value.get(key, default)
+    if raw is None:
+        raise ValueError(f"reported camera pose is missing {key}")
+    result = tuple(float(item) for item in raw)  # type: ignore[arg-type]
+    if len(result) != 3 or not np.all(np.isfinite(result)):
+        raise ValueError(f"reported camera pose {key} must contain three finite values")
+    return result  # type: ignore[return-value]
+
+
+def _matrix_tuple(raw: object, *, size: int) -> tuple[tuple[float, ...], ...]:
+    if raw is None:
+        return tuple(tuple(0.0 for _ in range(size)) for _ in range(size))
+    matrix = np.asarray(raw, dtype=float)
+    if matrix.shape != (size, size) or not np.all(np.isfinite(matrix)):
+        raise ValueError(f"uncertainty covariance must be {size} by {size}")
+    return tuple(tuple(float(item) for item in row) for row in matrix)
+
+
+def _point_in_image(center_px: Sequence[float], camera: CameraModel) -> bool:
+    u, v = (float(value) for value in center_px)
+    return bool(
+        0.0 <= u < camera.intrinsics.width_px
+        and 0.0 <= v < camera.intrinsics.height_px
+    )
 
 
 def _aggregate_reject_reasons(candidates: Sequence[CandidateEvaluation]) -> tuple[str, ...]:

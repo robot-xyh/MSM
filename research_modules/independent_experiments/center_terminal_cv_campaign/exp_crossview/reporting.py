@@ -299,6 +299,12 @@ def _report_text(
 | 关联精确率 | {precision} |
 | 关联召回率 | {recall} |
 | 身份混合簇数量 | {metrics.id_switch_count if metrics.id_switch_count is not None else '不可用'} |
+| 具备双视角机会的目标数 | {metrics.opportunity_target_count if metrics.opportunity_target_count is not None else '不可用'} |
+| 每目标等权平均纯度 | {f'{metrics.target_equal_mean_purity:.4f}' if metrics.target_equal_mean_purity is not None else '不可用'} |
+| 每目标等权平均完整度 | {f'{metrics.target_equal_mean_completeness:.4f}' if metrics.target_equal_mean_completeness is not None else '不可用'} |
+| 正确形成独立纯净簇的目标比例 | {f'{metrics.independently_correct_target_rate:.4f}' if metrics.independently_correct_target_rate is not None else '不可用'} |
+| 涉及身份混合的目标数 | {metrics.mixed_identity_target_count if metrics.mixed_identity_target_count is not None else '不可用'} |
+| 具备机会但未完成配准的目标数 | {metrics.unregistered_opportunity_target_count if metrics.unregistered_opportunity_target_count is not None else '不可用'} |
 
 ![NED俯视和高度侧视]({relative_figures[0]})
 
