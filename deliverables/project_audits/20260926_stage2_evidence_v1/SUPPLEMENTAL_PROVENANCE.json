@@ -1,0 +1,1104 @@
+{
+  "schema": "msm-stage-two-provenance-v1",
+  "created_at_utc": "2026-09-26T08:53:24.839307+00:00",
+  "tool_sha256": "4a87183230082098b7dfad67da775fdb413ba8b561db544a14e4c607a56002ee",
+  "csv_metadata": [
+    {
+      "path": "research_modules/independent_experiments/dual_optical_online_benchmark/outputs/report_replay_20260819_v2/combined_final_case_metrics.csv",
+      "sha256": "3af9c252503aae2bc6f7e14a174004cd913385453bd04b189a39d7edf51157c8",
+      "rows": 270,
+      "distinct_values": {
+        "seed": [
+          "20282201",
+          "20282202",
+          "20282203",
+          "20282204",
+          "20282205",
+          "20283301",
+          "20283302",
+          "20283303",
+          "20283304",
+          "20283305",
+          "20284201",
+          "20284202",
+          "20284203",
+          "20284204",
+          "20284205",
+          "20285301",
+          "20285302",
+          "20285303",
+          "20285304",
+          "20285305",
+          "20286201",
+          "20286202",
+          "20286203",
+          "20286204",
+          "20286205",
+          "20287301",
+          "20287302",
+          "20287303",
+          "20287304",
+          "20287305"
+        ],
+        "target_count": [
+          "20",
+          "40",
+          "60"
+        ],
+        "profile": [
+          "continuous_360",
+          "oracle_360",
+          "s180"
+        ],
+        "route_name": [
+          "epipolar_mht",
+          "gnn"
+        ],
+        "condition": [
+          "clean",
+          "heavy",
+          "light",
+          "medium"
+        ],
+        "evidence_status": [
+          "offline_interference_replay_diagnostic",
+          "offline_oracle_diagnostic",
+          "offline_replay",
+          "offline_replay_diagnostic"
+        ],
+        "round_index": [
+          "12",
+          "6"
+        ]
+      }
+    },
+    {
+      "path": "research_modules/independent_experiments/center_terminal_cv_campaign/outputs/offline_search_100pct_cues_20260819/matrix.csv",
+      "sha256": "a0fef618c286074cddb9528d178fb1c4e0e3544d92a3daf1b1124f0389a7c065",
+      "rows": 45,
+      "distinct_values": {
+        "seed": [
+          "20260816",
+          "20260817",
+          "20260818",
+          "20260819",
+          "20260820"
+        ],
+        "target_count": [
+          "20",
+          "40"
+        ],
+        "resource_count": [
+          "30",
+          "50",
+          "8"
+        ],
+        "scenario_id": [
+          "n20_m30",
+          "n20_m8",
+          "n40_m50"
+        ]
+      }
+    },
+    {
+      "path": "research_modules/independent_experiments/center_terminal_cv_campaign/outputs/terminal_gnn_diagnostic_selection_20260819_v2/candidate_aggregate_metrics.csv",
+      "sha256": "c5c75cf4a014bfcf4cce7fe7464e6d66412466bc6f4a5b6351b07fdcf5de53df",
+      "rows": 36,
+      "distinct_values": {}
+    },
+    {
+      "path": "research_modules/independent_experiments/center_terminal_cv_campaign/outputs/terminal_gnn_diagnostic_selection_20260819_v2/candidate_scenario_metrics.csv",
+      "sha256": "d958eae6a760a5605b98eb9caa37822137ccb467a5f12c38dc928ecf5e86363c",
+      "rows": 108,
+      "distinct_values": {
+        "backend": [
+          "gnn"
+        ],
+        "scenario_id": [
+          "n20_m30",
+          "n20_m8",
+          "n40_m50"
+        ]
+      }
+    },
+    {
+      "path": "research_modules/independent_experiments/center_terminal_cv_campaign/outputs/terminal_gnn_diagnostic_selection_20260819_v2/geometry_scenario_metrics.csv",
+      "sha256": "9f0ccc327d0dcae87e5157e59b9f36c0b9d11866110a69c1cbd857da202381a5",
+      "rows": 3,
+      "distinct_values": {
+        "backend": [
+          "geometry"
+        ],
+        "scenario_id": [
+          "n20_m30",
+          "n20_m8",
+          "n40_m50"
+        ]
+      }
+    },
+    {
+      "path": "research_modules/independent_experiments/center_terminal_cv_campaign/outputs/center_handover_sensor_error_20260820/per_run_metrics.csv",
+      "sha256": "80f6267a22da2b25a570af6f0640d132df33e0a6371bb85ca731964a5f65c29d",
+      "rows": 960,
+      "distinct_values": {
+        "seed": [
+          "20260820",
+          "20260821",
+          "20260822",
+          "20260823",
+          "20260824",
+          "20260825",
+          "20260826",
+          "20260827",
+          "20260828",
+          "20260829"
+        ],
+        "target_count": [
+          "20",
+          "40",
+          "60"
+        ],
+        "resource_count": [
+          "20",
+          "40",
+          "60"
+        ],
+        "backend": [
+          "geometry",
+          "gnn"
+        ]
+      }
+    },
+    {
+      "path": "research_modules/independent_experiments/center_terminal_cv_campaign/outputs/center_handover_sensor_error_20260820/aggregate_metrics.csv",
+      "sha256": "7f45fe28b6c2fe26956e1b9bdfec3fc9735cc57cff940465eee6bedac0b5de70",
+      "rows": 96,
+      "distinct_values": {
+        "target_count": [
+          "20",
+          "40",
+          "60"
+        ],
+        "backend": [
+          "geometry",
+          "gnn"
+        ]
+      }
+    },
+    {
+      "path": "research_modules/independent_experiments/center_terminal_cv_campaign/outputs/center_handover_sensor_error_airsim_20260820_n20_retry01/summary_metrics.csv",
+      "sha256": "c3886d015300940b72ee5ddd14b2c55abcadcef0f2aa559b115a0318b6b7419c",
+      "rows": 4,
+      "distinct_values": {
+        "seed": [
+          "20260820"
+        ],
+        "target_count": [
+          "20"
+        ],
+        "resource_count": [
+          "20"
+        ],
+        "profile": [
+          "satellite_normal",
+          "visual_navigation_degraded"
+        ],
+        "backend": [
+          "geometry",
+          "gnn"
+        ]
+      }
+    },
+    {
+      "path": "research_modules/independent_experiments/center_terminal_cv_campaign/outputs/center_handover_sensor_error_airsim_20260820_n40/summary_metrics.csv",
+      "sha256": "fc859a7dd52b5ab916a6327a3b15abf9a39947a1e841dd9a78def71b28226a87",
+      "rows": 4,
+      "distinct_values": {
+        "seed": [
+          "20260820"
+        ],
+        "target_count": [
+          "40"
+        ],
+        "resource_count": [
+          "40"
+        ],
+        "profile": [
+          "satellite_normal",
+          "visual_navigation_degraded"
+        ],
+        "backend": [
+          "geometry",
+          "gnn"
+        ]
+      }
+    },
+    {
+      "path": "research_modules/independent_experiments/center_terminal_cv_campaign/outputs/center_handover_sensor_error_airsim_20260820_n60/summary_metrics.csv",
+      "sha256": "209957d7c291b81418ed024d6d93d8f72ff236abf93c923256fda642e0633b35",
+      "rows": 4,
+      "distinct_values": {
+        "seed": [
+          "20260820"
+        ],
+        "target_count": [
+          "60"
+        ],
+        "resource_count": [
+          "60"
+        ],
+        "profile": [
+          "satellite_normal",
+          "visual_navigation_degraded"
+        ],
+        "backend": [
+          "geometry",
+          "gnn"
+        ]
+      }
+    }
+  ],
+  "gnn_freeze_metadata": [
+    {
+      "path": "research_modules/independent_experiments/dual_optical_online_benchmark/outputs/scale_funnel_v3/targets_020/dataset/freezes/gnn/freeze_manifest.json",
+      "sha256": "955f1aa5df9fa863c227a297d7e9aee5230b5bd6ce4ad0fbc5bf24cd22cdb4e2",
+      "role": "continuous_360_gnn_freeze",
+      "target_count": 20,
+      "train_seeds": [
+        20282001,
+        20282002,
+        20282003,
+        20282004,
+        20282005,
+        20282006,
+        20282007,
+        20282008
+      ],
+      "validation_seeds": [
+        20282101,
+        20282102
+      ],
+      "reserved_test_seeds": [
+        20282201,
+        20282202,
+        20282203,
+        20282204,
+        20282205
+      ],
+      "listed_seed_overlap": [],
+      "freeze_allowed": true,
+      "test_accessed_before_freeze": false,
+      "limit": "Seed lists are manifest declarations, not a fresh audit of training execution."
+    },
+    {
+      "path": "research_modules/independent_experiments/dual_optical_online_benchmark/outputs/s180_1s_sector_v1/targets_020/dataset/freezes/gnn/freeze_manifest.json",
+      "sha256": "dd2f8f35f0d0c9a7ff2bec0179549183edc3cba42c824ec9ac3f94c998b7eb62",
+      "role": "s180_gnn_freeze",
+      "target_count": 20,
+      "train_seeds": [
+        20283001,
+        20283002,
+        20283003,
+        20283004,
+        20283005,
+        20283006,
+        20283007,
+        20283008
+      ],
+      "validation_seeds": [
+        20283101,
+        20283102
+      ],
+      "reserved_test_seeds": [
+        20283301,
+        20283302,
+        20283303,
+        20283304,
+        20283305
+      ],
+      "listed_seed_overlap": [],
+      "freeze_allowed": true,
+      "test_accessed_before_freeze": false,
+      "limit": "Seed lists are manifest declarations, not a fresh audit of training execution."
+    },
+    {
+      "path": "research_modules/independent_experiments/dual_optical_online_benchmark/outputs/scale_funnel_v3/targets_040/dataset/freezes/gnn/freeze_manifest.json",
+      "sha256": "e27be3c7e660d3b3be5c2950a88296caf55c3b486c642987fec35c9ab2ba53cf",
+      "role": "continuous_360_gnn_freeze",
+      "target_count": 40,
+      "train_seeds": [
+        20284001,
+        20284002,
+        20284003,
+        20284004,
+        20284005,
+        20284006,
+        20284007,
+        20284008
+      ],
+      "validation_seeds": [
+        20284101,
+        20284102
+      ],
+      "reserved_test_seeds": [
+        20284201,
+        20284202,
+        20284203,
+        20284204,
+        20284205
+      ],
+      "listed_seed_overlap": [],
+      "freeze_allowed": true,
+      "test_accessed_before_freeze": false,
+      "limit": "Seed lists are manifest declarations, not a fresh audit of training execution."
+    },
+    {
+      "path": "research_modules/independent_experiments/dual_optical_online_benchmark/outputs/s180_1s_sector_v1/targets_040/dataset/freezes/gnn/freeze_manifest.json",
+      "sha256": "487c124f6174512b4bbac22ea5301a6a29e679f05781e523fdb34d0c6fdb6d28",
+      "role": "s180_gnn_freeze",
+      "target_count": 40,
+      "train_seeds": [
+        20285001,
+        20285002,
+        20285003,
+        20285004,
+        20285005,
+        20285006,
+        20285007,
+        20285008
+      ],
+      "validation_seeds": [
+        20285101,
+        20285102
+      ],
+      "reserved_test_seeds": [
+        20285301,
+        20285302,
+        20285303,
+        20285304,
+        20285305
+      ],
+      "listed_seed_overlap": [],
+      "freeze_allowed": true,
+      "test_accessed_before_freeze": false,
+      "limit": "Seed lists are manifest declarations, not a fresh audit of training execution."
+    },
+    {
+      "path": "research_modules/independent_experiments/dual_optical_online_benchmark/outputs/scale_funnel_v3/targets_060/dataset/freezes/gnn/freeze_manifest.json",
+      "sha256": "0674f00a3fc0b7a506410a9244ccb0a37b980722067f5ab7988e5b66fbb1decc",
+      "role": "continuous_360_gnn_freeze",
+      "target_count": 60,
+      "train_seeds": [
+        20286001,
+        20286002,
+        20286003,
+        20286004,
+        20286005,
+        20286006,
+        20286007,
+        20286008
+      ],
+      "validation_seeds": [
+        20286101,
+        20286102
+      ],
+      "reserved_test_seeds": [
+        20286201,
+        20286202,
+        20286203,
+        20286204,
+        20286205
+      ],
+      "listed_seed_overlap": [],
+      "freeze_allowed": true,
+      "test_accessed_before_freeze": false,
+      "limit": "Seed lists are manifest declarations, not a fresh audit of training execution."
+    },
+    {
+      "path": "research_modules/independent_experiments/dual_optical_online_benchmark/outputs/s180_1s_sector_v1/targets_060/dataset/freezes/gnn/freeze_manifest.json",
+      "sha256": "758b87eeb6520f258d616141d034117dfa0357e8ee414891b561a69f6cf90c24",
+      "role": "s180_gnn_freeze",
+      "target_count": 60,
+      "train_seeds": [
+        20287001,
+        20287002,
+        20287003,
+        20287004,
+        20287005,
+        20287006,
+        20287007,
+        20287008
+      ],
+      "validation_seeds": [
+        20287101,
+        20287102
+      ],
+      "reserved_test_seeds": [
+        20287301,
+        20287302,
+        20287303,
+        20287304,
+        20287305
+      ],
+      "listed_seed_overlap": [],
+      "freeze_allowed": true,
+      "test_accessed_before_freeze": false,
+      "limit": "Seed lists are manifest declarations, not a fresh audit of training execution."
+    }
+  ],
+  "model_and_training_file_checks": [
+    {
+      "path": "research_modules/independent_experiments/dual_optical_online_benchmark/outputs/scale_funnel_v3/targets_020/dataset/freezes/gnn/edge_gnn_weights.pt",
+      "origin": "research_modules/independent_experiments/dual_optical_online_benchmark/outputs/scale_funnel_v3/targets_020/dataset/freezes/gnn/freeze_manifest.json#weights",
+      "expected": "1911cd958a84ba1d64a684926ff8ff69f3fd9a77b39db86668b780d8c227f326",
+      "actual": "1911cd958a84ba1d64a684926ff8ff69f3fd9a77b39db86668b780d8c227f326",
+      "status": "match"
+    },
+    {
+      "path": "research_modules/independent_experiments/dual_optical_online_benchmark/outputs/scale_funnel_v3/targets_020/dataset/freezes/gnn/feature_normalizer.json",
+      "origin": "research_modules/independent_experiments/dual_optical_online_benchmark/outputs/scale_funnel_v3/targets_020/dataset/freezes/gnn/freeze_manifest.json#normalizer",
+      "expected": "91436d3160df082c337ab35f46f302b1f060b6b767310e7cc743fec89d03cb8d",
+      "actual": "91436d3160df082c337ab35f46f302b1f060b6b767310e7cc743fec89d03cb8d",
+      "status": "match"
+    },
+    {
+      "path": "research_modules/independent_experiments/dual_optical_online_benchmark/outputs/scale_funnel_v3/targets_020/dataset/freezes/gnn/model_config.json",
+      "origin": "research_modules/independent_experiments/dual_optical_online_benchmark/outputs/scale_funnel_v3/targets_020/dataset/freezes/gnn/freeze_manifest.json#model_config",
+      "expected": "d357a37259f10647a2d53808b0d95c6e901532f8b9eb7487bcdd7f51f5e44c47",
+      "actual": "d357a37259f10647a2d53808b0d95c6e901532f8b9eb7487bcdd7f51f5e44c47",
+      "status": "match"
+    },
+    {
+      "path": "research_modules/independent_experiments/dual_optical_online_benchmark/outputs/scale_funnel_v3/targets_020/dataset/freezes/gnn/training_history.csv",
+      "origin": "research_modules/independent_experiments/dual_optical_online_benchmark/outputs/scale_funnel_v3/targets_020/dataset/freezes/gnn/freeze_manifest.json#training_history",
+      "expected": "0c1904c2759d5940d8cf55fcbd8ff4bbb187f9fbe0c7d60919566dffcd74eaf3",
+      "actual": "0c1904c2759d5940d8cf55fcbd8ff4bbb187f9fbe0c7d60919566dffcd74eaf3",
+      "status": "match"
+    },
+    {
+      "path": "research_modules/independent_experiments/dual_optical_online_benchmark/outputs/scale_funnel_v3/targets_020/dataset/calibration_manifest.json",
+      "origin": "research_modules/independent_experiments/dual_optical_online_benchmark/outputs/scale_funnel_v3/targets_020/dataset/freezes/gnn/freeze_manifest.json#dataset_manifest",
+      "expected": "097d62b1368864860da473ed3c9e070d952c8954034c5187d078ff513c94c621",
+      "actual": "097d62b1368864860da473ed3c9e070d952c8954034c5187d078ff513c94c621",
+      "status": "match"
+    },
+    {
+      "path": "research_modules/independent_experiments/dual_optical_online_benchmark/outputs/scale_funnel_v3/targets_020/dataset/freezes/gnn/validation_selection.json",
+      "origin": "research_modules/independent_experiments/dual_optical_online_benchmark/outputs/scale_funnel_v3/targets_020/dataset/freezes/gnn/freeze_manifest.json#validation_selection",
+      "expected": "b284580f3d2e68df2c083ea11c3826e8b969f863aa6723180f851aaf50f775de",
+      "actual": "b284580f3d2e68df2c083ea11c3826e8b969f863aa6723180f851aaf50f775de",
+      "status": "match"
+    },
+    {
+      "path": "research_modules/independent_experiments/dual_optical_online_benchmark/outputs/scale_funnel_v3/targets_020/dataset/freezes/gnn/initialization_selection.json",
+      "origin": "research_modules/independent_experiments/dual_optical_online_benchmark/outputs/scale_funnel_v3/targets_020/dataset/freezes/gnn/freeze_manifest.json#initialization_selection",
+      "expected": "28d3b224cc9cbf0fbe4ced44db600e4e2649058c5ac5f21dd3359c94ddbba77c",
+      "actual": "28d3b224cc9cbf0fbe4ced44db600e4e2649058c5ac5f21dd3359c94ddbba77c",
+      "status": "match"
+    },
+    {
+      "path": "research_modules/independent_experiments/dual_optical_online_benchmark/outputs/scale_funnel_v3/targets_020/dataset/freezes/gnn/edge_sampling_evidence.json",
+      "origin": "research_modules/independent_experiments/dual_optical_online_benchmark/outputs/scale_funnel_v3/targets_020/dataset/freezes/gnn/freeze_manifest.json#edge_sampling_evidence",
+      "expected": "cce036cc5ff1e2c18287504296dd067907fbf9dc9ecc1749e096dea7eccff67a",
+      "actual": "cce036cc5ff1e2c18287504296dd067907fbf9dc9ecc1749e096dea7eccff67a",
+      "status": "match"
+    },
+    {
+      "path": "research_modules/independent_experiments/dual_optical_online_benchmark/outputs/scale_funnel_v3/targets_020/dataset/freezes/gnn/validation_evidence.json",
+      "origin": "research_modules/independent_experiments/dual_optical_online_benchmark/outputs/scale_funnel_v3/targets_020/dataset/freezes/gnn/freeze_manifest.json#validation_evidence",
+      "expected": "7c812c3ee5f90749cfcbb297472b22348536e9f955a48f7fee840f11f4ab166c",
+      "actual": "7c812c3ee5f90749cfcbb297472b22348536e9f955a48f7fee840f11f4ab166c",
+      "status": "match"
+    },
+    {
+      "path": "research_modules/independent_experiments/dual_optical_online_benchmark/outputs/s180_1s_sector_v1/targets_020/dataset/freezes/gnn/edge_gnn_weights.pt",
+      "origin": "research_modules/independent_experiments/dual_optical_online_benchmark/outputs/s180_1s_sector_v1/targets_020/dataset/freezes/gnn/freeze_manifest.json#weights",
+      "expected": "47ad19666d46c678bfdfa5e0ddd52f20df20875647667d1b16020624f871ea05",
+      "actual": "47ad19666d46c678bfdfa5e0ddd52f20df20875647667d1b16020624f871ea05",
+      "status": "match"
+    },
+    {
+      "path": "research_modules/independent_experiments/dual_optical_online_benchmark/outputs/s180_1s_sector_v1/targets_020/dataset/freezes/gnn/feature_normalizer.json",
+      "origin": "research_modules/independent_experiments/dual_optical_online_benchmark/outputs/s180_1s_sector_v1/targets_020/dataset/freezes/gnn/freeze_manifest.json#normalizer",
+      "expected": "3bffdb7f489a790b9f1a396249f049e4be9b27291f1bc25716cec85f5d36fc0c",
+      "actual": "3bffdb7f489a790b9f1a396249f049e4be9b27291f1bc25716cec85f5d36fc0c",
+      "status": "match"
+    },
+    {
+      "path": "research_modules/independent_experiments/dual_optical_online_benchmark/outputs/s180_1s_sector_v1/targets_020/dataset/freezes/gnn/model_config.json",
+      "origin": "research_modules/independent_experiments/dual_optical_online_benchmark/outputs/s180_1s_sector_v1/targets_020/dataset/freezes/gnn/freeze_manifest.json#model_config",
+      "expected": "65b2d327b544002f5d9a996255ba41e0546de49be64a9d3b23f596401dec56cd",
+      "actual": "65b2d327b544002f5d9a996255ba41e0546de49be64a9d3b23f596401dec56cd",
+      "status": "match"
+    },
+    {
+      "path": "research_modules/independent_experiments/dual_optical_online_benchmark/outputs/s180_1s_sector_v1/targets_020/dataset/freezes/gnn/training_history.csv",
+      "origin": "research_modules/independent_experiments/dual_optical_online_benchmark/outputs/s180_1s_sector_v1/targets_020/dataset/freezes/gnn/freeze_manifest.json#training_history",
+      "expected": "c1b3372d357dcea25bd510947e9d15e8abbf1666e8d03969292597fdeb12cff4",
+      "actual": "c1b3372d357dcea25bd510947e9d15e8abbf1666e8d03969292597fdeb12cff4",
+      "status": "match"
+    },
+    {
+      "path": "research_modules/independent_experiments/dual_optical_online_benchmark/outputs/s180_1s_sector_v1/targets_020/dataset/calibration_manifest.json",
+      "origin": "research_modules/independent_experiments/dual_optical_online_benchmark/outputs/s180_1s_sector_v1/targets_020/dataset/freezes/gnn/freeze_manifest.json#dataset_manifest",
+      "expected": "d5cd36564758879632f3540fa90ebfdfe992a6244fa69713efe5d91ce409e62e",
+      "actual": "d5cd36564758879632f3540fa90ebfdfe992a6244fa69713efe5d91ce409e62e",
+      "status": "match"
+    },
+    {
+      "path": "research_modules/independent_experiments/dual_optical_online_benchmark/outputs/s180_1s_sector_v1/targets_020/dataset/freezes/gnn/validation_selection.json",
+      "origin": "research_modules/independent_experiments/dual_optical_online_benchmark/outputs/s180_1s_sector_v1/targets_020/dataset/freezes/gnn/freeze_manifest.json#validation_selection",
+      "expected": "68ced164e3f212e036f8dbeb0d0f4fe8292760a88ab0e0b6b177d8088e1b4397",
+      "actual": "68ced164e3f212e036f8dbeb0d0f4fe8292760a88ab0e0b6b177d8088e1b4397",
+      "status": "match"
+    },
+    {
+      "path": "research_modules/independent_experiments/dual_optical_online_benchmark/outputs/s180_1s_sector_v1/targets_020/dataset/freezes/gnn/initialization_selection.json",
+      "origin": "research_modules/independent_experiments/dual_optical_online_benchmark/outputs/s180_1s_sector_v1/targets_020/dataset/freezes/gnn/freeze_manifest.json#initialization_selection",
+      "expected": "eb4d8ae90b6fd7d75d24d5e2884a7e5f78ae856c170857bce076bf811f6a12c6",
+      "actual": "eb4d8ae90b6fd7d75d24d5e2884a7e5f78ae856c170857bce076bf811f6a12c6",
+      "status": "match"
+    },
+    {
+      "path": "research_modules/independent_experiments/dual_optical_online_benchmark/outputs/s180_1s_sector_v1/targets_020/dataset/freezes/gnn/edge_sampling_evidence.json",
+      "origin": "research_modules/independent_experiments/dual_optical_online_benchmark/outputs/s180_1s_sector_v1/targets_020/dataset/freezes/gnn/freeze_manifest.json#edge_sampling_evidence",
+      "expected": "64a663f73fe44909d8bb3f5885a431840d567450c98506de16b8e1c39fa05650",
+      "actual": "64a663f73fe44909d8bb3f5885a431840d567450c98506de16b8e1c39fa05650",
+      "status": "match"
+    },
+    {
+      "path": "research_modules/independent_experiments/dual_optical_online_benchmark/outputs/s180_1s_sector_v1/targets_020/dataset/freezes/gnn/validation_evidence.json",
+      "origin": "research_modules/independent_experiments/dual_optical_online_benchmark/outputs/s180_1s_sector_v1/targets_020/dataset/freezes/gnn/freeze_manifest.json#validation_evidence",
+      "expected": "08c25c5d54e68abb8a583d34e52e3f63d94ba45cf306851358a14b17c6af570a",
+      "actual": "08c25c5d54e68abb8a583d34e52e3f63d94ba45cf306851358a14b17c6af570a",
+      "status": "match"
+    },
+    {
+      "path": "research_modules/independent_experiments/dual_optical_online_benchmark/outputs/scale_funnel_v3/targets_040/dataset/freezes/gnn/edge_gnn_weights.pt",
+      "origin": "research_modules/independent_experiments/dual_optical_online_benchmark/outputs/scale_funnel_v3/targets_040/dataset/freezes/gnn/freeze_manifest.json#weights",
+      "expected": "4009146f93bd7ff29cd3f6e1be33febbc5cd5872ad9c8c28fc0056a837c942b4",
+      "actual": "4009146f93bd7ff29cd3f6e1be33febbc5cd5872ad9c8c28fc0056a837c942b4",
+      "status": "match"
+    },
+    {
+      "path": "research_modules/independent_experiments/dual_optical_online_benchmark/outputs/scale_funnel_v3/targets_040/dataset/freezes/gnn/feature_normalizer.json",
+      "origin": "research_modules/independent_experiments/dual_optical_online_benchmark/outputs/scale_funnel_v3/targets_040/dataset/freezes/gnn/freeze_manifest.json#normalizer",
+      "expected": "c21f6bd836463d1728c443d828c2ec9a6aa80443e18a2d14a46bdd731289051e",
+      "actual": "c21f6bd836463d1728c443d828c2ec9a6aa80443e18a2d14a46bdd731289051e",
+      "status": "match"
+    },
+    {
+      "path": "research_modules/independent_experiments/dual_optical_online_benchmark/outputs/scale_funnel_v3/targets_040/dataset/freezes/gnn/model_config.json",
+      "origin": "research_modules/independent_experiments/dual_optical_online_benchmark/outputs/scale_funnel_v3/targets_040/dataset/freezes/gnn/freeze_manifest.json#model_config",
+      "expected": "888a1bef86dfeea571a89ccb4c56e5d554b65396e16ce1192cac479be316f4f3",
+      "actual": "888a1bef86dfeea571a89ccb4c56e5d554b65396e16ce1192cac479be316f4f3",
+      "status": "match"
+    },
+    {
+      "path": "research_modules/independent_experiments/dual_optical_online_benchmark/outputs/scale_funnel_v3/targets_040/dataset/freezes/gnn/training_history.csv",
+      "origin": "research_modules/independent_experiments/dual_optical_online_benchmark/outputs/scale_funnel_v3/targets_040/dataset/freezes/gnn/freeze_manifest.json#training_history",
+      "expected": "2bd56e45dee161b75947e98adc8ff044bf63383ebf6e93cffde3a0923db5eb32",
+      "actual": "2bd56e45dee161b75947e98adc8ff044bf63383ebf6e93cffde3a0923db5eb32",
+      "status": "match"
+    },
+    {
+      "path": "research_modules/independent_experiments/dual_optical_online_benchmark/outputs/scale_funnel_v3/targets_040/dataset/calibration_manifest.json",
+      "origin": "research_modules/independent_experiments/dual_optical_online_benchmark/outputs/scale_funnel_v3/targets_040/dataset/freezes/gnn/freeze_manifest.json#dataset_manifest",
+      "expected": "a72161e3a629d7195a671799562e9803f91312640d0d383d3de7c0b7c3640842",
+      "actual": "a72161e3a629d7195a671799562e9803f91312640d0d383d3de7c0b7c3640842",
+      "status": "match"
+    },
+    {
+      "path": "research_modules/independent_experiments/dual_optical_online_benchmark/outputs/scale_funnel_v3/targets_040/dataset/freezes/gnn/validation_selection.json",
+      "origin": "research_modules/independent_experiments/dual_optical_online_benchmark/outputs/scale_funnel_v3/targets_040/dataset/freezes/gnn/freeze_manifest.json#validation_selection",
+      "expected": "ee800a130c64a3188c50a9d2a600e0468bc706577e0b434cafb4a1831d91f6d9",
+      "actual": "ee800a130c64a3188c50a9d2a600e0468bc706577e0b434cafb4a1831d91f6d9",
+      "status": "match"
+    },
+    {
+      "path": "research_modules/independent_experiments/dual_optical_online_benchmark/outputs/scale_funnel_v3/targets_040/dataset/freezes/gnn/initialization_selection.json",
+      "origin": "research_modules/independent_experiments/dual_optical_online_benchmark/outputs/scale_funnel_v3/targets_040/dataset/freezes/gnn/freeze_manifest.json#initialization_selection",
+      "expected": "1e399b3daed08ece49b5b002fc3e876babb4b3e956651caf6afa7965df6f8344",
+      "actual": "1e399b3daed08ece49b5b002fc3e876babb4b3e956651caf6afa7965df6f8344",
+      "status": "match"
+    },
+    {
+      "path": "research_modules/independent_experiments/dual_optical_online_benchmark/outputs/scale_funnel_v3/targets_040/dataset/freezes/gnn/edge_sampling_evidence.json",
+      "origin": "research_modules/independent_experiments/dual_optical_online_benchmark/outputs/scale_funnel_v3/targets_040/dataset/freezes/gnn/freeze_manifest.json#edge_sampling_evidence",
+      "expected": "d1704c002a94af2ff08ea2f9d5ecbd22d77023fb864aaf5bb7ea5a0b69f0650a",
+      "actual": "d1704c002a94af2ff08ea2f9d5ecbd22d77023fb864aaf5bb7ea5a0b69f0650a",
+      "status": "match"
+    },
+    {
+      "path": "research_modules/independent_experiments/dual_optical_online_benchmark/outputs/scale_funnel_v3/targets_040/dataset/freezes/gnn/validation_evidence.json",
+      "origin": "research_modules/independent_experiments/dual_optical_online_benchmark/outputs/scale_funnel_v3/targets_040/dataset/freezes/gnn/freeze_manifest.json#validation_evidence",
+      "expected": "f0d6d0c0dc76908c89a29c6cb503d48d98be49041a01e68077122bd3b85066dd",
+      "actual": "f0d6d0c0dc76908c89a29c6cb503d48d98be49041a01e68077122bd3b85066dd",
+      "status": "match"
+    },
+    {
+      "path": "research_modules/independent_experiments/dual_optical_online_benchmark/outputs/s180_1s_sector_v1/targets_040/dataset/freezes/gnn/edge_gnn_weights.pt",
+      "origin": "research_modules/independent_experiments/dual_optical_online_benchmark/outputs/s180_1s_sector_v1/targets_040/dataset/freezes/gnn/freeze_manifest.json#weights",
+      "expected": "c5171bd9fe120e29dbc17621f3d746f92a0aef41abacc66953db945ed0a97a22",
+      "actual": "c5171bd9fe120e29dbc17621f3d746f92a0aef41abacc66953db945ed0a97a22",
+      "status": "match"
+    },
+    {
+      "path": "research_modules/independent_experiments/dual_optical_online_benchmark/outputs/s180_1s_sector_v1/targets_040/dataset/freezes/gnn/feature_normalizer.json",
+      "origin": "research_modules/independent_experiments/dual_optical_online_benchmark/outputs/s180_1s_sector_v1/targets_040/dataset/freezes/gnn/freeze_manifest.json#normalizer",
+      "expected": "cd0d65d65a28c6702ff31a63911789a11a6841565e430a7e58f1f53b6111919c",
+      "actual": "cd0d65d65a28c6702ff31a63911789a11a6841565e430a7e58f1f53b6111919c",
+      "status": "match"
+    },
+    {
+      "path": "research_modules/independent_experiments/dual_optical_online_benchmark/outputs/s180_1s_sector_v1/targets_040/dataset/freezes/gnn/model_config.json",
+      "origin": "research_modules/independent_experiments/dual_optical_online_benchmark/outputs/s180_1s_sector_v1/targets_040/dataset/freezes/gnn/freeze_manifest.json#model_config",
+      "expected": "a86a35121377133e8e41c26a055128effdc4eac6ef6c3d03e2877af61bb6bf8c",
+      "actual": "a86a35121377133e8e41c26a055128effdc4eac6ef6c3d03e2877af61bb6bf8c",
+      "status": "match"
+    },
+    {
+      "path": "research_modules/independent_experiments/dual_optical_online_benchmark/outputs/s180_1s_sector_v1/targets_040/dataset/freezes/gnn/training_history.csv",
+      "origin": "research_modules/independent_experiments/dual_optical_online_benchmark/outputs/s180_1s_sector_v1/targets_040/dataset/freezes/gnn/freeze_manifest.json#training_history",
+      "expected": "6af308a7463a6602335e97a9bcd417c3501613e2349e69651a1076f1e9da663f",
+      "actual": "6af308a7463a6602335e97a9bcd417c3501613e2349e69651a1076f1e9da663f",
+      "status": "match"
+    },
+    {
+      "path": "research_modules/independent_experiments/dual_optical_online_benchmark/outputs/s180_1s_sector_v1/targets_040/dataset/calibration_manifest.json",
+      "origin": "research_modules/independent_experiments/dual_optical_online_benchmark/outputs/s180_1s_sector_v1/targets_040/dataset/freezes/gnn/freeze_manifest.json#dataset_manifest",
+      "expected": "59a255cb52245cff5a0f6bf983252bcb3ca654968b6e0db04a12d6bd8bfa4e70",
+      "actual": "59a255cb52245cff5a0f6bf983252bcb3ca654968b6e0db04a12d6bd8bfa4e70",
+      "status": "match"
+    },
+    {
+      "path": "research_modules/independent_experiments/dual_optical_online_benchmark/outputs/s180_1s_sector_v1/targets_040/dataset/freezes/gnn/validation_selection.json",
+      "origin": "research_modules/independent_experiments/dual_optical_online_benchmark/outputs/s180_1s_sector_v1/targets_040/dataset/freezes/gnn/freeze_manifest.json#validation_selection",
+      "expected": "477e786fd446fded7512cdab2b687ebd98cd2f6d7c9f65bcac4de348ef8b9e1f",
+      "actual": "477e786fd446fded7512cdab2b687ebd98cd2f6d7c9f65bcac4de348ef8b9e1f",
+      "status": "match"
+    },
+    {
+      "path": "research_modules/independent_experiments/dual_optical_online_benchmark/outputs/s180_1s_sector_v1/targets_040/dataset/freezes/gnn/initialization_selection.json",
+      "origin": "research_modules/independent_experiments/dual_optical_online_benchmark/outputs/s180_1s_sector_v1/targets_040/dataset/freezes/gnn/freeze_manifest.json#initialization_selection",
+      "expected": "cd1482f04e237ca246bdab1276b7ccf675881f8f6b8852aa6379e3e1869ea486",
+      "actual": "cd1482f04e237ca246bdab1276b7ccf675881f8f6b8852aa6379e3e1869ea486",
+      "status": "match"
+    },
+    {
+      "path": "research_modules/independent_experiments/dual_optical_online_benchmark/outputs/s180_1s_sector_v1/targets_040/dataset/freezes/gnn/edge_sampling_evidence.json",
+      "origin": "research_modules/independent_experiments/dual_optical_online_benchmark/outputs/s180_1s_sector_v1/targets_040/dataset/freezes/gnn/freeze_manifest.json#edge_sampling_evidence",
+      "expected": "ffd35d1708ef16919c42ce2a93c926ca36a5eb741bf681dec5cbb1777421fb53",
+      "actual": "ffd35d1708ef16919c42ce2a93c926ca36a5eb741bf681dec5cbb1777421fb53",
+      "status": "match"
+    },
+    {
+      "path": "research_modules/independent_experiments/dual_optical_online_benchmark/outputs/s180_1s_sector_v1/targets_040/dataset/freezes/gnn/validation_evidence.json",
+      "origin": "research_modules/independent_experiments/dual_optical_online_benchmark/outputs/s180_1s_sector_v1/targets_040/dataset/freezes/gnn/freeze_manifest.json#validation_evidence",
+      "expected": "ce359a065d093a23547ffc7463d51db90cbae44c14b2490c6f18c4d1360a9a00",
+      "actual": "ce359a065d093a23547ffc7463d51db90cbae44c14b2490c6f18c4d1360a9a00",
+      "status": "match"
+    },
+    {
+      "path": "research_modules/independent_experiments/dual_optical_online_benchmark/outputs/scale_funnel_v3/targets_060/dataset/freezes/gnn/edge_gnn_weights.pt",
+      "origin": "research_modules/independent_experiments/dual_optical_online_benchmark/outputs/scale_funnel_v3/targets_060/dataset/freezes/gnn/freeze_manifest.json#weights",
+      "expected": "638d1ac6e57b9f571e02e3fc2cea31537653446be8ec816067e8c33d7ff1ee03",
+      "actual": "638d1ac6e57b9f571e02e3fc2cea31537653446be8ec816067e8c33d7ff1ee03",
+      "status": "match"
+    },
+    {
+      "path": "research_modules/independent_experiments/dual_optical_online_benchmark/outputs/scale_funnel_v3/targets_060/dataset/freezes/gnn/feature_normalizer.json",
+      "origin": "research_modules/independent_experiments/dual_optical_online_benchmark/outputs/scale_funnel_v3/targets_060/dataset/freezes/gnn/freeze_manifest.json#normalizer",
+      "expected": "8de69256d35b8e8f116507715e727e83e028f2a45e96c46a322639aad4640d8c",
+      "actual": "8de69256d35b8e8f116507715e727e83e028f2a45e96c46a322639aad4640d8c",
+      "status": "match"
+    },
+    {
+      "path": "research_modules/independent_experiments/dual_optical_online_benchmark/outputs/scale_funnel_v3/targets_060/dataset/freezes/gnn/model_config.json",
+      "origin": "research_modules/independent_experiments/dual_optical_online_benchmark/outputs/scale_funnel_v3/targets_060/dataset/freezes/gnn/freeze_manifest.json#model_config",
+      "expected": "a9ef5a5b7db3ed1cd6b5b1f184ea4d457c9e4fa34b1dc71c377e8a20ce194776",
+      "actual": "a9ef5a5b7db3ed1cd6b5b1f184ea4d457c9e4fa34b1dc71c377e8a20ce194776",
+      "status": "match"
+    },
+    {
+      "path": "research_modules/independent_experiments/dual_optical_online_benchmark/outputs/scale_funnel_v3/targets_060/dataset/freezes/gnn/training_history.csv",
+      "origin": "research_modules/independent_experiments/dual_optical_online_benchmark/outputs/scale_funnel_v3/targets_060/dataset/freezes/gnn/freeze_manifest.json#training_history",
+      "expected": "94d940fe90ecb19837c22f6f066b776f92e408ea34593cad738144abac834d06",
+      "actual": "94d940fe90ecb19837c22f6f066b776f92e408ea34593cad738144abac834d06",
+      "status": "match"
+    },
+    {
+      "path": "research_modules/independent_experiments/dual_optical_online_benchmark/outputs/scale_funnel_v3/targets_060/dataset/calibration_manifest.json",
+      "origin": "research_modules/independent_experiments/dual_optical_online_benchmark/outputs/scale_funnel_v3/targets_060/dataset/freezes/gnn/freeze_manifest.json#dataset_manifest",
+      "expected": "d7d54e6a99eaebf47dcbea6cbb88100427fb943eb2f3cb89fd266e00a88a2c80",
+      "actual": "d7d54e6a99eaebf47dcbea6cbb88100427fb943eb2f3cb89fd266e00a88a2c80",
+      "status": "match"
+    },
+    {
+      "path": "research_modules/independent_experiments/dual_optical_online_benchmark/outputs/scale_funnel_v3/targets_060/dataset/freezes/gnn/validation_selection.json",
+      "origin": "research_modules/independent_experiments/dual_optical_online_benchmark/outputs/scale_funnel_v3/targets_060/dataset/freezes/gnn/freeze_manifest.json#validation_selection",
+      "expected": "e3127f1fdb36a5dda2395c51e97fb19593c2e65109debcda6ed0f88ddd4f370f",
+      "actual": "e3127f1fdb36a5dda2395c51e97fb19593c2e65109debcda6ed0f88ddd4f370f",
+      "status": "match"
+    },
+    {
+      "path": "research_modules/independent_experiments/dual_optical_online_benchmark/outputs/scale_funnel_v3/targets_060/dataset/freezes/gnn/initialization_selection.json",
+      "origin": "research_modules/independent_experiments/dual_optical_online_benchmark/outputs/scale_funnel_v3/targets_060/dataset/freezes/gnn/freeze_manifest.json#initialization_selection",
+      "expected": "7249dff09b934f8fad90e33f3947289ff8fd24fe322f72bb73f62303533c31a4",
+      "actual": "7249dff09b934f8fad90e33f3947289ff8fd24fe322f72bb73f62303533c31a4",
+      "status": "match"
+    },
+    {
+      "path": "research_modules/independent_experiments/dual_optical_online_benchmark/outputs/scale_funnel_v3/targets_060/dataset/freezes/gnn/edge_sampling_evidence.json",
+      "origin": "research_modules/independent_experiments/dual_optical_online_benchmark/outputs/scale_funnel_v3/targets_060/dataset/freezes/gnn/freeze_manifest.json#edge_sampling_evidence",
+      "expected": "19c194bef4da5d592757fe186d05f144277041c3ddb689d6ae5cd781037b78d9",
+      "actual": "19c194bef4da5d592757fe186d05f144277041c3ddb689d6ae5cd781037b78d9",
+      "status": "match"
+    },
+    {
+      "path": "research_modules/independent_experiments/dual_optical_online_benchmark/outputs/scale_funnel_v3/targets_060/dataset/freezes/gnn/validation_evidence.json",
+      "origin": "research_modules/independent_experiments/dual_optical_online_benchmark/outputs/scale_funnel_v3/targets_060/dataset/freezes/gnn/freeze_manifest.json#validation_evidence",
+      "expected": "ac60b37ceed01c555ed745317eb699359263190ecdad4ec303df87d48b1bcd53",
+      "actual": "ac60b37ceed01c555ed745317eb699359263190ecdad4ec303df87d48b1bcd53",
+      "status": "match"
+    },
+    {
+      "path": "research_modules/independent_experiments/dual_optical_online_benchmark/outputs/s180_1s_sector_v1/targets_060/dataset/freezes/gnn/edge_gnn_weights.pt",
+      "origin": "research_modules/independent_experiments/dual_optical_online_benchmark/outputs/s180_1s_sector_v1/targets_060/dataset/freezes/gnn/freeze_manifest.json#weights",
+      "expected": "588364baf39e3d58e1ad3063b5b3819a79012dc86a9151d8921e3f1e1b5cb0a5",
+      "actual": "588364baf39e3d58e1ad3063b5b3819a79012dc86a9151d8921e3f1e1b5cb0a5",
+      "status": "match"
+    },
+    {
+      "path": "research_modules/independent_experiments/dual_optical_online_benchmark/outputs/s180_1s_sector_v1/targets_060/dataset/freezes/gnn/feature_normalizer.json",
+      "origin": "research_modules/independent_experiments/dual_optical_online_benchmark/outputs/s180_1s_sector_v1/targets_060/dataset/freezes/gnn/freeze_manifest.json#normalizer",
+      "expected": "99f12fa76cee9cd34a5d556aba22b6ecef6a6daa5c95773199681e8c58684fa5",
+      "actual": "99f12fa76cee9cd34a5d556aba22b6ecef6a6daa5c95773199681e8c58684fa5",
+      "status": "match"
+    },
+    {
+      "path": "research_modules/independent_experiments/dual_optical_online_benchmark/outputs/s180_1s_sector_v1/targets_060/dataset/freezes/gnn/model_config.json",
+      "origin": "research_modules/independent_experiments/dual_optical_online_benchmark/outputs/s180_1s_sector_v1/targets_060/dataset/freezes/gnn/freeze_manifest.json#model_config",
+      "expected": "b9a95a7d0b7de393e79227604dce6a44628112749ccf65a7dc4370d849c1a4cc",
+      "actual": "b9a95a7d0b7de393e79227604dce6a44628112749ccf65a7dc4370d849c1a4cc",
+      "status": "match"
+    },
+    {
+      "path": "research_modules/independent_experiments/dual_optical_online_benchmark/outputs/s180_1s_sector_v1/targets_060/dataset/freezes/gnn/training_history.csv",
+      "origin": "research_modules/independent_experiments/dual_optical_online_benchmark/outputs/s180_1s_sector_v1/targets_060/dataset/freezes/gnn/freeze_manifest.json#training_history",
+      "expected": "a4de2d5666b9dd0f75defb7077eaefa1fe920dfb0e727cb84bb69c536c64b938",
+      "actual": "a4de2d5666b9dd0f75defb7077eaefa1fe920dfb0e727cb84bb69c536c64b938",
+      "status": "match"
+    },
+    {
+      "path": "research_modules/independent_experiments/dual_optical_online_benchmark/outputs/s180_1s_sector_v1/targets_060/dataset/calibration_manifest.json",
+      "origin": "research_modules/independent_experiments/dual_optical_online_benchmark/outputs/s180_1s_sector_v1/targets_060/dataset/freezes/gnn/freeze_manifest.json#dataset_manifest",
+      "expected": "7451eb0f3a157e5db41551f419510046482ab84d769f0f0c8d5a34c6d43f65c0",
+      "actual": "7451eb0f3a157e5db41551f419510046482ab84d769f0f0c8d5a34c6d43f65c0",
+      "status": "match"
+    },
+    {
+      "path": "research_modules/independent_experiments/dual_optical_online_benchmark/outputs/s180_1s_sector_v1/targets_060/dataset/freezes/gnn/validation_selection.json",
+      "origin": "research_modules/independent_experiments/dual_optical_online_benchmark/outputs/s180_1s_sector_v1/targets_060/dataset/freezes/gnn/freeze_manifest.json#validation_selection",
+      "expected": "b1fa8a2775855ad15fb3e3a19256a44318b63b41cefc1a7ba8837e07fa416b24",
+      "actual": "b1fa8a2775855ad15fb3e3a19256a44318b63b41cefc1a7ba8837e07fa416b24",
+      "status": "match"
+    },
+    {
+      "path": "research_modules/independent_experiments/dual_optical_online_benchmark/outputs/s180_1s_sector_v1/targets_060/dataset/freezes/gnn/initialization_selection.json",
+      "origin": "research_modules/independent_experiments/dual_optical_online_benchmark/outputs/s180_1s_sector_v1/targets_060/dataset/freezes/gnn/freeze_manifest.json#initialization_selection",
+      "expected": "b861ad6bacdc788a9587093dc938815d114a00d48ff4cac3d32eecee4e582723",
+      "actual": "b861ad6bacdc788a9587093dc938815d114a00d48ff4cac3d32eecee4e582723",
+      "status": "match"
+    },
+    {
+      "path": "research_modules/independent_experiments/dual_optical_online_benchmark/outputs/s180_1s_sector_v1/targets_060/dataset/freezes/gnn/edge_sampling_evidence.json",
+      "origin": "research_modules/independent_experiments/dual_optical_online_benchmark/outputs/s180_1s_sector_v1/targets_060/dataset/freezes/gnn/freeze_manifest.json#edge_sampling_evidence",
+      "expected": "e9a22fe196f8bb8d29437f9210d844af66442a7a0ffd9db8b66fbc5867cccfb8",
+      "actual": "e9a22fe196f8bb8d29437f9210d844af66442a7a0ffd9db8b66fbc5867cccfb8",
+      "status": "match"
+    },
+    {
+      "path": "research_modules/independent_experiments/dual_optical_online_benchmark/outputs/s180_1s_sector_v1/targets_060/dataset/freezes/gnn/validation_evidence.json",
+      "origin": "research_modules/independent_experiments/dual_optical_online_benchmark/outputs/s180_1s_sector_v1/targets_060/dataset/freezes/gnn/freeze_manifest.json#validation_evidence",
+      "expected": "99cb30bb492388b44ab8bbef49aa491fbfa077ad0156f6b073cef865752d786f",
+      "actual": "99cb30bb492388b44ab8bbef49aa491fbfa077ad0156f6b073cef865752d786f",
+      "status": "match"
+    },
+    {
+      "path": "research_modules/independent_experiments/center_terminal_cv_campaign/outputs/gnn_offline_benchmark_20260816/models/crossview/weights.pt",
+      "origin": "research_modules/independent_experiments/center_terminal_cv_campaign/outputs/gnn_offline_benchmark_20260816/models/crossview/manifest.json",
+      "expected": "d1fda6a3af00d4c95a8aeec83a3fe46a13fb0030ea27a10f9937079774acf4ad",
+      "actual": "d1fda6a3af00d4c95a8aeec83a3fe46a13fb0030ea27a10f9937079774acf4ad",
+      "status": "match"
+    },
+    {
+      "path": "research_modules/independent_experiments/center_terminal_cv_campaign/outputs/gnn_offline_benchmark_20260816/models/crossview/normalizer.json",
+      "origin": "research_modules/independent_experiments/center_terminal_cv_campaign/outputs/gnn_offline_benchmark_20260816/models/crossview/manifest.json",
+      "expected": "ff3391edbe3d6fbf6aaa04bcdef782b9350e81191c3341feaa8d4e7e657c9389",
+      "actual": "ff3391edbe3d6fbf6aaa04bcdef782b9350e81191c3341feaa8d4e7e657c9389",
+      "status": "match"
+    },
+    {
+      "path": "research_modules/independent_experiments/center_terminal_cv_campaign/outputs/gnn_offline_benchmark_20260816/models/center_handover/center_handover_sparse_gnn.pt",
+      "origin": "research_modules/independent_experiments/center_terminal_cv_campaign/outputs/gnn_offline_benchmark_20260816/models/center_handover/center_handover_sparse_gnn.pt.manifest.json",
+      "expected": "0548176bf9cb94fc8f5da36e24cb099128f192b3f7374ccb910257366ce0db05",
+      "actual": "0548176bf9cb94fc8f5da36e24cb099128f192b3f7374ccb910257366ce0db05",
+      "status": "match"
+    }
+  ],
+  "model_check_counts": {
+    "match": 57
+  },
+  "benchmark_seed_roles": {
+    "held_out_seed": 20260816,
+    "training": {
+      "center_handover": {
+        "train_seeds": [
+          20261000,
+          20261001,
+          20261002,
+          20261003,
+          20261004,
+          20261005,
+          20261006,
+          20261007,
+          20261008,
+          20261009,
+          20261010,
+          20261011,
+          20261012,
+          20261013,
+          20261014,
+          20261015,
+          20261016,
+          20261017,
+          20261018,
+          20261019,
+          20261020,
+          20261021,
+          20261022,
+          20261023,
+          20261024,
+          20261025,
+          20261026,
+          20261027,
+          20261028,
+          20261029,
+          20261030,
+          20261031,
+          20261032,
+          20261033,
+          20261034,
+          20261035,
+          20261036,
+          20261037,
+          20261038,
+          20261039,
+          20261040,
+          20261041,
+          20261042,
+          20261043,
+          20261044,
+          20261045,
+          20261046,
+          20261047,
+          20261048,
+          20261049,
+          20261050,
+          20261051,
+          20261052,
+          20261053,
+          20261054,
+          20261055,
+          20261056,
+          20261057,
+          20261058,
+          20261059
+        ],
+        "validation_seeds": [
+          20262000,
+          20262001,
+          20262002,
+          20262003,
+          20262004,
+          20262005,
+          20262006,
+          20262007,
+          20262008,
+          20262009,
+          20262010,
+          20262011,
+          20262012,
+          20262013,
+          20262014,
+          20262015,
+          20262016,
+          20262017,
+          20262018,
+          20262019
+        ]
+      },
+      "crossview": {
+        "train_seeds": [
+          20263000,
+          20263001,
+          20263002,
+          20263003,
+          20263004,
+          20263005,
+          20263006,
+          20263007,
+          20263008,
+          20263009,
+          20263010,
+          20263011,
+          20263012,
+          20263013,
+          20263014,
+          20263015,
+          20263016,
+          20263017,
+          20263018,
+          20263019,
+          20263020,
+          20263021,
+          20263022,
+          20263023,
+          20263024,
+          20263025,
+          20263026,
+          20263027,
+          20263028,
+          20263029,
+          20263030,
+          20263031,
+          20263032,
+          20263033,
+          20263034,
+          20263035,
+          20263036,
+          20263037,
+          20263038,
+          20263039,
+          20263040,
+          20263041,
+          20263042,
+          20263043,
+          20263044,
+          20263045,
+          20263046,
+          20263047,
+          20263048,
+          20263049,
+          20263050,
+          20263051,
+          20263052,
+          20263053,
+          20263054,
+          20263055,
+          20263056,
+          20263057,
+          20263058,
+          20263059
+        ],
+        "validation_seeds": [
+          20264000,
+          20264001,
+          20264002,
+          20264003,
+          20264004,
+          20264005,
+          20264006,
+          20264007,
+          20264008,
+          20264009,
+          20264010,
+          20264011,
+          20264012,
+          20264013,
+          20264014,
+          20264015,
+          20264016,
+          20264017,
+          20264018,
+          20264019
+        ]
+      }
+    }
+  },
+  "handover_table_totals": [
+    {
+      "backend": "geometry",
+      "correct": 61,
+      "incorrect": 1,
+      "correct_source_denominator": 64,
+      "precision_display": "0.9839",
+      "coverage_display": "0.9531",
+      "source": "research_modules/independent_experiments/center_terminal_cv_campaign/outputs/gnn_offline_benchmark_20260816/benchmark_summary.json",
+      "operation": "Arithmetic on already-saved counts; not reassociation or rescoring."
+    },
+    {
+      "backend": "gnn",
+      "correct": 61,
+      "incorrect": 0,
+      "correct_source_denominator": 64,
+      "precision_display": "1.0000",
+      "coverage_display": "0.9531",
+      "source": "research_modules/independent_experiments/center_terminal_cv_campaign/outputs/gnn_offline_benchmark_20260816/benchmark_summary.json",
+      "operation": "Arithmetic on already-saved counts; not reassociation or rescoring."
+    }
+  ],
+  "figure_lineage": [
+    {
+      "report_asset": "deliverables/leadership_report/assets/center_terminal_split_reports/search100_01_flow.png",
+      "source_asset": "research_modules/independent_experiments/center_terminal_cv_campaign/outputs/offline_search_100pct_cues_20260819/figures/01_search_flow.png",
+      "report_sha256": "ab23772d1b63d65b977796909b93bd022342c722e1e156cdd17f6241aedeeb8c",
+      "source_sha256": "ab23772d1b63d65b977796909b93bd022342c722e1e156cdd17f6241aedeeb8c",
+      "status": "match"
+    },
+    {
+      "report_asset": "deliverables/leadership_report/assets/center_terminal_split_reports/search100_02_cells_3d.png",
+      "source_asset": "research_modules/independent_experiments/center_terminal_cv_campaign/outputs/offline_search_100pct_cues_20260819/figures/02_search_cells_3d.png",
+      "report_sha256": "9e5207d93ff32cc703f6e672e19f2d62c64b869f4dd3d0dda69b7eb6e701c16c",
+      "source_sha256": "9e5207d93ff32cc703f6e672e19f2d62c64b869f4dd3d0dda69b7eb6e701c16c",
+      "status": "match"
+    },
+    {
+      "report_asset": "deliverables/leadership_report/assets/center_terminal_split_reports/search100_03_results.png",
+      "source_asset": "research_modules/independent_experiments/center_terminal_cv_campaign/outputs/offline_search_100pct_cues_20260819/figures/03_search_results.png",
+      "report_sha256": "b6704503eb92d71280da4ce45173289c517476f1c85f460cb0aa776cc645bfd4",
+      "source_sha256": "b6704503eb92d71280da4ce45173289c517476f1c85f460cb0aa776cc645bfd4",
+      "status": "match"
+    },
+    {
+      "report_asset": "deliverables/leadership_report/assets/center_terminal_split_reports/search100_04_coverage_budget.png",
+      "source_asset": "research_modules/independent_experiments/center_terminal_cv_campaign/outputs/offline_search_100pct_cues_20260819/figures/04_search_coverage_budget.png",
+      "report_sha256": "f723ffe9f9c618df1107a8c0dd79f3fe134050ee40561d781492eb64c6da24c3",
+      "source_sha256": "f723ffe9f9c618df1107a8c0dd79f3fe134050ee40561d781492eb64c6da24c3",
+      "status": "match"
+    },
+    {
+      "report_asset": "deliverables/leadership_report/assets/center_terminal_split_reports/search100_05_timing.png",
+      "source_asset": "research_modules/independent_experiments/center_terminal_cv_campaign/outputs/offline_search_100pct_cues_20260819/figures/05_search_timing.png",
+      "report_sha256": "4477a99f5ae3a75ea5a100ddbbe96930bf8532a842de6de3eed3e6929da4d9c3",
+      "source_sha256": "4477a99f5ae3a75ea5a100ddbbe96930bf8532a842de6de3eed3e6929da4d9c3",
+      "status": "match"
+    },
+    {
+      "report_asset": "deliverables/leadership_report/assets/center_terminal_split_reports/13_local_pixel_tracks.png",
+      "source_asset": "research_modules/independent_experiments/center_terminal_cv_campaign/outputs/terminal_gnn_diagnostic_selection_20260819_v2/selected/n20_m30/gnn/figures/02_local_pixel_tracks.png",
+      "report_sha256": "b12d55b0e8de65c1c5e4cc01469a98d7beb3eec02a6568671b16c0e580834c81",
+      "source_sha256": "b12d55b0e8de65c1c5e4cc01469a98d7beb3eec02a6568671b16c0e580834c81",
+      "status": "match"
+    },
+    {
+      "report_asset": "deliverables/leadership_report/assets/center_terminal_split_reports/14_crossview_relation_graph.png",
+      "source_asset": "research_modules/independent_experiments/center_terminal_cv_campaign/outputs/terminal_gnn_diagnostic_selection_20260819_v2/selected/n20_m30/gnn/figures/03_crossview_relation_graph.png",
+      "report_sha256": "c2ddfa29ed44659cab3e0bc8f3e50d43a6a4b9eb0a9925283ccc98ea20d21071",
+      "source_sha256": "c2ddfa29ed44659cab3e0bc8f3e50d43a6a4b9eb0a9925283ccc98ea20d21071",
+      "status": "match"
+    }
+  ],
+  "scope": "File bytes and saved aggregate arithmetic only; model files were not loaded or executed."
+}
