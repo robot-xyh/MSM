@@ -1,0 +1,767 @@
+{
+  "schema": "msm-preservation-inventory-v1",
+  "created_at_utc": "2026-09-25T08:57:22.648674+00:00",
+  "source_commit": "c10fb8bf827e2752cf72b03a21a46176598d1d08",
+  "revision_scope": "Repository HEAD at inventory time, not the executed revision of historical experiments.",
+  "root": "/home/linux/Documents/MSM",
+  "backup_created": false,
+  "backup_destination": null,
+  "deletion_authorized": false,
+  "scan_scope": "Research output trees, six sibling directories, and retained untracked files.",
+  "excluded_directory_names": [
+    ".git",
+    ".mypy_cache",
+    ".pytest_cache",
+    ".ruff_cache",
+    ".venv",
+    "__pycache__",
+    "venv"
+  ],
+  "hash_scope": "Primary result roots, six siblings, model artifacts, and prior manifest inputs only.",
+  "hash_limit": "New digests establish a baseline, not a second backup or validation of results.",
+  "prior_snapshot": "/home/linux/Documents/MSM/deliverables/project_audits/20260925/WORKSPACE_EVIDENCE_SNAPSHOT.json",
+  "scan_roots": [
+    {
+      "path": "/home/linux/Documents/MSM/research_modules/airsim_dryrun/outputs",
+      "exists": true,
+      "source_kind": "experiment_outputs",
+      "same_filesystem_as_repository": true
+    },
+    {
+      "path": "/home/linux/Documents/MSM/research_modules/airsim_runtime/outputs",
+      "exists": true,
+      "source_kind": "experiment_outputs",
+      "same_filesystem_as_repository": true
+    },
+    {
+      "path": "/home/linux/Documents/MSM/research_modules/d1_sensor_fusion/outputs",
+      "exists": true,
+      "source_kind": "experiment_outputs",
+      "same_filesystem_as_repository": true
+    },
+    {
+      "path": "/home/linux/Documents/MSM/research_modules/d2_data_association/outputs",
+      "exists": true,
+      "source_kind": "experiment_outputs",
+      "same_filesystem_as_repository": true
+    },
+    {
+      "path": "/home/linux/Documents/MSM/research_modules/d3_assignment_planner/outputs",
+      "exists": true,
+      "source_kind": "experiment_outputs",
+      "same_filesystem_as_repository": true
+    },
+    {
+      "path": "/home/linux/Documents/MSM/research_modules/d4_distributed_fallback/outputs",
+      "exists": true,
+      "source_kind": "experiment_outputs",
+      "same_filesystem_as_repository": true
+    },
+    {
+      "path": "/home/linux/Documents/MSM/research_modules/d5_terminal_association/outputs",
+      "exists": true,
+      "source_kind": "experiment_outputs",
+      "same_filesystem_as_repository": true
+    },
+    {
+      "path": "/home/linux/Documents/MSM/research_modules/d6_evaluation_metrics/outputs",
+      "exists": true,
+      "source_kind": "experiment_outputs",
+      "same_filesystem_as_repository": true
+    },
+    {
+      "path": "/home/linux/Documents/MSM/research_modules/independent_experiments/center_terminal_cv_campaign/exp_center_handover/outputs",
+      "exists": true,
+      "source_kind": "experiment_outputs",
+      "same_filesystem_as_repository": true
+    },
+    {
+      "path": "/home/linux/Documents/MSM/research_modules/independent_experiments/center_terminal_cv_campaign/exp_crossview/outputs",
+      "exists": true,
+      "source_kind": "experiment_outputs",
+      "same_filesystem_as_repository": true
+    },
+    {
+      "path": "/home/linux/Documents/MSM/research_modules/independent_experiments/center_terminal_cv_campaign/outputs",
+      "exists": true,
+      "source_kind": "experiment_outputs",
+      "same_filesystem_as_repository": true
+    },
+    {
+      "path": "/home/linux/Documents/MSM/research_modules/independent_experiments/dual_optical_100target_gnn/outputs",
+      "exists": true,
+      "source_kind": "experiment_outputs",
+      "same_filesystem_as_repository": true
+    },
+    {
+      "path": "/home/linux/Documents/MSM/research_modules/independent_experiments/dual_optical_100target_guide_case/outputs",
+      "exists": true,
+      "source_kind": "experiment_outputs",
+      "same_filesystem_as_repository": true
+    },
+    {
+      "path": "/home/linux/Documents/MSM/research_modules/independent_experiments/dual_optical_100target_lightweight/outputs",
+      "exists": true,
+      "source_kind": "experiment_outputs",
+      "same_filesystem_as_repository": true
+    },
+    {
+      "path": "/home/linux/Documents/MSM/research_modules/independent_experiments/dual_optical_40target/outputs",
+      "exists": true,
+      "source_kind": "experiment_outputs",
+      "same_filesystem_as_repository": true
+    },
+    {
+      "path": "/home/linux/Documents/MSM/research_modules/independent_experiments/dual_optical_online_benchmark/outputs",
+      "exists": true,
+      "source_kind": "experiment_outputs",
+      "same_filesystem_as_repository": true
+    },
+    {
+      "path": "/home/linux/Documents/MSM/research_modules/integrated_simulation/outputs",
+      "exists": true,
+      "source_kind": "experiment_outputs",
+      "same_filesystem_as_repository": true
+    },
+    {
+      "path": "/home/linux/Documents/MSM/research_modules/scalable_3d_simulation/outputs",
+      "exists": true,
+      "source_kind": "experiment_outputs",
+      "same_filesystem_as_repository": true
+    },
+    {
+      "path": "/home/linux/Documents/MSM-d5-training-clean",
+      "exists": true,
+      "source_kind": "sibling_preserve",
+      "same_filesystem_as_repository": true
+    },
+    {
+      "path": "/home/linux/Documents/MSM-source-audit-request-20260803",
+      "exists": true,
+      "source_kind": "sibling_preserve",
+      "same_filesystem_as_repository": true
+    },
+    {
+      "path": "/home/linux/Documents/MSM-source-audit-result-20260803-v3",
+      "exists": true,
+      "source_kind": "sibling_preserve",
+      "same_filesystem_as_repository": true
+    },
+    {
+      "path": "/home/linux/Documents/MSM-source-generation-output-64dfc08-20260803",
+      "exists": true,
+      "source_kind": "sibling_preserve",
+      "same_filesystem_as_repository": true
+    },
+    {
+      "path": "/home/linux/Documents/MSM-source-generation-output-6737b44-20260803",
+      "exists": true,
+      "source_kind": "sibling_preserve",
+      "same_filesystem_as_repository": true
+    },
+    {
+      "path": "/home/linux/Documents/MSM-source-generation-output-e7c438c-20260802",
+      "exists": true,
+      "source_kind": "sibling_preserve",
+      "same_filesystem_as_repository": true
+    }
+  ],
+  "errors": [],
+  "hash_mismatches": [],
+  "model_files": [
+    {
+      "path": "/home/linux/Documents/MSM/research_modules/d3_assignment_planner/outputs/formal_bc_development_20260720/bundle/state_dict.pt",
+      "hash_status": "stable_read",
+      "bytes": 60725,
+      "mtime_ns": 1784625063874160628,
+      "device": 66308,
+      "kind": "file",
+      "sha256": "e3da9fd5b54451da83358405b6051991e0c78bcf9f538b350d459b05faf8e0b2",
+      "source_root": "/home/linux/Documents/MSM/research_modules/d3_assignment_planner/outputs",
+      "source_kind": "experiment_outputs"
+    },
+    {
+      "path": "/home/linux/Documents/MSM/research_modules/d4_distributed_fallback/outputs/d4_v4_candidate_observable_calibrated_20260729/region_resource_a2_executable_transfer_shadow_v4/bundle/state_dict.pt",
+      "hash_status": "stable_read",
+      "bytes": 35791,
+      "mtime_ns": 1785364269507761815,
+      "device": 66308,
+      "kind": "file",
+      "sha256": "33a28060f11277a549b90d2f2f365962fec057b2bfb50a70ab5a422059cb9fe5",
+      "source_root": "/home/linux/Documents/MSM/research_modules/d4_distributed_fallback/outputs",
+      "source_kind": "experiment_outputs"
+    },
+    {
+      "path": "/home/linux/Documents/MSM/research_modules/d4_distributed_fallback/outputs/d4_v6_edge_transfer_20260730/region_resource_a2_edge_transfer_shadow_v6/bundle/state_dict.pt",
+      "hash_status": "stable_read",
+      "bytes": 37161,
+      "mtime_ns": 1785393664678356473,
+      "device": 66308,
+      "kind": "file",
+      "sha256": "e92ea3aa55fd8f13d180e37aa15154e3e5fe58ab4611805805ba46bcd07b6ea8",
+      "source_root": "/home/linux/Documents/MSM/research_modules/d4_distributed_fallback/outputs",
+      "source_kind": "experiment_outputs"
+    },
+    {
+      "path": "/home/linux/Documents/MSM/research_modules/d4_distributed_fallback/outputs/d4_v6_edge_transfer_precanonical_20260730/region_resource_a2_edge_transfer_shadow_v6/bundle/state_dict.pt",
+      "hash_status": "stable_read",
+      "bytes": 39128,
+      "mtime_ns": 1785392321799291279,
+      "device": 66308,
+      "kind": "file",
+      "sha256": "92dadce4ab724fa95739450f1b41db914c470399df7006738bf499b0200d5e95",
+      "source_root": "/home/linux/Documents/MSM/research_modules/d4_distributed_fallback/outputs",
+      "source_kind": "experiment_outputs"
+    },
+    {
+      "path": "/home/linux/Documents/MSM/research_modules/d4_distributed_fallback/outputs/d4_v6_edge_transfer_preedgeidentity_20260730/region_resource_a2_edge_transfer_shadow_v6/bundle/state_dict.pt",
+      "hash_status": "stable_read",
+      "bytes": 37161,
+      "mtime_ns": 1785393304000035780,
+      "device": 66308,
+      "kind": "file",
+      "sha256": "e92ea3aa55fd8f13d180e37aa15154e3e5fe58ab4611805805ba46bcd07b6ea8",
+      "source_root": "/home/linux/Documents/MSM/research_modules/d4_distributed_fallback/outputs",
+      "source_kind": "experiment_outputs"
+    },
+    {
+      "path": "/home/linux/Documents/MSM/research_modules/d4_distributed_fallback/outputs/d4_v6_edge_transfer_preterminology_20260730/region_resource_a2_edge_transfer_shadow_v6/bundle/state_dict.pt",
+      "hash_status": "stable_read",
+      "bytes": 37161,
+      "mtime_ns": 1785392627172760597,
+      "device": 66308,
+      "kind": "file",
+      "sha256": "e92ea3aa55fd8f13d180e37aa15154e3e5fe58ab4611805805ba46bcd07b6ea8",
+      "source_root": "/home/linux/Documents/MSM/research_modules/d4_distributed_fallback/outputs",
+      "source_kind": "experiment_outputs"
+    },
+    {
+      "path": "/home/linux/Documents/MSM/research_modules/d4_distributed_fallback/outputs/d4_v6_edge_transfer_repro_20260730/region_resource_a2_edge_transfer_shadow_v6/bundle/state_dict.pt",
+      "hash_status": "stable_read",
+      "bytes": 37161,
+      "mtime_ns": 1785393782899140193,
+      "device": 66308,
+      "kind": "file",
+      "sha256": "e92ea3aa55fd8f13d180e37aa15154e3e5fe58ab4611805805ba46bcd07b6ea8",
+      "source_root": "/home/linux/Documents/MSM/research_modules/d4_distributed_fallback/outputs",
+      "source_kind": "experiment_outputs"
+    },
+    {
+      "path": "/home/linux/Documents/MSM/research_modules/d4_distributed_fallback/outputs/d4_v6_edge_transfer_repro_preedgeidentity_20260730/region_resource_a2_edge_transfer_shadow_v6/bundle/state_dict.pt",
+      "hash_status": "stable_read",
+      "bytes": 37161,
+      "mtime_ns": 1785393403021807573,
+      "device": 66308,
+      "kind": "file",
+      "sha256": "e92ea3aa55fd8f13d180e37aa15154e3e5fe58ab4611805805ba46bcd07b6ea8",
+      "source_root": "/home/linux/Documents/MSM/research_modules/d4_distributed_fallback/outputs",
+      "source_kind": "experiment_outputs"
+    },
+    {
+      "path": "/home/linux/Documents/MSM/research_modules/d4_distributed_fallback/outputs/d4_v6_edge_transfer_repro_preterminology_20260730/region_resource_a2_edge_transfer_shadow_v6/bundle/state_dict.pt",
+      "hash_status": "stable_read",
+      "bytes": 37161,
+      "mtime_ns": 1785392727413167655,
+      "device": 66308,
+      "kind": "file",
+      "sha256": "e92ea3aa55fd8f13d180e37aa15154e3e5fe58ab4611805805ba46bcd07b6ea8",
+      "source_root": "/home/linux/Documents/MSM/research_modules/d4_distributed_fallback/outputs",
+      "source_kind": "experiment_outputs"
+    },
+    {
+      "path": "/home/linux/Documents/MSM/research_modules/d4_distributed_fallback/outputs/d4_v7_rule_node_residual_20260730/region_resource_a2_rule_node_transfer_residual_shadow_v7/bundle/state_dict.pt",
+      "hash_status": "stable_read",
+      "bytes": 68213,
+      "mtime_ns": 1785428145177355451,
+      "device": 66308,
+      "kind": "file",
+      "sha256": "d0f7f17599fba382d9aa436c6ae34ef5f23b582a5ed9068f3475cb545b4f88f5",
+      "source_root": "/home/linux/Documents/MSM/research_modules/d4_distributed_fallback/outputs",
+      "source_kind": "experiment_outputs"
+    },
+    {
+      "path": "/home/linux/Documents/MSM/research_modules/d4_distributed_fallback/outputs/d4_v7_rule_node_residual_failclosed_final_20260730/region_resource_a2_rule_node_transfer_residual_shadow_v7/bundle/state_dict.pt",
+      "hash_status": "stable_read",
+      "bytes": 68213,
+      "mtime_ns": 1785429987010305651,
+      "device": 66308,
+      "kind": "file",
+      "sha256": "d0f7f17599fba382d9aa436c6ae34ef5f23b582a5ed9068f3475cb545b4f88f5",
+      "source_root": "/home/linux/Documents/MSM/research_modules/d4_distributed_fallback/outputs",
+      "source_kind": "experiment_outputs"
+    },
+    {
+      "path": "/home/linux/Documents/MSM/research_modules/d4_distributed_fallback/outputs/d4_v7_rule_node_residual_failclosed_final_repro_20260730/region_resource_a2_rule_node_transfer_residual_shadow_v7/bundle/state_dict.pt",
+      "hash_status": "stable_read",
+      "bytes": 68213,
+      "mtime_ns": 1785430080337473298,
+      "device": 66308,
+      "kind": "file",
+      "sha256": "d0f7f17599fba382d9aa436c6ae34ef5f23b582a5ed9068f3475cb545b4f88f5",
+      "source_root": "/home/linux/Documents/MSM/research_modules/d4_distributed_fallback/outputs",
+      "source_kind": "experiment_outputs"
+    },
+    {
+      "path": "/home/linux/Documents/MSM/research_modules/d4_distributed_fallback/outputs/d4_v7_rule_node_residual_final_20260730/region_resource_a2_rule_node_transfer_residual_shadow_v7/bundle/state_dict.pt",
+      "hash_status": "stable_read",
+      "bytes": 68213,
+      "mtime_ns": 1785429030802068909,
+      "device": 66308,
+      "kind": "file",
+      "sha256": "d0f7f17599fba382d9aa436c6ae34ef5f23b582a5ed9068f3475cb545b4f88f5",
+      "source_root": "/home/linux/Documents/MSM/research_modules/d4_distributed_fallback/outputs",
+      "source_kind": "experiment_outputs"
+    },
+    {
+      "path": "/home/linux/Documents/MSM/research_modules/d4_distributed_fallback/outputs/d4_v7_rule_node_residual_final_repro_20260730/region_resource_a2_rule_node_transfer_residual_shadow_v7/bundle/state_dict.pt",
+      "hash_status": "stable_read",
+      "bytes": 68213,
+      "mtime_ns": 1785429202178799476,
+      "device": 66308,
+      "kind": "file",
+      "sha256": "d0f7f17599fba382d9aa436c6ae34ef5f23b582a5ed9068f3475cb545b4f88f5",
+      "source_root": "/home/linux/Documents/MSM/research_modules/d4_distributed_fallback/outputs",
+      "source_kind": "experiment_outputs"
+    },
+    {
+      "path": "/home/linux/Documents/MSM/research_modules/d4_distributed_fallback/outputs/d4_v7_rule_node_residual_repro_20260730/region_resource_a2_rule_node_transfer_residual_shadow_v7/bundle/state_dict.pt",
+      "hash_status": "stable_read",
+      "bytes": 68213,
+      "mtime_ns": 1785428261762474008,
+      "device": 66308,
+      "kind": "file",
+      "sha256": "d0f7f17599fba382d9aa436c6ae34ef5f23b582a5ed9068f3475cb545b4f88f5",
+      "source_root": "/home/linux/Documents/MSM/research_modules/d4_distributed_fallback/outputs",
+      "source_kind": "experiment_outputs"
+    },
+    {
+      "path": "/home/linux/Documents/MSM/research_modules/d4_distributed_fallback/outputs/region_resource_a2_current_lineage_development_v1/bundle/state_dict.pt",
+      "hash_status": "stable_read",
+      "bytes": 184335,
+      "mtime_ns": 1785289252037980256,
+      "device": 66308,
+      "kind": "file",
+      "sha256": "fd1b9c4cf7580083fadc04a70b87aa6439930eba764a970279611ccc57f30047",
+      "source_root": "/home/linux/Documents/MSM/research_modules/d4_distributed_fallback/outputs",
+      "source_kind": "experiment_outputs"
+    },
+    {
+      "path": "/home/linux/Documents/MSM/research_modules/d4_distributed_fallback/outputs/region_resource_a2_development_calibrated_20260726_v1/bundle/state_dict.pt",
+      "hash_status": "stable_read",
+      "bytes": 184335,
+      "mtime_ns": 1785067196125988426,
+      "device": 66308,
+      "kind": "file",
+      "sha256": "cf393eaa2e7777e63645ef244f8e9bf733123fdc768f2610a91954c5f6c4632f",
+      "source_root": "/home/linux/Documents/MSM/research_modules/d4_distributed_fallback/outputs",
+      "source_kind": "experiment_outputs"
+    },
+    {
+      "path": "/home/linux/Documents/MSM/research_modules/d4_distributed_fallback/outputs/region_resource_bc_900_20260720/bundle/state_dict.pt",
+      "hash_status": "stable_read",
+      "bytes": 184335,
+      "mtime_ns": 1784626485023914011,
+      "device": 66308,
+      "kind": "file",
+      "sha256": "3da0360be8788f3ffeb8e9f9eba3e0d5369ec0bdf9e05729dfb1db07d71d5f62",
+      "source_root": "/home/linux/Documents/MSM/research_modules/d4_distributed_fallback/outputs",
+      "source_kind": "experiment_outputs"
+    },
+    {
+      "path": "/home/linux/Documents/MSM/research_modules/d5_terminal_association/outputs/a3_v2_active_vision_bc_development_20260801_d7bf890/development_shadow_model_bundle/weights.pt",
+      "hash_status": "stable_read",
+      "bytes": 47045,
+      "mtime_ns": 1785609638370572921,
+      "device": 66308,
+      "kind": "file",
+      "sha256": "b984e3052556879b2acd51d108c862a7ecd9361b2a823733e220f1e1419ad01c",
+      "source_root": "/home/linux/Documents/MSM/research_modules/d5_terminal_association/outputs",
+      "source_kind": "experiment_outputs"
+    },
+    {
+      "path": "/home/linux/Documents/MSM/research_modules/d5_terminal_association/outputs/active_vision_bc_formal_20260720/development_shadow_model_bundle/weights.pt",
+      "hash_status": "stable_read",
+      "bytes": 47045,
+      "mtime_ns": 1784645970861653605,
+      "device": 66308,
+      "kind": "file",
+      "sha256": "829d016611967d7f7adddcb58c99a96e418486e33a7fc987042a16d294c2b77b",
+      "source_root": "/home/linux/Documents/MSM/research_modules/d5_terminal_association/outputs",
+      "source_kind": "experiment_outputs"
+    },
+    {
+      "path": "/home/linux/Documents/MSM/research_modules/d5_terminal_association/outputs/d5_composite_internal_training_clean_6dc471b/model_bundle/weights.pt",
+      "hash_status": "stable_read",
+      "bytes": 97717,
+      "mtime_ns": 1784679799773286281,
+      "device": 66308,
+      "kind": "file",
+      "sha256": "99fa4428849773458eb1a537d5f6cd72a23275215a6dfe5d558dbaa3df92d4cd",
+      "source_root": "/home/linux/Documents/MSM/research_modules/d5_terminal_association/outputs",
+      "source_kind": "experiment_outputs"
+    },
+    {
+      "path": "/home/linux/Documents/MSM/research_modules/d5_terminal_association/outputs/d5_composite_robust_v2_candidate_20260726/model_bundle/weights.pt",
+      "hash_status": "stable_read",
+      "bytes": 202805,
+      "mtime_ns": 1785066989545523059,
+      "device": 66308,
+      "kind": "file",
+      "sha256": "7fb5db8b6099ca4da5706a3bec53ff7cd634e8bd267c036ce3ee4ee4bf71ca71",
+      "source_root": "/home/linux/Documents/MSM/research_modules/d5_terminal_association/outputs",
+      "source_kind": "experiment_outputs"
+    },
+    {
+      "path": "/home/linux/Documents/MSM/research_modules/d5_terminal_association/outputs/tracklet_graph_readiness_20260720/development_model_bundle/weights.pt",
+      "hash_status": "stable_read",
+      "bytes": 97717,
+      "mtime_ns": 1784626009783409258,
+      "device": 66308,
+      "kind": "file",
+      "sha256": "9bbe53d6cab52e529155b8b92318e98e9bf7e373846fdee38a1f3b39235cbf2d",
+      "source_root": "/home/linux/Documents/MSM/research_modules/d5_terminal_association/outputs",
+      "source_kind": "experiment_outputs"
+    },
+    {
+      "path": "/home/linux/Documents/MSM/research_modules/independent_experiments/center_terminal_cv_campaign/outputs/center_handover_sensor_error_20260820/inputs/center_handover_sparse_gnn.pt",
+      "hash_status": "stable_read",
+      "expected_sha256": [
+        "0548176bf9cb94fc8f5da36e24cb099128f192b3f7374ccb910257366ce0db05"
+      ],
+      "bytes": 25909,
+      "mtime_ns": 1786934798598095788,
+      "device": 66308,
+      "kind": "file",
+      "sha256": "0548176bf9cb94fc8f5da36e24cb099128f192b3f7374ccb910257366ce0db05",
+      "matches_recorded_hashes": true,
+      "source_root": "/home/linux/Documents/MSM/research_modules/independent_experiments/center_terminal_cv_campaign/outputs",
+      "source_kind": "experiment_outputs"
+    },
+    {
+      "path": "/home/linux/Documents/MSM/research_modules/independent_experiments/center_terminal_cv_campaign/outputs/gnn_offline_benchmark_20260816/models/center_handover/center_handover_sparse_gnn.pt",
+      "hash_status": "stable_read",
+      "bytes": 25909,
+      "mtime_ns": 1786934798598095788,
+      "device": 66308,
+      "kind": "file",
+      "sha256": "0548176bf9cb94fc8f5da36e24cb099128f192b3f7374ccb910257366ce0db05",
+      "source_root": "/home/linux/Documents/MSM/research_modules/independent_experiments/center_terminal_cv_campaign/outputs",
+      "source_kind": "experiment_outputs"
+    },
+    {
+      "path": "/home/linux/Documents/MSM/research_modules/independent_experiments/center_terminal_cv_campaign/outputs/gnn_offline_benchmark_20260816/models/crossview/weights.pt",
+      "hash_status": "stable_read",
+      "bytes": 167031,
+      "mtime_ns": 1786935284474066132,
+      "device": 66308,
+      "kind": "file",
+      "sha256": "d1fda6a3af00d4c95a8aeec83a3fe46a13fb0030ea27a10f9937079774acf4ad",
+      "source_root": "/home/linux/Documents/MSM/research_modules/independent_experiments/center_terminal_cv_campaign/outputs",
+      "source_kind": "experiment_outputs"
+    },
+    {
+      "path": "/home/linux/Documents/MSM/research_modules/independent_experiments/dual_optical_100target_gnn/outputs/formal_airsim_20260820_20260831_run01/model/edge_gnn_weights.pt",
+      "hash_status": "stable_read",
+      "bytes": 286577,
+      "mtime_ns": 1786453934824607433,
+      "device": 66308,
+      "kind": "file",
+      "sha256": "3b807d388ab11477ce1d0493a921cfd485bff09e7e35d3bc989c88725ac168e5",
+      "source_root": "/home/linux/Documents/MSM/research_modules/independent_experiments/dual_optical_100target_gnn/outputs",
+      "source_kind": "experiment_outputs"
+    },
+    {
+      "path": "/home/linux/Documents/MSM/research_modules/independent_experiments/dual_optical_100target_gnn/outputs/formal_expanded_20260820_20260920_run01/model/edge_gnn_weights.pt",
+      "hash_status": "stable_read",
+      "bytes": 286577,
+      "mtime_ns": 1786464120198985767,
+      "device": 66308,
+      "kind": "file",
+      "sha256": "3b807d388ab11477ce1d0493a921cfd485bff09e7e35d3bc989c88725ac168e5",
+      "source_root": "/home/linux/Documents/MSM/research_modules/independent_experiments/dual_optical_100target_gnn/outputs",
+      "source_kind": "experiment_outputs"
+    },
+    {
+      "path": "/home/linux/Documents/MSM/research_modules/independent_experiments/dual_optical_online_benchmark/outputs/formal_24_6_20/dataset/freezes/gnn/edge_gnn_weights.pt",
+      "hash_status": "stable_read",
+      "bytes": 286129,
+      "mtime_ns": 1786554722239293809,
+      "device": 66308,
+      "kind": "file",
+      "sha256": "ee05e2d25c5cb810eae6b89af285a4ba351410941b4080544f4f7e73ac38ae6f",
+      "source_root": "/home/linux/Documents/MSM/research_modules/independent_experiments/dual_optical_online_benchmark/outputs",
+      "source_kind": "experiment_outputs"
+    },
+    {
+      "path": "/home/linux/Documents/MSM/research_modules/independent_experiments/dual_optical_online_benchmark/outputs/formal_v2_24_6_20/dataset/freezes/gnn/edge_gnn_weights.pt",
+      "hash_status": "stable_read",
+      "bytes": 289457,
+      "mtime_ns": 1786618183465931297,
+      "device": 66308,
+      "kind": "file",
+      "sha256": "1211de964dee16614e4bea89d13082500a6ea947712ff85acf365f678d761a4b",
+      "source_root": "/home/linux/Documents/MSM/research_modules/independent_experiments/dual_optical_online_benchmark/outputs",
+      "source_kind": "experiment_outputs"
+    },
+    {
+      "path": "/home/linux/Documents/MSM/research_modules/independent_experiments/dual_optical_online_benchmark/outputs/gate_confirmation_ablation_20260817/targets_020/candidate_moderate/model/edge_gnn_weights.pt",
+      "hash_status": "stable_read",
+      "bytes": 289457,
+      "mtime_ns": 1786972412906799992,
+      "device": 66308,
+      "kind": "file",
+      "sha256": "4e4aa694bd8f28ee511f8ad4c2c82aa9ca969d2769300aefde356b7f45dc75f6",
+      "source_root": "/home/linux/Documents/MSM/research_modules/independent_experiments/dual_optical_online_benchmark/outputs",
+      "source_kind": "experiment_outputs"
+    },
+    {
+      "path": "/home/linux/Documents/MSM/research_modules/independent_experiments/dual_optical_online_benchmark/outputs/gate_confirmation_ablation_20260817/targets_020/candidate_wide/model/edge_gnn_weights.pt",
+      "hash_status": "stable_read",
+      "bytes": 289457,
+      "mtime_ns": 1786972667524784452,
+      "device": 66308,
+      "kind": "file",
+      "sha256": "985e11cbc210d797b787a43894ab362a5f7b0d9fcd2a78dd1f32dac4d65e4a87",
+      "source_root": "/home/linux/Documents/MSM/research_modules/independent_experiments/dual_optical_online_benchmark/outputs",
+      "source_kind": "experiment_outputs"
+    },
+    {
+      "path": "/home/linux/Documents/MSM/research_modules/independent_experiments/dual_optical_online_benchmark/outputs/s180_1s_sector_v1/targets_020/dataset/freezes/gnn/edge_gnn_weights.pt",
+      "hash_status": "stable_read",
+      "bytes": 289457,
+      "mtime_ns": 1786988007800848155,
+      "device": 66308,
+      "kind": "file",
+      "sha256": "47ad19666d46c678bfdfa5e0ddd52f20df20875647667d1b16020624f871ea05",
+      "source_root": "/home/linux/Documents/MSM/research_modules/independent_experiments/dual_optical_online_benchmark/outputs",
+      "source_kind": "experiment_outputs"
+    },
+    {
+      "path": "/home/linux/Documents/MSM/research_modules/independent_experiments/dual_optical_online_benchmark/outputs/s180_1s_sector_v1/targets_020/dataset/freezes/track_superglue/track_superglue_weights.pt",
+      "hash_status": "stable_read",
+      "bytes": 1251077,
+      "mtime_ns": 1786989794526739102,
+      "device": 66308,
+      "kind": "file",
+      "sha256": "d78d0b449bf0baa8ff7f9c25a70ed1705f6ed8a342a34684852f3b2e5d216780",
+      "source_root": "/home/linux/Documents/MSM/research_modules/independent_experiments/dual_optical_online_benchmark/outputs",
+      "source_kind": "experiment_outputs"
+    },
+    {
+      "path": "/home/linux/Documents/MSM/research_modules/independent_experiments/dual_optical_online_benchmark/outputs/s180_1s_sector_v1/targets_040/dataset/freezes/gnn/edge_gnn_weights.pt",
+      "hash_status": "stable_read",
+      "bytes": 289457,
+      "mtime_ns": 1786991997478604645,
+      "device": 66308,
+      "kind": "file",
+      "sha256": "c5171bd9fe120e29dbc17621f3d746f92a0aef41abacc66953db945ed0a97a22",
+      "source_root": "/home/linux/Documents/MSM/research_modules/independent_experiments/dual_optical_online_benchmark/outputs",
+      "source_kind": "experiment_outputs"
+    },
+    {
+      "path": "/home/linux/Documents/MSM/research_modules/independent_experiments/dual_optical_online_benchmark/outputs/s180_1s_sector_v1/targets_040/dataset/freezes/track_superglue/track_superglue_weights.pt",
+      "hash_status": "stable_read",
+      "bytes": 1251077,
+      "mtime_ns": 1786996978108300651,
+      "device": 66308,
+      "kind": "file",
+      "sha256": "c64dfd1d484af517d682184d18c5517717fa9a717ea2ccbc474ff22c16b5ce66",
+      "source_root": "/home/linux/Documents/MSM/research_modules/independent_experiments/dual_optical_online_benchmark/outputs",
+      "source_kind": "experiment_outputs"
+    },
+    {
+      "path": "/home/linux/Documents/MSM/research_modules/independent_experiments/dual_optical_online_benchmark/outputs/s180_1s_sector_v1/targets_060/dataset/freezes/gnn/edge_gnn_weights.pt",
+      "hash_status": "stable_read",
+      "bytes": 289457,
+      "mtime_ns": 1786999720835133249,
+      "device": 66308,
+      "kind": "file",
+      "sha256": "588364baf39e3d58e1ad3063b5b3819a79012dc86a9151d8921e3f1e1b5cb0a5",
+      "source_root": "/home/linux/Documents/MSM/research_modules/independent_experiments/dual_optical_online_benchmark/outputs",
+      "source_kind": "experiment_outputs"
+    },
+    {
+      "path": "/home/linux/Documents/MSM/research_modules/independent_experiments/dual_optical_online_benchmark/outputs/s180_1s_sector_v1/targets_060/dataset/freezes/track_superglue/track_superglue_weights.pt",
+      "hash_status": "stable_read",
+      "bytes": 1251077,
+      "mtime_ns": 1787004357393850255,
+      "device": 66308,
+      "kind": "file",
+      "sha256": "3215443906c13eaea042f346fc178de255531e1d163f5df5ce000243647ea92d",
+      "source_root": "/home/linux/Documents/MSM/research_modules/independent_experiments/dual_optical_online_benchmark/outputs",
+      "source_kind": "experiment_outputs"
+    },
+    {
+      "path": "/home/linux/Documents/MSM/research_modules/independent_experiments/dual_optical_online_benchmark/outputs/scale_funnel_v3/targets_020/dataset/freezes/gnn/edge_gnn_weights.pt",
+      "hash_status": "stable_read",
+      "bytes": 289457,
+      "mtime_ns": 1786638603331174113,
+      "device": 66308,
+      "kind": "file",
+      "sha256": "1911cd958a84ba1d64a684926ff8ff69f3fd9a77b39db86668b780d8c227f326",
+      "source_root": "/home/linux/Documents/MSM/research_modules/independent_experiments/dual_optical_online_benchmark/outputs",
+      "source_kind": "experiment_outputs"
+    },
+    {
+      "path": "/home/linux/Documents/MSM/research_modules/independent_experiments/dual_optical_online_benchmark/outputs/scale_funnel_v3/targets_040/dataset/freezes/gnn/edge_gnn_weights.pt",
+      "hash_status": "stable_read",
+      "bytes": 289457,
+      "mtime_ns": 1786640928251032211,
+      "device": 66308,
+      "kind": "file",
+      "sha256": "4009146f93bd7ff29cd3f6e1be33febbc5cd5872ad9c8c28fc0056a837c942b4",
+      "source_root": "/home/linux/Documents/MSM/research_modules/independent_experiments/dual_optical_online_benchmark/outputs",
+      "source_kind": "experiment_outputs"
+    },
+    {
+      "path": "/home/linux/Documents/MSM/research_modules/independent_experiments/dual_optical_online_benchmark/outputs/scale_funnel_v3/targets_060/dataset/freezes/gnn/edge_gnn_weights.pt",
+      "hash_status": "stable_read",
+      "bytes": 289457,
+      "mtime_ns": 1786644448922817327,
+      "device": 66308,
+      "kind": "file",
+      "sha256": "638d1ac6e57b9f571e02e3fc2cea31537653446be8ec816067e8c33d7ff1ee03",
+      "source_root": "/home/linux/Documents/MSM/research_modules/independent_experiments/dual_optical_online_benchmark/outputs",
+      "source_kind": "experiment_outputs"
+    },
+    {
+      "path": "/home/linux/Documents/MSM/research_modules/independent_experiments/dual_optical_online_benchmark/outputs/scale_funnel_v4/targets_020/dataset/freezes/gnn/edge_gnn_weights.pt",
+      "hash_status": "stable_read",
+      "bytes": 289457,
+      "mtime_ns": 1786729758785610425,
+      "device": 66308,
+      "kind": "file",
+      "sha256": "955925333e988ff5fa20efb6adb40e773346d86d3891661005635530f1d228ca",
+      "source_root": "/home/linux/Documents/MSM/research_modules/independent_experiments/dual_optical_online_benchmark/outputs",
+      "source_kind": "experiment_outputs"
+    },
+    {
+      "path": "/home/linux/Documents/MSM/research_modules/independent_experiments/dual_optical_online_benchmark/outputs/scale_funnel_v4/targets_020/dataset/freezes/track_superglue/track_superglue_weights.pt",
+      "hash_status": "stable_read",
+      "bytes": 1251077,
+      "mtime_ns": 1786732934921416569,
+      "device": 66308,
+      "kind": "file",
+      "sha256": "d051510637a6ec02a214afe8c0c553c36d8636976d71dadbfa232eb646fd7701",
+      "source_root": "/home/linux/Documents/MSM/research_modules/independent_experiments/dual_optical_online_benchmark/outputs",
+      "source_kind": "experiment_outputs"
+    },
+    {
+      "path": "/home/linux/Documents/MSM/research_modules/independent_experiments/dual_optical_online_benchmark/outputs/scale_funnel_v5_phase180_targettrack/contract_smoke/test_v5_adapter_freeze_publish0/model/model/target_track_gnn_weights.pt",
+      "hash_status": "stable_read",
+      "bytes": 294841,
+      "mtime_ns": 1786771440111066399,
+      "device": 66308,
+      "kind": "file",
+      "sha256": "5c4f1732a68c70ca984071b58afacf2ef00538cc71c014de3f812069344342ed",
+      "source_root": "/home/linux/Documents/MSM/research_modules/independent_experiments/dual_optical_online_benchmark/outputs",
+      "source_kind": "experiment_outputs"
+    },
+    {
+      "path": "/home/linux/Documents/MSM/research_modules/independent_experiments/dual_optical_online_benchmark/outputs/scale_funnel_v5_phase180_targettrack/shared_target_track_model/native/model/target_track_gnn_weights.pt",
+      "hash_status": "stable_read",
+      "bytes": 294841,
+      "mtime_ns": 1786814481173439381,
+      "device": 66308,
+      "kind": "file",
+      "sha256": "fe52acf2d3eff14a79b76343fb3fee26caf6b3018944bef77164821219b56a55",
+      "source_root": "/home/linux/Documents/MSM/research_modules/independent_experiments/dual_optical_online_benchmark/outputs",
+      "source_kind": "experiment_outputs"
+    },
+    {
+      "path": "/home/linux/Documents/MSM-d5-training-clean/research_modules/d5_terminal_association/best.pt",
+      "hash_status": "stable_read",
+      "bytes": 6231715,
+      "mtime_ns": 1784682498550788827,
+      "device": 66308,
+      "kind": "file",
+      "sha256": "997fd3feab859f080883b09ebfd7812f5c47d8481be5ac17dc3b2914413b9e6e",
+      "source_root": "/home/linux/Documents/MSM-d5-training-clean",
+      "source_kind": "sibling_preserve"
+    },
+    {
+      "path": "/home/linux/Documents/MSM-d5-training-clean/research_modules/d5_terminal_association/outputs/d5_composite_internal_training_clean_e39a54d/model_bundle/weights.pt",
+      "hash_status": "stable_read",
+      "bytes": 97717,
+      "mtime_ns": 1784683842038015130,
+      "device": 66308,
+      "kind": "file",
+      "sha256": "4f5e8cee1b25c1a449ec1731f1e585c8b7714325d53147b63e792689021a1e50",
+      "source_root": "/home/linux/Documents/MSM-d5-training-clean",
+      "source_kind": "sibling_preserve"
+    },
+    {
+      "path": "/home/linux/Documents/MSM-d5-training-clean/research_modules/d5_terminal_association/outputs/d5_g1_clean_source_chain_d437744_20260726/model_candidate/g1_assist_v4_7fb5db8b_d6_10bf19f5/weights.pt",
+      "hash_status": "stable_read",
+      "bytes": 202805,
+      "mtime_ns": 1785075252865187559,
+      "device": 66308,
+      "kind": "file",
+      "sha256": "7fb5db8b6099ca4da5706a3bec53ff7cd634e8bd267c036ce3ee4ee4bf71ca71",
+      "source_root": "/home/linux/Documents/MSM-d5-training-clean",
+      "source_kind": "sibling_preserve"
+    },
+    {
+      "path": "/home/linux/Documents/MSM-d5-training-clean/research_modules/d5_terminal_association/outputs/d5_g1_clean_source_chain_d437744_20260726/model_candidate/model_bundle/weights.pt",
+      "hash_status": "stable_read",
+      "bytes": 202805,
+      "mtime_ns": 1785069188077403087,
+      "device": 66308,
+      "kind": "file",
+      "sha256": "7fb5db8b6099ca4da5706a3bec53ff7cd634e8bd267c036ce3ee4ee4bf71ca71",
+      "source_root": "/home/linux/Documents/MSM-d5-training-clean",
+      "source_kind": "sibling_preserve"
+    }
+  ],
+  "legacy_archive_candidates": [],
+  "nested_repositories": [
+    {
+      "path": "/home/linux/Documents/MSM/paper/Fastlab_world_fly",
+      "payload_inventoried": false,
+      "status": "separate_repository_requires_separate_backup"
+    },
+    {
+      "path": "/home/linux/Documents/MSM/paper/YOPO",
+      "payload_inventoried": false,
+      "status": "separate_repository_requires_separate_backup"
+    },
+    {
+      "path": "/home/linux/Documents/MSM/paper/ego-planner-swarm",
+      "payload_inventoried": false,
+      "status": "separate_repository_requires_separate_backup"
+    },
+    {
+      "path": "/home/linux/Documents/MSM/paper/ego-planner",
+      "payload_inventoried": false,
+      "status": "separate_repository_requires_separate_backup"
+    }
+  ],
+  "totals": {
+    "file_count": 237799,
+    "logical_bytes": 69672336992,
+    "hashed_count": 38197,
+    "hashed_bytes": 2819956724,
+    "expected_hash_paths": 196,
+    "expected_hash_matches": 196
+  },
+  "hash_status_counts": {
+    "metadata_only": 199602,
+    "stable_read": 38197,
+    "not_followed": 1
+  },
+  "group_count": 1132,
+  "filesystem": {
+    "device": 66308,
+    "available_bytes": 31179571200,
+    "total_bytes": 503579639808
+  },
+  "old_tmp_result": {
+    "path": "/tmp/msm-formal-r0-20260731-80e55eb/d6_strict_partial_450_b6289c5",
+    "exists": false
+  },
+  "inventory_file": {
+    "path": "FILES.jsonl.gz",
+    "sha256": "f98b7fdd3c184d7b907fba4e8ba4952cead373d4d500b6feaf4cb9be4a740d2d",
+    "compressed_bytes": 7045312
+  }
+}
