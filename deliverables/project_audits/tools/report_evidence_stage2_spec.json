@@ -1,0 +1,150 @@
+{
+  "document_snapshot": "deliverables/project_audits/20260926/WORKSPACE_EVIDENCE_SNAPSHOT.json",
+  "reports": {
+    "dual": "deliverables/leadership_report/双光电多目标轨迹配准与交汇定位试验报告_CN",
+    "search": "deliverables/leadership_report/协同搜索试验报告_CN",
+    "terminal": "deliverables/leadership_report/末端目标配准试验报告_CN",
+    "center": "deliverables/leadership_report/中心航迹与拦截无人机目标配准试验报告_CN"
+  },
+  "sources": {
+    "dual": {"kind": "json", "path": "research_modules/independent_experiments/dual_optical_online_benchmark/outputs/report_replay_20260819_v2/combined_summary.json", "selector": "summary"},
+    "ranging": {"kind": "json", "path": "research_modules/independent_experiments/dual_optical_40target/outputs/airsim_seed_20260810_run11/metrics.json"},
+    "search": {"kind": "json", "path": "research_modules/independent_experiments/center_terminal_cv_campaign/outputs/offline_search_100pct_cues_20260819/matrix_summary.json", "selector": "aggregates"},
+    "handover": {"kind": "json", "path": "research_modules/independent_experiments/center_terminal_cv_campaign/outputs/gnn_offline_benchmark_20260816/benchmark_summary.json", "selector": "results"},
+    "crossview": {"kind": "json", "path": "research_modules/independent_experiments/center_terminal_cv_campaign/outputs/terminal_gnn_diagnostic_selection_20260819_v2/selection_summary.json", "selectors": ["geometry_scenario_metrics", "selected_cold_scenario_metrics"]},
+    "center": {"kind": "csv", "path": "research_modules/independent_experiments/center_terminal_cv_campaign/outputs/center_handover_sensor_error_20260820/aggregate_metrics.csv"},
+    "center_interface": {"kind": "csv", "paths": [
+      "research_modules/independent_experiments/center_terminal_cv_campaign/outputs/center_handover_sensor_error_airsim_20260820_n20_retry01/summary_metrics.csv",
+      "research_modules/independent_experiments/center_terminal_cv_campaign/outputs/center_handover_sensor_error_airsim_20260820_n40/summary_metrics.csv",
+      "research_modules/independent_experiments/center_terminal_cv_campaign/outputs/center_handover_sensor_error_airsim_20260820_n60/summary_metrics.csv"
+    ]}
+  },
+  "templates": {
+    "dual": {
+      "source": "dual", "headers": ["目标数", "方法", "质量精度", "质量覆盖度"],
+      "keys": ["目标数", "干扰条件", "方法"],
+      "columns": {
+        "目标数": {"field": "target_count"},
+        "干扰条件": {"field": "condition", "map": {"clean": "无附加漏检虚警", "light": "轻度干扰", "medium": "中度干扰", "heavy": "重度干扰"}},
+        "方法": {"field": "route_name", "map": {"epipolar_mht": "几何方法", "gnn": "图神经网络"}},
+        "质量精度": {"field": "offline_completed_precision", "format": ".1%"},
+        "质量覆盖度": {"field": "offline_completed_coverage", "format": ".1%"},
+        "按时覆盖度": {"field": "on_time_coverage", "format": ".1%"},
+        "处理耗时P95": {"field": "latency_p95_ms", "format": ".1f", "suffix": "毫秒"},
+        "超时数": {"fields": ["timeout_count", "sample_count"], "template": "{0}/{1}"}
+      }
+    },
+    "single": {
+      "source": "dual", "headers": ["目标数", "干扰条件", "单站精度", "单站覆盖度"],
+      "keys": ["目标数", "干扰条件"],
+      "columns": {
+        "目标数": {"field": "target_count"},
+        "干扰条件": {"field": "condition", "map": {"clean": "无附加漏检虚警", "light": "轻度干扰", "medium": "中度干扰", "heavy": "重度干扰"}},
+        "单站精度": {"field": "single_station_precision", "format": ".1%"},
+        "单站覆盖度": {"field": "single_station_coverage", "format": ".1%"},
+        "重复航迹": {"field": "single_station_duplicate_track_count"},
+        "混合航迹": {"field": "single_station_mixed_track_count"},
+        "缺失身份机会": {"field": "single_station_missing_identity_count"}
+      }
+    },
+    "search": {
+      "source": "search", "headers": ["位置误差σ", "发现率（平均/最差）", "连续确认率（平均/最差）"],
+      "keys": ["位置误差σ"],
+      "columns": {
+        "位置误差σ": {"field": "position_sigma_m", "format": ".0f", "suffix": "米"},
+        "发现率（平均/最差）": {"fields": ["target_discovery_rate_mean", "target_discovery_rate_min"], "formats": [".1%", ".1%"], "template": "{0}/{1}"},
+        "连续确认率（平均/最差）": {"fields": ["continuous_confirmation_rate_mean", "continuous_confirmation_rate_min"], "formats": [".1%", ".1%"], "template": "{0}/{1}"},
+        "视锥概率覆盖": {"field": "true_frustum_probability_mass_coverage_rate_mean", "format": ".1%"},
+        "未执行任务均值": {"field": "unexecuted_task_count_mean", "format": ".1f"}
+      }
+    },
+    "center": {
+      "source": "center", "headers": ["目标数", "交接信息", "方法", "关联准确度", "关联覆盖度"],
+      "keys": ["目标数", "交接信息", "方法"],
+      "columns": {
+        "目标数": {"field": "target_count"},
+        "交接信息": {"field": "handover_mode", "map": {"anonymous": "无编号", "coarse_hint": "带粗线索编号"}},
+        "方法": {"field": "backend", "map": {"geometry": "几何方法", "gnn": "图网络"}},
+        "关联准确度": {"field": "binding_precision_mean", "format": ".1%"},
+        "关联覆盖度": {"field": "binding_recall_mean", "format": ".1%"},
+        "处理耗时P95": {"field": "runtime_s_p95", "format": ".3f", "suffix": "秒"},
+        "达到80%的批数": {"fields": ["seeds_precision_and_recall_gte_0_80", "seed_count"], "template": "{0}/{1}"}
+      }
+    },
+    "crossview": {
+      "source": "crossview", "keys": ["场景", "方法"],
+      "columns": {
+        "场景": {"field": "scenario_id", "map": {"n20_m8": "20目标/8机", "n20_m30": "20目标/30机", "n40_m50": "40目标/50机"}},
+        "方法": {"field": "backend", "map": {"geometry": "视场区几何", "gnn": "视场区图网络"}},
+        "机会目标": {"field": "opportunity_target_count"},
+        "关系精度": {"field": "association_precision", "format": ".4f"},
+        "关系覆盖度": {"field": "association_recall", "format": ".4f"},
+        "目标等权纯度": {"field": "target_equal_mean_purity", "format": ".4f"},
+        "目标等权完整度": {"field": "target_equal_mean_completeness", "format": ".4f"},
+        "独立正确成簇比例": {"field": "independently_correct_target_rate", "format": ".4f"},
+        "身份混合目标": {"field": "mixed_identity_target_count"},
+        "未完成目标": {"field": "unregistered_opportunity_target_count"},
+        "视场区相机对": {"field": "retained_camera_pair_count"},
+        "候选关系": {"field": "candidate_edge_count"},
+        "无缓存耗时": {"field": "elapsed_s", "format": ".2f", "suffix": "秒"}
+      }
+    }
+  },
+  "bindings": [
+    {"report": "dual", "template": "dual", "section_prefix": "3.1 ", "where": {"profile": "oracle_360"}, "keys": ["目标数", "方法"]},
+    {"report": "dual", "template": "single", "section_prefix": "3.2.2 ", "where": {"profile": "continuous_360", "route_name": "epipolar_mht"}},
+    {"report": "dual", "template": "dual", "section_prefix": "3.2.3 ", "where": {"profile": "continuous_360"}},
+    {"report": "dual", "template": "single", "section_prefix": "3.3.1 ", "where": {"profile": "s180", "route_name": "epipolar_mht"}},
+    {"report": "dual", "template": "dual", "section_prefix": "3.3.2 ", "where": {"profile": "s180"}},
+    {"report": "dual", "source": "ranging", "section_prefix": "3.4 ", "headers": ["指标", "结果"], "row_rules": {
+      "测试seed": {"field": "seed"}, "目标数量": {"field": "target_count"},
+      "正确/错误关系": {"fields": ["correct_match_count", "false_match_count"], "template": "{0}/{1}"},
+      "关系精度": {"field": "association_precision", "format": ".1%"},
+      "目标覆盖度": {"field": "association_full_target_recall", "format": ".1%"},
+      "位置误差均值/P95": {"fields": ["position_error_mean_m", "position_error_p95_m"], "formats": [".3f", ".3f"], "template": "{0}米 / {1}米"},
+      "速度误差均值/P95": {"fields": ["velocity_error_mean_mps", "velocity_error_p95_mps"], "formats": [".3f", ".3f"], "template": "{0}米/秒 / {1}米/秒"}
+    }},
+    {"report": "search", "template": "search", "section_prefix": "3.1 ", "where": {"scenario_id": "n20_m8"}},
+    {"report": "search", "template": "search", "section_prefix": "3.2 ", "where": {"scenario_id": "n20_m30"}},
+    {"report": "search", "template": "search", "section_prefix": "3.3 ", "where": {"scenario_id": "n40_m50"}},
+    {"report": "search", "source": "search", "section_prefix": "3.5 ", "headers": ["场景", "首次发现均值"], "keys": ["场景", "位置误差σ"], "columns": {
+      "场景": {"field": "scenario_label"},
+      "位置误差σ": {"field": "position_sigma_m", "format": ".0f", "suffix": "米"},
+      "首次发现均值": {"field": "first_discovery_mean_s", "format": ".2f", "suffix": "秒"},
+      "规划95%耗时均值": {"field": "planner_compute_p95_ms_mean", "format": ".2f", "suffix": "毫秒"}
+    }},
+    {"report": "terminal", "source": "handover", "section_prefix": "5.1 ", "headers": ["场景", "正确绑定", "绑定精度"], "keys": ["场景", "方法"], "where": {"task": "center_handover"}, "skip_rows": ["三组合计"], "columns": {
+      "场景": {"field": "scenario_id", "map": {"n20_m8": "20目标/8机", "n20_m30": "20目标/30机", "n40_m50": "40目标/50机"}},
+      "方法": {"field": "backend", "map": {"geometry": "几何方法", "gnn": "图神经网络"}},
+      "正确绑定": {"field": "metrics.true_binding_count"},
+      "错误绑定": {"field": "metrics.false_binding_count"},
+      "绑定精度": {"field": "metrics.binding_precision", "format": ".4f"},
+      "绑定覆盖度": {"field": "metrics.binding_recall", "format": ".4f"},
+      "复算耗时中位数": {"field": "timing.median_wall_duration_s", "format": ".3f", "suffix": "秒"}
+    }},
+    {"report": "terminal", "template": "crossview", "section_prefix": "5.2 ", "headers": ["场景", "关系精度", "关系覆盖度"]},
+    {"report": "terminal", "template": "crossview", "section_prefix": "5.2 ", "headers": ["场景", "视场区相机对", "无缓存耗时"]},
+    {"report": "center", "template": "center", "formats": ["md"], "section_prefix": "3.1 ", "where": {"attitude_mode": "normal", "navigation_mode": "satellite", "detection_mode": "ideal"}},
+    {"report": "center", "template": "center", "formats": ["md"], "section_prefix": "3.2 ", "where": {"attitude_mode": "normal", "navigation_mode": "satellite", "detection_mode": "light"}},
+    {"report": "center", "template": "center", "formats": ["md"], "section_prefix": "3.3 ", "where": {"attitude_mode": "degraded", "navigation_mode": "visual_navigation", "detection_mode": "light"}},
+    {"report": "center", "template": "center", "formats": ["docx"], "section_prefix": "3.1 ", "where": {"attitude_mode": "degraded", "navigation_mode": "visual_navigation", "detection_mode": "light", "handover_mode": "coarse_hint"}},
+    {"report": "center", "source": "center_interface", "formats": ["md"], "section_prefix": "3.5 ", "headers": ["目标数", "误差条件", "正确/错误关系"], "keys": ["目标数", "误差条件", "方法"], "columns": {
+      "目标数": {"field": "target_count"},
+      "误差条件": {"field": "profile", "map": {"satellite_normal": "有卫星、正常姿态", "visual_navigation_degraded": "无卫星、强降级姿态"}},
+      "方法": {"field": "backend", "map": {"geometry": "几何方法", "gnn": "图网络"}},
+      "关联准确度": {"field": "binding_precision", "format": ".1%"},
+      "关联覆盖度": {"field": "binding_recall", "format": ".1%"},
+      "正确/错误关系": {"fields": ["true_binding_count", "false_binding_count"], "template": "{0}/{1}"},
+      "运行时长": {"field": "runtime_s", "format": ".3f", "suffix": "秒"}
+    }}
+  ],
+  "manifests": [
+    "research_modules/independent_experiments/dual_optical_online_benchmark/outputs/report_replay_20260819_v2/reproduction_manifest.json",
+    "deliverables/leadership_report/双光电多目标轨迹配准与交汇定位试验报告_EVIDENCE.json",
+    "research_modules/independent_experiments/center_terminal_cv_campaign/outputs/offline_search_100pct_cues_20260819/reproduction_manifest.json",
+    "research_modules/independent_experiments/center_terminal_cv_campaign/outputs/terminal_gnn_diagnostic_selection_20260819_v2/manifests/n20_m8.json",
+    "research_modules/independent_experiments/center_terminal_cv_campaign/outputs/terminal_gnn_diagnostic_selection_20260819_v2/manifests/n20_m30.json",
+    "research_modules/independent_experiments/center_terminal_cv_campaign/outputs/terminal_gnn_diagnostic_selection_20260819_v2/manifests/n40_m50.json",
+    "research_modules/independent_experiments/center_terminal_cv_campaign/outputs/center_handover_sensor_error_20260820/reproduction_manifest.json"
+  ]
+}
