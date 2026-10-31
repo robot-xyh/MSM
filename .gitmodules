@@ -1,0 +1,12 @@
+[submodule "paper/YOPO"]
+	path = paper/YOPO
+	url = https://github.com/superboySB/YOPO.git
+[submodule "paper/Fastlab_world_fly"]
+	path = paper/Fastlab_world_fly
+	url = https://github.com/cn-ryw/Fastlab_world_fly.git
+[submodule "paper/ego-planner"]
+	path = paper/ego-planner
+	url = https://github.com/ZJU-FAST-Lab/ego-planner.git
+[submodule "paper/ego-planner-swarm"]
+	path = paper/ego-planner-swarm
+	url = https://github.com/ZJU-FAST-Lab/ego-planner-swarm.git
