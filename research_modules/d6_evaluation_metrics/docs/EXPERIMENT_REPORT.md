@@ -1,5 +1,11 @@
 # D6 正式实验矩阵准入预检报告
 
+<!-- evidence-status-sync:20260926:begin -->
+2026-09-26 仅做资料同步，不是新的实验日期；原 Goal 状态不变。
+当前边界统一见[D6 当前证据状态](CURRENT_EVIDENCE_STATUS_CN.md)；下文旧章节仅按原日期和范围作为历史阶段记录阅读。
+本页保留 8 月 3 日来源审计与 8 月 10 日专项；较早实验记录另见[模块根实验报告](../EXPERIMENT_REPORT.md)，两者均非原 Goal 最终验收报告。
+<!-- evidence-status-sync:20260926:end -->
+
 ## D5长距离视觉配准离线复核（2026-08-10）
 
 本次没有启动 AirSim。D6 只读消费 main 已冻结的原始尺度单 seed episode。场景包含 20 个以

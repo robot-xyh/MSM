@@ -1,5 +1,11 @@
 # D6 系统级评估指标实验报告
 
+<!-- evidence-status-sync:20260926:begin -->
+2026-09-26 仅做资料同步，不是新的实验日期；原 Goal 状态不变。
+当前边界统一见[D6 当前证据状态](docs/CURRENT_EVIDENCE_STATUS_CN.md)；下文旧章节仅按原日期和范围作为历史阶段记录阅读。
+本页保留较早阶段实验；8 月 3 日来源审计与 8 月 10 日专项见[docs 实验报告](docs/EXPERIMENT_REPORT.md)，不复制或改写本页旧记录。
+<!-- evidence-status-sync:20260926:end -->
+
 ## 2.50 真实 AirSim 末端受控扰动专项
 
 2026-08-01 运行 seed `1`、`ClockSpeed=0.2` 的两个真实 AirSim SimpleFlight 2 对 2 case。

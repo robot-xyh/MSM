@@ -1,0 +1,48 @@
+{
+  "audit_date": "2026-09-26",
+  "scope": "Provenance, saved-result arithmetic and synthetic statistics boundary checks",
+  "reproducibility_records": 11,
+  "source_version_comparisons": 22,
+  "file_checks": {
+    "total": 60,
+    "expected_hash_matches": 27,
+    "current_fingerprint_only": 33
+  },
+  "numeric_checks": {
+    "total": 5799,
+    "matched": 5799,
+    "mismatched": 0
+  },
+  "dual_round_rows_checked": 2340,
+  "duplicate_full_round_keys": 0,
+  "final_rows_matching_latest_saved_round": 270,
+  "synthetic_statistics_tests": {
+    "run": 12,
+    "failures": 0,
+    "errors": 0,
+    "note": "Some tests intentionally confirm existing edge-case risks, not their resolution"
+  },
+  "source_json_strict_parse_checks": 7,
+  "source_json_strict_parse_passes": 7,
+  "next_actions": 12,
+  "audit_json_csv_syntax": "passed",
+  "audit_python_ast_parse": "passed",
+  "local_markdown_links_checked": 24,
+  "missing_local_markdown_links": 0,
+  "audit_whitespace_checks": "passed",
+  "tracked_research_modules_diff": "empty",
+  "models_loaded": false,
+  "simulations_run": false,
+  "raw_truth_reinterpreted": false,
+  "original_result_files_modified": false,
+  "original_algorithm_files_modified": false,
+  "exact_reproduction_claimed": false,
+  "commit_or_push_performed": false,
+  "remaining": [
+    "External archive location for the formal 450-cell batch",
+    "Historical source proof for search replay",
+    "Complete source dependency closure and environment preservation",
+    "Historical D2 inventory hash discrepancy",
+    "Module-owner review and unsampled historical batches"
+  ]
+}

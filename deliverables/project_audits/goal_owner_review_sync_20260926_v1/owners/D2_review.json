@@ -1,0 +1,443 @@
+{
+  "module": "D2",
+  "reviewed_at": "2026-09-26T07:16:21-07:00",
+  "scope": {
+    "type": "只读历史证据复核",
+    "register": "deliverables/project_audits/goal_resume_audit_20260926_v1/GOAL_REQUIREMENT_EVIDENCE.csv",
+    "detail": "deliverables/project_audits/goal_resume_audit_20260926_v1/逐项证据明细_CN.md",
+    "selection": "owner显式包含D2，或D1至D5/D1至D6/D1至D7等范围覆盖D2",
+    "requirement_count": 8,
+    "requirement_ids": [
+      "G04",
+      "G05",
+      "G16",
+      "G18",
+      "G38",
+      "G49",
+      "G55",
+      "G57"
+    ],
+    "authority": "main授权的本批审计目录，仅新增D2_review.json及D2_review.md；不委托子智能体。",
+    "status_semantics": "suggested_status仅为对主级登记的审计建议，不变更模块状态、能力、GAP或默认配置。",
+    "execution_boundary": "只读既有文档与小型摘要/索引，普通文件检查；没有pytest、训练、GPU、AirSim、控制、重新评分或大量原始真值读取。"
+  },
+  "requirements": [
+    {
+      "requirement_id": "G04",
+      "original_status": "部分完成",
+      "review_result": "限定认可",
+      "suggested_status": "部分完成",
+      "evidence": [
+        "research_modules/scalable_3d_simulation/docs/SCALABLE_3D_GOAL_COMPLETION_AUDIT_20260803_CN.md",
+        "research_modules/scalable_3d_simulation/docs/SCALABLE_3D_FORMAL_R0_80E55EB_SHARDS0_9_20260731_CN.md",
+        "research_modules/d2_data_association/README.md",
+        "research_modules/d2_data_association/docs/MODULE_PRINCIPLES_CN.md",
+        "deliverables/project_audits/goal_resume_audit_20260926_v1/历史结果定位与完整性核对_CN.md"
+      ],
+      "reason": "认可已实现在线真值拒绝及历史隔离记录，不认可外推为统一验收。2026-07-31 正式 R0 摘要记450组在线真值使用为0；在线 D2 的 id_switch_count 为0/450 available，即全部不可用，不是450个零错误。2026-08-03的728组是D3/D4/D5来源审计，不是同一正式R0批次。本轮只核对保存材料，没有重新验证隔离载荷。",
+      "remaining_evidence": [
+        "正式450组逐组在线输入、隔离检查记录及哈希绑定载荷未定位。",
+        "同冻结版本最终完整矩阵的在线真值隔离证据缺失。"
+      ],
+      "historical_dates": [
+        "2026-07-31",
+        "2026-08-03"
+      ]
+    },
+    {
+      "requirement_id": "G05",
+      "original_status": "部分完成",
+      "review_result": "限定认可",
+      "suggested_status": "部分完成",
+      "evidence": [
+        "research_modules/scalable_3d_simulation/docs/SCALABLE_3D_GOAL_COMPLETION_AUDIT_20260803_CN.md",
+        "research_modules/scalable_3d_simulation/docs/SCALABLE_3D_GOAL_PROGRESS_AND_NEXT_PLAN_20260807_CN.md",
+        "research_modules/d2_data_association/README.md",
+        "subagent_reviews/D2_M_TO_N_TRACK_FUSION_REVIEW.md",
+        "subagent_reviews/D2_STRUCTURAL_AMBIGUITY_HOLD_LEASE_CAUSAL_AUDIT_CN.md"
+      ],
+      "reason": "中心拥有global_track_id与D2规范身份维护职责一致；局部门控、下游只读与历史单种子合同记录可认可。身份所有权与身份正确性不是同一指标：562次离线身份交换不能直接解释为下游改号违规，局部改号违规为0也不能证明身份连续性通过。跨节点注册基础不等于全部owner/epoch切换和统一故障矩阵验收。",
+      "remaining_evidence": [
+        "最终同版本完整矩阵的逐组全局ID创建、改写、重绑违规记录。",
+        "独立订阅与跨节点切换条件下的完整身份权威审计记录。"
+      ],
+      "historical_dates": [
+        "2026-07-20",
+        "2026-07-23",
+        "2026-08-03"
+      ]
+    },
+    {
+      "requirement_id": "G16",
+      "original_status": "部分完成",
+      "review_result": "限定认可",
+      "suggested_status": "部分完成",
+      "evidence": [
+        "research_modules/scalable_3d_simulation/docs/SCALABLE_3D_GOAL_COMPLETION_AUDIT_20260803_CN.md",
+        "research_modules/scalable_3d_simulation/docs/SCALABLE_3D_GOAL_PROGRESS_AND_NEXT_PLAN_20260807_CN.md",
+        "research_modules/d2_data_association/PLAN.md",
+        "research_modules/d2_data_association/docs/ALGORITHM_AND_IMPLEMENTATION.md",
+        "research_modules/d2_data_association/docs/AIRSIM_INTEGRATION_PLAN.md"
+      ],
+      "reason": "D2文档保留六维观测、双时间戳、协方差及公开匿名来源合同；这些模块接口存在不等于统一总线已验收。原完成审计和8月7日进展均记D1摘要双时间戳不完整，D1-D3仍有对象直传。D2发布后总线记录、历史dry-run或AirSim局部适配不能替代订阅驱动运行证据。另有DOC03的P1/P2归类歧义，只登记而不重分类。",
+      "remaining_evidence": [
+        "统一版本化消息逐条保留双时间戳、协方差、序号和来源的原运行记录。",
+        "D2/D3确由订阅消费驱动而非对象直传的同版本完整运行证据。"
+      ],
+      "historical_dates": [
+        "2026-07-20",
+        "2026-08-03",
+        "2026-08-07"
+      ]
+    },
+    {
+      "requirement_id": "G18",
+      "original_status": "部分完成",
+      "review_result": "限定认可",
+      "suggested_status": "部分完成",
+      "evidence": [
+        "research_modules/scalable_3d_simulation/docs/SCALABLE_3D_GOAL_COMPLETION_AUDIT_20260803_CN.md",
+        "research_modules/d2_data_association/README.md",
+        "research_modules/d2_data_association/docs/EXPERIMENT_REPORT.md",
+        "subagent_reviews/D2_IMPLEMENTATION_GAP_AUDIT.md",
+        "research_modules/scalable_3d_simulation/docs/SCALABLE_3D_FORMAL_R0_80E55EB_SHARDS0_9_20260731_CN.md",
+        "research_modules/d2_data_association/docs/formal_r0_identity_causal_pack_summary_20260731/D2_FORMAL_R0_IDENTITY_CAUSAL_AUDIT_CN.md",
+        "deliverables/project_audits/goal_resume_audit_20260926_v1/历史结果定位与完整性核对_CN.md"
+      ],
+      "reason": "六维稀疏关联和显式身份指标的软件实现有既有文档支持；历史质量结论仍未通过。主级数字与D2表一致，但应明确：67/90是正式R0中200规模子集的严格离线指标可用数；64是该可用子集中非零episode数，562是可用项合计。23个不可用episode均因一轨多真值失败关闭，不能补零或把部分下界并入562。全450组为414可用、893次、169个非零，统计范围不同。诊断工具生成P1的历史关闭不等于身份质量P1关闭。本轮没有重评分。",
+      "remaining_evidence": [
+        "200规模90组及全450组原逐组CSV、离线身份清单与完整载荷未定位。",
+        "保存的36个失败案例摘要缺73份所列明细，不能复核全体身份指标。",
+        "原Goal同冻结协议完整20个未见种子的质量验收及明确阈值绑定记录缺失。"
+      ],
+      "historical_dates": [
+        "2026-07-31",
+        "2026-08-03"
+      ]
+    },
+    {
+      "requirement_id": "G38",
+      "original_status": "未完成",
+      "review_result": "认可",
+      "suggested_status": "未完成",
+      "evidence": [
+        "research_modules/scalable_3d_simulation/docs/SCALABLE_3D_GOAL_COMPLETION_AUDIT_20260803_CN.md",
+        "research_modules/scalable_3d_simulation/docs/SCALABLE_3D_GOAL_PROGRESS_AND_NEXT_PLAN_20260807_CN.md",
+        "deliverables/project_audits/goal_resume_audit_20260926_v1/原Goal逐项状态对照_CN.md",
+        "subagent_reviews/D2_IMPLEMENTATION_GAP_AUDIT.md",
+        "subagent_reviews/D2_DATA_ASSOCIATION_REVIEW_AND_PLAN.md"
+      ],
+      "reason": "认可F1统一完整体系未完成。D2规则链实现、局部合同测试及历史身份评估不能代替最终同版本故障矩阵和完整结果。原审计及进展明确A1 v3、A2 v8、A3 v3当前代际训练未完成；728组来源审计不等于模型或运行准入，后续独立视觉演示或AirSim局部接入也不能替代原Goal统一验收。这里只从D2责任边界复核，不替其他owner授予状态。",
+      "remaining_evidence": [
+        "同冻结版本、同随机种子和同外生输入下的F1完整矩阵及配对R0记录。",
+        "当前代际冻结模型、独立评价与最终完整体系验收材料。"
+      ],
+      "historical_dates": [
+        "2026-08-03",
+        "2026-08-07"
+      ]
+    },
+    {
+      "requirement_id": "G49",
+      "original_status": "部分完成",
+      "review_result": "限定认可",
+      "suggested_status": "部分完成",
+      "evidence": [
+        "research_modules/scalable_3d_simulation/docs/SCALABLE_3D_GOAL_COMPLETION_AUDIT_20260803_CN.md",
+        "research_modules/d2_data_association/README.md",
+        "subagent_reviews/D2_IMPLEMENTATION_GAP_AUDIT.md",
+        "deliverables/project_audits/goal_resume_audit_20260926_v1/VERSION_DIFFS.json",
+        "deliverables/project_audits/goal_resume_audit_20260926_v1/原Goal逐项状态对照_CN.md"
+      ],
+      "reason": "认可实现、测试定义及历史回归摘要存在。主模块522 passed是2026-08-03报告的历史记录；D2 README末尾311 passed、1 warning为2026-07-31记录，不是本轮执行结果，也不是同版本全体系交付。版本差异文件只说明主级核查时D2跟踪内容与原专项末端相同，不覆盖忽略输出、运行环境或历史执行来源；D5/D6后续演示测试不可并入原Goal回归。",
+      "remaining_evidence": [
+        "原Goal最终同冻结版本D1-D7接口回归的统一清单、原日志与环境绑定。",
+        "历史测试摘要对应原日志的完整可访问性未在本轮逐一验证。"
+      ],
+      "historical_dates": [
+        "2026-07-31",
+        "2026-08-03"
+      ]
+    },
+    {
+      "requirement_id": "G55",
+      "original_status": "部分完成",
+      "review_result": "限定认可",
+      "suggested_status": "部分完成",
+      "evidence": [
+        "research_modules/d2_data_association/README.md",
+        "research_modules/d2_data_association/PLAN.md",
+        "research_modules/d2_data_association/docs/MODULE_PRINCIPLES_CN.md",
+        "research_modules/d2_data_association/docs/ALGORITHM_AND_IMPLEMENTATION.md",
+        "research_modules/d2_data_association/docs/AIRSIM_INTEGRATION_PLAN.md",
+        "research_modules/d2_data_association/docs/EXPERIMENT_REPORT.md",
+        "subagent_reviews/D2_IMPLEMENTATION_GAP_AUDIT.md",
+        "subagent_reviews/D2_DATA_ASSOCIATION_REVIEW_AND_PLAN.md",
+        "research_modules/scalable_3d_simulation/docs/SCALABLE_3D_GOAL_PROGRESS_AND_NEXT_PLAN_20260807_CN.md",
+        "deliverables/project_audits/goal_resume_audit_20260926_v1/VERSION_DIFFS.json"
+      ],
+      "reason": "已检查D2要求的8份核心文档及2份补充review，均存在。历史半程数字、在线/离线availability和身份质量开放结论基本一致；文档存在并不等于完整目标验收或main合并。DOC01登记历史临时路径与当前保存状态的差异，DOC03登记同一文档的P1/P2分类歧义和带日期旧结论。此次没有能力变更、GAP关闭或新增实验，suggested_status仅审计建议，不修改模块状态；按授权不改原模块文档。",
+      "remaining_evidence": [
+        "满足原Goal统一验收条件后的主级接收与合并记录。",
+        "历史文档中总线相关P1/P2标签的统一解释及旧时间截面引用边界。"
+      ],
+      "historical_dates": [
+        "2026-07-20",
+        "2026-07-31",
+        "2026-08-07"
+      ]
+    },
+    {
+      "requirement_id": "G57",
+      "original_status": "部分完成",
+      "review_result": "需修订",
+      "suggested_status": "部分完成",
+      "evidence": [
+        "research_modules/scalable_3d_simulation/VERSIONING.md",
+        "research_modules/scalable_3d_simulation/docs/SCALABLE_3D_FORMAL_R0_80E55EB_SHARDS0_9_20260731_CN.md",
+        "research_modules/d2_data_association/README.md",
+        "research_modules/d2_data_association/docs/EXPERIMENT_REPORT.md",
+        "research_modules/d2_data_association/docs/formal_r0_identity_causal_pack_summary_20260731/artifact_inventory.json",
+        "research_modules/d2_data_association/docs/formal_r0_identity_causal_pack_summary_20260731/ARTIFACT_SHA256SUMS",
+        "deliverables/project_audits/goal_resume_audit_20260926_v1/FORMAL_450_EXPECTED_SCOPE.json",
+        "deliverables/project_audits/goal_resume_audit_20260926_v1/历史结果定位与完整性核对_CN.md"
+      ],
+      "reason": "建议只补充主级证据说明，状态仍部分完成。正式R0 producer 80e55eb、execution-plan逻辑哈希b922ff5f及文件哈希644b1c12需分开；摘要中的verified=true是历史字段。现有主级定位报告把inventory哈希差异保留为原因未确认，本轮小文件SHA-256检查及D2 README给出更具体对象对应：c9bf5e47是ARTIFACT_SHA256SUMS文件，590514ca是artifact_inventory.json。原正式报告把前者写成制品索引文件哈希，存在对象标签错配证据，不能仅描述为现存inventory来源不明或损坏。不能据此推断所有历史副本一致，亦不能恢复缺失载荷。",
+      "remaining_evidence": [
+        "原正式450组完整manifest、载荷及D6派生表仍未定位。",
+        "若要判定历史文字差异形成原因，仍缺报告编写时对应索引副本或修订记录。",
+        "最终模型版本及统一交付配置绑定尚未冻结。"
+      ],
+      "historical_dates": [
+        "2026-07-31",
+        "2026-08-01"
+      ]
+    }
+  ],
+  "documentation_checked": [
+    {
+      "path": "research_modules/d2_data_association/README.md",
+      "exists": true,
+      "checked": true,
+      "checked_at": "2026-09-26",
+      "historical_dates": "2026-07-31",
+      "inspection_scope": "按本任务相关段落定向审读，不声称全篇逐句审校。",
+      "finding": "核对半程表、显式六维路径和末尾因果包保存说明；数字与主表一致，摘要已明确不包含逐案例明细。",
+      "modified": false,
+      "sync_required_this_task": false,
+      "no_update_reason": "无能力或GAP变更；DOC01的历史临时路径和DOC02的哈希对象对应在本审计登记，不改历史README。",
+      "registered_issues": [
+        "DOC01",
+        "DOC02"
+      ]
+    },
+    {
+      "path": "research_modules/d2_data_association/PLAN.md",
+      "exists": true,
+      "checked": true,
+      "checked_at": "2026-09-26",
+      "historical_dates": "2026-07-31",
+      "inspection_scope": "按本任务相关段落定向审读，不声称全篇逐句审校。",
+      "finding": "核对第1.1节半程基线、第2节默认二维/显式六维边界及保存摘要哈希；没有据计划文字认定后续执行。",
+      "modified": false,
+      "sync_required_this_task": false,
+      "no_update_reason": "本次不执行或重排实施计划，不变更算法/阈值/能力；已有计划保留，缺失证据只登记。",
+      "registered_issues": [
+        "DOC01"
+      ]
+    },
+    {
+      "path": "subagent_reviews/D2_IMPLEMENTATION_GAP_AUDIT.md",
+      "exists": true,
+      "checked": true,
+      "checked_at": "2026-09-26",
+      "historical_dates": "2026-07-23;2026-07-31",
+      "inspection_scope": "按本任务相关段落定向审读，不声称全篇逐句审校。",
+      "finding": "核对页首日期快照、7月31日半程GAP段及末尾摘要哈希；工具生成关闭与高规模身份质量开放分开。",
+      "modified": false,
+      "sync_required_this_task": false,
+      "no_update_reason": "没有重新关闭或重分类GAP；页首7月23日与后续7月31日增补是多个历史截面，不宣称本轮验证。",
+      "registered_issues": [
+        "DOC01",
+        "DOC03"
+      ]
+    },
+    {
+      "path": "subagent_reviews/D2_DATA_ASSOCIATION_REVIEW_AND_PLAN.md",
+      "exists": true,
+      "checked": true,
+      "checked_at": "2026-09-26",
+      "historical_dates": "2026-07-31",
+      "inspection_scope": "按本任务相关段落定向审读，不声称全篇逐句审校。",
+      "finding": "核对半程评审的414/450、893及200规模67/90、562，保留候选拒绝与未验收边界。",
+      "modified": false,
+      "sync_required_this_task": false,
+      "no_update_reason": "没有新算法评审或新运行结果；本轮仅复核证据质量，原评审不改。",
+      "registered_issues": []
+    },
+    {
+      "path": "research_modules/d2_data_association/docs/MODULE_PRINCIPLES_CN.md",
+      "exists": true,
+      "checked": true,
+      "checked_at": "2026-09-26",
+      "historical_dates": "2026-07-31",
+      "inspection_scope": "按本任务相关段落定向审读，不声称全篇逐句审校。",
+      "finding": "核对在线指标不可用、离线36项失败关闭及半程范围；历史元数据优化准入未作为身份质量证据。",
+      "modified": false,
+      "sync_required_this_task": false,
+      "no_update_reason": "没有原理、接口或默认能力变化；历史事实保留，当前可访问性另记。",
+      "registered_issues": [
+        "DOC01"
+      ]
+    },
+    {
+      "path": "research_modules/d2_data_association/docs/ALGORITHM_AND_IMPLEMENTATION.md",
+      "exists": true,
+      "checked": true,
+      "checked_at": "2026-09-26",
+      "historical_dates": "2026-07-31;内含2026-07-20结论",
+      "inspection_scope": "按本任务相关段落定向审读，不声称全篇逐句审校。",
+      "finding": "核对半程方法、当前局限和第17节带日期结论。第16.2节把六维总线/高密度标定列入P2研究，而PLAN与主级审计把统一总线/质量作为开放P1，存在范围与优先级表述歧义。",
+      "modified": false,
+      "sync_required_this_task": false,
+      "no_update_reason": "只登记DOC03，不自行重分类GAP或修改实施路径；旧7月20日无多seed证据结论不能覆盖7月31日半程结果，也不能反向外推最终验收。",
+      "registered_issues": [
+        "DOC03"
+      ]
+    },
+    {
+      "path": "research_modules/d2_data_association/docs/AIRSIM_INTEGRATION_PLAN.md",
+      "exists": true,
+      "checked": true,
+      "checked_at": "2026-09-26",
+      "historical_dates": "2026-07-15;2026-07-23",
+      "inspection_scope": "按本任务相关段落定向审读，不声称全篇逐句审校。",
+      "finding": "核对Boundary、M5N2历史时延、在线身份指标不可用以及质点seed1100非AirSim边界。",
+      "modified": false,
+      "sync_required_this_task": false,
+      "no_update_reason": "没有AirSim适配或实验新增；局部接线/时延不能填补原Goal统一验收，故不改原计划。",
+      "registered_issues": []
+    },
+    {
+      "path": "research_modules/d2_data_association/docs/EXPERIMENT_REPORT.md",
+      "exists": true,
+      "checked": true,
+      "checked_at": "2026-09-26",
+      "historical_dates": "2026-07-31",
+      "inspection_scope": "按本任务相关段落定向审读，不声称全篇逐句审校。",
+      "finding": "核对正式R0范围、规模表和末尾五文件哈希；/tmp派生目录是历史位置，不是当前可访问结果。",
+      "modified": false,
+      "sync_required_this_task": false,
+      "no_update_reason": "没有新实验或重评分；不重写历史数值、路径或哈希，只登记DOC01/DOC02。",
+      "registered_issues": [
+        "DOC01",
+        "DOC02"
+      ]
+    },
+    {
+      "path": "subagent_reviews/D2_M_TO_N_TRACK_FUSION_REVIEW.md",
+      "exists": true,
+      "checked": true,
+      "checked_at": "2026-09-26",
+      "historical_dates": "2026-07-11;同步截至2026-07-20",
+      "inspection_scope": "按本任务相关段落定向审读，不声称全篇逐句审校。",
+      "finding": "核对跨节点中心身份、注册基础与数值融合请求职责边界；未把调研或框架能力当作已完成验收。",
+      "modified": false,
+      "sync_required_this_task": false,
+      "no_update_reason": "补充历史review，无跨节点能力改变，不改调研结论。",
+      "registered_issues": []
+    },
+    {
+      "path": "subagent_reviews/D2_STRUCTURAL_AMBIGUITY_HOLD_LEASE_CAUSAL_AUDIT_CN.md",
+      "exists": true,
+      "checked": true,
+      "checked_at": "2026-09-26",
+      "historical_dates": "2026-07-23",
+      "inspection_scope": "按本任务相关段落定向审读，不声称全篇逐句审校。",
+      "finding": "核对单seed1100因果审计、候选仍拒绝、下游合同通过与D2连续性退化分离。",
+      "modified": false,
+      "sync_required_this_task": false,
+      "no_update_reason": "仅引用历史范围，没有新候选、租约调整或验证，不修改原审计。",
+      "registered_issues": []
+    }
+  ],
+  "documentation_findings": [
+    {
+      "id": "DOC01",
+      "kind": "历史保存位置与当前可访问性差异",
+      "evidence": [
+        "research_modules/d2_data_association/README.md",
+        "research_modules/d2_data_association/docs/EXPERIMENT_REPORT.md",
+        "deliverables/project_audits/goal_resume_audit_20260926_v1/历史结果定位与完整性核对_CN.md",
+        "research_modules/d2_data_association/docs/formal_r0_identity_causal_pack_summary_20260731/artifact_inventory.json"
+      ],
+      "detail": "D2 README记完整pack当时在/dev/shm、依赖冻结原数据可重建；实验报告保留/tmp派生目录。本轮主级定位明确完整记录未定位，五份仓内摘要不等于完整pack。该差异限制当前可复现性，不否定当时450组已经运行，不重新打开或关闭原GAP。"
+    },
+    {
+      "id": "DOC02",
+      "kind": "历史报告哈希对象标签不一致",
+      "evidence": [
+        "research_modules/scalable_3d_simulation/docs/SCALABLE_3D_FORMAL_R0_80E55EB_SHARDS0_9_20260731_CN.md",
+        "research_modules/d2_data_association/README.md",
+        "research_modules/d2_data_association/docs/EXPERIMENT_REPORT.md",
+        "research_modules/d2_data_association/docs/formal_r0_identity_causal_pack_summary_20260731/artifact_inventory.json",
+        "research_modules/d2_data_association/docs/formal_r0_identity_causal_pack_summary_20260731/ARTIFACT_SHA256SUMS",
+        "deliverables/project_audits/goal_resume_audit_20260926_v1/历史结果定位与完整性核对_CN.md"
+      ],
+      "detail": "正式报告把c9bf5e47标为索引文件哈希；D2 README、实验报告和本轮两份小文件SHA-256检查一致表明它属于ARTIFACT_SHA256SUMS，inventory为590514ca。建议主级补充对象错配线索，不改历史哈希，不断言损坏或推定未知旧副本。"
+    },
+    {
+      "id": "DOC03",
+      "kind": "优先级与时间截面表述需限定",
+      "evidence": [
+        "research_modules/d2_data_association/docs/ALGORITHM_AND_IMPLEMENTATION.md",
+        "research_modules/d2_data_association/PLAN.md",
+        "subagent_reviews/D2_IMPLEMENTATION_GAP_AUDIT.md",
+        "research_modules/scalable_3d_simulation/docs/SCALABLE_3D_GOAL_COMPLETION_AUDIT_20260803_CN.md"
+      ],
+      "detail": "ALGORITHM_AND_IMPLEMENTATION第16.2节将六维main episode-bus接入/多seed高密度标定列在P2研究；PLAN与主审计将统一总线/质量列为开放P1，应注明范围差异。第17节为2026-07-20结论，GAP页首为7月23日，均不能忽略7月31日增补而当成当前全貌。本审计不重分类。"
+    }
+  ],
+  "summary": {
+    "review_result_counts": {
+      "认可": 1,
+      "限定认可": 6,
+      "需修订": 1,
+      "证据不足": 0
+    },
+    "suggested_status_counts": {
+      "部分完成": 7,
+      "未完成": 1
+    },
+    "formal_450": "摘要可查、完整记录未定位",
+    "source_728": "不同来源批次，不能替代正式450组或当前代际训练。",
+    "independent_experiments": "独立实现、历史验证、局部实际调用均不自动成为原Goal统一验收。",
+    "original_documents_modified": false
+  },
+  "validation": {
+    "status": "passed",
+    "results": {
+      "json_parse_and_unique_keys": "passed",
+      "required_fields_and_enums": "passed",
+      "owner_range_coverage_count": 8,
+      "original_status_match": "passed",
+      "unique_existing_reference_files": 21,
+      "documentation_checked_count": 10,
+      "markdown_requirement_ids": "passed",
+      "markdown_links_checked": 5,
+      "summary_counts": "passed"
+    },
+    "allowed_checks": [
+      "JSON解析及字段/枚举检查",
+      "owner范围展开后的编号覆盖与原状态一致性",
+      "仓库相对引用文件存在性",
+      "Markdown编号/本地链接与JSON一致性",
+      "两份小型清单文件SHA-256"
+    ],
+    "small_file_sha256": {
+      "research_modules/d2_data_association/docs/formal_r0_identity_causal_pack_summary_20260731/artifact_inventory.json": "590514ca516f6ae5d8a05a0f28a5409822240abe390903689b32bb79e9556885",
+      "research_modules/d2_data_association/docs/formal_r0_identity_causal_pack_summary_20260731/ARTIFACT_SHA256SUMS": "c9bf5e479526cded07aa3d170540aa389b8083af3ec801496f41d620d4ffb68f"
+    },
+    "historical_verification_flags_reused_as_current": false
+  }
+}

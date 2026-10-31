@@ -1,0 +1,8 @@
+path,exists,destination_relative_path,file_count,logical_bytes,allocated_bytes,directory_count,symlink_count,special_count,error_count
+/home/linux/Documents/MSM,True,MSM,212344,72170355868,72660103168,19228,2,0,0
+/home/linux/Documents/MSM-d5-training-clean,True,MSM-d5-training-clean,34339,325229501,411631616,187,0,0,0
+/home/linux/Documents/MSM-source-audit-request-20260803,True,MSM-source-audit-request-20260803,8,18637,40960,3,0,0,0
+/home/linux/Documents/MSM-source-audit-result-20260803-v3,True,MSM-source-audit-result-20260803-v3,3,14042,20480,1,0,0,0
+/home/linux/Documents/MSM-source-generation-output-64dfc08-20260803,True,MSM-source-generation-output-64dfc08-20260803,320,355514166,356188160,11,0,0,0
+/home/linux/Documents/MSM-source-generation-output-6737b44-20260803,True,MSM-source-generation-output-6737b44-20260803,950,308747521,310706176,15,0,0,0
+/home/linux/Documents/MSM-source-generation-output-e7c438c-20260802,True,MSM-source-generation-output-e7c438c-20260802,565,1411007972,1412218880,15,0,0,0

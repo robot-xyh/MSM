@@ -1,5 +1,9 @@
 # D4 M 对 N 分布式联盟形成与降级接管调研
 
+<!-- evidence-status-sync:20260926:begin -->
+2026-09-26 仅作资料同步，不是新的实验日期。[当前证据状态](../research_modules/d4_distributed_fallback/docs/CURRENT_EVIDENCE_STATUS_CN.md) 为唯一集中说明；下列旧章节仅按其日期作为历史阶段阅读，包括旧 0/324、fcf8525 预检及历史待办。本次不勾选旧任务、不关闭 GAP、不升级能力或权限，原 Goal 状态不因文档同步而改变。
+<!-- evidence-status-sync:20260926:end -->
+
 ## 2026-08-03 动态任务基数与联盟边界
 
 场景 `task_count` 只描述配置中的标称目标数。D4 在线任务集合由当前 D2/D3 唯一航迹假设

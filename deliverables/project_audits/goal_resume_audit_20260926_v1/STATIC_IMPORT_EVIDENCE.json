@@ -1,0 +1,1430 @@
+{
+  "imports": [
+    {
+      "file": "research_modules/scalable_3d_simulation/__init__.py",
+      "line": 56,
+      "import": "experiment_matrix_sharding:EXPERIMENT_MATRIX_AUTHORIZED_EXECUTION_PLAN_SCHEMA,EXPERIMENT_MATRIX_CELL_RESULT_SCHEMA,EXPERIMENT_MATRIX_EXECUTION_PLAN_SCHEMA,EXPERIMENT_MATRIX_SCOPE_MERGE_SCHEMA,EXPERIMENT_MATRIX_SHARD_CHECKPOINT_SCHEMA,EXPERIMENT_MATRIX_SHARD_PLAN_SCHEMA,EXPERIMENT_MATRIX_SHARD_PROGRESS_SCHEMA,EXPERIMENT_MATRIX_SHARD_MERGE_FRAGMENT_SCHEMA,FORMAL_PARENT_EXPECTED_CELL_COUNT,FORMAL_R0_DEFAULT_MINIMUM_FREE_BYTES,FORMAL_R0_DEFAULT_SHARD_COUNT,FORMAL_R0_EXPECTED_CELL_COUNT,ExperimentMatrixShardError,collect_experiment_matrix_shard_merge_fragment,create_experiment_matrix_execution_plan,create_formal_r0_execution_plan,describe_g1_shadow_d5_bundle,load_experiment_matrix_execution_plan,merge_experiment_matrix_shards,run_experiment_matrix_shard,validate_experiment_matrix_execution_source"
+    },
+    {
+      "file": "research_modules/scalable_3d_simulation/__init__.py",
+      "line": 154,
+      "import": "d4_runtime_compatibility:D4_RUNTIME_COMPATIBILITY_PREFLIGHT_SCHEMA_VERSION,D4RuntimeCompatibilityOptions,D4RuntimeCompatibilityThresholds,assess_d4_runtime_compatibility,run_d4_runtime_compatibility_preflight"
+    },
+    {
+      "file": "research_modules/scalable_3d_simulation/__init__.py",
+      "line": 170,
+      "import": "reserved_seed_interventions:INTERVENTION_KINDS,INTERVENTION_SELECTION_POLICY,RESERVED_EVALUATION_SEEDS,RESERVED_SEED_INTERVENTION_SCHEMA_VERSION,D3DevelopmentBundleBinding,InterventionGlobalTrackSnapshot,ReservedSeedInterventionExecution,ReservedSeedInterventionOptions,ReservedSeedSourceBatch,ReservedSeedSourceEvidence,collect_reserved_seed_sources,execute_reserved_seed_interventions,resolve_d3_development_bundle_binding,write_reserved_seed_intervention_execution"
+    },
+    {
+      "file": "research_modules/scalable_3d_simulation/__init__.py",
+      "line": 186,
+      "import": "isolated_degraded_adoption:D4_ISOLATED_PHYSICAL_ADOPTION_SCHEMA,D4IsolatedPhysicalAdoptionRecord,evaluate_d4_isolated_physical_adoption"
+    },
+    {
+      "file": "research_modules/scalable_3d_simulation/__init__.py",
+      "line": 200,
+      "import": "d3_intervention_batch_input:D3_INTERVENTION_BATCH_INPUT_CHECKSUMS,D3_INTERVENTION_BATCH_INPUT_MANIFEST,D3_INTERVENTION_BATCH_INPUT_SCOPE,D3_INTERVENTION_BATCH_INPUT_SUMMARY,D3_INTERVENTION_BATCH_INPUT_SUMMARY_SCHEMA_V1,D3InterventionBatchCapture,D3InterventionBatchInputOptions,D3InterventionSeedCapture,collect_d3_intervention_batch_input,write_d3_intervention_batch_input"
+    },
+    {
+      "file": "research_modules/scalable_3d_simulation/__init__.py",
+      "line": 212,
+      "import": "d4_v3_isolated_rollout:D4_V3_ISOLATED_ROLLOUT_SCHEMA_VERSION,D4_V3_ISOLATED_RUNTIME_RECORD_SCHEMA_VERSION,D4_V3_ISOLATED_RUNTIME_TOPIC,D4V3IsolatedRolloutExecution,D4V3IsolatedRolloutOptions,D4V3IsolatedSeedPair,D4V3SourceEvidence,execute_d4_v3_isolated_rollouts,normalized_region_snapshot_lineage_sha256,write_d4_v3_isolated_rollout_execution"
+    },
+    {
+      "file": "research_modules/scalable_3d_simulation/d1_association_risk_calibration.py",
+      "line": 17,
+      "import": "research_modules.d1_sensor_fusion.src.d1_sensor_fusion:ASSOCIATION_RISK_CLASSIFICATION_CRITERIA,ASSOCIATION_RISK_CLASSIFICATION_PROFILE_VERSION,AssociationRiskClassificationEvidence,AssociationRiskEvidence"
+    },
+    {
+      "file": "research_modules/scalable_3d_simulation/d3_intervention_batch_input.py",
+      "line": 24,
+      "import": "research_modules.d3_assignment_planner.src.d3_assignment_planner:ISOLATED_INTERVENTION_BATCH_MANIFEST_SCHEMA_V1,ISOLATED_INTERVENTION_BATCH_SEEDS_V1,CostWeights,ModelBundleManifest,PlannerConfig,PlanningFrameEvidence,write_anonymous_planning_frame_evidence"
+    },
+    {
+      "file": "research_modules/scalable_3d_simulation/d4_runtime_compatibility.py",
+      "line": 25,
+      "import": "research_modules.d4_distributed_fallback.d4_distributed_fallback:EDGE_FEATURE_NAMES,NODE_FEATURE_NAMES,REGION_RESOURCE_DEVELOPMENT_OOD_MARGIN,RegionFeatureBounds,snapshot_to_region_graph"
+    },
+    {
+      "file": "research_modules/scalable_3d_simulation/d4_runtime_compatibility.py",
+      "line": 32,
+      "import": "research_modules.d4_distributed_fallback.d4_distributed_fallback.region_resource_eight_region_candidate:REGION_RESOURCE_EIGHT_REGION_CANDIDATE_FILENAME,load_region_resource_eight_region_candidate_manifest"
+    },
+    {
+      "file": "research_modules/scalable_3d_simulation/d4_v3_isolated_rollout.py",
+      "line": 29,
+      "import": "research_modules.d4_distributed_fallback.d4_distributed_fallback:REGION_RESOURCE_V3_DEVELOPMENT_SEEDS,RegionResourceAdvisoryGate,RegionResourcePairedInputBinding,RegionResourceV3IsolatedPairedAdvisor,RegionResourceV3IsolatedPairedDecision,build_region_resource_v3_development_paired_specification"
+    },
+    {
+      "file": "research_modules/scalable_3d_simulation/d4_v3_isolated_rollout.py",
+      "line": 37,
+      "import": "research_modules.d3_assignment_planner.src.d3_assignment_planner:REGIONAL_PLANNING_HINT_SCHEMA_V1"
+    },
+    {
+      "file": "research_modules/scalable_3d_simulation/d4_v4_external_dataset.py",
+      "line": 20,
+      "import": "research_modules.d4_distributed_fallback.d4_distributed_fallback.region_resource:DeterministicResourceProjector,RecommendationSource,RegionResourceProjectionConfig,RegionResourceRecommendation,RegionTransferSuggestion,RuleRegionResourcePolicy,RuleRegionResourcePolicyConfig,split_scenario_seed_groups"
+    },
+    {
+      "file": "research_modules/scalable_3d_simulation/d4_v4_external_dataset.py",
+      "line": 30,
+      "import": "research_modules.d4_distributed_fallback.d4_distributed_fallback.region_resource_dataset:RegionLearningFrame,RegionLearningSplit,RegionLearningTarget,RegionLearningTargetKind,finalize_region_learning_dataset,load_region_learning_dataset,load_region_learning_dataset_splits,stage_region_learning_episode"
+    },
+    {
+      "file": "research_modules/scalable_3d_simulation/d4_v4_external_dataset.py",
+      "line": 40,
+      "import": "research_modules.d4_distributed_fallback.d4_distributed_fallback.region_resource_learning:recommendation_to_policy_target,snapshot_to_region_graph"
+    },
+    {
+      "file": "research_modules/scalable_3d_simulation/d4_v4_external_dataset.py",
+      "line": 44,
+      "import": "research_modules.d4_distributed_fallback.d4_distributed_fallback.region_resource_v4_shadow_candidate:REGION_RESOURCE_V4_INTERVENTION_GATE,RegionResourceV4BuildConfig,RegionResourceV4ExternalDatasetEvidence,_audit_external_dataset_governance,_v4_confidence_observable_key,evaluate_v4_intervention_invariants"
+    },
+    {
+      "file": "research_modules/scalable_3d_simulation/d4_v5_independent_development.py",
+      "line": 274,
+      "import": "research_modules.d4_distributed_fallback.d4_distributed_fallback:finalize_region_learning_dataset"
+    },
+    {
+      "file": "research_modules/scalable_3d_simulation/d4_v5_independent_development.py",
+      "line": 535,
+      "import": "research_modules.d4_distributed_fallback.d4_distributed_fallback:RegionLearningEpisodeSource,RegionLearningFrame,RegionLearningReward,RegionLearningTarget,RegionLearningTargetKind,RuleRegionResourcePolicy"
+    },
+    {
+      "file": "research_modules/scalable_3d_simulation/d4_v5_independent_development.py",
+      "line": 244,
+      "import": "research_modules.d4_distributed_fallback.d4_distributed_fallback:stage_region_learning_episode"
+    },
+    {
+      "file": "research_modules/scalable_3d_simulation/d4_v6_transfer_independent_development.py",
+      "line": 19,
+      "import": "d4_v5_independent_development:_append_jsonl,_audit_frames,_build_offline_rule_frames,_repository_state,_sha256_file,_utc_now,_write_json,_write_progress_csv"
+    },
+    {
+      "file": "research_modules/scalable_3d_simulation/d4_v6_transfer_independent_development.py",
+      "line": 312,
+      "import": "research_modules.d4_distributed_fallback.d4_distributed_fallback:finalize_region_learning_dataset"
+    },
+    {
+      "file": "research_modules/scalable_3d_simulation/d4_v6_transfer_independent_development.py",
+      "line": 279,
+      "import": "research_modules.d4_distributed_fallback.d4_distributed_fallback:stage_region_learning_episode"
+    },
+    {
+      "file": "research_modules/scalable_3d_simulation/d5_crossview_calibration_batch.py",
+      "line": 23,
+      "import": "research_modules.d5_terminal_association.src.d5_terminal_association.tracklet_dataset:finalize_tracklet_dataset,join_offline_observation_labels,stage_tracklet_dataset_episode"
+    },
+    {
+      "file": "research_modules/scalable_3d_simulation/d6_integration.py",
+      "line": 41,
+      "import": "research_modules.d6_evaluation_metrics.d6_evaluation_metrics:TruthIsolatedEpisodeContext,build_truth_isolated_episode_record"
+    },
+    {
+      "file": "research_modules/scalable_3d_simulation/d6_integration.py",
+      "line": 92,
+      "import": "research_modules.d6_evaluation_metrics.d6_evaluation_metrics:TruthIsolatedOfflineReportGenerator"
+    },
+    {
+      "file": "research_modules/scalable_3d_simulation/d6_integration.py",
+      "line": 141,
+      "import": "research_modules.d6_evaluation_metrics.d6_evaluation_metrics:TruthIsolatedOfflineReportGenerator"
+    },
+    {
+      "file": "research_modules/scalable_3d_simulation/d6_integration.py",
+      "line": 170,
+      "import": "research_modules.d6_evaluation_metrics.d6_evaluation_metrics:HashedArtifact,RUNTIME_PLAN_OUTCOME_INPUT_SCHEMA_VERSION,RuntimePlanOutcomeJoinInputs,load_runtime_plan_outcome_join_inputs,write_runtime_plan_outcome_join_report"
+    },
+    {
+      "file": "research_modules/scalable_3d_simulation/experiment_matrix.py",
+      "line": 379,
+      "import": "research_modules.d6_evaluation_metrics.d6_evaluation_metrics.scalable_3d_offline:Scalable3DOfflineEvaluationInputs,Scalable3DOfflineReportGenerator"
+    },
+    {
+      "file": "research_modules/scalable_3d_simulation/experiment_matrix_sharding.py",
+      "line": 1114,
+      "import": "research_modules.d6_evaluation_metrics.d6_evaluation_metrics.scalable_3d_offline:Scalable3DOfflineEvaluationInputs,Scalable3DOfflineReportGenerator"
+    },
+    {
+      "file": "research_modules/scalable_3d_simulation/formal_shard_archive.py",
+      "line": 744,
+      "import": "research_modules.d6_evaluation_metrics.d6_evaluation_metrics.scalable_3d_offline:evaluate_scalable_3d_episode"
+    },
+    {
+      "file": "research_modules/scalable_3d_simulation/formal_shard_archive.py",
+      "line": 898,
+      "import": "research_modules.d6_evaluation_metrics.d6_evaluation_metrics.scalable_3d_offline:Scalable3DOfflineReportGenerator"
+    },
+    {
+      "file": "research_modules/scalable_3d_simulation/isolated_degraded_adoption.py",
+      "line": 13,
+      "import": "research_modules.d4_distributed_fallback.d4_distributed_fallback:REGION_RESOURCE_ISOLATED_LATENCY_LIMIT_MS,REGION_RESOURCE_ISOLATED_MINIMUM_CONFIDENCE,RegionResourceDegradedScenarioKind,RegionResourceIsolatedAdoptionVerifier,RegionResourceIsolatedCandidateGate,build_region_resource_degraded_scenario_lineage,build_region_resource_isolated_plan_consumption_ack"
+    },
+    {
+      "file": "research_modules/scalable_3d_simulation/isolated_paired_rollout.py",
+      "line": 260,
+      "import": "research_modules.d3_assignment_planner.src.d3_assignment_planner.offline_intervention_execution:_load_offline_development_bundle"
+    },
+    {
+      "file": "research_modules/scalable_3d_simulation/isolated_physical_rollout.py",
+      "line": 26,
+      "import": "research_modules.d3_assignment_planner.src.d3_assignment_planner:IsolatedPlanConsumptionValidator,build_isolated_execution_plan,build_isolated_plan_consumption_evidence"
+    },
+    {
+      "file": "research_modules/scalable_3d_simulation/isolated_physical_rollout.py",
+      "line": 31,
+      "import": "research_modules.d7_proportional_guidance.d7_proportional_guidance:AssignmentGuidanceBinding,AssignmentPairGuidanceInput3D,D4GuidancePermission,IsolatedArmGuidanceExecutor3D,IsolatedGuidanceExecutionContextV1,build_isolated_guidance_lineage_record_v1,canonical_guidance_sha256"
+    },
+    {
+      "file": "research_modules/scalable_3d_simulation/isolated_physical_rollout.py",
+      "line": 540,
+      "import": "isolated_degraded_adoption:evaluate_d4_isolated_physical_adoption"
+    },
+    {
+      "file": "research_modules/scalable_3d_simulation/isolated_physical_rollout.py",
+      "line": 1079,
+      "import": "research_modules.d6_evaluation_metrics.d6_evaluation_metrics:load_paired_isolated_physical_inputs,write_paired_isolated_physical_report"
+    },
+    {
+      "file": "research_modules/scalable_3d_simulation/learning_export.py",
+      "line": 512,
+      "import": "research_modules.d3_assignment_planner.src.d3_assignment_planner:build_learning_frame_record"
+    },
+    {
+      "file": "research_modules/scalable_3d_simulation/learning_export.py",
+      "line": 593,
+      "import": "research_modules.d4_distributed_fallback.d4_distributed_fallback:RecommendationSource,RegionLearningEpisodeSource,RegionLearningFrame,RegionLearningReward,RegionLearningTarget,RegionLearningTargetKind,stage_region_learning_episode"
+    },
+    {
+      "file": "research_modules/scalable_3d_simulation/learning_export.py",
+      "line": 733,
+      "import": "research_modules.d5_terminal_association.src.d5_terminal_association.tracklet_dataset:join_offline_observation_labels,stage_tracklet_dataset_episode"
+    },
+    {
+      "file": "research_modules/scalable_3d_simulation/learning_export.py",
+      "line": 838,
+      "import": "research_modules.d5_terminal_association.src.d5_terminal_association:ActiveVisionEpisodeRecordV1,ActiveVisionRuntimeAckV1,ActiveVisionSourceDomain,ActiveVisionSourceIdentityV1,active_vision_sample_from_decision,evidence_tier_for_source_domain,stage_active_vision_episode_record,stage_active_vision_offline_labels,unavailable_active_vision_offline_labels"
+    },
+    {
+      "file": "research_modules/scalable_3d_simulation/learning_export.py",
+      "line": 282,
+      "import": "research_modules.d3_assignment_planner.src.d3_assignment_planner:iter_learning_frame_records,write_learning_dataset"
+    },
+    {
+      "file": "research_modules/scalable_3d_simulation/learning_export.py",
+      "line": 301,
+      "import": "research_modules.d4_distributed_fallback.d4_distributed_fallback:finalize_region_learning_dataset"
+    },
+    {
+      "file": "research_modules/scalable_3d_simulation/learning_export.py",
+      "line": 327,
+      "import": "research_modules.d5_terminal_association.src.d5_terminal_association.tracklet_dataset:finalize_tracklet_dataset"
+    },
+    {
+      "file": "research_modules/scalable_3d_simulation/learning_export.py",
+      "line": 344,
+      "import": "research_modules.d5_terminal_association.src.d5_terminal_association:ActiveVisionDatasetValidationError,finalize_active_vision_episode_dataset"
+    },
+    {
+      "file": "research_modules/scalable_3d_simulation/learning_runtime.py",
+      "line": 153,
+      "import": "research_modules.d3_assignment_planner.src.d3_assignment_planner:RuleFallbackLearningAssistant,load_model_bundle"
+    },
+    {
+      "file": "research_modules/scalable_3d_simulation/learning_runtime.py",
+      "line": 196,
+      "import": "research_modules.d4_distributed_fallback.d4_distributed_fallback:RegionResourceAdvisor,RegionResourceAdvisorConfig,RegionResourceProjectionConfig"
+    },
+    {
+      "file": "research_modules/scalable_3d_simulation/learning_runtime.py",
+      "line": 359,
+      "import": "research_modules.d5_terminal_association.src.d5_terminal_association:UnavailableActiveVisionPolicy,load_active_vision_model_bundle_for_runtime"
+    },
+    {
+      "file": "research_modules/scalable_3d_simulation/learning_runtime.py",
+      "line": 261,
+      "import": "research_modules.d5_terminal_association.src.d5_terminal_association.tracklet_model_bundle:load_tracklet_model_bundle_for_runtime"
+    },
+    {
+      "file": "research_modules/scalable_3d_simulation/learning_source_adapters.py",
+      "line": 22,
+      "import": "research_modules.d3_assignment_planner.src.d3_assignment_planner.a1_v3_data_contract:A1V3EdgeResidualRank"
+    },
+    {
+      "file": "research_modules/scalable_3d_simulation/learning_source_adapters.py",
+      "line": 25,
+      "import": "research_modules.d3_assignment_planner.src.d3_assignment_planner.a1_v3_source_only_projection:A1V3CounterfactualMode,A1V3PostProjectionReferencePolicy,A1V3SourceOnlyProjectionInput,project_a1_v3_source_only_counterfactual"
+    },
+    {
+      "file": "research_modules/scalable_3d_simulation/learning_source_adapters.py",
+      "line": 31,
+      "import": "research_modules.d3_assignment_planner.src.d3_assignment_planner.a1_v3_dataset_writer:A1V3AdapterFrameEvidence,load_a1_v3_writer_contract"
+    },
+    {
+      "file": "research_modules/scalable_3d_simulation/learning_source_adapters.py",
+      "line": 35,
+      "import": "research_modules.d3_assignment_planner.src.d3_assignment_planner.planning_evidence:PlanningFrameEvidence"
+    },
+    {
+      "file": "research_modules/scalable_3d_simulation/learning_source_adapters.py",
+      "line": 38,
+      "import": "research_modules.d4_distributed_fallback.d4_distributed_fallback.region_resource:RecommendationSource,RegionResourceRecommendation,RegionTransferSuggestion,RuleRegionResourcePolicy"
+    },
+    {
+      "file": "research_modules/scalable_3d_simulation/learning_source_adapters.py",
+      "line": 44,
+      "import": "research_modules.d4_distributed_fallback.d4_distributed_fallback.region_resource_v8_development_contract:V8RequestScheduleEntry,classify_v8_edge_direction,load_v8_frozen_request"
+    },
+    {
+      "file": "research_modules/scalable_3d_simulation/learning_source_adapters.py",
+      "line": 49,
+      "import": "research_modules.d4_distributed_fallback.d4_distributed_fallback.region_resource_v8_runtime_evidence:V8AnonymousCandidateEvidence,V8BuiltRuntimeEpisodeEvidence,V8RuntimeEpisodeEvidenceBuilder,V8RuntimeFrameEvidence"
+    },
+    {
+      "file": "research_modules/scalable_3d_simulation/learning_source_adapters.py",
+      "line": 55,
+      "import": "research_modules.d5_terminal_association.src.d5_terminal_association.active_vision_a3_v3_episode_evidence:A3V3BoundaryPairEvidenceV1,A3V3EpisodeEvidenceError,A3V3EpisodeRecipeV1,A3V3HardConfusionBoundaryStateV1,A3V3OfflineEpisodeAuditV1,A3V3OfflineSampleAuditV1,A3V3OnlineEpisodeEvidenceV1,A3V3OnlineSampleEvidenceV1,a3_v3_assignment_reference_sha256,a3_v3_boundary_pair_id,a3_v3_sample_fingerprint,load_frozen_a3_v3_episode_recipes,validate_a3_v3_episode_evidence"
+    },
+    {
+      "file": "research_modules/scalable_3d_simulation/learning_source_adapters.py",
+      "line": 173,
+      "import": "learning_source_recipes:load_d3_a1_v3_episode_recipes"
+    },
+    {
+      "file": "research_modules/scalable_3d_simulation/learning_source_adapters.py",
+      "line": 305,
+      "import": "learning_source_recipes:load_d4_a2_v8_episode_recipes"
+    },
+    {
+      "file": "research_modules/scalable_3d_simulation/learning_source_adapters.py",
+      "line": 461,
+      "import": "learning_source_recipes:load_d5_a3_v3_episode_recipes"
+    },
+    {
+      "file": "research_modules/scalable_3d_simulation/learning_source_generation.py",
+      "line": 275,
+      "import": "research_modules.d3_assignment_planner.src.d3_assignment_planner.a1_v3_dataset_writer:A1V3DatasetWriter"
+    },
+    {
+      "file": "research_modules/scalable_3d_simulation/learning_source_generation.py",
+      "line": 278,
+      "import": "research_modules.d3_assignment_planner.src.d3_assignment_planner.a1_v3_source_only_projection:A1V3CounterfactualMode,A1V3PostProjectionReferencePolicy"
+    },
+    {
+      "file": "research_modules/scalable_3d_simulation/learning_source_generation.py",
+      "line": 283,
+      "import": "learning_source_adapters:adapt_d3_a1_runtime_frame"
+    },
+    {
+      "file": "research_modules/scalable_3d_simulation/learning_source_generation.py",
+      "line": 284,
+      "import": "learning_source_recipes:load_d3_a1_v3_episode_recipes"
+    },
+    {
+      "file": "research_modules/scalable_3d_simulation/learning_source_generation.py",
+      "line": 390,
+      "import": "research_modules.d4_distributed_fallback.d4_distributed_fallback.region_resource_v8_dataset_writer:V8CleanSourceMetadata,V8TrainDatasetWriter"
+    },
+    {
+      "file": "research_modules/scalable_3d_simulation/learning_source_generation.py",
+      "line": 394,
+      "import": "research_modules.d4_distributed_fallback.d4_distributed_fallback.region_resource_v8_development_contract:load_v8_frozen_request"
+    },
+    {
+      "file": "research_modules/scalable_3d_simulation/learning_source_generation.py",
+      "line": 398,
+      "import": "learning_source_adapters:build_d4_v8_runtime_episode"
+    },
+    {
+      "file": "research_modules/scalable_3d_simulation/learning_source_generation.py",
+      "line": 399,
+      "import": "learning_source_recipes:load_d4_a2_v8_episode_recipes"
+    },
+    {
+      "file": "research_modules/scalable_3d_simulation/learning_source_generation.py",
+      "line": 566,
+      "import": "research_modules.d5_terminal_association.src.d5_terminal_association.active_vision_a3_v3_episode_evidence:finalize_a3_v3_generation_partition,load_frozen_a3_v3_episode_recipes,recover_a3_v3_staged_episode_inventory,resume_a3_v3_episode_evidence,write_a3_v3_source_manifest"
+    },
+    {
+      "file": "research_modules/scalable_3d_simulation/learning_source_generation.py",
+      "line": 574,
+      "import": "learning_source_adapters:build_d5_a3_runtime_episode"
+    },
+    {
+      "file": "research_modules/scalable_3d_simulation/learning_source_generation.py",
+      "line": 575,
+      "import": "learning_source_recipes:load_d5_a3_v3_episode_recipes"
+    },
+    {
+      "file": "research_modules/scalable_3d_simulation/learning_source_preflight.py",
+      "line": 24,
+      "import": "learning_source_adapters:LearningSourceAdapterError,self_check_d3_a1_adapter,self_check_d4_v8_adapter,self_check_d5_a3_adapter"
+    },
+    {
+      "file": "research_modules/scalable_3d_simulation/learning_source_preflight.py",
+      "line": 380,
+      "import": "d3_assignment_planner.a1_v3_data_contract:validate_a1_v3_pre_generation_readiness"
+    },
+    {
+      "file": "research_modules/scalable_3d_simulation/learning_source_preflight.py",
+      "line": 383,
+      "import": "research_modules.d4_distributed_fallback.d4_distributed_fallback.region_resource_v8_main_allocation_readiness:validate_v8_main_allocation_pre_generation_readiness"
+    },
+    {
+      "file": "research_modules/scalable_3d_simulation/learning_source_preflight.py",
+      "line": 386,
+      "import": "d5_terminal_association.active_vision_a3_v3_source_readiness:validate_a3_v3_pre_generation_readiness"
+    },
+    {
+      "file": "research_modules/scalable_3d_simulation/module_stack.py",
+      "line": 23,
+      "import": "research_modules.d1_sensor_fusion.src.d1_sensor_fusion:ASSOCIATION_RISK_CLASSIFICATION_POLICY_VERSION,ASSOCIATION_RISK_CLASSIFICATION_PROFILE_VERSION,ASSOCIATION_RISK_CLASSIFICATION_SCHEMA_VERSION,ASSOCIATION_SPARSE_PREFILTER_CANDIDATE_SELECTOR,ASSOCIATION_SPARSE_PREFILTER_DEFAULT_SELECTOR,ASSOCIATION_SPARSE_PREFILTER_REFERENCE_SELECTOR,CV_MOTION_MODEL_CACHE_DIAGNOSTICS_SCHEMA_VERSION,CV_MOTION_MODEL_CANDIDATE_IMPLEMENTATION_ID,CV_MOTION_MODEL_REFERENCE_IMPLEMENTATION_ID,DEFAULT_STRUCTURAL_AMBIGUITY_PUBLISHER_NODE_ID,DEFAULT_CV_MOTION_MODEL_CACHE_CAPACITY,ExperimentalCentroidEvidenceDisposition,ExperimentalCentroidPublicationState,GLOBAL_TRACK_MATERIALIZATION_CANDIDATE_IMPLEMENTATION_ID,GLOBAL_TRACK_MATERIALIZATION_CANDIDATE_SELECTOR,GLOBAL_TRACK_MATERIALIZATION_DIAGNOSTICS_SCHEMA_VERSION,GLOBAL_TRACK_MATERIALIZATION_REFERENCE_IMPLEMENTATION_ID,GLOBAL_TRACK_MATERIALIZATION_REFERENCE_SELECTOR,MAX_CV_MOTION_MODEL_CACHE_CAPACITY,ONLINE_BATCH_FRAME_CANDIDATE_IMPLEMENTATION,ONLINE_BATCH_FRAME_DEFAULT_IMPLEMENTATION,ONLINE_BATCH_FRAME_REFERENCE_IMPLEMENTATION,OnlineBatchFrameBuilder,REPLAY_PREFIX_SUMMARY_CANDIDATE_SELECTOR,REPLAY_PREFIX_SUMMARY_DEFAULT_SELECTOR,REPLAY_PREFIX_SUMMARY_REFERENCE_SELECTOR,SCAN_INPUT_CANDIDATE_IMPLEMENTATION,SCAN_INPUT_REFERENCE_IMPLEMENTATION,ScanInputConfig,ScanInputOrganizer,Scalable3DFusionAdapter,run_experimental_centroid_publication_overlay_atomically"
+    },
+    {
+      "file": "research_modules/scalable_3d_simulation/module_stack.py",
+      "line": 57,
+      "import": "research_modules.d1_sensor_fusion.src.d1_sensor_fusion.fusion:DEFAULT_OPAQUE_SOURCE_IDENTITY_CACHE_CAPACITY,MAX_OPAQUE_SOURCE_IDENTITY_CACHE_CAPACITY,OPAQUE_SOURCE_IDENTITY_CACHE_DIAGNOSTICS_SCHEMA_VERSION,OPAQUE_SOURCE_IDENTITY_CANDIDATE_IMPLEMENTATION_ID,OPAQUE_SOURCE_IDENTITY_REFERENCE_IMPLEMENTATION_ID,STRUCTURED_NUMERICAL_JACOBIAN_CANDIDATE_IMPLEMENTATION_ID,STRUCTURED_NUMERICAL_JACOBIAN_DIAGNOSTICS_SCHEMA_VERSION,STRUCTURED_NUMERICAL_JACOBIAN_REFERENCE_IMPLEMENTATION_ID"
+    },
+    {
+      "file": "research_modules/scalable_3d_simulation/module_stack.py",
+      "line": 67,
+      "import": "research_modules.d2_data_association.d2_data_association:AmbiguityComponent3D,AmbiguityHoldLeaseConfig,D2_IDENTITY_EVIDENCE_COMMITMENT_POLICY_VERSION,D2_IDENTITY_EVIDENCE_COMMITMENT_SCHEMA_VERSION,IdentityCommitmentRecoveryConfig,IdentityCommitmentState,IdentityEvidenceCommitment,ObservationClaimLedgerConfig,ReplayCoastConfig,Scalable3DTracker,detections3d_from_d1_global_tracks_with_audit"
+    },
+    {
+      "file": "research_modules/scalable_3d_simulation/module_stack.py",
+      "line": 80,
+      "import": "research_modules.d3_assignment_planner.src.d3_assignment_planner:AssignmentPlanner,PlannerConfig,REGIONAL_PLANNING_HINT_SCHEMA_V1,RegionalAuthorityGrant,RegionalAuthorityInput,RegionalCoalitionCommitEvidence,RegionalPlanAuthorityError,ResourceState,TargetDemand,TargetTrack,continue_active_secondary_plan,guidance_bindings_from_assignment_plan,prepare_secondary_takeover_plan"
+    },
+    {
+      "file": "research_modules/scalable_3d_simulation/module_stack.py",
+      "line": 95,
+      "import": "research_modules.d4_distributed_fallback.d4_distributed_fallback:AdvisorMode,C2Health,CausalCommunicationEvidenceGate,CausalMessageKind,CoalitionCommitState,CoalitionMemberAck,CommunicationDeliveryReceipt,CommunicationEvidenceExpectation,D5Consistency,MobileReconSecondary,REGION_RESOURCE_COALITION_ACK_DELIVERY_SCHEMA,REGION_RESOURCE_COALITION_ACK_TOPIC,REGION_RESOURCE_OWNER_ACK_TOPIC,RegionDefinition,RegionalAction,RegionalAuthorityLayer,RegionalFailoverCoordinator,RegionalFailoverSnapshot,RegionalFallbackMember,RegionResourceEdge,RegionResourceAdvisoryGate,RegionResourceAdvisoryPublicationGate,RegionResourceAdvisor,RegionResourceAdvisorConfig,RegionResourceCoalitionAckDelivery,RegionResourceCoalitionCommitEvidence,RegionResourceCoalitionRequirement,RegionResourceD3PlanReference,RegionResourceOwnerAckDelivery,RegionResourcePhysicalWindowEvidence,RegionResourceProjectionConfig,RegionResourceRuntimeAckParser,RegionResourceSafeAdoptionAssembler,RegionResourceSafeAdoptionContext,RegionResourceSnapshot,RegionalScenarioMetadata,RegionalTaskEvidence,SecondaryReadinessEvidence,build_region_resource_owner_plan_ack,canonical_payload_digest,canonical_runtime_payload_sha256,validate_region_resource_coalition_ack_delivery,validate_region_resource_owner_ack_delivery"
+    },
+    {
+      "file": "research_modules/scalable_3d_simulation/module_stack.py",
+      "line": 140,
+      "import": "research_modules.d5_terminal_association.src.d5_terminal_association:RUNTIME_OBSERVED_EVIDENCE_KIND,ActiveVisionA3AdoptionTrace,ActiveVisionA3AnonymousObservationFrame,ActiveVisionA3BenefitAuditInput,ActiveVisionA3CandidatePhysicalWindowStatus,ActiveVisionA3CandidateStageEvidence,ActiveVisionA3PhysicalObservationWindow,ActiveVisionA3RuleArmTrace,ActiveVisionA3WindowArm,ActiveVisionAssignmentReference,ActiveVisionCameraState,ActiveVisionCameraFeedbackV1,ActiveVisionCommunicationState,ActiveVisionControllerV1,ActiveVisionFovMode,ActiveVisionPlanReference,ActiveVisionProjectionEvidence,ActiveVisionRuntimeMode,ActiveVisionSnapshotV1,ActiveVisionTrackReference,active_vision_a3_observation_frame,active_vision_a3_zero_detection_frame,assemble_active_vision_a3_adoption_trace,assemble_active_vision_a3_evidence,assemble_active_vision_a3_physical_observation_window,assemble_active_vision_a3_rule_arm_physical_observation_window,assemble_active_vision_a3_rule_arm_trace,camera_observation_command_payload,Scalable3DTerminalAdapter"
+    },
+    {
+      "file": "research_modules/scalable_3d_simulation/module_stack.py",
+      "line": 171,
+      "import": "research_modules.d7_proportional_guidance.d7_proportional_guidance:AssignmentPairGuidanceInput3D,D4GuidancePermission,ScalableGuidanceConfig3D,ScalableGuidanceController3D,TerminalVisualObservation3D"
+    },
+    {
+      "file": "research_modules/scalable_3d_simulation/module_stack.py",
+      "line": 185,
+      "import": "episode_treatments:build_d4_region_graph_treatment,build_d4_supply_demand_treatment"
+    },
+    {
+      "file": "research_modules/scalable_3d_simulation/observation_governance_calibration.py",
+      "line": 16,
+      "import": "research_modules.d1_sensor_fusion.src.d1_sensor_fusion:ScanInputConfig,ScanInputOrganizer,SensorObservation,SensorScanFrame"
+    },
+    {
+      "file": "research_modules/scalable_3d_simulation/observation_governance_calibration.py",
+      "line": 22,
+      "import": "research_modules.d2_data_association.d2_data_association:ObservationClaimLedgerConfig,run_observation_governance_benchmark"
+    },
+    {
+      "file": "research_modules/scalable_3d_simulation/observation_governance_calibration.py",
+      "line": 26,
+      "import": "research_modules.d6_evaluation_metrics.d6_evaluation_metrics:D1_SCAN_OOSM_AUDIT_SCHEMA_VERSION,D2_CLAIM_LEDGER_AUDIT_SCHEMA_VERSION,OBSERVATION_GOVERNANCE_CALIBRATION_INPUT_SCHEMA_VERSION,OBSERVATION_GOVERNANCE_EPISODE_MANIFEST_SCHEMA_VERSION,OBSERVATION_GOVERNANCE_EVALUATOR_SIDECAR_SCHEMA_VERSION,OBSERVATION_GOVERNANCE_ONLINE_AUDIT_SCHEMA_VERSION,ObservationGovernanceCalibrationReportGenerator,load_observation_governance_calibration_inputs"
+    },
+    {
+      "file": "research_modules/scalable_3d_simulation/observation_governance_reporting.py",
+      "line": 25,
+      "import": "research_modules.d6_evaluation_metrics.d6_evaluation_metrics:D1_SCAN_OOSM_AUDIT_SCHEMA_VERSION,D2_CLAIM_LEDGER_AUDIT_SCHEMA_VERSION,OBSERVATION_GOVERNANCE_CALIBRATION_INPUT_SCHEMA_VERSION,OBSERVATION_GOVERNANCE_EPISODE_MANIFEST_SCHEMA_VERSION,OBSERVATION_GOVERNANCE_ONLINE_AUDIT_SCHEMA_VERSION,ObservationGovernanceCalibrationReportGenerator,load_observation_governance_calibration_inputs"
+    },
+    {
+      "file": "research_modules/scalable_3d_simulation/offline_evaluation.py",
+      "line": 98,
+      "import": "research_modules.d2_data_association.d2_data_association:SCALABLE_3D_IDENTITY_EVIDENCE_SCHEMA_VERSION_V1,SCALABLE_3D_IDENTITY_EVIDENCE_SCHEMA_VERSION_V2,GlobalTrackLineageEvidence,ObservationLineageRef,Scalable3DObservationTruthLabel,create_scalable_3d_identity_evidence_bundle,evaluate_scalable_3d_identity_files,sha256_file,write_scalable_3d_identity_evaluation,write_scalable_3d_identity_evidence,write_scalable_3d_observation_truth_labels"
+    },
+    {
+      "file": "research_modules/scalable_3d_simulation/offline_evaluation.py",
+      "line": 291,
+      "import": "research_modules.d1_sensor_fusion.src.d1_sensor_fusion:ConsistencySourceProvenance,D2LineageTruthMapping,build_d2_lineage_mapping_sidecar,build_offline_truth_state_sidecar,evaluate_offline_consistency,export_online_consistency_evidence"
+    },
+    {
+      "file": "research_modules/scalable_3d_simulation/offline_evaluation.py",
+      "line": 299,
+      "import": "research_modules.d2_data_association.d2_data_association:load_scalable_3d_identity_evaluation"
+    },
+    {
+      "file": "research_modules/scalable_3d_simulation/orchestrator.py",
+      "line": 16,
+      "import": "research_modules.d6_evaluation_metrics.d6_evaluation_metrics.strict_learning_adoption_audit:audit_learning_adoption_evidence,build_learning_adoption_audit_input"
+    },
+    {
+      "file": "research_modules/scalable_3d_simulation/paired_learning_adoption.py",
+      "line": 19,
+      "import": "research_modules.d4_distributed_fallback.d4_distributed_fallback:RegionResourceA2AuditArm,RegionResourceA2AuditContext,RegionResourceA2AuditWindowReference,RegionResourceA2SafeAdoptionAuditSource,RuleRegionResourcePolicy,assemble_region_resource_a2_benefit_audit_batch,assemble_region_resource_a2_benefit_audit_input"
+    },
+    {
+      "file": "research_modules/scalable_3d_simulation/paired_learning_adoption.py",
+      "line": 28,
+      "import": "research_modules.d5_terminal_association.src.d5_terminal_association:ActiveVisionA3PairingDisposition,ActiveVisionA3PhysicalObservationWindow,attempt_active_vision_a3_pairing,validate_active_vision_a3_evidence"
+    },
+    {
+      "file": "research_modules/scalable_3d_simulation/paired_learning_adoption.py",
+      "line": 34,
+      "import": "research_modules.d6_evaluation_metrics.d6_evaluation_metrics.strict_learning_adoption_audit:audit_learning_adoption_evidence,build_learning_adoption_audit_input"
+    },
+    {
+      "file": "research_modules/scalable_3d_simulation/reporting.py",
+      "line": 201,
+      "import": "d6_integration:write_episode_truth_isolated_outputs"
+    },
+    {
+      "file": "research_modules/scalable_3d_simulation/reporting.py",
+      "line": 278,
+      "import": "d6_integration:write_batch_truth_isolated_outputs"
+    },
+    {
+      "file": "research_modules/scalable_3d_simulation/reporting.py",
+      "line": 214,
+      "import": "d6_integration:write_episode_runtime_plan_outcome_outputs"
+    },
+    {
+      "file": "research_modules/scalable_3d_simulation/reserved_seed_interventions.py",
+      "line": 514,
+      "import": "research_modules.d3_assignment_planner.src.d3_assignment_planner:execute_offline_paired_intervention"
+    },
+    {
+      "file": "research_modules/scalable_3d_simulation/reserved_seed_interventions.py",
+      "line": 527,
+      "import": "research_modules.d4_distributed_fallback.d4_distributed_fallback:RegionResourceIsolatedPairedEvaluator,RegionResourcePairedArm,RegionResourcePairedInterventionManifest"
+    },
+    {
+      "file": "research_modules/scalable_3d_simulation/reserved_seed_interventions.py",
+      "line": 642,
+      "import": "research_modules.d3_assignment_planner.src.d3_assignment_planner:BINARY_EDGE_FEATURE_NAMES,BINARY_FEATURE_ENDPOINT_TOLERANCE,CONTROL_ARM,CONTROL_PLANNER_PATH,D3_RUNTIME_PLAN_ACK_EVIDENCE_SCHEMA_V1,D3_RUNTIME_PLAN_WINDOW_REWARD_EVIDENCE_SCHEMA_V1,D6_SIDECAR_OWNER,FEATURE_DISTRIBUTION_ASSESSMENT_SCHEMA_V1,OFFLINE_INTERVENTION_SCOPE,PAIRED_INTERVENTION_RESERVED_SEED_POLICY_V1,PAIRED_INTERVENTION_RESERVED_SEEDS_V1,SHADOW_EVALUATION_SCHEMA_V2,TREATMENT_ARM,TREATMENT_PLANNER_PATH,PairedInterventionArmSpecification,PairedInterventionSeedPair,PairedInterventionSpecification"
+    },
+    {
+      "file": "research_modules/scalable_3d_simulation/reserved_seed_interventions.py",
+      "line": 791,
+      "import": "research_modules.d4_distributed_fallback.d4_distributed_fallback:REGION_RESOURCE_FROZEN_DEVELOPMENT_BUNDLE_BINDING,RegionResourcePairedInputBinding,build_region_resource_paired_intervention_specification"
+    },
+    {
+      "file": "research_modules/scalable_3d_simulation/reserved_seed_interventions.py",
+      "line": 1184,
+      "import": "research_modules.d4_distributed_fallback.d4_distributed_fallback:REGION_RESOURCE_PAIRED_ARM_EVIDENCE_SCHEMA"
+    },
+    {
+      "file": "research_modules/scalable_3d_simulation/reserved_seed_interventions.py",
+      "line": 1578,
+      "import": "research_modules.d3_assignment_planner.src.d3_assignment_planner:canonical_planning_frame_snapshot_sha256"
+    },
+    {
+      "file": "research_modules/scalable_3d_simulation/reserved_seed_interventions.py",
+      "line": 589,
+      "import": "research_modules.d3_assignment_planner.src.d3_assignment_planner:write_offline_paired_intervention_execution"
+    },
+    {
+      "file": "research_modules/scalable_3d_simulation/run_checkpoint_paired_physical.py",
+      "line": 20,
+      "import": "research_modules.scalable_3d_simulation.reserved_seed_interventions:INTERVENTION_KINDS,ReservedSeedInterventionOptions,execute_reserved_seed_interventions,resolve_d3_development_bundle_binding"
+    },
+    {
+      "file": "research_modules/scalable_3d_simulation/run_d1_association_risk_calibration.py",
+      "line": 17,
+      "import": "research_modules.scalable_3d_simulation.d1_association_risk_calibration:AssociationRiskCalibrationCase,run_d1_association_risk_calibration"
+    },
+    {
+      "file": "research_modules/scalable_3d_simulation/run_d3_intervention_batch_input.py",
+      "line": 15,
+      "import": "research_modules.scalable_3d_simulation.d3_intervention_batch_input:D3InterventionBatchInputOptions,collect_d3_intervention_batch_input,write_d3_intervention_batch_input"
+    },
+    {
+      "file": "research_modules/scalable_3d_simulation/run_d4_readiness_supplement.py",
+      "line": 15,
+      "import": "research_modules.scalable_3d_simulation.d4_readiness_supplement:DEFAULT_CONFIG,DEFAULT_SEED_REGISTRY,DEFAULT_SEEDS,D4ReadinessSupplementOptions,run_d4_readiness_supplement"
+    },
+    {
+      "file": "research_modules/scalable_3d_simulation/run_d4_runtime_compatibility_preflight.py",
+      "line": 15,
+      "import": "research_modules.scalable_3d_simulation.d4_runtime_compatibility:D4RuntimeCompatibilityOptions,D4RuntimeCompatibilityThresholds,run_d4_runtime_compatibility_preflight"
+    },
+    {
+      "file": "research_modules/scalable_3d_simulation/run_d4_v3_isolated_rollout.py",
+      "line": 15,
+      "import": "research_modules.d4_distributed_fallback.d4_distributed_fallback:REGION_RESOURCE_V3_DEVELOPMENT_SEEDS"
+    },
+    {
+      "file": "research_modules/scalable_3d_simulation/run_d4_v3_isolated_rollout.py",
+      "line": 18,
+      "import": "research_modules.scalable_3d_simulation.d4_v3_isolated_rollout:D4V3IsolatedRolloutOptions,execute_d4_v3_isolated_rollouts,write_d4_v3_isolated_rollout_execution"
+    },
+    {
+      "file": "research_modules/scalable_3d_simulation/run_d4_v4_external_dataset_export.py",
+      "line": 9,
+      "import": "d4_v4_external_dataset:D4V4ExternalDatasetExportConfig,export_d4_v4_external_runtime_dataset"
+    },
+    {
+      "file": "research_modules/scalable_3d_simulation/run_d4_v5_independent_development.py",
+      "line": 15,
+      "import": "research_modules.scalable_3d_simulation.d4_v5_independent_development:DEFAULT_CONFIG,DEFAULT_SCENARIO_FAMILIES,DEFAULT_SEED_REGISTRY,DEFAULT_SEEDS,D4V5IndependentDevelopmentOptions,run_d4_v5_independent_development"
+    },
+    {
+      "file": "research_modules/scalable_3d_simulation/run_d4_v6_transfer_independent_development.py",
+      "line": 15,
+      "import": "research_modules.scalable_3d_simulation.d4_v6_transfer_independent_development:DEFAULT_CONFIG,DEFAULT_SCENARIO_FAMILIES,DEFAULT_SEED_REGISTRY,DEFAULT_SEEDS,D4V6TransferIndependentDevelopmentOptions,run_d4_v6_transfer_independent_development"
+    },
+    {
+      "file": "research_modules/scalable_3d_simulation/run_d4_v7_transfer_independent_development.py",
+      "line": 15,
+      "import": "research_modules.scalable_3d_simulation.d4_v6_transfer_independent_development:DEFAULT_CONFIG,DEFAULT_SCENARIO_FAMILIES,D4V6TransferIndependentDevelopmentOptions,run_d4_v6_transfer_independent_development"
+    },
+    {
+      "file": "research_modules/scalable_3d_simulation/run_d5_crossview_calibration_batch.py",
+      "line": 15,
+      "import": "research_modules.scalable_3d_simulation.d5_crossview_calibration_batch:D5_CROSSVIEW_RESERVED_SEEDS,D5CrossviewCalibrationBatchOptions,run_d5_crossview_calibration_batch"
+    },
+    {
+      "file": "research_modules/scalable_3d_simulation/run_experiment_authorization.py",
+      "line": 31,
+      "import": "research_modules.scalable_3d_simulation.experiment_matrix_sharding:describe_g1_shadow_d5_bundle"
+    },
+    {
+      "file": "research_modules/scalable_3d_simulation/run_isolated_paired_rollout.py",
+      "line": 20,
+      "import": "research_modules.scalable_3d_simulation.reserved_seed_interventions:resolve_d3_development_bundle_binding"
+    },
+    {
+      "file": "research_modules/scalable_3d_simulation/run_reserved_seed_interventions.py",
+      "line": 15,
+      "import": "research_modules.scalable_3d_simulation.reserved_seed_interventions:INTERVENTION_KINDS,ReservedSeedInterventionOptions,execute_reserved_seed_interventions,resolve_d3_development_bundle_binding,write_reserved_seed_intervention_execution"
+    },
+    {
+      "file": "research_modules/airsim_runtime/__init__.py",
+      "line": 39,
+      "import": "models:BlocksActorTargetSpec,BlocksSmokeConfig,default_2v2_actor_target_specs,default_actor_target_specs,default_cv_5v5_actor_target_specs,default_cv_5v5_d4d5_stress_actor_target_specs,default_cv_5v5_camera_vehicle_names,default_cv_5v5_secondary_vehicle_names,default_cv_camera_vehicle_names,default_cv_secondary_vehicle_names,default_interceptor_vehicle_names,write_dynamic_computer_vision_settings,write_dynamic_multirotor_settings"
+    },
+    {
+      "file": "research_modules/airsim_runtime/adapters.py",
+      "line": 12,
+      "import": "d1_sensor_fusion:anonymize_online_observations,assert_online_observations_identity_free"
+    },
+    {
+      "file": "research_modules/airsim_runtime/adapters.py",
+      "line": 16,
+      "import": "d1_sensor_fusion.observations:eo_covariance_from_bbox"
+    },
+    {
+      "file": "research_modules/airsim_runtime/adapters.py",
+      "line": 17,
+      "import": "d1_sensor_fusion.types:SensorObservation"
+    },
+    {
+      "file": "research_modules/airsim_runtime/adapters.py",
+      "line": 18,
+      "import": "d3_assignment_planner:TargetTrack"
+    },
+    {
+      "file": "research_modules/airsim_runtime/adapters.py",
+      "line": 19,
+      "import": "d5_terminal_association:GlobalTrack"
+    },
+    {
+      "file": "research_modules/airsim_runtime/adapters.py",
+      "line": 20,
+      "import": "d5_terminal_association:LocalVisualTrack"
+    },
+    {
+      "file": "research_modules/airsim_runtime/d4d5_stress.py",
+      "line": 13,
+      "import": "d4_distributed_fallback:ActiveDegradationArbiter,AssignmentValiditySummary,AssociationRiskSummary,AvailabilityBand,C2Health,CommBand,CommunicationSummary,LinkType,NodeRole,PayloadKind,ResourceSummary,TerminalAssociationSummary,TerminalDecisionState,TrackUncertaintySummary"
+    },
+    {
+      "file": "research_modules/airsim_runtime/d4d5_stress.py",
+      "line": 29,
+      "import": "d4_distributed_fallback.adapter:D4ArbitrationAdapter"
+    },
+    {
+      "file": "research_modules/airsim_runtime/d4d5_stress.py",
+      "line": 30,
+      "import": "d5_terminal_association:Assignment,CameraLocalTrackBatch,CameraModel,GlobalTrackBinding,GlobalTrack,LocalVisualTrack,ReconImageCue,TerminalObservation,TerminalObservationBus,TerminalAssociator,build_secondary_frame_association_evidence,camera_model_from_airsim_camera_info,register_local_visual_tracks_to_global_tracks,summarize_secondary_visual_coverage_funnel"
+    },
+    {
+      "file": "research_modules/airsim_runtime/episode_bus.py",
+      "line": 19,
+      "import": "d1_sensor_fusion:FusionAdapter,ReplayProvenance,SensorObservation,assert_online_observations_identity_free,serialize_governed_replay"
+    },
+    {
+      "file": "research_modules/airsim_runtime/episode_bus.py",
+      "line": 26,
+      "import": "d2_data_association:GNNHungarianAssociator,OfflineTruthLabel,RiskThresholds,Tracker,classify_risk_summary,write_offline_truth_labels_jsonl"
+    },
+    {
+      "file": "research_modules/airsim_runtime/episode_bus.py",
+      "line": 34,
+      "import": "d3_assignment_planner:AssignmentPlan,AssignmentPlanner,CostModel,CostWeights,PlannerConfig,StalePlanError,TargetDemand,assignment_validity_summary_from_plan,apply_terminal_feedback_to_planner_inputs,continue_active_secondary_plan,guidance_bindings_from_assignment_plan,plan_history_record_from_plan,prepare_secondary_takeover_plan"
+    },
+    {
+      "file": "research_modules/airsim_runtime/episode_bus.py",
+      "line": 49,
+      "import": "d4_distributed_fallback:ActiveDegradationArbiter,ActiveDegradationConfig,AirSimEpisodeCommunicationAdapter,C2Health,CenterReplanStatus,CoalitionCommitCoordinator,CoalitionCommitState,CoalitionMemberAck,D4ArbitrationAdapter,EpisodeCommunicationConfig,EpisodeCommunicationTickInput,SecondaryReadinessEvidence,build_center_replan_risk_signature,build_coalition_commit_d6_metadata"
+    },
+    {
+      "file": "research_modules/airsim_runtime/episode_bus.py",
+      "line": 65,
+      "import": "d5_terminal_association:Assignment,CameraModel,LocalVisualTrack,ReconImageCue,TerminalAssociator,TerminalAssociation,TerminalConsistencyTracker,TerminalObservationBus,annotate_visual_png_handoff,camera_geometry_evidence_from_camera_model,camera_model_from_airsim_camera_info"
+    },
+    {
+      "file": "research_modules/airsim_runtime/episode_bus.py",
+      "line": 78,
+      "import": "d6_evaluation_metrics:AssignmentRecord,EventRecord,LinkRecord,MetricsCollector,TerminalRecord,TrackRecord"
+    },
+    {
+      "file": "research_modules/airsim_runtime/episode_bus.py",
+      "line": 86,
+      "import": "d7_proportional_guidance:D4GuidancePermission,D7RuntimeBus,D7RuntimePairInput,GuidanceMode,GuidanceState,compute_pn_command,evaluate_terminal_png_contract,guidance_mode_from_terminal_contract,summarize_runtime_bus_outputs"
+    },
+    {
+      "file": "research_modules/airsim_runtime/episode_bus.py",
+      "line": 97,
+      "import": "integrated_simulation.adapters:d1_tracks_to_d2_detections,plan_to_assignment_records,plan_to_m_to_n_records,plan_to_terminal_assignments,resources_to_d3,resources_to_d4,terminal_to_record,track_records_from_d2"
+    },
+    {
+      "file": "research_modules/airsim_runtime/intercept.py",
+      "line": 19,
+      "import": "d7_proportional_guidance:AssignmentGuidanceBinding,D4GuidancePermission,GuidanceMode,GuidanceState,MidcourseReacquisitionConfig,MidcourseReacquisitionSelector,PngGuidanceConfig,TerminalDeliveryConfig,TerminalDeliveryState,TerminalGuidanceDelivery,TerminalLifecycleContext,VisionGuidanceObservation,build_cooperative_guidance_topology,coerce_assignment_guidance_binding,coerce_vision_guidance_observation,compute_midcourse_reacquisition_command,compute_pure_pursuit_command,evaluate_terminal_png_contract,guidance_mode_from_terminal_contract,select_runtime_guidance_law"
+    },
+    {
+      "file": "research_modules/airsim_runtime/long_range_cv_scan.py",
+      "line": 24,
+      "import": "d5_terminal_association:AssociationConfig,GlobalTrack,TemporalGeometricAssociationConfig,TemporalGeometricAssociationResult,TemporalGeometricAssociator,camera_model_from_airsim_camera_info"
+    },
+    {
+      "file": "research_modules/airsim_runtime/long_range_cv_scan.py",
+      "line": 3134,
+      "import": "d6_evaluation_metrics.d5_long_range_registration:evaluate_d5_long_range_registration,load_d5_long_range_registration_episode,write_d5_long_range_registration_report"
+    },
+    {
+      "file": "research_modules/airsim_runtime/orchestrator.py",
+      "line": 13,
+      "import": "d6_evaluation_metrics:ActualExecutionEvidenceError,EpisodeMetrics,ReportGenerator,load_d7_intercept_outputs,merge_replay_with_execution_metrics,write_d7_actual_execution_evidence"
+    },
+    {
+      "file": "research_modules/airsim_runtime/orchestrator.py",
+      "line": 21,
+      "import": "d5_terminal_association:CameraModel"
+    },
+    {
+      "file": "research_modules/airsim_runtime/orchestrator.py",
+      "line": 34,
+      "import": "d4d5_stress:run_d4d5_stress_analysis"
+    },
+    {
+      "file": "research_modules/airsim_runtime/p1_cooperative_closure.py",
+      "line": 150,
+      "import": "d7_proportional_guidance:GuidanceConfig,GuidanceState,simulate_guidance_episode"
+    },
+    {
+      "file": "research_modules/airsim_runtime/p1_identity_pipeline.py",
+      "line": 11,
+      "import": "d1_sensor_fusion:ReplayProvenance,freeze_airsim_replay_file,write_frozen_airsim_replay"
+    },
+    {
+      "file": "research_modules/airsim_runtime/p1_identity_pipeline.py",
+      "line": 16,
+      "import": "d2_data_association:transform_d1_governed_replay"
+    },
+    {
+      "file": "research_modules/airsim_runtime/real_runtime.py",
+      "line": 23,
+      "import": "d5_terminal_association.airsim_geometry:intrinsics_from_capture_settings,rotation_world_to_opencv_camera_from_quaternion"
+    },
+    {
+      "file": "research_modules/airsim_runtime/real_runtime.py",
+      "line": 27,
+      "import": "d5_terminal_association:LocalVisualTrack,NativeMotAdmissionMonitor,NativeMotScenarioMetadata,YoloMotAdapter,YoloMotAdapterConfig"
+    },
+    {
+      "file": "research_modules/airsim_runtime/run_blocks_sequence.py",
+      "line": 31,
+      "import": "airsim_runtime.models:BlocksEpisodeSpec,BlocksSmokeConfig,default_actor_target_specs,default_2v2_actor_target_specs,default_5v5_actor_target_specs,default_cv_5v5_actor_target_specs,default_cv_5v5_d4d5_stress_actor_target_specs,default_cv_5v5_camera_vehicle_names,default_cv_5v5_secondary_vehicle_names,default_cv_camera_vehicle_names,default_cv_secondary_vehicle_names,default_interceptor_vehicle_names,write_dynamic_computer_vision_settings,write_dynamic_multirotor_settings"
+    },
+    {
+      "file": "research_modules/airsim_runtime/run_blocks_sequence.py",
+      "line": 73,
+      "import": "d6_evaluation_metrics:AirSimCalibrationReportGenerator,CASE_AWARE_SUITE_TIMING_MODE,CooperativeClosureInputs,CooperativeClosureReportGenerator,GuidanceLawComparisonReportGenerator,P1SystemEvidenceInputs,P1SystemEvidenceReportGenerator,P1AcceptanceInputs,P1AcceptanceReportGenerator,ScenarioDefinition,ScenarioLibrary,load_d7_intercept_outputs,load_main_episode_bus_metrics"
+    },
+    {
+      "file": "research_modules/airsim_runtime/run_blocks_sequence.py",
+      "line": 88,
+      "import": "d4_distributed_fallback:CommunicationReplayConfig,run_p1_communication_fault_matrix"
+    },
+    {
+      "file": "research_modules/airsim_runtime/run_blocks_sequence.py",
+      "line": 92,
+      "import": "d3_assignment_planner:CooperativeCandidateObservation,build_p1_cooperative_candidate_grid,rank_cooperative_candidates"
+    },
+    {
+      "file": "research_modules/airsim_runtime/run_d5_geometric_registration.py",
+      "line": 52,
+      "import": "d5_terminal_association:AssociationConfig,GlobalTrack,associate_tracks_to_detections_geometrically,camera_model_from_airsim_camera_info,evaluate_associations_offline"
+    },
+    {
+      "file": "research_modules/airsim_runtime/run_d5_multicamera_branch.py",
+      "line": 54,
+      "import": "d5_terminal_association:AssociationConfig,CameraLocalTrackBatch,GlobalTrack,RegistrationStabilityConfig,camera_model_from_airsim_camera_info,register_local_visual_tracks_to_global_tracks"
+    },
+    {
+      "file": "research_modules/airsim_runtime/run_p1_identity_pipeline.py",
+      "line": 33,
+      "import": "d2_data_association:load_identity_calibration_manifest,run_p1_identity_calibration,write_p1_identity_calibration_report"
+    },
+    {
+      "file": "research_modules/airsim_runtime/run_p1_identity_pipeline.py",
+      "line": 38,
+      "import": "d6_evaluation_metrics:DenseCrossingEvaluationInputs,DenseCrossingEvaluationReportGenerator"
+    },
+    {
+      "file": "research_modules/airsim_runtime/sequence.py",
+      "line": 11,
+      "import": "d4d5_stress:write_d4d5_sequence_report"
+    },
+    {
+      "file": "research_modules/independent_experiments/build_lightweight_gnn_comparison_report.py",
+      "line": 363,
+      "import": "dual_optical_100target_gnn.build_word_report:build_word_report"
+    },
+    {
+      "file": "research_modules/independent_experiments/center_terminal_cv_campaign/actor_controller.py",
+      "line": 10,
+      "import": "center_terminal_cv_campaign.common.scenario:TargetTruth"
+    },
+    {
+      "file": "research_modules/independent_experiments/center_terminal_cv_campaign/exp_center_handover/run_error_airsim.py",
+      "line": 38,
+      "import": "center_terminal_cv_campaign.actor_controller:CampaignActorClientProxy"
+    },
+    {
+      "file": "research_modules/independent_experiments/center_terminal_cv_campaign/exp_center_handover/run_error_airsim.py",
+      "line": 39,
+      "import": "center_terminal_cv_campaign.common.airsim_settings:INTERCEPTOR_HORIZONTAL_FOV_DEG,interceptor_camera_names,write_campaign_settings"
+    },
+    {
+      "file": "research_modules/independent_experiments/center_terminal_cv_campaign/exp_center_handover/run_error_airsim.py",
+      "line": 44,
+      "import": "center_terminal_cv_campaign.common.io:write_json,write_jsonl"
+    },
+    {
+      "file": "research_modules/independent_experiments/center_terminal_cv_campaign/exp_center_handover/run_error_airsim.py",
+      "line": 45,
+      "import": "center_terminal_cv_campaign.exp_center_handover.airsim_adapter:AirSimDetectionAdapter,AirSimOfflineDetectionLabel"
+    },
+    {
+      "file": "research_modules/independent_experiments/center_terminal_cv_campaign/exp_center_handover/run_error_airsim.py",
+      "line": 49,
+      "import": "center_terminal_cv_campaign.exp_center_handover.association:CenterHandoverAssociator"
+    },
+    {
+      "file": "research_modules/independent_experiments/center_terminal_cv_campaign/exp_center_handover/run_error_airsim.py",
+      "line": 52,
+      "import": "center_terminal_cv_campaign.exp_center_handover.error_campaign:SearchTerminalErrorConfig,SearchTerminalFixture,build_search_terminal_fixture"
+    },
+    {
+      "file": "research_modules/independent_experiments/center_terminal_cv_campaign/exp_center_handover/run_error_airsim.py",
+      "line": 57,
+      "import": "center_terminal_cv_campaign.exp_center_handover.fixture:HandoverFixture,LocalTrackTruthLabel"
+    },
+    {
+      "file": "research_modules/independent_experiments/center_terminal_cv_campaign/exp_center_handover/run_error_airsim.py",
+      "line": 61,
+      "import": "center_terminal_cv_campaign.exp_center_handover.geometry:yaw_pitch_roll_from_matrix"
+    },
+    {
+      "file": "research_modules/independent_experiments/center_terminal_cv_campaign/exp_center_handover/run_error_airsim.py",
+      "line": 64,
+      "import": "center_terminal_cv_campaign.exp_center_handover.gnn:SparseGNNScorer,load_model"
+    },
+    {
+      "file": "research_modules/independent_experiments/center_terminal_cv_campaign/exp_center_handover/run_error_airsim.py",
+      "line": 68,
+      "import": "center_terminal_cv_campaign.exp_center_handover.reporting:write_experiment_outputs"
+    },
+    {
+      "file": "research_modules/independent_experiments/center_terminal_cv_campaign/exp_center_handover/run_error_airsim.py",
+      "line": 71,
+      "import": "center_terminal_cv_campaign.exp_center_handover.run_error_matrix:DEFAULT_MODEL_PATH,association_config"
+    },
+    {
+      "file": "research_modules/independent_experiments/center_terminal_cv_campaign/exp_center_handover/run_error_matrix.py",
+      "line": 34,
+      "import": "center_terminal_cv_campaign.common.io:write_json,write_jsonl"
+    },
+    {
+      "file": "research_modules/independent_experiments/center_terminal_cv_campaign/exp_center_handover/run_error_matrix.py",
+      "line": 35,
+      "import": "center_terminal_cv_campaign.exp_center_handover.association:AssociationConfig,CenterHandoverAssociator"
+    },
+    {
+      "file": "research_modules/independent_experiments/center_terminal_cv_campaign/exp_center_handover/run_error_matrix.py",
+      "line": 39,
+      "import": "center_terminal_cv_campaign.exp_center_handover.error_campaign:AttitudeMode,DetectionMode,HandoverMode,NavigationMode,SearchTerminalErrorConfig,SearchTerminalFixture,build_search_terminal_fixture"
+    },
+    {
+      "file": "research_modules/independent_experiments/center_terminal_cv_campaign/exp_center_handover/run_error_matrix.py",
+      "line": 48,
+      "import": "center_terminal_cv_campaign.exp_center_handover.gnn:SparseGNNScorer,load_model"
+    },
+    {
+      "file": "research_modules/independent_experiments/center_terminal_cv_campaign/exp_center_handover/run_error_matrix.py",
+      "line": 52,
+      "import": "center_terminal_cv_campaign.exp_center_handover.reporting:score_association,write_experiment_outputs"
+    },
+    {
+      "file": "research_modules/independent_experiments/center_terminal_cv_campaign/exp_center_handover/run_experiment.py",
+      "line": 18,
+      "import": "center_terminal_cv_campaign.common.io:write_jsonl"
+    },
+    {
+      "file": "research_modules/independent_experiments/center_terminal_cv_campaign/exp_center_handover/run_experiment.py",
+      "line": 19,
+      "import": "center_terminal_cv_campaign.exp_center_handover.airsim_adapter:AirSimDetectionAdapter,AirSimOfflineDetectionLabel"
+    },
+    {
+      "file": "research_modules/independent_experiments/center_terminal_cv_campaign/exp_center_handover/run_experiment.py",
+      "line": 23,
+      "import": "center_terminal_cv_campaign.exp_center_handover.association:CenterHandoverAssociator,FrameAssociationResult"
+    },
+    {
+      "file": "research_modules/independent_experiments/center_terminal_cv_campaign/exp_center_handover/run_experiment.py",
+      "line": 27,
+      "import": "center_terminal_cv_campaign.exp_center_handover.fixture:HandoverFixture,LocalTrackTruthLabel,load_handover_fixture"
+    },
+    {
+      "file": "research_modules/independent_experiments/center_terminal_cv_campaign/exp_center_handover/run_experiment.py",
+      "line": 32,
+      "import": "center_terminal_cv_campaign.exp_center_handover.gnn:SparseGNNScorer,load_model"
+    },
+    {
+      "file": "research_modules/independent_experiments/center_terminal_cv_campaign/exp_center_handover/run_experiment.py",
+      "line": 36,
+      "import": "center_terminal_cv_campaign.exp_center_handover.reporting:OutputPaths,write_experiment_outputs"
+    },
+    {
+      "file": "research_modules/independent_experiments/center_terminal_cv_campaign/exp_center_handover/run_experiment.py",
+      "line": 40,
+      "import": "center_terminal_cv_campaign.exp_center_handover.replay:load_replay_fixture"
+    },
+    {
+      "file": "research_modules/independent_experiments/center_terminal_cv_campaign/exp_center_handover/train_gnn.py",
+      "line": 17,
+      "import": "center_terminal_cv_campaign.exp_center_handover.gnn:TrainingConfig,model_manifest_path,save_model,train_sparse_gnn"
+    },
+    {
+      "file": "research_modules/independent_experiments/center_terminal_cv_campaign/exp_center_handover/train_gnn.py",
+      "line": 23,
+      "import": "center_terminal_cv_campaign.exp_center_handover.replay:reject_replay_as_training_input"
+    },
+    {
+      "file": "research_modules/independent_experiments/center_terminal_cv_campaign/exp_search/fake_client.py",
+      "line": 12,
+      "import": "center_terminal_cv_campaign.common.scenario:TargetTruth"
+    },
+    {
+      "file": "research_modules/independent_experiments/center_terminal_cv_campaign/exp_search/fixture.py",
+      "line": 10,
+      "import": "center_terminal_cv_campaign.common.contracts:SourceCueRecord,SourceCueTruthLabel"
+    },
+    {
+      "file": "research_modules/independent_experiments/center_terminal_cv_campaign/exp_search/fixture.py",
+      "line": 11,
+      "import": "center_terminal_cv_campaign.common.scenario:CampaignScenario,TargetTruth,build_source_fixture,generate_targets"
+    },
+    {
+      "file": "research_modules/independent_experiments/center_terminal_cv_campaign/exp_search/offline_replay.py",
+      "line": 23,
+      "import": "center_terminal_cv_campaign.common.contracts:SourceCueRecord"
+    },
+    {
+      "file": "research_modules/independent_experiments/center_terminal_cv_campaign/exp_search/planner.py",
+      "line": 13,
+      "import": "center_terminal_cv_campaign.common.contracts:SourceCueRecord"
+    },
+    {
+      "file": "research_modules/independent_experiments/center_terminal_cv_campaign/exp_search/reporting.py",
+      "line": 20,
+      "import": "center_terminal_cv_campaign.common.io:write_json,write_jsonl"
+    },
+    {
+      "file": "research_modules/independent_experiments/center_terminal_cv_campaign/exp_search/runtime.py",
+      "line": 15,
+      "import": "center_terminal_cv_campaign.common.contracts:LocalVisualTrackRecord,SearchHandoverRecord,SourceCueRecord,SourceCueTruthLabel"
+    },
+    {
+      "file": "research_modules/independent_experiments/center_terminal_cv_campaign/exp_search/runtime.py",
+      "line": 21,
+      "import": "center_terminal_cv_campaign.common.recognition:bbox_longest_side_px,is_recognizable_bbox"
+    },
+    {
+      "file": "research_modules/independent_experiments/center_terminal_cv_campaign/exp_search/runtime.py",
+      "line": 25,
+      "import": "center_terminal_cv_campaign.common.scenario:TargetTruth"
+    },
+    {
+      "file": "research_modules/independent_experiments/center_terminal_cv_campaign/prepare_campaign.py",
+      "line": 18,
+      "import": "center_terminal_cv_campaign.common.airsim_settings:write_campaign_settings"
+    },
+    {
+      "file": "research_modules/independent_experiments/center_terminal_cv_campaign/prepare_campaign.py",
+      "line": 21,
+      "import": "center_terminal_cv_campaign.common.io:write_json,write_jsonl"
+    },
+    {
+      "file": "research_modules/independent_experiments/center_terminal_cv_campaign/prepare_campaign.py",
+      "line": 22,
+      "import": "center_terminal_cv_campaign.common.scenario:CampaignScenario,TargetTruth,build_source_fixture,generate_targets"
+    },
+    {
+      "file": "research_modules/independent_experiments/center_terminal_cv_campaign/run_campaign.py",
+      "line": 34,
+      "import": "center_terminal_cv_campaign.actor_controller:CampaignActorClientProxy"
+    },
+    {
+      "file": "research_modules/independent_experiments/center_terminal_cv_campaign/run_campaign.py",
+      "line": 35,
+      "import": "center_terminal_cv_campaign.common.io:write_json,write_jsonl"
+    },
+    {
+      "file": "research_modules/independent_experiments/center_terminal_cv_campaign/run_campaign.py",
+      "line": 36,
+      "import": "center_terminal_cv_campaign.common.airsim_settings:CENTER_CAMERA_NAMES,CENTER_HORIZONTAL_FOV_DEG,INTERCEPTOR_HORIZONTAL_FOV_DEG,interceptor_camera_names"
+    },
+    {
+      "file": "research_modules/independent_experiments/center_terminal_cv_campaign/run_campaign.py",
+      "line": 42,
+      "import": "center_terminal_cv_campaign.common.scenario:TargetTruth"
+    },
+    {
+      "file": "research_modules/independent_experiments/center_terminal_cv_campaign/run_campaign.py",
+      "line": 43,
+      "import": "center_terminal_cv_campaign.aggregate_report:aggregate_campaign"
+    },
+    {
+      "file": "research_modules/independent_experiments/center_terminal_cv_campaign/run_campaign.py",
+      "line": 44,
+      "import": "center_terminal_cv_campaign.prepare_campaign:DEFAULT_OUTPUT_ROOT,prepare_fixture"
+    },
+    {
+      "file": "research_modules/independent_experiments/center_terminal_cv_campaign/run_campaign.py",
+      "line": 273,
+      "import": "center_terminal_cv_campaign.exp_search.run_experiment:run_experiment"
+    },
+    {
+      "file": "research_modules/independent_experiments/center_terminal_cv_campaign/run_campaign.py",
+      "line": 289,
+      "import": "center_terminal_cv_campaign.exp_center_handover.fixture:load_handover_fixture"
+    },
+    {
+      "file": "research_modules/independent_experiments/center_terminal_cv_campaign/run_campaign.py",
+      "line": 292,
+      "import": "center_terminal_cv_campaign.exp_center_handover.run_experiment:run"
+    },
+    {
+      "file": "research_modules/independent_experiments/center_terminal_cv_campaign/run_campaign.py",
+      "line": 316,
+      "import": "center_terminal_cv_campaign.exp_crossview.run_experiment:run"
+    },
+    {
+      "file": "research_modules/independent_experiments/dual_optical_100target_gnn/cli.py",
+      "line": 19,
+      "import": "dual_optical_online_benchmark.contracts:benchmark_protocol_for_target_count"
+    },
+    {
+      "file": "research_modules/independent_experiments/dual_optical_100target_gnn/confirmation_ablation.py",
+      "line": 13,
+      "import": "dual_optical_online_benchmark.contracts:RevolutionSnapshot,publication_fingerprint,read_snapshot,snapshot_fingerprint,write_json"
+    },
+    {
+      "file": "research_modules/independent_experiments/dual_optical_100target_gnn/dataset.py",
+      "line": 13,
+      "import": "dual_optical_online_benchmark.contracts:SUPPORTED_TARGET_COUNTS,BenchmarkProtocol,benchmark_protocol_for_target_count"
+    },
+    {
+      "file": "research_modules/independent_experiments/dual_optical_100target_gnn/online.py",
+      "line": 13,
+      "import": "dual_optical_online_benchmark.contracts:AssociationMatch,AssociationPublication,RevolutionSnapshot,snapshot_fingerprint"
+    },
+    {
+      "file": "research_modules/independent_experiments/dual_optical_100target_gnn/online_benchmark.py",
+      "line": 12,
+      "import": "dual_optical_online_benchmark.contracts:AssociationPublication,BenchmarkProtocol,RevolutionSnapshot,read_snapshot,snapshot_fingerprint"
+    },
+    {
+      "file": "research_modules/independent_experiments/dual_optical_100target_gnn/online_benchmark.py",
+      "line": 19,
+      "import": "dual_optical_online_benchmark.dataset:DATASET_SCHEMA_VERSION,LEGACY_DATASET_SCHEMA_VERSION,load_dataset_manifest"
+    },
+    {
+      "file": "research_modules/independent_experiments/dual_optical_100target_gnn/schema.py",
+      "line": 10,
+      "import": "dual_optical_online_benchmark.contracts:BenchmarkProtocol"
+    },
+    {
+      "file": "research_modules/independent_experiments/dual_optical_100target_gnn/training.py",
+      "line": 34,
+      "import": "dual_optical_online_benchmark.contracts:BenchmarkProtocol"
+    },
+    {
+      "file": "research_modules/independent_experiments/dual_optical_100target_guide_case/run_experiment.py",
+      "line": 16,
+      "import": "dual_optical_100target_guide_case.build_word_report:build_document"
+    },
+    {
+      "file": "research_modules/independent_experiments/dual_optical_100target_guide_case/run_experiment.py",
+      "line": 17,
+      "import": "dual_optical_100target_guide_case.core:CameraSpec,ScenarioConfig"
+    },
+    {
+      "file": "research_modules/independent_experiments/dual_optical_100target_guide_case/run_experiment.py",
+      "line": 18,
+      "import": "dual_optical_100target_guide_case.reporting:generate_experiment_report"
+    },
+    {
+      "file": "research_modules/independent_experiments/dual_optical_100target_guide_case/run_experiment.py",
+      "line": 19,
+      "import": "dual_optical_100target_guide_case.runtime:GuideCaseAirSimRunner,load_experiment_result,prepare_case,run_synthetic_fixture,write_json"
+    },
+    {
+      "file": "research_modules/independent_experiments/dual_optical_100target_lightweight/ablation.py",
+      "line": 13,
+      "import": "dual_optical_100target_gnn.dataset:candidate_graph_fingerprint,canonical_json_sha256"
+    },
+    {
+      "file": "research_modules/independent_experiments/dual_optical_100target_lightweight/ablation.py",
+      "line": 17,
+      "import": "dual_optical_online_benchmark.contracts:BenchmarkProtocol,RevolutionSnapshot,benchmark_protocol_from_mapping"
+    },
+    {
+      "file": "research_modules/independent_experiments/dual_optical_100target_lightweight/ablation.py",
+      "line": 22,
+      "import": "dual_optical_online_benchmark.dataset:load_dataset_manifest,sha256_file"
+    },
+    {
+      "file": "research_modules/independent_experiments/dual_optical_100target_lightweight/ablation.py",
+      "line": 26,
+      "import": "dual_optical_online_benchmark.scoring:score_publication"
+    },
+    {
+      "file": "research_modules/independent_experiments/dual_optical_100target_lightweight/assignment.py",
+      "line": 9,
+      "import": "dual_optical_100target_gnn.assignment:AssignmentResult,solve_assignment"
+    },
+    {
+      "file": "research_modules/independent_experiments/dual_optical_100target_lightweight/assignment.py",
+      "line": 10,
+      "import": "dual_optical_100target_gnn.schema:OnlineGraph"
+    },
+    {
+      "file": "research_modules/independent_experiments/dual_optical_100target_lightweight/benchmark_adapter.py",
+      "line": 14,
+      "import": "dual_optical_100target_gnn.graph:GeometryGate,build_online_graph"
+    },
+    {
+      "file": "research_modules/independent_experiments/dual_optical_100target_lightweight/benchmark_adapter.py",
+      "line": 15,
+      "import": "dual_optical_100target_gnn.schema:AnonymousTrack,CorruptionSummary,OnlineEpisode,TrackSample"
+    },
+    {
+      "file": "research_modules/independent_experiments/dual_optical_100target_lightweight/benchmark_adapter.py",
+      "line": 21,
+      "import": "dual_optical_online_benchmark.contracts:AssociationMatch,AssociationPublication,LEGACY_SCHEMA_VERSION,RevolutionSnapshot,SCHEMA_VERSION"
+    },
+    {
+      "file": "research_modules/independent_experiments/dual_optical_100target_lightweight/build_word_report.py",
+      "line": 8,
+      "import": "dual_optical_100target_gnn.build_word_report:build_word_report"
+    },
+    {
+      "file": "research_modules/independent_experiments/dual_optical_100target_lightweight/evaluation.py",
+      "line": 13,
+      "import": "dual_optical_100target_gnn.assignment:solve_assignment"
+    },
+    {
+      "file": "research_modules/independent_experiments/dual_optical_100target_lightweight/evaluation.py",
+      "line": 14,
+      "import": "dual_optical_100target_gnn:dataset"
+    },
+    {
+      "file": "research_modules/independent_experiments/dual_optical_100target_lightweight/evaluation.py",
+      "line": 15,
+      "import": "dual_optical_100target_gnn.comparison:build_comparison_export,per_seed_summaries,validate_comparison_export"
+    },
+    {
+      "file": "research_modules/independent_experiments/dual_optical_100target_lightweight/evaluation.py",
+      "line": 20,
+      "import": "dual_optical_100target_gnn.dataset:canonical_json_sha256,load_entry,sample_entries"
+    },
+    {
+      "file": "research_modules/independent_experiments/dual_optical_100target_lightweight/evaluation.py",
+      "line": 25,
+      "import": "dual_optical_100target_gnn.loader:sha256_file"
+    },
+    {
+      "file": "research_modules/independent_experiments/dual_optical_100target_lightweight/evaluation.py",
+      "line": 26,
+      "import": "dual_optical_100target_gnn.metrics:average_precision,evaluate_assignment"
+    },
+    {
+      "file": "research_modules/independent_experiments/dual_optical_100target_lightweight/models.py",
+      "line": 14,
+      "import": "dual_optical_100target_gnn.schema:EDGE_FEATURE_NAMES,LEGACY_EDGE_FEATURE_COUNT,GraphLabels,OnlineGraph"
+    },
+    {
+      "file": "research_modules/independent_experiments/dual_optical_100target_lightweight/online.py",
+      "line": 14,
+      "import": "dual_optical_100target_gnn.dataset:candidate_graph_fingerprint,canonical_json_sha256"
+    },
+    {
+      "file": "research_modules/independent_experiments/dual_optical_100target_lightweight/online.py",
+      "line": 18,
+      "import": "dual_optical_100target_gnn.schema:EDGE_FEATURE_NAMES,NODE_FEATURE_NAMES,CorruptionSummary,OnlineGraph"
+    },
+    {
+      "file": "research_modules/independent_experiments/dual_optical_100target_lightweight/online_benchmark.py",
+      "line": 13,
+      "import": "dual_optical_100target_gnn.dataset:canonical_json_sha256"
+    },
+    {
+      "file": "research_modules/independent_experiments/dual_optical_100target_lightweight/online_benchmark.py",
+      "line": 14,
+      "import": "dual_optical_100target_gnn.graph:GeometryGate"
+    },
+    {
+      "file": "research_modules/independent_experiments/dual_optical_100target_lightweight/online_benchmark.py",
+      "line": 15,
+      "import": "dual_optical_100target_gnn.loader:sha256_file"
+    },
+    {
+      "file": "research_modules/independent_experiments/dual_optical_100target_lightweight/online_benchmark.py",
+      "line": 16,
+      "import": "dual_optical_100target_gnn.schema:EDGE_FEATURE_NAMES,GraphLabels,OnlineGraph"
+    },
+    {
+      "file": "research_modules/independent_experiments/dual_optical_100target_lightweight/online_benchmark.py",
+      "line": 17,
+      "import": "dual_optical_online_benchmark.contracts:AssociationPublication,BenchmarkProtocol,RevolutionSnapshot,benchmark_protocol_from_mapping"
+    },
+    {
+      "file": "research_modules/independent_experiments/dual_optical_100target_lightweight/online_benchmark.py",
+      "line": 23,
+      "import": "dual_optical_online_benchmark.dataset:DATASET_SCHEMA_VERSION,LEGACY_DATASET_SCHEMA_VERSION,load_dataset_manifest"
+    },
+    {
+      "file": "research_modules/independent_experiments/dual_optical_100target_lightweight/pipeline.py",
+      "line": 13,
+      "import": "dual_optical_100target_gnn.dataset:canonical_json_sha256,load_dataset_manifest,load_entry,sample_entries"
+    },
+    {
+      "file": "research_modules/independent_experiments/dual_optical_100target_lightweight/pipeline.py",
+      "line": 19,
+      "import": "dual_optical_100target_gnn.loader:sha256_file"
+    },
+    {
+      "file": "research_modules/independent_experiments/dual_optical_100target_lightweight/pipeline.py",
+      "line": 20,
+      "import": "dual_optical_100target_gnn.metrics:AssociationMetrics,evaluate_assignment"
+    },
+    {
+      "file": "research_modules/independent_experiments/dual_optical_100target_lightweight/pipeline.py",
+      "line": 21,
+      "import": "dual_optical_100target_gnn.schema:EDGE_FEATURE_NAMES,GraphLabels,OnlineGraph"
+    },
+    {
+      "file": "research_modules/independent_experiments/dual_optical_40target/online_benchmark.py",
+      "line": 16,
+      "import": "dual_optical_online_benchmark.contracts:AssociationMatch,AssociationPublication,RevolutionSnapshot,SUPPORTED_TARGET_COUNTS,SnapshotTrack,candidate_graph_fingerprint,snapshot_fingerprint"
+    },
+    {
+      "file": "research_modules/independent_experiments/dual_optical_40target/run_experiment.py",
+      "line": 16,
+      "import": "dual_optical_40target.core:CameraSpec,ScenarioConfig"
+    },
+    {
+      "file": "research_modules/independent_experiments/dual_optical_40target/run_experiment.py",
+      "line": 17,
+      "import": "dual_optical_40target.reporting:generate_experiment_report,load_experiment_result"
+    },
+    {
+      "file": "research_modules/independent_experiments/dual_optical_40target/run_experiment.py",
+      "line": 21,
+      "import": "dual_optical_40target.runtime:DualOpticalAirSimRunner,reprocess_enhanced_outputs,write_json"
+    },
+    {
+      "file": "research_modules/independent_experiments/dual_optical_online_benchmark/batch.py",
+      "line": 16,
+      "import": "dual_optical_40target.core:CameraSpec"
+    },
+    {
+      "file": "research_modules/independent_experiments/dual_optical_online_benchmark/batch.py",
+      "line": 17,
+      "import": "dual_optical_40target.runtime:LocalBlocksProcess,write_airsim_settings"
+    },
+    {
+      "file": "research_modules/independent_experiments/dual_optical_online_benchmark/build_word_report.py",
+      "line": 22,
+      "import": "dual_optical_40target:build_word_report"
+    },
+    {
+      "file": "research_modules/independent_experiments/dual_optical_online_benchmark/dataset.py",
+      "line": 17,
+      "import": "dual_optical_40target.core:AnonymousDetection,CameraSpec,CameraState,ray_observation_from_detection,sweep_index"
+    },
+    {
+      "file": "research_modules/independent_experiments/dual_optical_online_benchmark/episode_worker.py",
+      "line": 10,
+      "import": "dual_optical_40target.core:CameraSpec,ScenarioConfig"
+    },
+    {
+      "file": "research_modules/independent_experiments/dual_optical_online_benchmark/episode_worker.py",
+      "line": 11,
+      "import": "dual_optical_40target.runtime:DualOpticalAirSimRunner"
+    },
+    {
+      "file": "research_modules/independent_experiments/dual_optical_online_benchmark/offline_scale_replay.py",
+      "line": 185,
+      "import": "dual_optical_40target.online_benchmark:FrozenEnhancedGeometryRoute,load_frozen_route"
+    },
+    {
+      "file": "research_modules/independent_experiments/dual_optical_online_benchmark/offline_scale_replay.py",
+      "line": 222,
+      "import": "dual_optical_100target_lightweight.online_benchmark:load_frozen_route"
+    },
+    {
+      "file": "research_modules/independent_experiments/dual_optical_online_benchmark/offline_scale_replay.py",
+      "line": 228,
+      "import": "dual_optical_100target_gnn.online_benchmark:load_frozen_route"
+    },
+    {
+      "file": "research_modules/independent_experiments/dual_optical_online_benchmark/offline_scale_replay.py",
+      "line": 232,
+      "import": "dual_optical_track_superglue.online_benchmark:load_frozen_route"
+    },
+    {
+      "file": "research_modules/independent_experiments/dual_optical_online_benchmark/offline_scale_replay.py",
+      "line": 217,
+      "import": "dual_optical_100target_lightweight.online_benchmark:load_offline_diagnostic_route"
+    },
+    {
+      "file": "research_modules/independent_experiments/dual_optical_online_benchmark/report_matrix_replay.py",
+      "line": 37,
+      "import": "dual_optical_40target.online_benchmark:_WhitelistTemporalAssociator,_to_internal_snapshot"
+    },
+    {
+      "file": "research_modules/independent_experiments/dual_optical_online_benchmark/report_matrix_replay.py",
+      "line": 41,
+      "import": "dual_optical_40target.core:ray_observation_from_detection"
+    },
+    {
+      "file": "research_modules/independent_experiments/dual_optical_online_benchmark/report_matrix_replay.py",
+      "line": 423,
+      "import": "dual_optical_100target_gnn.online:OnlineGNNAssociator"
+    },
+    {
+      "file": "research_modules/independent_experiments/dual_optical_online_benchmark/report_matrix_replay.py",
+      "line": 875,
+      "import": "dual_optical_100target_gnn.online:OnlineGNNAssociator"
+    },
+    {
+      "file": "research_modules/independent_experiments/dual_optical_online_benchmark/s180_oracle_geometry_offline.py",
+      "line": 32,
+      "import": "dual_optical_40target.core:AnonymousDetection,CameraSpec,CameraState,ray_observation_from_detection"
+    },
+    {
+      "file": "research_modules/independent_experiments/dual_optical_online_benchmark/s180_oracle_geometry_offline.py",
+      "line": 38,
+      "import": "dual_optical_40target.online_benchmark:_WhitelistTemporalAssociator,_to_internal_snapshot,load_frozen_route"
+    },
+    {
+      "file": "research_modules/independent_experiments/dual_optical_online_benchmark/tracker_calibration.py",
+      "line": 20,
+      "import": "dual_optical_40target.core:AnonymousDetection,CameraSpec,CameraState,RayObservation,ray_observation_from_detection,sweep_index"
+    },
+    {
+      "file": "research_modules/independent_experiments/dual_optical_online_benchmark/tracking.py",
+      "line": 20,
+      "import": "dual_optical_40target.core:RayObservation"
+    },
+    {
+      "file": "research_modules/independent_experiments/dual_optical_online_benchmark/v41_replay.py",
+      "line": 22,
+      "import": "dual_optical_target_track_gnn.contracts:ConfirmedTrackPair,PAIR_PUBLICATION_ROUTE,PAIR_PUBLICATION_SCHEMA_VERSION,TargetHypothesis,TargetTrackPublication,online_pair_publication_fingerprint,validate_online_pair_publication"
+    },
+    {
+      "file": "research_modules/independent_experiments/dual_optical_online_benchmark/v41_replay.py",
+      "line": 31,
+      "import": "dual_optical_target_track_gnn.deterministic:publish_with_confirmation,solve_deterministic_assignment"
+    },
+    {
+      "file": "research_modules/independent_experiments/dual_optical_online_benchmark/v41_replay.py",
+      "line": 35,
+      "import": "dual_optical_target_track_gnn.geometry:CausalityError,GeometryFitError,WeightedFitConfig,form_target_hypothesis"
+    },
+    {
+      "file": "research_modules/independent_experiments/dual_optical_online_benchmark/v41_replay.py",
+      "line": 41,
+      "import": "dual_optical_target_track_gnn.graph:TargetTrackGate,build_camera_graphs"
+    },
+    {
+      "file": "research_modules/independent_experiments/dual_optical_online_benchmark/v5_runner.py",
+      "line": 19,
+      "import": "dual_optical_40target.core:CameraSpec"
+    },
+    {
+      "file": "research_modules/independent_experiments/dual_optical_online_benchmark/v5_runner.py",
+      "line": 20,
+      "import": "dual_optical_40target.runtime:LocalBlocksProcess,write_airsim_settings"
+    },
+    {
+      "file": "research_modules/independent_experiments/dual_optical_target_track_gnn/geometry.py",
+      "line": 11,
+      "import": "dual_optical_online_benchmark.contracts:RevolutionSnapshot,SnapshotTrack,snapshot_fingerprint"
+    },
+    {
+      "file": "research_modules/independent_experiments/dual_optical_target_track_gnn/graph.py",
+      "line": 11,
+      "import": "dual_optical_online_benchmark.contracts:RevolutionSnapshot,SnapshotTrack,SnapshotTrackSample"
+    },
+    {
+      "file": "research_modules/independent_experiments/dual_optical_target_track_gnn/v5_adapter.py",
+      "line": 17,
+      "import": "dual_optical_online_benchmark.contracts:BenchmarkProtocol,RevolutionSnapshot,benchmark_protocol_from_mapping,read_snapshot,snapshot_fingerprint"
+    },
+    {
+      "file": "research_modules/independent_experiments/dual_optical_track_superglue/adapter.py",
+      "line": 542,
+      "import": "dual_optical_100target_gnn.graph:GeometryGate"
+    },
+    {
+      "file": "research_modules/independent_experiments/dual_optical_track_superglue/adapter.py",
+      "line": 543,
+      "import": "dual_optical_100target_gnn.online:anonymous_graph_from_snapshot"
+    },
+    {
+      "file": "research_modules/independent_experiments/dual_optical_track_superglue/adapter.py",
+      "line": 545,
+      "import": "research_modules.independent_experiments.dual_optical_100target_gnn.graph:GeometryGate"
+    },
+    {
+      "file": "research_modules/independent_experiments/dual_optical_track_superglue/adapter.py",
+      "line": 548,
+      "import": "research_modules.independent_experiments.dual_optical_100target_gnn.online:anonymous_graph_from_snapshot"
+    },
+    {
+      "file": "research_modules/independent_experiments/dual_optical_track_superglue/online_benchmark.py",
+      "line": 16,
+      "import": "dual_optical_online_benchmark.contracts:AssociationMatch,AssociationPublication,RevolutionSnapshot,read_snapshot,snapshot_fingerprint"
+    },
+    {
+      "file": "research_modules/independent_experiments/dual_optical_track_superglue/online_benchmark.py",
+      "line": 24,
+      "import": "research_modules.independent_experiments.dual_optical_online_benchmark.contracts:AssociationMatch,AssociationPublication,RevolutionSnapshot,read_snapshot,snapshot_fingerprint"
+    }
+  ],
+  "limits": "Static import evidence only; not execution proof. No project module imported by this audit."
+}

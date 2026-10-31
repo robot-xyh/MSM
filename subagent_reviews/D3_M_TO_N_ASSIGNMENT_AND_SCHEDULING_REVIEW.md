@@ -1,5 +1,10 @@
 # D3 M 对 N 多资源联盟分配与时序调度调研
 
+<!-- evidence-status-sync:20260926:begin -->
+> 2026-09-26 仅同步资料，不是新实验日期。当前证据统一见[当前证据状态](../research_modules/d3_assignment_planner/docs/CURRENT_EVIDENCE_STATUS_CN.md)。
+> 下文旧日期、状态及待办仅作带日期历史阶段阅读；原Goal状态、能力、GAP及权限不因本次同步改变。
+<!-- evidence-status-sync:20260926:end -->
+
 ## v3 开发来源请求状态（2026-08-01）
 
 A1 v2 失败归因没有改变现有需求槽匈牙利、多机需求全有或全无、primary/reserve 角色或

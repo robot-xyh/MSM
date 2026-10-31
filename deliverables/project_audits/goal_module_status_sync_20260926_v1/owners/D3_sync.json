@@ -1,0 +1,281 @@
+{
+  "module": "D3",
+  "synced_at": "2026-09-26",
+  "scope": "纯文档档案维护。原Goal状态不因文档同步而改变。新增唯一集中状态页，既有入口只在H1后插入指定标记块；原正文、日期、任务勾选、GAP和能力状态不变。",
+  "changed_files": [
+    "research_modules/d3_assignment_planner/PLAN.md",
+    "research_modules/d3_assignment_planner/README.md",
+    "research_modules/d3_assignment_planner/docs/AIRSIM_INTEGRATION_PLAN.md",
+    "research_modules/d3_assignment_planner/docs/ALGORITHM_AND_IMPLEMENTATION.md",
+    "research_modules/d3_assignment_planner/docs/EXPERIMENT_REPORT.md",
+    "research_modules/d3_assignment_planner/docs/MODULE_PRINCIPLES_CN.md",
+    "research_modules/d3_assignment_planner/docs/README.md",
+    "research_modules/d3_assignment_planner/reports/D3_MAIN_INTERFACE_REQUIREMENTS_A1_V3_CN.md",
+    "subagent_reviews/D3_ASSIGNMENT_PLANNER_REVIEW_AND_PLAN.md",
+    "subagent_reviews/D3_IMPLEMENTATION_GAP_AUDIT.md",
+    "subagent_reviews/D3_M_TO_N_ASSIGNMENT_AND_SCHEDULING_REVIEW.md",
+    "research_modules/d3_assignment_planner/docs/CURRENT_EVIDENCE_STATUS_CN.md"
+  ],
+  "checked_unchanged": [
+    {
+      "path": "research_modules/d3_assignment_planner/reports/D3_ASSIGNMENT_FULL_SAMPLE_AUDIT_20260721.md",
+      "reason": "已核对标题、历史验证日期与基线字节；固定7月21日全样本审计，不是当前状态入口，本次无新结果，原报告保留。"
+    },
+    {
+      "path": "research_modules/d3_assignment_planner/reports/D3_PLANNER_PERFORMANCE_ATTRIBUTION_20260722_CN.md",
+      "reason": "已核对标题、冻结输入归因范围与基线字节；是独立历史性能报告，不涉及A1 v3最后断点，不作无关格式修改。"
+    },
+    {
+      "path": "research_modules/d3_assignment_planner/reports/D3_PLAN_IDENTITY_PAYLOAD_AUDIT_20260730_CN.md",
+      "reason": "已核对标题、专题审计范围与基线字节；是固定历史计划身份报告，不是当前证据状态入口，不改原报告。"
+    },
+    {
+      "path": "research_modules/d3_assignment_planner/results/EXPERIMENT_REPORT_GENERATED.md",
+      "reason": "仅核对与BEFORE.json的字节一致性；属于results内历史实验或制品记录，本任务禁止修改实验输出，不把旧阶段记录重写为当前证据。"
+    },
+    {
+      "path": "research_modules/d3_assignment_planner/results/a1_assignment_aware_development_v1_20260730/DEVELOPMENT_REPORT_CN.md",
+      "reason": "仅核对与BEFORE.json的字节一致性；属于results内历史实验或制品记录，本任务禁止修改实验输出，不把旧阶段记录重写为当前证据。"
+    },
+    {
+      "path": "research_modules/d3_assignment_planner/results/a1_source_independent_evaluation_v2_20260731/SOURCE_INDEPENDENT_EVALUATION_CN.md",
+      "reason": "仅核对与BEFORE.json的字节一致性；属于results内历史实验或制品记录，本任务禁止修改实验输出，不把旧阶段记录重写为当前证据。"
+    },
+    {
+      "path": "research_modules/d3_assignment_planner/results/a1_source_independent_v2_failure_attribution_v1_20260801/A1_V2_FAILURE_ATTRIBUTION_AND_V3_REQUEST_CN.md",
+      "reason": "仅核对与BEFORE.json的字节一致性；属于results内历史实验或制品记录，本任务禁止修改实验输出，不把旧阶段记录重写为当前证据。"
+    },
+    {
+      "path": "research_modules/d3_assignment_planner/results/a1_v3_cross_seed_quota_probe_20260802/A1_V3_CROSS_SEED_QUOTA_PROBE_REPORT_CN.md",
+      "reason": "仅核对与BEFORE.json的字节一致性；属于results内历史实验或制品记录，本任务禁止修改实验输出，不把旧阶段记录重写为当前证据。"
+    },
+    {
+      "path": "research_modules/d3_assignment_planner/results/formal_bc_development_20260720/MODEL_ARTIFACT_LOCATION.md",
+      "reason": "仅核对与BEFORE.json的字节一致性；属于results内历史实验或制品记录，本任务禁止修改实验输出，不把旧阶段记录重写为当前证据。"
+    },
+    {
+      "path": "research_modules/d3_assignment_planner/results/formal_bc_development_20260720/TRAINING_REPORT_CN.md",
+      "reason": "仅核对与BEFORE.json的字节一致性；属于results内历史实验或制品记录，本任务禁止修改实验输出，不把旧阶段记录重写为当前证据。"
+    },
+    {
+      "path": "research_modules/d3_assignment_planner/results/multi_cycle_shadow_bc_20260725/D3_MULTICYCLE_SHADOW_REPORT_CN.md",
+      "reason": "仅核对与BEFORE.json的字节一致性；属于results内历史实验或制品记录，本任务禁止修改实验输出，不把旧阶段记录重写为当前证据。"
+    }
+  ],
+  "evidence": [
+    "deliverables/project_audits/goal_module_status_sync_20260926_v1/BEFORE.json",
+    "deliverables/project_audits/goal_owner_review_sync_20260926_v1/owners/D3_review.json",
+    "research_modules/scalable_3d_simulation/docs/SCALABLE_3D_GOAL_COMPLETION_AUDIT_20260803_CN.md",
+    "research_modules/scalable_3d_simulation/docs/SCALABLE_3D_GOAL_PROGRESS_AND_NEXT_PLAN_20260807_CN.md",
+    "deliverables/project_audits/goal_resume_audit_20260926_v1/SOURCE_DIRECTORY_STATUS.json",
+    "deliverables/project_audits/goal_resume_audit_20260926_v1/SUPPLEMENTAL_CHECKS.json",
+    "deliverables/project_audits/goal_resume_audit_20260926_v1/历史结果定位与完整性核对_CN.md"
+  ],
+  "status_summary": {
+    "source_episodes": "300/300",
+    "source_frames": 3086,
+    "source_audit_status": "source_integrity_audit_passed_not_training_authorized",
+    "current_generation_training": "未训练",
+    "input_boundary": "来源不显式包含六维状态和协方差。",
+    "historical_probe": "2026-08-02 dirty探针是请求阶段，不能替代正式来源生成或审计。",
+    "goal_status_changed": false
+  },
+  "checks": {
+    "type": "ordinary_document_checks_only",
+    "baseline": "deliverables/project_audits/goal_module_status_sync_20260926_v1/BEFORE.json",
+    "baseline_created_at": "2026-09-26T14:27:00.930234+00:00",
+    "owned_baseline_files_checked": 203,
+    "historical_body_preservation": {
+      "passed": true,
+      "count": 11,
+      "method": "剥离唯一begin/end标记块及其后恰好两个换行，与BEFORE.json原文及SHA-256逐字节相同。",
+      "records": [
+        {
+          "path": "research_modules/d3_assignment_planner/PLAN.md",
+          "before_sha256": "726b97a8dd03bc55e0e83e3cc5e0e238b301c6f01665ba86f78a1ec4fb5c7947",
+          "after_sha256": "e2f053700eb333eb4ac961ca7f540bc48eb8628c4d3d8de29c2d0bbad766b33b",
+          "historical_body_preserved": true
+        },
+        {
+          "path": "research_modules/d3_assignment_planner/README.md",
+          "before_sha256": "e4ba492b64104579d4e41afd800684eefe2dfc5744f982c6e3ff525c43c29012",
+          "after_sha256": "031ae81a8e805cb798a80e03458b21ed6ae38a0400ba93d55b3fa2da4e611b04",
+          "historical_body_preserved": true
+        },
+        {
+          "path": "research_modules/d3_assignment_planner/docs/AIRSIM_INTEGRATION_PLAN.md",
+          "before_sha256": "0103b7f35495b5e08522d407b381e049c2e74d495eb61b0ea1f9bf13ccb55931",
+          "after_sha256": "61471420d2d7fef5b22f67af2087438aee1ff702f1a96b53060e15dc6bbb90ef",
+          "historical_body_preserved": true
+        },
+        {
+          "path": "research_modules/d3_assignment_planner/docs/ALGORITHM_AND_IMPLEMENTATION.md",
+          "before_sha256": "f8888a6fbe3e9daed80374b502fa0fab069f5e5d32939cd0ddb0756ce4c00ef1",
+          "after_sha256": "67f085762104a391c2f0326002577dad77ffc82942bd7ca5ebad13b3544648f8",
+          "historical_body_preserved": true
+        },
+        {
+          "path": "research_modules/d3_assignment_planner/docs/EXPERIMENT_REPORT.md",
+          "before_sha256": "619e4a364913bbcc2c6cee7a4653a008622f2e36512014c7a7535b71738ee179",
+          "after_sha256": "4feadfc3f709431596b5ef043d6b7be49e2d5fb38fdf0e0e66b291ab93a165c2",
+          "historical_body_preserved": true
+        },
+        {
+          "path": "research_modules/d3_assignment_planner/docs/MODULE_PRINCIPLES_CN.md",
+          "before_sha256": "d242723f470d0b66430ab664af92798087f4ddf10e2935bc8cddee716d72d24f",
+          "after_sha256": "434c82b246a5e877c11b8c061e721f1cb60481405419762654e571555fda9b01",
+          "historical_body_preserved": true
+        },
+        {
+          "path": "research_modules/d3_assignment_planner/docs/README.md",
+          "before_sha256": "6b255882b97ee181f11cfb4f3e43e43e21406909bbab1cfb943ea094b9de5a14",
+          "after_sha256": "4b88ef495f27a16386346ed3d40aaa9f7156a4a5e39c61cafa9b5d8115ebe4bb",
+          "historical_body_preserved": true
+        },
+        {
+          "path": "research_modules/d3_assignment_planner/reports/D3_MAIN_INTERFACE_REQUIREMENTS_A1_V3_CN.md",
+          "before_sha256": "4f6a30e3f7e32da4da54a352432789bd58a3029b0a3e1a5ffe524c915a7dbcc4",
+          "after_sha256": "b230907c936d1c182d561cec75a4826df8be91c621e44e59df659609d93d83d6",
+          "historical_body_preserved": true
+        },
+        {
+          "path": "subagent_reviews/D3_ASSIGNMENT_PLANNER_REVIEW_AND_PLAN.md",
+          "before_sha256": "bc12720640e16da9a8000435a70937bcdbc563527301166e447ccbab1d4396a1",
+          "after_sha256": "1170eb4e315805dbca77be1eafcf01bac7fe16a62445cb5f0f89ee3d94e3f98e",
+          "historical_body_preserved": true
+        },
+        {
+          "path": "subagent_reviews/D3_IMPLEMENTATION_GAP_AUDIT.md",
+          "before_sha256": "d215fd294fec44126f895f8865651acbbf008aca16e123b537966b27da3776dc",
+          "after_sha256": "9e8ee154a5d21327821794337a4691af1bd1b7b32327b3fe3c2e78152d2a6af6",
+          "historical_body_preserved": true
+        },
+        {
+          "path": "subagent_reviews/D3_M_TO_N_ASSIGNMENT_AND_SCHEDULING_REVIEW.md",
+          "before_sha256": "b78480572b72dea1baa4407f0271120c4f7c0d46f3e54046451b956113376f4f",
+          "after_sha256": "c8d790fd61fd10daf7ee98d37d1dac2bf8e561b70dabc786e14aa0659b7dcc8e",
+          "historical_body_preserved": true
+        }
+      ]
+    },
+    "h1_block_position_and_exact_two_newlines": "11/11 passed",
+    "mandatory_documents": {
+      "checked": 9,
+      "changed": 9,
+      "unchanged": 0,
+      "note": "README、PLAN、GAP、两份D3 review、MODULE_PRINCIPLES_CN、ALGORITHM_AND_IMPLEMENTATION、实际存在的docs/AIRSIM_INTEGRATION_PLAN与docs/EXPERIMENT_REPORT全部仅加入口块，未建根目录替代文件。"
+    },
+    "additional_entry_documents": {
+      "changed": 2,
+      "paths": [
+        "research_modules/d3_assignment_planner/docs/README.md",
+        "research_modules/d3_assignment_planner/reports/D3_MAIN_INTERFACE_REQUIREMENTS_A1_V3_CN.md"
+      ],
+      "reason": "两者同样把8月2日dirty探针描述为当前状态，需指向唯一集中说明。"
+    },
+    "unchanged_non_markdown_files": 181,
+    "unchanged_markdown_files": 11,
+    "new_relative_links": {
+      "passed": true,
+      "count": 28,
+      "scope": "新增块和集中状态页，不追溯修改旧正文中的历史链接。"
+    },
+    "date_semantics_review": {
+      "reviewed_at": "2026-09-26",
+      "scope": "只查指定5份小型元数据；未扫描或读取来源大载荷，未运行实验。",
+      "finding": "所查元数据未定位明确的日历执行/完成时间。20260802和20260803仅作来源/审计批次或记录日期标签；last_invocation_wall_s是耗时，不是完成时间。",
+      "source_completion_calendar_date": null,
+      "audit_execution_calendar_date": null,
+      "source_table_label": "20260802批次正式来源（A1 v3）",
+      "audit_table_label": "20260803批次来源完整性审计",
+      "metadata_checked": [
+        {
+          "path": "/home/linux/Documents/MSM-source-generation-output-e7c438c-20260802/D3/generation_session.json",
+          "bytes": 1155,
+          "sha256": "b6b5bdccd3ac777807a0586e8be511da2fb108d3227cdffb595bd63753a309f7",
+          "calendar_time_candidate_fields": [],
+          "elapsed_wall_seconds": {},
+          "state": null
+        },
+        {
+          "path": "/home/linux/Documents/MSM-source-generation-output-e7c438c-20260802/D3/generation_checkpoint.json",
+          "bytes": 784,
+          "sha256": "716411ae4b58e4969d69633a6bf90bfdf5c5658a36c99d01384e9eeedce654c6",
+          "calendar_time_candidate_fields": [],
+          "elapsed_wall_seconds": {
+            "last_invocation_wall_s": 919.7262300469993
+          },
+          "state": "finalized"
+        },
+        {
+          "path": "/home/linux/Documents/MSM-source-generation-output-e7c438c-20260802/D3/generation_result.json",
+          "bytes": 49497,
+          "sha256": "ecb4a2e73e254282cf281ab092c07ca7685fc79ba25643eb8d9606e1b6d9a0ea",
+          "calendar_time_candidate_fields": [],
+          "elapsed_wall_seconds": {
+            "last_invocation_wall_s": 919.7262300469993
+          },
+          "state": "finalized"
+        },
+        {
+          "path": "/home/linux/Documents/MSM-source-generation-output-e7c438c-20260802/D3/dataset/dataset_manifest.json",
+          "bytes": 7384,
+          "sha256": "5af2ed0af9cdb96ff2112208e6f6b640af1a6774a636bc8790ea0904c7c3897d",
+          "calendar_time_candidate_fields": [],
+          "elapsed_wall_seconds": {},
+          "state": {
+            "bundle_written": false,
+            "data_generated": true,
+            "formal_holdout_read": false,
+            "model_trained": false,
+            "v2_bundle_or_threshold_changed": false
+          }
+        },
+        {
+          "path": "/home/linux/Documents/MSM-source-audit-result-20260803-v3/source_audit.json",
+          "bytes": 12123,
+          "sha256": "8fa4f39c4c63a30362a421cd1cd7904554873ebaccfc1fdb0040a31416043bc7",
+          "calendar_time_candidate_fields": [],
+          "elapsed_wall_seconds": {},
+          "state": "source_integrity_audit_passed_not_training_authorized"
+        }
+      ],
+      "documentation_checks": {
+        "passed": true,
+        "central_page_lines": 48,
+        "central_page_links": 17,
+        "central_page_sha256": "6251ceb057958c2685b3c19e99515ddfd1a3bed2e7d5cc007b297198dd5567d2",
+        "existing_entry_blocks_unchanged": 11,
+        "git_diff_check": "passed",
+        "date_labels": "batch_or_record_dates_not_execution_dates"
+      }
+    },
+    "central_status_page": {
+      "lines": 48,
+      "limit": 100,
+      "passed": true
+    },
+    "git_diff_check": {
+      "passed": true,
+      "scope": "research_modules/d3_assignment_planner 与 subagent_reviews/D3_*.md"
+    },
+    "new_module_file_allowlist": {
+      "passed": true,
+      "paths": [
+        "research_modules/d3_assignment_planner/docs/CURRENT_EVIDENCE_STATUS_CN.md"
+      ]
+    },
+    "json_and_path_validation": "passed: strict JSON, required fields, 12 unique changed Markdown paths, 11 unchanged records, 7 evidence paths",
+    "algorithm_tests_run": false,
+    "experiments_run": false,
+    "subagents_created": false
+  },
+  "limitations": [
+    "2026-09-26是资料同步日期，不是新的实验或来源审计日期；未重新读取大量原始载荷、训练样本或真值，未重做来源语义审计。",
+    "未运行模块pytest、模型、训练、GPU、仿真、配准、控制或重新评分。",
+    "不修改代码、参数、模型、实验输出、其他模块、领导报告或上一批owner审计；不关闭GAP、不升级能力、不制定研究系统增强计划。",
+    "正式450组仍为摘要可查、完整记录未定位；728组来源不是450组正式结果；当前代际未训练不能由旧模型或独立演示替代。",
+    "所有旧正文完整保留；旧日期、状态和待办现在按原日期的历史阶段阅读，既有算法与接口合同不因此失效。",
+    "本owner仅验证BEFORE.json中的203个D3范围文件；1180个原文件和8份报告的跨模块全局结束校验由main负责。"
+  ]
+}

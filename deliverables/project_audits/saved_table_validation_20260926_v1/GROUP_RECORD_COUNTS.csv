@@ -1,0 +1,214 @@
+source,group,record_count,distinct_seed_count
+dual_final,"{""profile"": ""continuous_360"", ""target_count"": ""20"", ""condition"": ""clean"", ""route_name"": ""epipolar_mht""}",5,5
+dual_final,"{""profile"": ""continuous_360"", ""target_count"": ""20"", ""condition"": ""clean"", ""route_name"": ""gnn""}",5,5
+dual_final,"{""profile"": ""continuous_360"", ""target_count"": ""20"", ""condition"": ""heavy"", ""route_name"": ""epipolar_mht""}",5,5
+dual_final,"{""profile"": ""continuous_360"", ""target_count"": ""20"", ""condition"": ""heavy"", ""route_name"": ""gnn""}",5,5
+dual_final,"{""profile"": ""continuous_360"", ""target_count"": ""20"", ""condition"": ""light"", ""route_name"": ""epipolar_mht""}",5,5
+dual_final,"{""profile"": ""continuous_360"", ""target_count"": ""20"", ""condition"": ""light"", ""route_name"": ""gnn""}",5,5
+dual_final,"{""profile"": ""continuous_360"", ""target_count"": ""20"", ""condition"": ""medium"", ""route_name"": ""epipolar_mht""}",5,5
+dual_final,"{""profile"": ""continuous_360"", ""target_count"": ""20"", ""condition"": ""medium"", ""route_name"": ""gnn""}",5,5
+dual_final,"{""profile"": ""continuous_360"", ""target_count"": ""40"", ""condition"": ""clean"", ""route_name"": ""epipolar_mht""}",5,5
+dual_final,"{""profile"": ""continuous_360"", ""target_count"": ""40"", ""condition"": ""clean"", ""route_name"": ""gnn""}",5,5
+dual_final,"{""profile"": ""continuous_360"", ""target_count"": ""40"", ""condition"": ""heavy"", ""route_name"": ""epipolar_mht""}",5,5
+dual_final,"{""profile"": ""continuous_360"", ""target_count"": ""40"", ""condition"": ""heavy"", ""route_name"": ""gnn""}",5,5
+dual_final,"{""profile"": ""continuous_360"", ""target_count"": ""40"", ""condition"": ""light"", ""route_name"": ""epipolar_mht""}",5,5
+dual_final,"{""profile"": ""continuous_360"", ""target_count"": ""40"", ""condition"": ""light"", ""route_name"": ""gnn""}",5,5
+dual_final,"{""profile"": ""continuous_360"", ""target_count"": ""40"", ""condition"": ""medium"", ""route_name"": ""epipolar_mht""}",5,5
+dual_final,"{""profile"": ""continuous_360"", ""target_count"": ""40"", ""condition"": ""medium"", ""route_name"": ""gnn""}",5,5
+dual_final,"{""profile"": ""continuous_360"", ""target_count"": ""60"", ""condition"": ""clean"", ""route_name"": ""epipolar_mht""}",5,5
+dual_final,"{""profile"": ""continuous_360"", ""target_count"": ""60"", ""condition"": ""clean"", ""route_name"": ""gnn""}",5,5
+dual_final,"{""profile"": ""continuous_360"", ""target_count"": ""60"", ""condition"": ""heavy"", ""route_name"": ""epipolar_mht""}",5,5
+dual_final,"{""profile"": ""continuous_360"", ""target_count"": ""60"", ""condition"": ""heavy"", ""route_name"": ""gnn""}",5,5
+dual_final,"{""profile"": ""continuous_360"", ""target_count"": ""60"", ""condition"": ""light"", ""route_name"": ""epipolar_mht""}",5,5
+dual_final,"{""profile"": ""continuous_360"", ""target_count"": ""60"", ""condition"": ""light"", ""route_name"": ""gnn""}",5,5
+dual_final,"{""profile"": ""continuous_360"", ""target_count"": ""60"", ""condition"": ""medium"", ""route_name"": ""epipolar_mht""}",5,5
+dual_final,"{""profile"": ""continuous_360"", ""target_count"": ""60"", ""condition"": ""medium"", ""route_name"": ""gnn""}",5,5
+dual_final,"{""profile"": ""oracle_360"", ""target_count"": ""20"", ""condition"": ""clean"", ""route_name"": ""epipolar_mht""}",5,5
+dual_final,"{""profile"": ""oracle_360"", ""target_count"": ""20"", ""condition"": ""clean"", ""route_name"": ""gnn""}",5,5
+dual_final,"{""profile"": ""oracle_360"", ""target_count"": ""40"", ""condition"": ""clean"", ""route_name"": ""epipolar_mht""}",5,5
+dual_final,"{""profile"": ""oracle_360"", ""target_count"": ""40"", ""condition"": ""clean"", ""route_name"": ""gnn""}",5,5
+dual_final,"{""profile"": ""oracle_360"", ""target_count"": ""60"", ""condition"": ""clean"", ""route_name"": ""epipolar_mht""}",5,5
+dual_final,"{""profile"": ""oracle_360"", ""target_count"": ""60"", ""condition"": ""clean"", ""route_name"": ""gnn""}",5,5
+dual_final,"{""profile"": ""s180"", ""target_count"": ""20"", ""condition"": ""clean"", ""route_name"": ""epipolar_mht""}",5,5
+dual_final,"{""profile"": ""s180"", ""target_count"": ""20"", ""condition"": ""clean"", ""route_name"": ""gnn""}",5,5
+dual_final,"{""profile"": ""s180"", ""target_count"": ""20"", ""condition"": ""heavy"", ""route_name"": ""epipolar_mht""}",5,5
+dual_final,"{""profile"": ""s180"", ""target_count"": ""20"", ""condition"": ""heavy"", ""route_name"": ""gnn""}",5,5
+dual_final,"{""profile"": ""s180"", ""target_count"": ""20"", ""condition"": ""light"", ""route_name"": ""epipolar_mht""}",5,5
+dual_final,"{""profile"": ""s180"", ""target_count"": ""20"", ""condition"": ""light"", ""route_name"": ""gnn""}",5,5
+dual_final,"{""profile"": ""s180"", ""target_count"": ""20"", ""condition"": ""medium"", ""route_name"": ""epipolar_mht""}",5,5
+dual_final,"{""profile"": ""s180"", ""target_count"": ""20"", ""condition"": ""medium"", ""route_name"": ""gnn""}",5,5
+dual_final,"{""profile"": ""s180"", ""target_count"": ""40"", ""condition"": ""clean"", ""route_name"": ""epipolar_mht""}",5,5
+dual_final,"{""profile"": ""s180"", ""target_count"": ""40"", ""condition"": ""clean"", ""route_name"": ""gnn""}",5,5
+dual_final,"{""profile"": ""s180"", ""target_count"": ""40"", ""condition"": ""heavy"", ""route_name"": ""epipolar_mht""}",5,5
+dual_final,"{""profile"": ""s180"", ""target_count"": ""40"", ""condition"": ""heavy"", ""route_name"": ""gnn""}",5,5
+dual_final,"{""profile"": ""s180"", ""target_count"": ""40"", ""condition"": ""light"", ""route_name"": ""epipolar_mht""}",5,5
+dual_final,"{""profile"": ""s180"", ""target_count"": ""40"", ""condition"": ""light"", ""route_name"": ""gnn""}",5,5
+dual_final,"{""profile"": ""s180"", ""target_count"": ""40"", ""condition"": ""medium"", ""route_name"": ""epipolar_mht""}",5,5
+dual_final,"{""profile"": ""s180"", ""target_count"": ""40"", ""condition"": ""medium"", ""route_name"": ""gnn""}",5,5
+dual_final,"{""profile"": ""s180"", ""target_count"": ""60"", ""condition"": ""clean"", ""route_name"": ""epipolar_mht""}",5,5
+dual_final,"{""profile"": ""s180"", ""target_count"": ""60"", ""condition"": ""clean"", ""route_name"": ""gnn""}",5,5
+dual_final,"{""profile"": ""s180"", ""target_count"": ""60"", ""condition"": ""heavy"", ""route_name"": ""epipolar_mht""}",5,5
+dual_final,"{""profile"": ""s180"", ""target_count"": ""60"", ""condition"": ""heavy"", ""route_name"": ""gnn""}",5,5
+dual_final,"{""profile"": ""s180"", ""target_count"": ""60"", ""condition"": ""light"", ""route_name"": ""epipolar_mht""}",5,5
+dual_final,"{""profile"": ""s180"", ""target_count"": ""60"", ""condition"": ""light"", ""route_name"": ""gnn""}",5,5
+dual_final,"{""profile"": ""s180"", ""target_count"": ""60"", ""condition"": ""medium"", ""route_name"": ""epipolar_mht""}",5,5
+dual_final,"{""profile"": ""s180"", ""target_count"": ""60"", ""condition"": ""medium"", ""route_name"": ""gnn""}",5,5
+dual_rounds,"{""profile"": ""oracle_360"", ""target_count"": ""20"", ""condition"": ""clean"", ""route_name"": ""epipolar_mht""}",30,5
+dual_rounds,"{""profile"": ""oracle_360"", ""target_count"": ""40"", ""condition"": ""clean"", ""route_name"": ""epipolar_mht""}",30,5
+dual_rounds,"{""profile"": ""oracle_360"", ""target_count"": ""60"", ""condition"": ""clean"", ""route_name"": ""epipolar_mht""}",30,5
+dual_rounds,"{""profile"": ""oracle_360"", ""target_count"": ""20"", ""condition"": ""clean"", ""route_name"": ""gnn""}",30,5
+dual_rounds,"{""profile"": ""oracle_360"", ""target_count"": ""40"", ""condition"": ""clean"", ""route_name"": ""gnn""}",30,5
+dual_rounds,"{""profile"": ""oracle_360"", ""target_count"": ""60"", ""condition"": ""clean"", ""route_name"": ""gnn""}",30,5
+dual_rounds,"{""profile"": ""continuous_360"", ""target_count"": ""20"", ""condition"": ""clean"", ""route_name"": ""epipolar_mht""}",30,5
+dual_rounds,"{""profile"": ""continuous_360"", ""target_count"": ""20"", ""condition"": ""light"", ""route_name"": ""epipolar_mht""}",30,5
+dual_rounds,"{""profile"": ""continuous_360"", ""target_count"": ""20"", ""condition"": ""medium"", ""route_name"": ""epipolar_mht""}",30,5
+dual_rounds,"{""profile"": ""continuous_360"", ""target_count"": ""20"", ""condition"": ""heavy"", ""route_name"": ""epipolar_mht""}",30,5
+dual_rounds,"{""profile"": ""continuous_360"", ""target_count"": ""40"", ""condition"": ""clean"", ""route_name"": ""epipolar_mht""}",30,5
+dual_rounds,"{""profile"": ""continuous_360"", ""target_count"": ""40"", ""condition"": ""light"", ""route_name"": ""epipolar_mht""}",30,5
+dual_rounds,"{""profile"": ""continuous_360"", ""target_count"": ""40"", ""condition"": ""medium"", ""route_name"": ""epipolar_mht""}",30,5
+dual_rounds,"{""profile"": ""continuous_360"", ""target_count"": ""40"", ""condition"": ""heavy"", ""route_name"": ""epipolar_mht""}",30,5
+dual_rounds,"{""profile"": ""continuous_360"", ""target_count"": ""60"", ""condition"": ""light"", ""route_name"": ""epipolar_mht""}",30,5
+dual_rounds,"{""profile"": ""continuous_360"", ""target_count"": ""60"", ""condition"": ""clean"", ""route_name"": ""epipolar_mht""}",30,5
+dual_rounds,"{""profile"": ""continuous_360"", ""target_count"": ""60"", ""condition"": ""heavy"", ""route_name"": ""epipolar_mht""}",30,5
+dual_rounds,"{""profile"": ""continuous_360"", ""target_count"": ""60"", ""condition"": ""medium"", ""route_name"": ""epipolar_mht""}",30,5
+dual_rounds,"{""profile"": ""continuous_360"", ""target_count"": ""20"", ""condition"": ""clean"", ""route_name"": ""gnn""}",30,5
+dual_rounds,"{""profile"": ""continuous_360"", ""target_count"": ""20"", ""condition"": ""heavy"", ""route_name"": ""gnn""}",30,5
+dual_rounds,"{""profile"": ""continuous_360"", ""target_count"": ""20"", ""condition"": ""light"", ""route_name"": ""gnn""}",30,5
+dual_rounds,"{""profile"": ""continuous_360"", ""target_count"": ""20"", ""condition"": ""medium"", ""route_name"": ""gnn""}",30,5
+dual_rounds,"{""profile"": ""continuous_360"", ""target_count"": ""40"", ""condition"": ""clean"", ""route_name"": ""gnn""}",30,5
+dual_rounds,"{""profile"": ""continuous_360"", ""target_count"": ""40"", ""condition"": ""heavy"", ""route_name"": ""gnn""}",30,5
+dual_rounds,"{""profile"": ""continuous_360"", ""target_count"": ""40"", ""condition"": ""light"", ""route_name"": ""gnn""}",30,5
+dual_rounds,"{""profile"": ""continuous_360"", ""target_count"": ""40"", ""condition"": ""medium"", ""route_name"": ""gnn""}",30,5
+dual_rounds,"{""profile"": ""continuous_360"", ""target_count"": ""60"", ""condition"": ""clean"", ""route_name"": ""gnn""}",30,5
+dual_rounds,"{""profile"": ""continuous_360"", ""target_count"": ""60"", ""condition"": ""heavy"", ""route_name"": ""gnn""}",30,5
+dual_rounds,"{""profile"": ""continuous_360"", ""target_count"": ""60"", ""condition"": ""light"", ""route_name"": ""gnn""}",30,5
+dual_rounds,"{""profile"": ""continuous_360"", ""target_count"": ""60"", ""condition"": ""medium"", ""route_name"": ""gnn""}",30,5
+dual_rounds,"{""profile"": ""s180"", ""target_count"": ""20"", ""condition"": ""heavy"", ""route_name"": ""epipolar_mht""}",60,5
+dual_rounds,"{""profile"": ""s180"", ""target_count"": ""20"", ""condition"": ""medium"", ""route_name"": ""epipolar_mht""}",60,5
+dual_rounds,"{""profile"": ""s180"", ""target_count"": ""20"", ""condition"": ""light"", ""route_name"": ""epipolar_mht""}",60,5
+dual_rounds,"{""profile"": ""s180"", ""target_count"": ""20"", ""condition"": ""clean"", ""route_name"": ""epipolar_mht""}",60,5
+dual_rounds,"{""profile"": ""s180"", ""target_count"": ""40"", ""condition"": ""light"", ""route_name"": ""epipolar_mht""}",60,5
+dual_rounds,"{""profile"": ""s180"", ""target_count"": ""40"", ""condition"": ""clean"", ""route_name"": ""epipolar_mht""}",60,5
+dual_rounds,"{""profile"": ""s180"", ""target_count"": ""40"", ""condition"": ""medium"", ""route_name"": ""epipolar_mht""}",60,5
+dual_rounds,"{""profile"": ""s180"", ""target_count"": ""40"", ""condition"": ""heavy"", ""route_name"": ""epipolar_mht""}",60,5
+dual_rounds,"{""profile"": ""s180"", ""target_count"": ""60"", ""condition"": ""medium"", ""route_name"": ""epipolar_mht""}",60,5
+dual_rounds,"{""profile"": ""s180"", ""target_count"": ""60"", ""condition"": ""clean"", ""route_name"": ""epipolar_mht""}",60,5
+dual_rounds,"{""profile"": ""s180"", ""target_count"": ""60"", ""condition"": ""heavy"", ""route_name"": ""epipolar_mht""}",60,5
+dual_rounds,"{""profile"": ""s180"", ""target_count"": ""60"", ""condition"": ""light"", ""route_name"": ""epipolar_mht""}",60,5
+dual_rounds,"{""profile"": ""s180"", ""target_count"": ""20"", ""condition"": ""clean"", ""route_name"": ""gnn""}",60,5
+dual_rounds,"{""profile"": ""s180"", ""target_count"": ""20"", ""condition"": ""heavy"", ""route_name"": ""gnn""}",60,5
+dual_rounds,"{""profile"": ""s180"", ""target_count"": ""20"", ""condition"": ""light"", ""route_name"": ""gnn""}",60,5
+dual_rounds,"{""profile"": ""s180"", ""target_count"": ""20"", ""condition"": ""medium"", ""route_name"": ""gnn""}",60,5
+dual_rounds,"{""profile"": ""s180"", ""target_count"": ""40"", ""condition"": ""clean"", ""route_name"": ""gnn""}",60,5
+dual_rounds,"{""profile"": ""s180"", ""target_count"": ""40"", ""condition"": ""heavy"", ""route_name"": ""gnn""}",60,5
+dual_rounds,"{""profile"": ""s180"", ""target_count"": ""40"", ""condition"": ""light"", ""route_name"": ""gnn""}",60,5
+dual_rounds,"{""profile"": ""s180"", ""target_count"": ""40"", ""condition"": ""medium"", ""route_name"": ""gnn""}",60,5
+dual_rounds,"{""profile"": ""s180"", ""target_count"": ""60"", ""condition"": ""clean"", ""route_name"": ""gnn""}",60,5
+dual_rounds,"{""profile"": ""s180"", ""target_count"": ""60"", ""condition"": ""heavy"", ""route_name"": ""gnn""}",60,5
+dual_rounds,"{""profile"": ""s180"", ""target_count"": ""60"", ""condition"": ""light"", ""route_name"": ""gnn""}",60,5
+dual_rounds,"{""profile"": ""s180"", ""target_count"": ""60"", ""condition"": ""medium"", ""route_name"": ""gnn""}",60,5
+search_rows,"{""scenario_id"": ""n20_m8"", ""position_sigma_m"": ""30.0""}",5,5
+search_rows,"{""scenario_id"": ""n20_m8"", ""position_sigma_m"": ""60.0""}",5,5
+search_rows,"{""scenario_id"": ""n20_m8"", ""position_sigma_m"": ""100.0""}",5,5
+search_rows,"{""scenario_id"": ""n20_m30"", ""position_sigma_m"": ""30.0""}",5,5
+search_rows,"{""scenario_id"": ""n20_m30"", ""position_sigma_m"": ""60.0""}",5,5
+search_rows,"{""scenario_id"": ""n20_m30"", ""position_sigma_m"": ""100.0""}",5,5
+search_rows,"{""scenario_id"": ""n40_m50"", ""position_sigma_m"": ""30.0""}",5,5
+search_rows,"{""scenario_id"": ""n40_m50"", ""position_sigma_m"": ""60.0""}",5,5
+search_rows,"{""scenario_id"": ""n40_m50"", ""position_sigma_m"": ""100.0""}",5,5
+center_rows,"{""target_count"": ""20"", ""handover_mode"": ""anonymous"", ""attitude_mode"": ""normal"", ""navigation_mode"": ""satellite"", ""detection_mode"": ""ideal"", ""backend"": ""geometry""}",10,10
+center_rows,"{""target_count"": ""20"", ""handover_mode"": ""anonymous"", ""attitude_mode"": ""normal"", ""navigation_mode"": ""satellite"", ""detection_mode"": ""ideal"", ""backend"": ""gnn""}",10,10
+center_rows,"{""target_count"": ""20"", ""handover_mode"": ""anonymous"", ""attitude_mode"": ""normal"", ""navigation_mode"": ""satellite"", ""detection_mode"": ""light"", ""backend"": ""geometry""}",10,10
+center_rows,"{""target_count"": ""20"", ""handover_mode"": ""anonymous"", ""attitude_mode"": ""normal"", ""navigation_mode"": ""satellite"", ""detection_mode"": ""light"", ""backend"": ""gnn""}",10,10
+center_rows,"{""target_count"": ""20"", ""handover_mode"": ""anonymous"", ""attitude_mode"": ""normal"", ""navigation_mode"": ""visual_navigation"", ""detection_mode"": ""ideal"", ""backend"": ""geometry""}",10,10
+center_rows,"{""target_count"": ""20"", ""handover_mode"": ""anonymous"", ""attitude_mode"": ""normal"", ""navigation_mode"": ""visual_navigation"", ""detection_mode"": ""ideal"", ""backend"": ""gnn""}",10,10
+center_rows,"{""target_count"": ""20"", ""handover_mode"": ""anonymous"", ""attitude_mode"": ""normal"", ""navigation_mode"": ""visual_navigation"", ""detection_mode"": ""light"", ""backend"": ""geometry""}",10,10
+center_rows,"{""target_count"": ""20"", ""handover_mode"": ""anonymous"", ""attitude_mode"": ""normal"", ""navigation_mode"": ""visual_navigation"", ""detection_mode"": ""light"", ""backend"": ""gnn""}",10,10
+center_rows,"{""target_count"": ""20"", ""handover_mode"": ""anonymous"", ""attitude_mode"": ""degraded"", ""navigation_mode"": ""satellite"", ""detection_mode"": ""ideal"", ""backend"": ""geometry""}",10,10
+center_rows,"{""target_count"": ""20"", ""handover_mode"": ""anonymous"", ""attitude_mode"": ""degraded"", ""navigation_mode"": ""satellite"", ""detection_mode"": ""ideal"", ""backend"": ""gnn""}",10,10
+center_rows,"{""target_count"": ""20"", ""handover_mode"": ""anonymous"", ""attitude_mode"": ""degraded"", ""navigation_mode"": ""satellite"", ""detection_mode"": ""light"", ""backend"": ""geometry""}",10,10
+center_rows,"{""target_count"": ""20"", ""handover_mode"": ""anonymous"", ""attitude_mode"": ""degraded"", ""navigation_mode"": ""satellite"", ""detection_mode"": ""light"", ""backend"": ""gnn""}",10,10
+center_rows,"{""target_count"": ""20"", ""handover_mode"": ""anonymous"", ""attitude_mode"": ""degraded"", ""navigation_mode"": ""visual_navigation"", ""detection_mode"": ""ideal"", ""backend"": ""geometry""}",10,10
+center_rows,"{""target_count"": ""20"", ""handover_mode"": ""anonymous"", ""attitude_mode"": ""degraded"", ""navigation_mode"": ""visual_navigation"", ""detection_mode"": ""ideal"", ""backend"": ""gnn""}",10,10
+center_rows,"{""target_count"": ""20"", ""handover_mode"": ""anonymous"", ""attitude_mode"": ""degraded"", ""navigation_mode"": ""visual_navigation"", ""detection_mode"": ""light"", ""backend"": ""geometry""}",10,10
+center_rows,"{""target_count"": ""20"", ""handover_mode"": ""anonymous"", ""attitude_mode"": ""degraded"", ""navigation_mode"": ""visual_navigation"", ""detection_mode"": ""light"", ""backend"": ""gnn""}",10,10
+center_rows,"{""target_count"": ""20"", ""handover_mode"": ""coarse_hint"", ""attitude_mode"": ""normal"", ""navigation_mode"": ""satellite"", ""detection_mode"": ""ideal"", ""backend"": ""geometry""}",10,10
+center_rows,"{""target_count"": ""20"", ""handover_mode"": ""coarse_hint"", ""attitude_mode"": ""normal"", ""navigation_mode"": ""satellite"", ""detection_mode"": ""ideal"", ""backend"": ""gnn""}",10,10
+center_rows,"{""target_count"": ""20"", ""handover_mode"": ""coarse_hint"", ""attitude_mode"": ""normal"", ""navigation_mode"": ""satellite"", ""detection_mode"": ""light"", ""backend"": ""geometry""}",10,10
+center_rows,"{""target_count"": ""20"", ""handover_mode"": ""coarse_hint"", ""attitude_mode"": ""normal"", ""navigation_mode"": ""satellite"", ""detection_mode"": ""light"", ""backend"": ""gnn""}",10,10
+center_rows,"{""target_count"": ""20"", ""handover_mode"": ""coarse_hint"", ""attitude_mode"": ""normal"", ""navigation_mode"": ""visual_navigation"", ""detection_mode"": ""ideal"", ""backend"": ""geometry""}",10,10
+center_rows,"{""target_count"": ""20"", ""handover_mode"": ""coarse_hint"", ""attitude_mode"": ""normal"", ""navigation_mode"": ""visual_navigation"", ""detection_mode"": ""ideal"", ""backend"": ""gnn""}",10,10
+center_rows,"{""target_count"": ""20"", ""handover_mode"": ""coarse_hint"", ""attitude_mode"": ""normal"", ""navigation_mode"": ""visual_navigation"", ""detection_mode"": ""light"", ""backend"": ""geometry""}",10,10
+center_rows,"{""target_count"": ""20"", ""handover_mode"": ""coarse_hint"", ""attitude_mode"": ""normal"", ""navigation_mode"": ""visual_navigation"", ""detection_mode"": ""light"", ""backend"": ""gnn""}",10,10
+center_rows,"{""target_count"": ""20"", ""handover_mode"": ""coarse_hint"", ""attitude_mode"": ""degraded"", ""navigation_mode"": ""satellite"", ""detection_mode"": ""ideal"", ""backend"": ""geometry""}",10,10
+center_rows,"{""target_count"": ""20"", ""handover_mode"": ""coarse_hint"", ""attitude_mode"": ""degraded"", ""navigation_mode"": ""satellite"", ""detection_mode"": ""ideal"", ""backend"": ""gnn""}",10,10
+center_rows,"{""target_count"": ""20"", ""handover_mode"": ""coarse_hint"", ""attitude_mode"": ""degraded"", ""navigation_mode"": ""satellite"", ""detection_mode"": ""light"", ""backend"": ""geometry""}",10,10
+center_rows,"{""target_count"": ""20"", ""handover_mode"": ""coarse_hint"", ""attitude_mode"": ""degraded"", ""navigation_mode"": ""satellite"", ""detection_mode"": ""light"", ""backend"": ""gnn""}",10,10
+center_rows,"{""target_count"": ""20"", ""handover_mode"": ""coarse_hint"", ""attitude_mode"": ""degraded"", ""navigation_mode"": ""visual_navigation"", ""detection_mode"": ""ideal"", ""backend"": ""geometry""}",10,10
+center_rows,"{""target_count"": ""20"", ""handover_mode"": ""coarse_hint"", ""attitude_mode"": ""degraded"", ""navigation_mode"": ""visual_navigation"", ""detection_mode"": ""ideal"", ""backend"": ""gnn""}",10,10
+center_rows,"{""target_count"": ""20"", ""handover_mode"": ""coarse_hint"", ""attitude_mode"": ""degraded"", ""navigation_mode"": ""visual_navigation"", ""detection_mode"": ""light"", ""backend"": ""geometry""}",10,10
+center_rows,"{""target_count"": ""20"", ""handover_mode"": ""coarse_hint"", ""attitude_mode"": ""degraded"", ""navigation_mode"": ""visual_navigation"", ""detection_mode"": ""light"", ""backend"": ""gnn""}",10,10
+center_rows,"{""target_count"": ""40"", ""handover_mode"": ""anonymous"", ""attitude_mode"": ""normal"", ""navigation_mode"": ""satellite"", ""detection_mode"": ""ideal"", ""backend"": ""geometry""}",10,10
+center_rows,"{""target_count"": ""40"", ""handover_mode"": ""anonymous"", ""attitude_mode"": ""normal"", ""navigation_mode"": ""satellite"", ""detection_mode"": ""ideal"", ""backend"": ""gnn""}",10,10
+center_rows,"{""target_count"": ""40"", ""handover_mode"": ""anonymous"", ""attitude_mode"": ""normal"", ""navigation_mode"": ""satellite"", ""detection_mode"": ""light"", ""backend"": ""geometry""}",10,10
+center_rows,"{""target_count"": ""40"", ""handover_mode"": ""anonymous"", ""attitude_mode"": ""normal"", ""navigation_mode"": ""satellite"", ""detection_mode"": ""light"", ""backend"": ""gnn""}",10,10
+center_rows,"{""target_count"": ""40"", ""handover_mode"": ""anonymous"", ""attitude_mode"": ""normal"", ""navigation_mode"": ""visual_navigation"", ""detection_mode"": ""ideal"", ""backend"": ""geometry""}",10,10
+center_rows,"{""target_count"": ""40"", ""handover_mode"": ""anonymous"", ""attitude_mode"": ""normal"", ""navigation_mode"": ""visual_navigation"", ""detection_mode"": ""ideal"", ""backend"": ""gnn""}",10,10
+center_rows,"{""target_count"": ""40"", ""handover_mode"": ""anonymous"", ""attitude_mode"": ""normal"", ""navigation_mode"": ""visual_navigation"", ""detection_mode"": ""light"", ""backend"": ""geometry""}",10,10
+center_rows,"{""target_count"": ""40"", ""handover_mode"": ""anonymous"", ""attitude_mode"": ""normal"", ""navigation_mode"": ""visual_navigation"", ""detection_mode"": ""light"", ""backend"": ""gnn""}",10,10
+center_rows,"{""target_count"": ""40"", ""handover_mode"": ""anonymous"", ""attitude_mode"": ""degraded"", ""navigation_mode"": ""satellite"", ""detection_mode"": ""ideal"", ""backend"": ""geometry""}",10,10
+center_rows,"{""target_count"": ""40"", ""handover_mode"": ""anonymous"", ""attitude_mode"": ""degraded"", ""navigation_mode"": ""satellite"", ""detection_mode"": ""ideal"", ""backend"": ""gnn""}",10,10
+center_rows,"{""target_count"": ""40"", ""handover_mode"": ""anonymous"", ""attitude_mode"": ""degraded"", ""navigation_mode"": ""satellite"", ""detection_mode"": ""light"", ""backend"": ""geometry""}",10,10
+center_rows,"{""target_count"": ""40"", ""handover_mode"": ""anonymous"", ""attitude_mode"": ""degraded"", ""navigation_mode"": ""satellite"", ""detection_mode"": ""light"", ""backend"": ""gnn""}",10,10
+center_rows,"{""target_count"": ""40"", ""handover_mode"": ""anonymous"", ""attitude_mode"": ""degraded"", ""navigation_mode"": ""visual_navigation"", ""detection_mode"": ""ideal"", ""backend"": ""geometry""}",10,10
+center_rows,"{""target_count"": ""40"", ""handover_mode"": ""anonymous"", ""attitude_mode"": ""degraded"", ""navigation_mode"": ""visual_navigation"", ""detection_mode"": ""ideal"", ""backend"": ""gnn""}",10,10
+center_rows,"{""target_count"": ""40"", ""handover_mode"": ""anonymous"", ""attitude_mode"": ""degraded"", ""navigation_mode"": ""visual_navigation"", ""detection_mode"": ""light"", ""backend"": ""geometry""}",10,10
+center_rows,"{""target_count"": ""40"", ""handover_mode"": ""anonymous"", ""attitude_mode"": ""degraded"", ""navigation_mode"": ""visual_navigation"", ""detection_mode"": ""light"", ""backend"": ""gnn""}",10,10
+center_rows,"{""target_count"": ""40"", ""handover_mode"": ""coarse_hint"", ""attitude_mode"": ""normal"", ""navigation_mode"": ""satellite"", ""detection_mode"": ""ideal"", ""backend"": ""geometry""}",10,10
+center_rows,"{""target_count"": ""40"", ""handover_mode"": ""coarse_hint"", ""attitude_mode"": ""normal"", ""navigation_mode"": ""satellite"", ""detection_mode"": ""ideal"", ""backend"": ""gnn""}",10,10
+center_rows,"{""target_count"": ""40"", ""handover_mode"": ""coarse_hint"", ""attitude_mode"": ""normal"", ""navigation_mode"": ""satellite"", ""detection_mode"": ""light"", ""backend"": ""geometry""}",10,10
+center_rows,"{""target_count"": ""40"", ""handover_mode"": ""coarse_hint"", ""attitude_mode"": ""normal"", ""navigation_mode"": ""satellite"", ""detection_mode"": ""light"", ""backend"": ""gnn""}",10,10
+center_rows,"{""target_count"": ""40"", ""handover_mode"": ""coarse_hint"", ""attitude_mode"": ""normal"", ""navigation_mode"": ""visual_navigation"", ""detection_mode"": ""ideal"", ""backend"": ""geometry""}",10,10
+center_rows,"{""target_count"": ""40"", ""handover_mode"": ""coarse_hint"", ""attitude_mode"": ""normal"", ""navigation_mode"": ""visual_navigation"", ""detection_mode"": ""ideal"", ""backend"": ""gnn""}",10,10
+center_rows,"{""target_count"": ""40"", ""handover_mode"": ""coarse_hint"", ""attitude_mode"": ""normal"", ""navigation_mode"": ""visual_navigation"", ""detection_mode"": ""light"", ""backend"": ""geometry""}",10,10
+center_rows,"{""target_count"": ""40"", ""handover_mode"": ""coarse_hint"", ""attitude_mode"": ""normal"", ""navigation_mode"": ""visual_navigation"", ""detection_mode"": ""light"", ""backend"": ""gnn""}",10,10
+center_rows,"{""target_count"": ""40"", ""handover_mode"": ""coarse_hint"", ""attitude_mode"": ""degraded"", ""navigation_mode"": ""satellite"", ""detection_mode"": ""ideal"", ""backend"": ""geometry""}",10,10
+center_rows,"{""target_count"": ""40"", ""handover_mode"": ""coarse_hint"", ""attitude_mode"": ""degraded"", ""navigation_mode"": ""satellite"", ""detection_mode"": ""ideal"", ""backend"": ""gnn""}",10,10
+center_rows,"{""target_count"": ""40"", ""handover_mode"": ""coarse_hint"", ""attitude_mode"": ""degraded"", ""navigation_mode"": ""satellite"", ""detection_mode"": ""light"", ""backend"": ""geometry""}",10,10
+center_rows,"{""target_count"": ""40"", ""handover_mode"": ""coarse_hint"", ""attitude_mode"": ""degraded"", ""navigation_mode"": ""satellite"", ""detection_mode"": ""light"", ""backend"": ""gnn""}",10,10
+center_rows,"{""target_count"": ""40"", ""handover_mode"": ""coarse_hint"", ""attitude_mode"": ""degraded"", ""navigation_mode"": ""visual_navigation"", ""detection_mode"": ""ideal"", ""backend"": ""geometry""}",10,10
+center_rows,"{""target_count"": ""40"", ""handover_mode"": ""coarse_hint"", ""attitude_mode"": ""degraded"", ""navigation_mode"": ""visual_navigation"", ""detection_mode"": ""ideal"", ""backend"": ""gnn""}",10,10
+center_rows,"{""target_count"": ""40"", ""handover_mode"": ""coarse_hint"", ""attitude_mode"": ""degraded"", ""navigation_mode"": ""visual_navigation"", ""detection_mode"": ""light"", ""backend"": ""geometry""}",10,10
+center_rows,"{""target_count"": ""40"", ""handover_mode"": ""coarse_hint"", ""attitude_mode"": ""degraded"", ""navigation_mode"": ""visual_navigation"", ""detection_mode"": ""light"", ""backend"": ""gnn""}",10,10
+center_rows,"{""target_count"": ""60"", ""handover_mode"": ""anonymous"", ""attitude_mode"": ""normal"", ""navigation_mode"": ""satellite"", ""detection_mode"": ""ideal"", ""backend"": ""geometry""}",10,10
+center_rows,"{""target_count"": ""60"", ""handover_mode"": ""anonymous"", ""attitude_mode"": ""normal"", ""navigation_mode"": ""satellite"", ""detection_mode"": ""ideal"", ""backend"": ""gnn""}",10,10
+center_rows,"{""target_count"": ""60"", ""handover_mode"": ""anonymous"", ""attitude_mode"": ""normal"", ""navigation_mode"": ""satellite"", ""detection_mode"": ""light"", ""backend"": ""geometry""}",10,10
+center_rows,"{""target_count"": ""60"", ""handover_mode"": ""anonymous"", ""attitude_mode"": ""normal"", ""navigation_mode"": ""satellite"", ""detection_mode"": ""light"", ""backend"": ""gnn""}",10,10
+center_rows,"{""target_count"": ""60"", ""handover_mode"": ""anonymous"", ""attitude_mode"": ""normal"", ""navigation_mode"": ""visual_navigation"", ""detection_mode"": ""ideal"", ""backend"": ""geometry""}",10,10
+center_rows,"{""target_count"": ""60"", ""handover_mode"": ""anonymous"", ""attitude_mode"": ""normal"", ""navigation_mode"": ""visual_navigation"", ""detection_mode"": ""ideal"", ""backend"": ""gnn""}",10,10
+center_rows,"{""target_count"": ""60"", ""handover_mode"": ""anonymous"", ""attitude_mode"": ""normal"", ""navigation_mode"": ""visual_navigation"", ""detection_mode"": ""light"", ""backend"": ""geometry""}",10,10
+center_rows,"{""target_count"": ""60"", ""handover_mode"": ""anonymous"", ""attitude_mode"": ""normal"", ""navigation_mode"": ""visual_navigation"", ""detection_mode"": ""light"", ""backend"": ""gnn""}",10,10
+center_rows,"{""target_count"": ""60"", ""handover_mode"": ""anonymous"", ""attitude_mode"": ""degraded"", ""navigation_mode"": ""satellite"", ""detection_mode"": ""ideal"", ""backend"": ""geometry""}",10,10
+center_rows,"{""target_count"": ""60"", ""handover_mode"": ""anonymous"", ""attitude_mode"": ""degraded"", ""navigation_mode"": ""satellite"", ""detection_mode"": ""ideal"", ""backend"": ""gnn""}",10,10
+center_rows,"{""target_count"": ""60"", ""handover_mode"": ""anonymous"", ""attitude_mode"": ""degraded"", ""navigation_mode"": ""satellite"", ""detection_mode"": ""light"", ""backend"": ""geometry""}",10,10
+center_rows,"{""target_count"": ""60"", ""handover_mode"": ""anonymous"", ""attitude_mode"": ""degraded"", ""navigation_mode"": ""satellite"", ""detection_mode"": ""light"", ""backend"": ""gnn""}",10,10
+center_rows,"{""target_count"": ""60"", ""handover_mode"": ""anonymous"", ""attitude_mode"": ""degraded"", ""navigation_mode"": ""visual_navigation"", ""detection_mode"": ""ideal"", ""backend"": ""geometry""}",10,10
+center_rows,"{""target_count"": ""60"", ""handover_mode"": ""anonymous"", ""attitude_mode"": ""degraded"", ""navigation_mode"": ""visual_navigation"", ""detection_mode"": ""ideal"", ""backend"": ""gnn""}",10,10
+center_rows,"{""target_count"": ""60"", ""handover_mode"": ""anonymous"", ""attitude_mode"": ""degraded"", ""navigation_mode"": ""visual_navigation"", ""detection_mode"": ""light"", ""backend"": ""geometry""}",10,10
+center_rows,"{""target_count"": ""60"", ""handover_mode"": ""anonymous"", ""attitude_mode"": ""degraded"", ""navigation_mode"": ""visual_navigation"", ""detection_mode"": ""light"", ""backend"": ""gnn""}",10,10
+center_rows,"{""target_count"": ""60"", ""handover_mode"": ""coarse_hint"", ""attitude_mode"": ""normal"", ""navigation_mode"": ""satellite"", ""detection_mode"": ""ideal"", ""backend"": ""geometry""}",10,10
+center_rows,"{""target_count"": ""60"", ""handover_mode"": ""coarse_hint"", ""attitude_mode"": ""normal"", ""navigation_mode"": ""satellite"", ""detection_mode"": ""ideal"", ""backend"": ""gnn""}",10,10
+center_rows,"{""target_count"": ""60"", ""handover_mode"": ""coarse_hint"", ""attitude_mode"": ""normal"", ""navigation_mode"": ""satellite"", ""detection_mode"": ""light"", ""backend"": ""geometry""}",10,10
+center_rows,"{""target_count"": ""60"", ""handover_mode"": ""coarse_hint"", ""attitude_mode"": ""normal"", ""navigation_mode"": ""satellite"", ""detection_mode"": ""light"", ""backend"": ""gnn""}",10,10
+center_rows,"{""target_count"": ""60"", ""handover_mode"": ""coarse_hint"", ""attitude_mode"": ""normal"", ""navigation_mode"": ""visual_navigation"", ""detection_mode"": ""ideal"", ""backend"": ""geometry""}",10,10
+center_rows,"{""target_count"": ""60"", ""handover_mode"": ""coarse_hint"", ""attitude_mode"": ""normal"", ""navigation_mode"": ""visual_navigation"", ""detection_mode"": ""ideal"", ""backend"": ""gnn""}",10,10
+center_rows,"{""target_count"": ""60"", ""handover_mode"": ""coarse_hint"", ""attitude_mode"": ""normal"", ""navigation_mode"": ""visual_navigation"", ""detection_mode"": ""light"", ""backend"": ""geometry""}",10,10
+center_rows,"{""target_count"": ""60"", ""handover_mode"": ""coarse_hint"", ""attitude_mode"": ""normal"", ""navigation_mode"": ""visual_navigation"", ""detection_mode"": ""light"", ""backend"": ""gnn""}",10,10
+center_rows,"{""target_count"": ""60"", ""handover_mode"": ""coarse_hint"", ""attitude_mode"": ""degraded"", ""navigation_mode"": ""satellite"", ""detection_mode"": ""ideal"", ""backend"": ""geometry""}",10,10
+center_rows,"{""target_count"": ""60"", ""handover_mode"": ""coarse_hint"", ""attitude_mode"": ""degraded"", ""navigation_mode"": ""satellite"", ""detection_mode"": ""ideal"", ""backend"": ""gnn""}",10,10
+center_rows,"{""target_count"": ""60"", ""handover_mode"": ""coarse_hint"", ""attitude_mode"": ""degraded"", ""navigation_mode"": ""satellite"", ""detection_mode"": ""light"", ""backend"": ""geometry""}",10,10
+center_rows,"{""target_count"": ""60"", ""handover_mode"": ""coarse_hint"", ""attitude_mode"": ""degraded"", ""navigation_mode"": ""satellite"", ""detection_mode"": ""light"", ""backend"": ""gnn""}",10,10
+center_rows,"{""target_count"": ""60"", ""handover_mode"": ""coarse_hint"", ""attitude_mode"": ""degraded"", ""navigation_mode"": ""visual_navigation"", ""detection_mode"": ""ideal"", ""backend"": ""geometry""}",10,10
+center_rows,"{""target_count"": ""60"", ""handover_mode"": ""coarse_hint"", ""attitude_mode"": ""degraded"", ""navigation_mode"": ""visual_navigation"", ""detection_mode"": ""ideal"", ""backend"": ""gnn""}",10,10
+center_rows,"{""target_count"": ""60"", ""handover_mode"": ""coarse_hint"", ""attitude_mode"": ""degraded"", ""navigation_mode"": ""visual_navigation"", ""detection_mode"": ""light"", ""backend"": ""geometry""}",10,10
+center_rows,"{""target_count"": ""60"", ""handover_mode"": ""coarse_hint"", ""attitude_mode"": ""degraded"", ""navigation_mode"": ""visual_navigation"", ""detection_mode"": ""light"", ""backend"": ""gnn""}",10,10

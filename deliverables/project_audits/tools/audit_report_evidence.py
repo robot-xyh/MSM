@@ -17,6 +17,7 @@ import zipfile
 
 from markdown_it import MarkdownIt
 
+from audit_record_validation import read_strict_csv, read_strict_json, validate_records
 from audit_workspace_metadata import digest, manifest_metadata
 
 
@@ -180,6 +181,10 @@ def render_cell(row: dict, rule: dict) -> tuple[str, dict]:
         return str(rule["literal"]), {}
     fields = rule.get("fields", [rule["field"]] if "field" in rule else [])
     values = {name: lookup(row, name) for name in fields}
+    if any(value is None or (isinstance(value, str) and not value.strip()) for value in values.values()):
+        if not isinstance(rule.get("missing_text"), str):
+            raise ValueError("Missing display value requires an explicit missing_text rule")
+        return rule["missing_text"], values
     if "template" in rule:
         formats = rule.get("formats", [""] * len(fields))
         parts = [format(float(values[name]), fmt) if fmt else str(values[name])
@@ -236,26 +241,34 @@ def check_table(document: str, table: dict, binding: dict, sources: dict) -> lis
 
 def read_source(root: Path, config: dict) -> dict:
     rows, locations, files = [], [], []
-    for name in config.get("paths", [config.get("path")]):
+    if config["kind"] not in {"csv", "json"}:
+        raise ValueError(f"Unsupported source kind: {config['kind']!r}")
+    names = config.get("paths", [config.get("path")])
+    if not isinstance(names, list) or not names or any(not isinstance(name, str) or not name.strip() for name in names):
+        raise ValueError("Source paths must be a nonempty list of file names")
+    for name in names:
         path = root / name
         files.append({"path": name, "sha256": digest(path)})
         if config["kind"] == "csv":
-            with path.open(encoding="utf-8-sig", newline="") as stream:
-                items = list(csv.DictReader(stream))
+            items = read_strict_csv(path)
             rows.extend(items)
             locations.extend({"path": name, "selector": f"data_row:{index + 1}"}
                              for index in range(len(items)))
         else:
-            content = json.loads(path.read_text())
+            content = read_strict_json(path)
             for selector in config.get("selectors", [config.get("selector", "")]):
                 value = lookup(content, selector)
                 items = value if isinstance(value, list) else [value]
                 rows.extend(items)
                 locations.extend({"path": name, "selector": f"{selector}.{index}".lstrip(".")
-                                  if isinstance(value, list) else selector}
+                                 if isinstance(value, list) else selector}
                                  for index in range(len(items)))
+    if not all(isinstance(row, dict) for row in rows):
+        raise ValueError("Selected source records must be objects")
+    validation = (validate_records(rows, config["record_contract"]) if "record_contract" in config
+                  else {"status": "not_configured", "reason": "No record key or missingness rules supplied."})
     return {**config, "path": files[0]["path"], "files": files, "row_count": len(rows),
-            "rows": rows, "locations": locations}
+            "rows": rows, "locations": locations, "record_validation": validation}
 
 
 def expand_bindings(spec: dict) -> list[dict]:
@@ -275,7 +288,7 @@ def write_csv(path: Path, rows: list[dict], fields: list[str]) -> None:
         writer = csv.DictWriter(stream, fieldnames=fields, extrasaction="ignore", lineterminator="\n")
         writer.writeheader()
         for row in rows:
-            writer.writerow({key: json.dumps(value, ensure_ascii=False) if isinstance(value, (dict, list))
+            writer.writerow({key: json.dumps(value, ensure_ascii=False, allow_nan=False) if isinstance(value, (dict, list))
                              else value for key, value in row.items()})
 
 
@@ -286,9 +299,9 @@ def run(root: Path, spec_path: Path, output: Path, *, check_only: bool = False) 
         raise ValueError("Output must be a new directory under deliverables/project_audits.")
     if output.exists():
         raise FileExistsError(output)
-    spec = json.loads(spec_path.read_text())
+    spec = read_strict_json(spec_path)
     bindings = expand_bindings(spec)
-    snapshot = json.loads((root / spec["document_snapshot"]).read_text())
+    snapshot = read_strict_json(root / spec["document_snapshot"])
     head = subprocess.check_output(["git", "-C", str(root), "rev-parse", "HEAD"]).decode().strip()
     tracked = set(subprocess.check_output(["git", "-C", str(root), "ls-files", "-z"]).decode().split("\0"))
     sources = {key: read_source(root, value) for key, value in spec["sources"].items()}
@@ -352,8 +365,9 @@ def run(root: Path, spec_path: Path, output: Path, *, check_only: bool = False) 
                        "Images are checked by path and bytes, not by chart interpretation or rendered layout.",
                        "Current content hashes do not establish historical execution provenance."]}
     if not check_only:
+        encoded_summary = json.dumps(summary, ensure_ascii=False, indent=2, allow_nan=False) + "\n"
         output.mkdir(parents=True, exist_ok=False)
-        (output / "REPORT_EVIDENCE_INDEX.json").write_text(json.dumps(summary, ensure_ascii=False, indent=2) + "\n")
+        (output / "REPORT_EVIDENCE_INDEX.json").write_text(encoded_summary)
         write_csv(output / "TABLE_VALUE_CHECKS.csv", checks,
                   ["document", "table_index", "section", "table_line", "row", "column", "reported",
                    "source", "selector", "source_row", "source_fields", "source_values", "expected", "status"])

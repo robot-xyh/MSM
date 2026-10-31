@@ -1,0 +1,336 @@
+{
+  "module": "D4",
+  "synced_at": "2026-09-26T14:29:51Z",
+  "scope": "纯文档档案维护，2026-09-26 为资料同步日期，不是新的实验日期。原 Goal 状态不因文档同步而改变。",
+  "changed_files": [
+    "research_modules/d4_distributed_fallback/README.md",
+    "research_modules/d4_distributed_fallback/PLAN.md",
+    "research_modules/d4_distributed_fallback/docs/README.md",
+    "research_modules/d4_distributed_fallback/docs/MODULE_PRINCIPLES_CN.md",
+    "research_modules/d4_distributed_fallback/docs/ALGORITHM_AND_IMPLEMENTATION.md",
+    "research_modules/d4_distributed_fallback/reports/AIRSIM_INTEGRATION_PLAN.md",
+    "research_modules/d4_distributed_fallback/reports/EXPERIMENT_REPORT.md",
+    "subagent_reviews/D4_IMPLEMENTATION_GAP_AUDIT.md",
+    "subagent_reviews/D4_DISTRIBUTED_FALLBACK_REVIEW_AND_PLAN.md",
+    "subagent_reviews/D4_M_TO_N_DISTRIBUTED_COALITION_REVIEW.md",
+    "research_modules/d4_distributed_fallback/docs/CURRENT_EVIDENCE_STATUS_CN.md"
+  ],
+  "checked_unchanged": [
+    {
+      "path": "research_modules/d4_distributed_fallback/model_registry/README.md",
+      "exists": true,
+      "check_scope": "文件角色/日期范围及 BEFORE.json 哈希核对；未宣称本轮逐行复审其全部正文",
+      "reason": "现有模型登记说明针对冻结旧候选及其权限，不是 v8 当前来源进度入口；保留不可变候选身份和模型登记，不作无关修改。"
+    },
+    {
+      "path": "research_modules/d4_distributed_fallback/reports/D4_A2_CURRENT_LINEAGE_CANDIDATE_DIAGNOSTIC_20260728.md",
+      "exists": true,
+      "check_scope": "文件角色/日期范围及 BEFORE.json 哈希核对；未宣称本轮逐行复审其全部正文",
+      "reason": "属于有特定日期或冻结批次的历史实验/诊断/来源报告，不是集中当前状态入口；由新集中说明解释其历史阶段，保留原报告及其引用完整性。"
+    },
+    {
+      "path": "research_modules/d4_distributed_fallback/reports/D4_A2_CURRENT_LINEAGE_SHADOW_RUNTIME_BOUNDARY_20260728.md",
+      "exists": true,
+      "check_scope": "文件角色/日期范围及 BEFORE.json 哈希核对；未宣称本轮逐行复审其全部正文",
+      "reason": "属于有特定日期或冻结批次的历史实验/诊断/来源报告，不是集中当前状态入口；由新集中说明解释其历史阶段，保留原报告及其引用完整性。"
+    },
+    {
+      "path": "research_modules/d4_distributed_fallback/reports/D4_A2_V8_SOURCE_VIABILITY_20260801/REPORT_CN.md",
+      "exists": true,
+      "check_scope": "文件角色/日期范围及 BEFORE.json 哈希核对；未宣称本轮逐行复审其全部正文",
+      "reason": "属于有特定日期或冻结批次的历史实验/诊断/来源报告，不是集中当前状态入口；由新集中说明解释其历史阶段，保留原报告及其引用完整性。"
+    },
+    {
+      "path": "research_modules/d4_distributed_fallback/reports/D4_REGION_ACTION_COVERAGE_CURRICULUM_20260721.md",
+      "exists": true,
+      "check_scope": "文件角色/日期范围及 BEFORE.json 哈希核对；未宣称本轮逐行复审其全部正文",
+      "reason": "属于有特定日期或冻结批次的历史实验/诊断/来源报告，不是集中当前状态入口；由新集中说明解释其历史阶段，保留原报告及其引用完整性。"
+    },
+    {
+      "path": "research_modules/d4_distributed_fallback/reports/D4_REGION_RESOURCE_FULL_SAMPLE_ADMISSION_20260721.md",
+      "exists": true,
+      "check_scope": "文件角色/日期范围及 BEFORE.json 哈希核对；未宣称本轮逐行复审其全部正文",
+      "reason": "属于有特定日期或冻结批次的历史实验/诊断/来源报告，不是集中当前状态入口；由新集中说明解释其历史阶段，保留原报告及其引用完整性。"
+    },
+    {
+      "path": "research_modules/d4_distributed_fallback/reports/D4_V4_PERSISTED_CANDIDATE_IMMUTABILITY_REVIEW_20260729.md",
+      "exists": true,
+      "check_scope": "文件角色/日期范围及 BEFORE.json 哈希核对；未宣称本轮逐行复审其全部正文",
+      "reason": "属于有特定日期或冻结批次的历史实验/诊断/来源报告，不是集中当前状态入口；由新集中说明解释其历史阶段，保留原报告及其引用完整性。"
+    },
+    {
+      "path": "research_modules/d4_distributed_fallback/reports/D4_V5_CONFIDENCE_CALIBRATION_CANDIDATE_20260729.md",
+      "exists": true,
+      "check_scope": "文件角色/日期范围及 BEFORE.json 哈希核对；未宣称本轮逐行复审其全部正文",
+      "reason": "属于有特定日期或冻结批次的历史实验/诊断/来源报告，不是集中当前状态入口；由新集中说明解释其历史阶段，保留原报告及其引用完整性。"
+    },
+    {
+      "path": "research_modules/d4_distributed_fallback/reports/D4_V6_EDGE_TRANSFER_DEVELOPMENT_CANDIDATE_20260729.md",
+      "exists": true,
+      "check_scope": "文件角色/日期范围及 BEFORE.json 哈希核对；未宣称本轮逐行复审其全部正文",
+      "reason": "属于有特定日期或冻结批次的历史实验/诊断/来源报告，不是集中当前状态入口；由新集中说明解释其历史阶段，保留原报告及其引用完整性。"
+    },
+    {
+      "path": "research_modules/d4_distributed_fallback/reports/D4_V7_FAILURE_ATTRIBUTION_V8_DATA_REQUEST_20260801/REPORT_CN.md",
+      "exists": true,
+      "check_scope": "文件角色/日期范围及 BEFORE.json 哈希核对；未宣称本轮逐行复审其全部正文",
+      "reason": "属于有特定日期或冻结批次的历史实验/诊断/来源报告，不是集中当前状态入口；由新集中说明解释其历史阶段，保留原报告及其引用完整性。"
+    },
+    {
+      "path": "research_modules/d4_distributed_fallback/reports/D4_V7_RULE_NODE_TRANSFER_RESIDUAL_DEVELOPMENT_REPORT_20260730.md",
+      "exists": true,
+      "check_scope": "文件角色/日期范围及 BEFORE.json 哈希核对；未宣称本轮逐行复审其全部正文",
+      "reason": "属于有特定日期或冻结批次的历史实验/诊断/来源报告，不是集中当前状态入口；由新集中说明解释其历史阶段，保留原报告及其引用完整性。"
+    },
+    {
+      "path": "research_modules/d4_distributed_fallback/reports/D4_V7_SOURCE_INDEPENDENT_EVALUATION_20260730.md",
+      "exists": true,
+      "check_scope": "文件角色/日期范围及 BEFORE.json 哈希核对；未宣称本轮逐行复审其全部正文",
+      "reason": "属于有特定日期或冻结批次的历史实验/诊断/来源报告，不是集中当前状态入口；由新集中说明解释其历史阶段，保留原报告及其引用完整性。"
+    },
+    {
+      "path": "research_modules/d4_distributed_fallback/reports/FORMAL_R0_COALITION_ACK_DIAGNOSTIC_20260730.md",
+      "exists": true,
+      "check_scope": "文件角色/日期范围及 BEFORE.json 哈希核对；未宣称本轮逐行复审其全部正文",
+      "reason": "属于有特定日期或冻结批次的历史实验/诊断/来源报告，不是集中当前状态入口；由新集中说明解释其历史阶段，保留原报告及其引用完整性。"
+    },
+    {
+      "path": "research_modules/d4_distributed_fallback/reports/HIGH_THREAT_PRECHECK_V3_COALITION_DIAGNOSTIC_20260730.md",
+      "exists": true,
+      "check_scope": "文件角色/日期范围及 BEFORE.json 哈希核对；未宣称本轮逐行复审其全部正文",
+      "reason": "属于有特定日期或冻结批次的历史实验/诊断/来源报告，不是集中当前状态入口；由新集中说明解释其历史阶段，保留原报告及其引用完整性。"
+    },
+    {
+      "path": "research_modules/d4_distributed_fallback/reports/region_resource_a2_actual_policy_calibration_20260727_v1/DIAGNOSTIC_REPORT_CN.md",
+      "exists": true,
+      "check_scope": "文件角色/日期范围及 BEFORE.json 哈希核对；未宣称本轮逐行复审其全部正文",
+      "reason": "属于有特定日期或冻结批次的历史实验/诊断/来源报告，不是集中当前状态入口；由新集中说明解释其历史阶段，保留原报告及其引用完整性。"
+    },
+    {
+      "path": "research_modules/d4_distributed_fallback/reports/region_resource_a2_development_calibrated_20260726_v1/DEVELOPMENT_CANDIDATE_REPORT_CN.md",
+      "exists": true,
+      "check_scope": "文件角色/日期范围及 BEFORE.json 哈希核对；未宣称本轮逐行复审其全部正文",
+      "reason": "属于有特定日期或冻结批次的历史实验/诊断/来源报告，不是集中当前状态入口；由新集中说明解释其历史阶段，保留原报告及其引用完整性。"
+    },
+    {
+      "path": "research_modules/d4_distributed_fallback/reports/region_resource_bc_900_20260720/LOCAL_BUNDLE_LOCATION.md",
+      "exists": true,
+      "check_scope": "文件角色/日期范围及 BEFORE.json 哈希核对；未宣称本轮逐行复审其全部正文",
+      "reason": "属于有特定日期或冻结批次的历史实验/诊断/来源报告，不是集中当前状态入口；由新集中说明解释其历史阶段，保留原报告及其引用完整性。"
+    },
+    {
+      "path": "research_modules/d4_distributed_fallback/reports/region_resource_bc_900_20260720/TRAINING_COMMAND.md",
+      "exists": true,
+      "check_scope": "文件角色/日期范围及 BEFORE.json 哈希核对；未宣称本轮逐行复审其全部正文",
+      "reason": "属于有特定日期或冻结批次的历史实验/诊断/来源报告，不是集中当前状态入口；由新集中说明解释其历史阶段，保留原报告及其引用完整性。"
+    },
+    {
+      "path": "research_modules/d4_distributed_fallback/reports/region_resource_bc_900_20260720/TRAINING_REPORT_CN.md",
+      "exists": true,
+      "check_scope": "文件角色/日期范围及 BEFORE.json 哈希核对；未宣称本轮逐行复审其全部正文",
+      "reason": "属于有特定日期或冻结批次的历史实验/诊断/来源报告，不是集中当前状态入口；由新集中说明解释其历史阶段，保留原报告及其引用完整性。"
+    },
+    {
+      "path": "research_modules/d4_distributed_fallback/docs/AIRSIM_INTEGRATION_PLAN.md",
+      "exists": false,
+      "reason": "该 docs 路径不存在；实际 reports/AIRSIM_INTEGRATION_PLAN.md 已插入状态链接，不新建同名空壳。"
+    },
+    {
+      "path": "research_modules/d4_distributed_fallback/docs/EXPERIMENT_REPORT.md",
+      "exists": false,
+      "reason": "该 docs 路径不存在；实际 reports/EXPERIMENT_REPORT.md 已插入状态链接，不新建同名空壳。"
+    }
+  ],
+  "documentation_checked": [
+    {
+      "path": "research_modules/d4_distributed_fallback/README.md",
+      "result": "已改",
+      "reason": "仅在 H1 后插入一次标记块及相对链接；历史正文、日期、勾选和 GAP 状态保留。"
+    },
+    {
+      "path": "research_modules/d4_distributed_fallback/PLAN.md",
+      "result": "已改",
+      "reason": "仅在 H1 后插入一次标记块及相对链接；历史正文、日期、勾选和 GAP 状态保留。"
+    },
+    {
+      "path": "research_modules/d4_distributed_fallback/docs/README.md",
+      "result": "已改",
+      "reason": "仅在 H1 后插入一次标记块及相对链接；历史正文、日期、勾选和 GAP 状态保留。"
+    },
+    {
+      "path": "research_modules/d4_distributed_fallback/docs/MODULE_PRINCIPLES_CN.md",
+      "result": "已改",
+      "reason": "仅在 H1 后插入一次标记块及相对链接；历史正文、日期、勾选和 GAP 状态保留。"
+    },
+    {
+      "path": "research_modules/d4_distributed_fallback/docs/ALGORITHM_AND_IMPLEMENTATION.md",
+      "result": "已改",
+      "reason": "仅在 H1 后插入一次标记块及相对链接；历史正文、日期、勾选和 GAP 状态保留。"
+    },
+    {
+      "path": "research_modules/d4_distributed_fallback/reports/AIRSIM_INTEGRATION_PLAN.md",
+      "result": "已改",
+      "reason": "仅在 H1 后插入一次标记块及相对链接；历史正文、日期、勾选和 GAP 状态保留。"
+    },
+    {
+      "path": "research_modules/d4_distributed_fallback/reports/EXPERIMENT_REPORT.md",
+      "result": "已改",
+      "reason": "仅在 H1 后插入一次标记块及相对链接；历史正文、日期、勾选和 GAP 状态保留。"
+    },
+    {
+      "path": "subagent_reviews/D4_IMPLEMENTATION_GAP_AUDIT.md",
+      "result": "已改",
+      "reason": "仅在 H1 后插入一次标记块及相对链接；历史正文、日期、勾选和 GAP 状态保留。"
+    },
+    {
+      "path": "subagent_reviews/D4_DISTRIBUTED_FALLBACK_REVIEW_AND_PLAN.md",
+      "result": "已改",
+      "reason": "仅在 H1 后插入一次标记块及相对链接；历史正文、日期、勾选和 GAP 状态保留。"
+    },
+    {
+      "path": "subagent_reviews/D4_M_TO_N_DISTRIBUTED_COALITION_REVIEW.md",
+      "result": "已改",
+      "reason": "仅在 H1 后插入一次标记块及相对链接；历史正文、日期、勾选和 GAP 状态保留。"
+    },
+    {
+      "path": "research_modules/d4_distributed_fallback/docs/AIRSIM_INTEGRATION_PLAN.md",
+      "result": "无需改",
+      "reason": "路径不存在；实际 reports 下对应文档已改，不建立重复空壳。"
+    },
+    {
+      "path": "research_modules/d4_distributed_fallback/docs/EXPERIMENT_REPORT.md",
+      "result": "无需改",
+      "reason": "路径不存在；实际 reports 下对应文档已改，不建立重复空壳。"
+    }
+  ],
+  "evidence": [
+    "deliverables/project_audits/goal_owner_review_sync_20260926_v1/owners/D4_review.json",
+    "deliverables/project_audits/goal_resume_audit_20260926_v1/SOURCE_DIRECTORY_STATUS.json",
+    "deliverables/project_audits/goal_resume_audit_20260926_v1/SUPPLEMENTAL_CHECKS.json",
+    "deliverables/project_audits/goal_resume_audit_20260926_v1/历史结果定位与完整性核对_CN.md",
+    "research_modules/scalable_3d_simulation/docs/SCALABLE_3D_GOAL_COMPLETION_AUDIT_20260803_CN.md",
+    "research_modules/scalable_3d_simulation/docs/SCALABLE_3D_GOAL_PROGRESS_AND_NEXT_PLAN_20260807_CN.md",
+    "deliverables/project_audits/goal_module_status_sync_20260926_v1/BEFORE.json"
+  ],
+  "synchronized_facts": {
+    "historical_generation_date": "2026-08-03",
+    "source_commit": "6737b44515526b5269ae98faad39e1f92716f423",
+    "completed_episode_count": 324,
+    "planned_episode_count": 324,
+    "source_record_count": 921,
+    "seed_range": "28100-28423",
+    "split": "TRAIN-only",
+    "audit_status": "source_integrity_audit_passed_not_training_authorized",
+    "v8_trained": false,
+    "validation_test_frozen": false,
+    "earlier_stage": "0/324 与 fcf8525 preflight 是旧日期阶段，未被覆写或回填。",
+    "proposal_implementation_boundary": "临时中心机领导方案未同步为 D4 正式实现；既有完全分布式联盟路径与方案分别记录，本轮均不修改。",
+    "formal_450_status": "摘要可查、完整记录未定位",
+    "original_goal_status_changed": false,
+    "gap_closed": false,
+    "capability_upgraded": false
+  },
+  "checks": {
+    "passed": true,
+    "baseline_path": "deliverables/project_audits/goal_module_status_sync_20260926_v1/BEFORE.json",
+    "baseline_sha256": "67e2fa5b831e96c51a10eb8d83da60b351b73b2761be3347fda2840c5f18f771",
+    "baseline_created_at": "2026-09-26T14:27:00.930234+00:00",
+    "d4_baseline_files_checked": 229,
+    "modified_original_markdown": 10,
+    "unchanged_baseline_files": 219,
+    "new_module_markdown": 1,
+    "central_status_lines": 54,
+    "historical_body_checks": [
+      {
+        "path": "research_modules/d4_distributed_fallback/PLAN.md",
+        "before_sha256": "abe90773f5bfbd504a5d9e6b39456a0901fe48f7ae61c053735c9e1e7ad3553b",
+        "after_sha256": "471b0e05913639b872ab11ec7d03d19fd32fb76fe29667c88e48dd5d38e06ded",
+        "stripped_sha256": "abe90773f5bfbd504a5d9e6b39456a0901fe48f7ae61c053735c9e1e7ad3553b",
+        "historical_body_preserved": true
+      },
+      {
+        "path": "research_modules/d4_distributed_fallback/README.md",
+        "before_sha256": "2b6028849e0cc3504fe7238631bd7259dfeb6ba04d626c285e3e69f36e263481",
+        "after_sha256": "224152169d74a7ae56b708dbff78f5cbbe339c04aef6b8fcdc61fd0c95e4167a",
+        "stripped_sha256": "2b6028849e0cc3504fe7238631bd7259dfeb6ba04d626c285e3e69f36e263481",
+        "historical_body_preserved": true
+      },
+      {
+        "path": "research_modules/d4_distributed_fallback/docs/ALGORITHM_AND_IMPLEMENTATION.md",
+        "before_sha256": "db894a28facb157bd346c6d8221524f82722cc7cd85025b67af0f605deb9c8d6",
+        "after_sha256": "14ac95d01d2b28b4768dc2f0561f6fe3253e3c949352afde5b452ee749317de1",
+        "stripped_sha256": "db894a28facb157bd346c6d8221524f82722cc7cd85025b67af0f605deb9c8d6",
+        "historical_body_preserved": true
+      },
+      {
+        "path": "research_modules/d4_distributed_fallback/docs/MODULE_PRINCIPLES_CN.md",
+        "before_sha256": "bf26510fe754a58c33de9f3f03ba83eb481f75239f327339f2b6fb6a8e2fbbe5",
+        "after_sha256": "4117f78df17cc96b28c9f9b5b693801bcf890dee326c82e64d1aa7a3d549f0bb",
+        "stripped_sha256": "bf26510fe754a58c33de9f3f03ba83eb481f75239f327339f2b6fb6a8e2fbbe5",
+        "historical_body_preserved": true
+      },
+      {
+        "path": "research_modules/d4_distributed_fallback/docs/README.md",
+        "before_sha256": "abb354ea0b852b4b24795ef48b9e5e0d41f06b783e9dd9196dcd43643719b8f8",
+        "after_sha256": "67cd3b3ee9338520aba9a11a8a48af4f6338ea04919e20d352903f115737d02b",
+        "stripped_sha256": "abb354ea0b852b4b24795ef48b9e5e0d41f06b783e9dd9196dcd43643719b8f8",
+        "historical_body_preserved": true
+      },
+      {
+        "path": "research_modules/d4_distributed_fallback/reports/AIRSIM_INTEGRATION_PLAN.md",
+        "before_sha256": "bd62858e669bfb1f6bdd84a48c0f12b11634f33fa6b1ff053ff16b0a22423d16",
+        "after_sha256": "f9cea961aba877009b1717b04d8b119906e61a54a238a05432f3324367c660e7",
+        "stripped_sha256": "bd62858e669bfb1f6bdd84a48c0f12b11634f33fa6b1ff053ff16b0a22423d16",
+        "historical_body_preserved": true
+      },
+      {
+        "path": "research_modules/d4_distributed_fallback/reports/EXPERIMENT_REPORT.md",
+        "before_sha256": "96f4a7bbe1ed01016c673f87a6a1aa5865aff99ba6208cb1fb0eccb6902d7493",
+        "after_sha256": "ca1f48a6f4aa9f3d9f6d982dd8f95b26ab924f57aaf0964fb46be888e8844012",
+        "stripped_sha256": "96f4a7bbe1ed01016c673f87a6a1aa5865aff99ba6208cb1fb0eccb6902d7493",
+        "historical_body_preserved": true
+      },
+      {
+        "path": "subagent_reviews/D4_DISTRIBUTED_FALLBACK_REVIEW_AND_PLAN.md",
+        "before_sha256": "6d9e6999371bc1161e47f4ac24316ca63c633f49dafe74ca605da6ac2f849962",
+        "after_sha256": "06d62d2ce692ee07831b1e12ac868dc4ca86699e3fcaf27ebeec6181bf73e34f",
+        "stripped_sha256": "6d9e6999371bc1161e47f4ac24316ca63c633f49dafe74ca605da6ac2f849962",
+        "historical_body_preserved": true
+      },
+      {
+        "path": "subagent_reviews/D4_IMPLEMENTATION_GAP_AUDIT.md",
+        "before_sha256": "c754a444db04a8761ff1a76167613b60b382595cdf3f51f52cbae8576cca76da",
+        "after_sha256": "8cd923c45d9cfa37ffad440c60b9deeb20144d33a0ab1432f80ca28f00a6b782",
+        "stripped_sha256": "c754a444db04a8761ff1a76167613b60b382595cdf3f51f52cbae8576cca76da",
+        "historical_body_preserved": true
+      },
+      {
+        "path": "subagent_reviews/D4_M_TO_N_DISTRIBUTED_COALITION_REVIEW.md",
+        "before_sha256": "33dc6e26344f466e9c5486b7fb340bd3d36e2d6707b579f90437ce42203ffc24",
+        "after_sha256": "43e24df3b502fe8b578e3b024992e8afb5a03a70c81cd5f2f980774c64515e19",
+        "stripped_sha256": "33dc6e26344f466e9c5486b7fb340bd3d36e2d6707b579f90437ce42203ffc24",
+        "historical_body_preserved": true
+      }
+    ],
+    "new_link_count": 26,
+    "new_links_all_exist": true,
+    "marker_position_and_two_newlines": true,
+    "prior_reports_checked": 8,
+    "prior_reports_unchanged": true,
+    "git_diff_check_exit_code": 0,
+    "failures": [],
+    "verification_mode": "普通文档链接、标记剥离逐字节/SHA256、指定基线文件字节校验和 Git diff --check；未执行主级 check_sync.py verify，因为它会写入未授权的主级校验文件。",
+    "non_document_changes": 0,
+    "owner_manifest_excluded_from_changed_files": true,
+    "algorithm_tests_run": false,
+    "experiments_run": false
+  },
+  "limitations": [
+    "只同步上一批已复核事实，不重新审计训练样本、真值载荷或实验指标，不认证重跑/重评分能力。",
+    "v8 未训练且 validation/test 来源未冻结；来源审计通过不授予训练、模型消费或运行权限。",
+    "保留现有能力、GAP 分类和历史任务勾选；原 Goal 状态不因文档同步而改变。",
+    "正式 450 组完整记录仍未定位，728 组来源不能替代；旧候选和独立演示不能替代当前代际统一验收。",
+    "本所有者检查覆盖主级 1180 文件基线中的 D4 229 个文件，以及 8 份受保护报告；其他模块与全批交付一致性由 main 汇总，不作跨模块完成声明。",
+    "未运行 pytest、模型、训练、GPU、仿真、配准、控制或重新评分；未委托子智能体。"
+  ]
+}

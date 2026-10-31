@@ -1,0 +1,7 @@
+{
+  "inventory": "/home/linux/Documents/MSM/deliverables/project_audits/20260925_preservation_v1/FILES.jsonl.gz",
+  "inventory_sha256": "f98b7fdd3c184d7b907fba4e8ba4952cead373d4d500b6feaf4cb9be4a740d2d",
+  "records_read": 237800,
+  "hits": [],
+  "limitation": "Metadata-only inventory rows cannot be matched by checksum."
+}

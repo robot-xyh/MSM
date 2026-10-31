@@ -1,0 +1,26 @@
+[
+  {
+    "path": "deliverables/leadership_report/双光电多目标轨迹配准与交汇定位试验报告_CN.docx",
+    "sha256": "b7ea538761a53fffc0d44fb658b1f45350ff144c61346ab4b8d4999aee7e19fb",
+    "operation_count": 3,
+    "changed_part": "word/document.xml"
+  },
+  {
+    "path": "deliverables/leadership_report/协同搜索试验报告_CN.docx",
+    "sha256": "71dd55cb7eb76d3f0491227ac212c1ced2523c88996355ec98b759a1a0e4acb4",
+    "operation_count": 1,
+    "changed_part": "word/document.xml"
+  },
+  {
+    "path": "deliverables/leadership_report/末端目标配准试验报告_CN.docx",
+    "sha256": "6a3efa97807b2ebe6bc29c6b8dab8144f7b0932b0e42bcec407ff2a5542e1ceb",
+    "operation_count": 1,
+    "changed_part": "word/document.xml"
+  },
+  {
+    "path": "deliverables/leadership_report/中心航迹与拦截无人机目标配准试验报告_CN.docx",
+    "sha256": "ba43ffcac9f16d1cddc74684461195a4b2516638405b94e7e583ddf789b59a42",
+    "operation_count": 1,
+    "changed_part": "word/document.xml"
+  }
+]

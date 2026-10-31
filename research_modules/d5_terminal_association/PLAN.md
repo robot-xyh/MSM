@@ -1,5 +1,10 @@
 # D5 终端视觉配准与身份认证计划
 
+<!-- evidence-status-sync:20260926:begin -->
+> 2026-09-26 仅作资料同步，不是新的实验日期。当前口径统一见 [D5 当前证据状态](docs/CURRENT_EVIDENCE_STATUS_CN.md)。
+> 下列旧章节按其日期作历史阶段阅读；本轮不改旧正文、任务勾选或 GAP，不升级能力，原 Goal 状态不变。
+<!-- evidence-status-sync:20260926:end -->
+
 ## 2026-08-10 有状态时序几何关联实施状态
 
 状态：**D5 接口、单元测试和 main runtime 接线完成；v3 真实 AirSim 复跑与多 seed 验收待执行**。

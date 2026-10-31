@@ -1,0 +1,272 @@
+{
+  "module": "D1",
+  "reviewed_at": "2026-09-26",
+  "scope": {
+    "mode": "read_only_historical_evidence_review",
+    "source_register": "deliverables/project_audits/goal_resume_audit_20260926_v1/GOAL_REQUIREMENT_EVIDENCE.csv",
+    "source_detail": "deliverables/project_audits/goal_resume_audit_20260926_v1/逐项证据明细_CN.md",
+    "selection": "owner 明列 D1，或 D1至D5、D1至D6、D1至D7 等范围包含 D1；不按 requirement 正文扩大责任范围。",
+    "requirement_ids": ["G04", "G16", "G17", "G38", "G41", "G49", "G55", "G57"],
+    "requirement_count": 8,
+    "authority": "main 授权只新建本批 owners/D1_review.json 和 D1_review.md；未委托子智能体。",
+    "status_semantics": "suggested_status 仅为主级审计建议，不改变模块能力、默认配置、GAP 或原状态表。",
+    "historical_evidence_dates": ["2026-07-15", "2026-07-24", "2026-07-25", "2026-07-31", "2026-08-01", "2026-08-03", "2026-08-07"],
+    "inspection_limits": [
+      "定向读取现有审计、D1 文档相关章节、主级序列化与对象传递片段；未逐行审查全部模块历史。",
+      "正式450组仍为摘要可查、完整记录未定位；本轮未扩大归档搜索或重验载荷。",
+      "728组是D3/D4/D5来源生成，不能替代正式450组、当前代际训练或原Goal统一验收。",
+      "本轮未运行pytest、训练、GPU、AirSim、控制、重评分或模块导入，未读取大量原始真值。",
+      "所有测试数量和性能数值均来自历史材料，不是本轮实验结果；未提出算法优化或新增实施路径。"
+    ]
+  },
+  "requirements": [
+    {
+      "requirement_id": "G04",
+      "original_status": "部分完成",
+      "review_result": "限定认可",
+      "suggested_status": "部分完成",
+      "evidence": [
+        "research_modules/scalable_3d_simulation/docs/SCALABLE_3D_FORMAL_R0_80E55EB_SHARDS0_9_20260731_CN.md",
+        "research_modules/scalable_3d_simulation/docs/SCALABLE_3D_GOAL_COMPLETION_AUDIT_20260803_CN.md",
+        "research_modules/d1_sensor_fusion/docs/ALGORITHM_AND_IMPLEMENTATION.md",
+        "research_modules/d1_sensor_fusion/docs/EXPERIMENT_REPORT.md",
+        "deliverables/project_audits/goal_resume_audit_20260926_v1/历史结果定位与完整性核对_CN.md",
+        "deliverables/project_audits/goal_resume_audit_20260926_v1/SUPPLEMENTAL_CHECKS.json"
+      ],
+      "reason": "D1质量基准文档明确在线匿名雷达扫描与离线sidecar分离，支持D1已有隔离实现及局部历史验证。2026-07-31正式报告记450组在线真值使用为0，但本轮只能复核保存摘要，不能重证450组逐项零泄漏。728组来源审计通过属于D3/D4/D5另一代际和作用域，不是D1至D5整条运行链的统一验收。",
+      "remaining_evidence": ["正式450组可定位的在线记录、原manifest及对应隔离检查明细", "原Goal最终同版本完整矩阵的跨模块隔离证据"],
+      "historical_date": "2026-07-25 / 2026-07-31 / 2026-08-03"
+    },
+    {
+      "requirement_id": "G16",
+      "original_status": "部分完成",
+      "review_result": "限定认可",
+      "suggested_status": "部分完成",
+      "evidence": [
+        "research_modules/d1_sensor_fusion/docs/MODULE_PRINCIPLES_CN.md",
+        "research_modules/d1_sensor_fusion/docs/ALGORITHM_AND_IMPLEMENTATION.md",
+        "research_modules/d1_sensor_fusion/docs/AIRSIM_INTEGRATION_PLAN.md",
+        "research_modules/scalable_3d_simulation/module_stack.py",
+        "research_modules/scalable_3d_simulation/docs/SCALABLE_3D_GOAL_COMPLETION_AUDIT_20260803_CN.md",
+        "deliverables/project_audits/goal_resume_audit_20260926_v1/VERSION_DIFFS.json"
+      ],
+      "reason": "须区分D1观测/完整后验合同与主级总线摘要。D1文档保留measurement_timestamp、arrival_timestamp和协方差；主级modules.d1.fused_tracks使用_track_summary，只输出单timestamp、state_ned、covariance等字段，没有完整双时间戳。_associate_latest_d1_tracks直接转换self.latest_d1_tracks，不能以发布过总线证明订阅驱动闭环。该静态读取与原审计相符，不是新运行结果，也不认定全部匿名片段或广域线索已完成消费。",
+      "remaining_evidence": ["原Goal冻结版本中逐航迹双时间戳完整的序列化记录", "D1至D3统一版本化订阅消费及其输入输出对应证据", "该条其他匿名片段与分区线索的统一消息完整性记录"],
+      "historical_date": "2026-07-22 / 2026-08-03",
+      "current_static_check_date": "2026-09-26"
+    },
+    {
+      "requirement_id": "G17",
+      "original_status": "部分完成",
+      "review_result": "需修订",
+      "suggested_status": "部分完成",
+      "evidence": [
+        "research_modules/d1_sensor_fusion/README.md",
+        "research_modules/d1_sensor_fusion/PLAN.md",
+        "research_modules/d1_sensor_fusion/docs/ALGORITHM_AND_IMPLEMENTATION.md",
+        "research_modules/d1_sensor_fusion/docs/EXPERIMENT_REPORT.md",
+        "subagent_reviews/D1_IMPLEMENTATION_GAP_AUDIT.md",
+        "subagent_reviews/D1_SENSOR_FUSION_REVIEW_AND_PLAN.md",
+        "research_modules/scalable_3d_simulation/docs/SCALABLE_3D_GOAL_COMPLETION_AUDIT_20260803_CN.md"
+      ],
+      "reason": "认可已有批量、六维、异步与协方差的软件实现及部分完成状态；建议修订历史结果说明，明确0.8183来自2026-07-25 D1独立匿名雷达质量基准的200目标、seed 1000、0.61秒开发冒烟，3个发布帧、532条唯一接受观测，非原Goal名义多传感器正式矩阵。5目标seeds 2000-2019的20/20快速夹具只证明批量入口，不能写成200目标20-seed质量验收。主级略写召回值容易混淆证据等级。",
+      "remaining_evidence": ["该短时基准的逐seed机器结果及冻结配置/代码指纹，本次在所读材料中未定位直接绑定入口", "原Goal同协议200目标多传感器、独立多种子质量统计及置信区间", "统一消息消费证据"],
+      "historical_date": "2026-07-25",
+      "suggested_wording": "已有软件合同；独立雷达质量基准200目标单seed、0.61秒开发冒烟暖机召回0.8183，不能替代原Goal多传感器正式质量验收。"
+    },
+    {
+      "requirement_id": "G38",
+      "original_status": "未完成",
+      "review_result": "认可",
+      "suggested_status": "未完成",
+      "evidence": [
+        "research_modules/scalable_3d_simulation/docs/SCALABLE_3D_GOAL_COMPLETION_AUDIT_20260803_CN.md",
+        "research_modules/scalable_3d_simulation/docs/SCALABLE_3D_GOAL_PROGRESS_AND_NEXT_PLAN_20260807_CN.md",
+        "research_modules/d1_sensor_fusion/PLAN.md",
+        "research_modules/independent_experiments/dual_optical_online_benchmark/README.md",
+        "deliverables/project_audits/goal_resume_audit_20260926_v1/原Goal逐项状态对照_CN.md"
+      ],
+      "reason": "从D1责任范围认可F1未完成：D1质量及总线缺口未闭合，原完成审计与8月7日进展均未确认统一完整体系验收。双光电README明确不接入D1-D7；独立AirSim局部调用、演示结果或来源728组均不能替代F1。A1 v3、A2 v8、A3 v3当前代际训练未完成的记录，不能被后续独立模型替代。本意见不重新评判其他模块算法。",
+      "remaining_evidence": ["原Goal同冻结版本、同种子与同外生输入的完整体系结果及故障矩阵", "至少20个未见种子完整结果及其统一验收记录", "当前代际模型、独立评价和统一结果之间的绑定记录"],
+      "historical_date": "2026-08-03 / 2026-08-07"
+    },
+    {
+      "requirement_id": "G41",
+      "original_status": "未完成",
+      "review_result": "需修订",
+      "suggested_status": "未完成",
+      "evidence": [
+        "research_modules/d1_sensor_fusion/README.md",
+        "research_modules/d1_sensor_fusion/PLAN.md",
+        "research_modules/d1_sensor_fusion/docs/MODULE_PRINCIPLES_CN.md",
+        "research_modules/d1_sensor_fusion/docs/EXPERIMENT_REPORT.md",
+        "subagent_reviews/D1_IMPLEMENTATION_GAP_AUDIT.md",
+        "research_modules/scalable_3d_simulation/docs/SCALABLE_3D_GOAL_COMPLETION_AUDIT_20260803_CN.md",
+        "research_modules/scalable_3d_simulation/docs/SCALABLE_3D_GOAL_PROGRESS_AND_NEXT_PLAN_20260807_CN.md"
+      ],
+      "reason": "未完成结论成立，但建议同时修订结果出处与阈值措辞。0.8183是独立雷达开发冒烟，不是名义多传感器正式结果，不能据此作同协议差值或泛化判断。0.95在原完成审计中是建议目标，D1原则文档仍写正式长时多seed门限待冻结，PLAN也保留门限冻结事项；主表outstanding的“缺达到冻结阈值”可能误示阈值已冻结。缺少原协议的冻结文件与达到建议目标的独立证据，应分别登记。",
+      "remaining_evidence": ["名义多传感器正式协议与召回统计窗口、分母、验收阈值的冻结记录", "该协议下至少20个未见seed的逐组结果、均值与置信区间", "0.8183短时历史值对应的机器结果和配置绑定"],
+      "historical_date": "2026-07-25 / 2026-08-03 / 2026-08-07",
+      "suggested_wording": "历史独立雷达单seed短时召回0.8183；原建议目标0.95的正式协议与阈值冻结证据未定位，原Goal同协议独立多种子达标证据缺失。"
+    },
+    {
+      "requirement_id": "G49",
+      "original_status": "部分完成",
+      "review_result": "限定认可",
+      "suggested_status": "部分完成",
+      "evidence": [
+        "research_modules/scalable_3d_simulation/docs/SCALABLE_3D_GOAL_COMPLETION_AUDIT_20260803_CN.md",
+        "research_modules/d1_sensor_fusion/docs/EXPERIMENT_REPORT.md",
+        "subagent_reviews/D1_SENSOR_FUSION_REVIEW_AND_PLAN.md",
+        "deliverables/project_audits/goal_resume_audit_20260926_v1/VERSION_DIFFS.json"
+      ],
+      "reason": "522 passed, 1 warning是2026-08-03主模块历史摘要，绑定当时adc13d109a77；D1质量基准章节的8 passed与496 passed in 33.19s是2026-07-25另一作用域的历史记录，不能相加或当成本轮通过。本批版本差异记录仅说明跟踪内容继承，不能证明最终同版本全接口回归交付，也不覆盖忽略的输出文件。",
+      "remaining_evidence": ["最终统一冻结版本下D1至D7与主级接口回归的原始日志及制品绑定", "主级正式交付清单和验收记录"],
+      "historical_date": "2026-07-25 / 2026-08-03"
+    },
+    {
+      "requirement_id": "G55",
+      "original_status": "部分完成",
+      "review_result": "限定认可",
+      "suggested_status": "部分完成",
+      "evidence": [
+        "research_modules/d1_sensor_fusion/README.md",
+        "research_modules/d1_sensor_fusion/PLAN.md",
+        "subagent_reviews/D1_IMPLEMENTATION_GAP_AUDIT.md",
+        "subagent_reviews/D1_SENSOR_FUSION_REVIEW_AND_PLAN.md",
+        "subagent_reviews/D1_FORMAL_R0_GENERATION_FINALIZATION_DIAGNOSIS_20260725_CN.md",
+        "research_modules/scalable_3d_simulation/docs/SCALABLE_3D_GOAL_PROGRESS_AND_NEXT_PLAN_20260807_CN.md",
+        "deliverables/project_audits/goal_resume_audit_20260926_v1/VERSION_DIFFS.json"
+      ],
+      "reason": "D1要求检查的文档全部存在，质量基准、正式质量P1开放和AirSim边界相互一致，支持保存过阶段同步记录。不能把某些D1-owned实现关闭或文档存在外推为全部GAP关闭/主级验收合并。7月25日代次诊断的900旧批及135/900重跑有独立提交与执行计划，不是7月31日80e55eb的450/900。现成表述风险为G17/G41的来源/冻结口径，已在本审计登记；本轮不回写历史文档。",
+      "remaining_evidence": ["跨模块最终验收后文档同步清单及符合条件的主级合并记录", "历史条目在主级汇总中按日期、提交和执行计划准确区分的完整对应"],
+      "historical_date": "2026-07-25 / 2026-07-31 / 2026-08-07"
+    },
+    {
+      "requirement_id": "G57",
+      "original_status": "部分完成",
+      "review_result": "限定认可",
+      "suggested_status": "部分完成",
+      "evidence": [
+        "research_modules/scalable_3d_simulation/VERSIONING.md",
+        "research_modules/d1_sensor_fusion/docs/AIRSIM_INTEGRATION_PLAN.md",
+        "subagent_reviews/D1_FORMAL_R0_GENERATION_FINALIZATION_DIAGNOSIS_20260725_CN.md",
+        "research_modules/scalable_3d_simulation/docs/SCALABLE_3D_FORMAL_R0_80E55EB_SHARDS0_9_20260731_CN.md",
+        "deliverables/project_audits/goal_resume_audit_20260926_v1/历史结果定位与完整性核对_CN.md"
+      ],
+      "reason": "版本文档包含世界、总线、场景及D1输入/发布合同，保存报告有提交与执行计划哈希，支持版本机制已存在。合同表和历史哈希不能代替现存逐episode manifest，也不能把旧代次诊断的执行计划与正式450组合并。450组完整记录未定位，当前代际模型与最终阈值未冻结；D1局部配置版本存在不足以完成全条验收。",
+      "remaining_evidence": ["正式450组原manifest、完整载荷与逐组运行配置的可定位绑定", "最终体系世界/总线/场景/模型/阈值等版本的统一验收清单"],
+      "historical_date": "2026-07-25 / 2026-07-31 / 2026-08-01"
+    }
+  ],
+  "documentation_checked": [
+    {
+      "path": "research_modules/d1_sensor_fusion/README.md",
+      "exists": true,
+      "checked_scope": "200目标真值隔离质量基准及开发验证边界，2416-2458行",
+      "update_required_in_this_task": false,
+      "reason": "独立基准、5目标20-seed和200目标单seed范围已有明确说明；主表缺少的限定登记在G17/G41，不反向改写模块历史。"
+    },
+    {
+      "path": "research_modules/d1_sensor_fusion/PLAN.md",
+      "exists": true,
+      "checked_scope": "第32节已完成接口、开发验收及开放事项",
+      "update_required_in_this_task": false,
+      "reason": "正式200目标长时质量及阈值冻结仍列开放；本次没有能力变更或GAP关闭，不改实施计划，也不执行其中未来事项。"
+    },
+    {
+      "path": "subagent_reviews/D1_IMPLEMENTATION_GAP_AUDIT.md",
+      "exists": true,
+      "checked_scope": "200目标质量基准P1状态，1275-1291行",
+      "update_required_in_this_task": false,
+      "reason": "已区分D1-owned实现关闭、接口关闭与正式证据P1开放；与部分完成建议相符，未新增验证或关闭GAP。"
+    },
+    {
+      "path": "subagent_reviews/D1_SENSOR_FUSION_REVIEW_AND_PLAN.md",
+      "exists": true,
+      "checked_scope": "第35节真值隔离质量基准",
+      "update_required_in_this_task": false,
+      "reason": "短时单seed与正式长时多seed的边界明确；历史通过数仅作保存记录，本轮不改review结论。"
+    },
+    {
+      "path": "research_modules/d1_sensor_fusion/docs/MODULE_PRINCIPLES_CN.md",
+      "exists": true,
+      "checked_scope": "真值隔离质量评估、召回分母与正式门限待冻结，2302-2333行",
+      "update_required_in_this_task": false,
+      "reason": "在线/离线分离与不可用指标规则一致；门限待冻结与主表G41“冻结阈值”存在表述差异，登记为主级措辞修订建议，不改原则。"
+    },
+    {
+      "path": "research_modules/d1_sensor_fusion/docs/ALGORITHM_AND_IMPLEMENTATION.md",
+      "exists": true,
+      "checked_scope": "200目标质量基准的数据分离、指标合同与验证结论，3495-3558行",
+      "update_required_in_this_task": false,
+      "reason": "明确在线输入仅匿名雷达，保留双时间戳和协方差，正式20-seed未执行；没有算法或接口变化需同步。"
+    },
+    {
+      "path": "research_modules/d1_sensor_fusion/docs/AIRSIM_INTEGRATION_PLAN.md",
+      "exists": true,
+      "checked_scope": "在线证据发布边界及第14节main-owned三维扫描接入",
+      "update_required_in_this_task": false,
+      "reason": "三维质点与AirSim证据已明确分开；文档中的调用合同不能证明统一总线订阅完成，本次未改变AirSim适配或产生新实验。"
+    },
+    {
+      "path": "research_modules/d1_sensor_fusion/docs/EXPERIMENT_REPORT.md",
+      "exists": true,
+      "checked_scope": "2026-07-25真值隔离质量基准开发验证，2136-2184行",
+      "update_required_in_this_task": false,
+      "reason": "保存了0.61秒、seed1000、3帧、532观测与0.8183的实际范围；本轮仅引用旧数值，不重算、不覆盖报告。"
+    },
+    {
+      "path": "subagent_reviews/D1_M_TO_N_COOPERATIVE_LOCALIZATION_REVIEW.md",
+      "exists": true,
+      "checked_scope": "日期、范围、2026-07-15增量和结论摘要",
+      "update_required_in_this_task": false,
+      "reason": "历史M5N2 20-case不构成协同定位精度或200目标正式质量验收；本次未变更协同定位能力，仅核对该证据边界。"
+    },
+    {
+      "path": "subagent_reviews/D1_STRUCTURAL_AMBIGUITY_HOLD_CAUSAL_AUDIT_CN.md",
+      "exists": true,
+      "checked_scope": "2026-07-24候选状态、结论与证据范围",
+      "update_required_in_this_task": false,
+      "reason": "默认关闭候选和单seed因果证据不等于原Goal准入；本轮未复用真值、改候选或审定性能，无需改写历史结论。"
+    },
+    {
+      "path": "subagent_reviews/D1_FORMAL_R0_GENERATION_FINALIZATION_DIAGNOSIS_20260725_CN.md",
+      "exists": true,
+      "checked_scope": "提交/执行计划身份、旧900批次与135/900重跑结论",
+      "update_required_in_this_task": false,
+      "reason": "这是7月25日不同提交和执行计划的历史快照，不与7月31日450组混用，也不代表统一总线闭环。未发现需将该历史数值改写为450的依据。"
+    }
+  ],
+  "documentation_sync": {
+    "original_documents_modified": false,
+    "capability_change": false,
+    "gap_closed": false,
+    "inconsistencies_registered": [
+      "G17/G41缺少0.8183属于独立雷达短时开发冒烟的限定。",
+      "G41的“冻结阈值”措辞与D1正式门限待冻结记录不一致；不能将原建议0.95宣称为已冻结验收门。"
+    ],
+    "historical_scope_notes": [
+      "D1完整后验双时间戳合同与主级摘要缺字段属于不同接口层，不是模块文档声称全部总线已完成。",
+      "旧900/135与正式450具有不同批次身份；按日期和执行计划区分，不覆盖旧报告。"
+    ],
+    "reason": "本批仅审读既有材料，无实现、接口、默认能力或GAP状态变更；授权禁止修改原模块文件，所有异议仅留在新审计文件。"
+  },
+  "validation": {
+    "allowed_checks": ["JSON结构与枚举", "CSV owner范围展开及编号覆盖", "原状态一致性", "仓库相对引用路径存在性", "Markdown编号与JSON一致性", "原文档及源CSV前后SHA-256一致性"],
+    "result": "passed",
+    "checked_at": "2026-09-26T07:19:31-07:00",
+    "json_parse": "passed",
+    "required_fields_and_enums": "passed",
+    "owner_range_requirement_coverage": "8/8",
+    "original_status_match": "8/8",
+    "unique_evidence_and_document_paths": 21,
+    "all_cited_paths_exist": true,
+    "documentation_checked_count": 11,
+    "markdown_requirement_coverage": "8/8",
+    "markdown_local_links_checked": 12,
+    "original_documents_and_source_csv_hash_unchanged": true,
+    "original_hash_check_file_count": 12,
+    "historical_results_rerun": false
+  }
+}

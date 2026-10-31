@@ -1,0 +1,120 @@
+[
+  {
+    "module": "D3",
+    "source_root": "/home/linux/Documents/MSM-source-generation-output-e7c438c-20260802/D3",
+    "exists": true,
+    "file_count_now": 308,
+    "bytes_now": 1375907650,
+    "historical_file_count": 307,
+    "historical_bytes": 1375858153,
+    "historical_episode_count": 300,
+    "historical_record_count": 3086,
+    "historical_source_commit": "e7c438ca0e480f9f56dc426dc20a3f8f83d7d6a6",
+    "historical_status": "source_integrity_audit_passed_not_training_authorized",
+    "current_metadata_hashes": [
+      {
+        "path": "/home/linux/Documents/MSM-source-generation-output-e7c438c-20260802/D3/dataset/dataset_manifest.json",
+        "bytes": 7384,
+        "sha256": "5af2ed0af9cdb96ff2112208e6f6b640af1a6774a636bc8790ea0904c7c3897d"
+      },
+      {
+        "path": "/home/linux/Documents/MSM-source-generation-output-e7c438c-20260802/D3/generation_checkpoint.json",
+        "bytes": 784,
+        "sha256": "716411ae4b58e4969d69633a6bf90bfdf5c5658a36c99d01384e9eeedce654c6"
+      },
+      {
+        "path": "/home/linux/Documents/MSM-source-generation-output-e7c438c-20260802/D3/generation_result.json",
+        "bytes": 49497,
+        "sha256": "ecb4a2e73e254282cf281ab092c07ca7685fc79ba25643eb8d9606e1b6d9a0ea"
+      },
+      {
+        "path": "/home/linux/Documents/MSM-source-generation-output-e7c438c-20260802/D3/generation_session.json",
+        "bytes": 1155,
+        "sha256": "b6b5bdccd3ac777807a0586e8be511da2fb108d3227cdffb595bd63753a309f7"
+      }
+    ],
+    "current_full_payload_hash_audit": false
+  },
+  {
+    "module": "D4",
+    "source_root": "/home/linux/Documents/MSM-source-generation-output-6737b44-20260803/D4",
+    "exists": true,
+    "file_count_now": 654,
+    "bytes_now": 30988677,
+    "historical_file_count": 653,
+    "historical_bytes": 30898097,
+    "historical_episode_count": 324,
+    "historical_record_count": 921,
+    "historical_source_commit": "6737b44515526b5269ae98faad39e1f92716f423",
+    "historical_status": "source_integrity_audit_passed_not_training_authorized",
+    "current_metadata_hashes": [
+      {
+        "path": "/home/linux/Documents/MSM-source-generation-output-6737b44-20260803/D4/dataset/manifest.json",
+        "bytes": 172124,
+        "sha256": "d0540570e28e9c102e0c08c2478f5ec690473232dad0ccf537558ad44c8f5ada"
+      },
+      {
+        "path": "/home/linux/Documents/MSM-source-generation-output-6737b44-20260803/D4/generation_checkpoint.json",
+        "bytes": 783,
+        "sha256": "f9f27df9212fd997207270b237783321d489b1bcf3c81a5d8631a08467b23b05"
+      },
+      {
+        "path": "/home/linux/Documents/MSM-source-generation-output-6737b44-20260803/D4/generation_result.json",
+        "bytes": 90580,
+        "sha256": "f8ab953af94105bc8b73f72b56b7e3b162c27c80eee3576b356e486a628201fd"
+      },
+      {
+        "path": "/home/linux/Documents/MSM-source-generation-output-6737b44-20260803/D4/generation_session.json",
+        "bytes": 1189,
+        "sha256": "c3e258a1bc5000042f486af033357e75941005ab17d1c67014a3034eb14a70ff"
+      }
+    ],
+    "current_full_payload_hash_audit": false
+  },
+  {
+    "module": "D5",
+    "source_root": "/home/linux/Documents/MSM-source-generation-output-64dfc08-20260803/D5",
+    "exists": true,
+    "file_count_now": 319,
+    "bytes_now": 355512715,
+    "historical_file_count": 318,
+    "historical_bytes": 355457243,
+    "historical_episode_count": 104,
+    "historical_record_count": 280968,
+    "historical_source_commit": "64dfc088cf4990304a95b2a362b905136092c70a",
+    "historical_status": "source_integrity_audit_passed_not_training_authorized",
+    "current_metadata_hashes": [
+      {
+        "path": "/home/linux/Documents/MSM-source-generation-output-64dfc08-20260803/D5/development/manifest.json",
+        "bytes": 38876739,
+        "sha256": "20afdfe32d04be2338224bca81a4951a3994e677b3cecfcc26fd5bd86f70a7f4"
+      },
+      {
+        "path": "/home/linux/Documents/MSM-source-generation-output-64dfc08-20260803/D5/future_held_out/manifest.json",
+        "bytes": 17745116,
+        "sha256": "f9db391270f39465846a18ff8ee94aa4a1d0fcb0afe117361ea49e88d2562489"
+      },
+      {
+        "path": "/home/linux/Documents/MSM-source-generation-output-64dfc08-20260803/D5/generation_checkpoint.json",
+        "bytes": 783,
+        "sha256": "5da6422f5d53ac807b348151aae80a0417e8996b4f8b3af6a0cc2d8738141bff"
+      },
+      {
+        "path": "/home/linux/Documents/MSM-source-generation-output-64dfc08-20260803/D5/generation_result.json",
+        "bytes": 55472,
+        "sha256": "5e4aef835bf99f120011e0eec478c00c438a6379d1b1870705fad7a4846ee811"
+      },
+      {
+        "path": "/home/linux/Documents/MSM-source-generation-output-64dfc08-20260803/D5/generation_session.json",
+        "bytes": 1151,
+        "sha256": "bbac44ac76c17d34e717f06b00aedeb4a2c13fc9cc44df92f311f32e7ffbd001"
+      },
+      {
+        "path": "/home/linux/Documents/MSM-source-generation-output-64dfc08-20260803/D5/source_manifest.json",
+        "bytes": 7265,
+        "sha256": "b3bbdc1b5635185c1411076939fad92f64889687cef9cad993c8940202ad7978"
+      }
+    ],
+    "current_full_payload_hash_audit": false
+  }
+]

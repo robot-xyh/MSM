@@ -1,0 +1,13 @@
+id,category,status,current_evidence,remaining_action,closure_criterion,owner
+A01,缺失证据,待外部备份线索,../goal_resume_audit_20260926_v1/ARCHIVE_LOCATION_REGISTER.csv,查新提供的备份盘或其他主机位置,十片身份及哈希匹配;否则保持摘要可查完整记录未定位,main及资料保管人
+A02,版本问题,源码保存与静态登记完成但完整版本未确认,PRESERVED_MEMBERS.csv;STATIC_SOURCE_REGISTER.csv,核对双光电41份仅基线相同文件及动态依赖的历史来源,实际执行版本有依据且范围明确;不以静态清单代替完整环境,main及独立试验维护人
+A03,版本问题,已补齐45组参数出处但历史源码仍待查,PROVENANCE_FOLLOWUP.json,寻找8月搜索入口与核心回放源码副本或原指纹,能确认原执行源码;9月入库版本不倒填8月历史,搜索独立试验维护人
+A04,统计记录,口径说明已完成原报告待同步,统计口径说明与报告修订清单_CN.md,按报告用途补充零输出政策和平均方式,原文说明准确且保留所有原始值;裁剪稿不冒用全矩阵数量,main及报告维护人
+A05,统计记录,比较说明已完成原清单待版本化勘误,统计口径说明与报告修订清单_CN.md,另立勘误说明质量字段与耗时分别比较,历史哈希用于文件核验而非重跑耗时相同承诺,中心误差试验维护人
+A06,统计记录,缓存说明已存在时限元数据冲突待勘误,统计口径说明与报告修订清单_CN.md,保留现有正确表述并处理timeout字段冲突,不作不等条件速度比较;不推定无记录的超时结论,对应独立试验维护人
+A07,通用统计软件,上一批潜在风险已记录尚未修复,../goal_repro_stats_audit_20260926_v1/STATISTICS_BOUNDARY_TESTS.json,以人工记录检查重复键缺失值重复种子保护,维护人提交普通数据回归及对应说明不改历史结果,对应统计工具维护人
+A08,历史记录,旧索引哈希差异未解决,../goal_repro_stats_audit_20260926_v1/SUPPLEMENTAL_CHECKS.json,等待旧完整索引或可解释差异的历史副本,两个哈希分别对应何物有证据且旧记录不覆盖,D2所有者及main
+A09,证据范围,独立试验与原Goal继续分开登记,../goal_resume_audit_20260926_v1/原Goal逐项状态对照_CN.md,有既存接入记录时核对调用配置执行版本及结果,证据齐备才调整接入状态不自动实施接入,main及模块所有者
+A10,原研究未完成,原Goal完成状态不变,../goal_resume_audit_20260926_v1/GOAL_REQUIREMENT_EVIDENCE.csv,继续对已有材料审定不自动启动训练或仿真,研究验收与资料核查明确区分,main及D1至D7所有者
+A11,状态复核,模块所有者复核尚未启动,../goal_resume_audit_20260926_v1/GOAL_REQUIREMENT_EVIDENCE.csv,按所有权对60项原要求安排只读复核,逐项认可或异议有依据且需要的模块文档由所有者同步,main及D1至D7所有者
+A12,运行条件,静态依赖范围已登记完整环境未锁定,STATIC_SOURCE_REGISTER.csv;DYNAMIC_IMPORT_NOTES.json,核对外部依赖及原环境资料,静态可见文件与实际加载资源环境分别有依据,main及环境维护人

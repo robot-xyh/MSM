@@ -1,0 +1,13 @@
+id,category,status,current_evidence,remaining_action,closure_criterion,owner
+A01,缺失证据,450组完整记录仍未定位,../goal_resume_audit_20260926_v1/ARCHIVE_LOCATION_REGISTER.csv,取得外部备份或其他主机位置线索后定向核对,十片身份和哈希对应;否则维持摘要可查完整记录未定位,main及资料保管人
+A02,版本问题,16份来源源码已保存静态依赖已登记,../goal_evidence_followup_20260926_v1/STATIC_SOURCE_REGISTER.csv,继续核对未冻结依赖与实际运行版本,不以基线相同代替历史执行源码完整证明,main及独立试验维护人
+A03,版本问题,45组搜索配置可查原执行源码仍不足,../goal_evidence_followup_20260926_v1/PROVENANCE_FOLLOWUP.json,查8月源码副本或指纹,历史入口及核心回放文件可验证,搜索独立试验维护人
+A04,统计记录,四份报告说明已同步Word和Markdown,REPORT_VALIDATION.json;实验记录勘误说明_CN.md,本轮事项完成后保持口径不反复改写,原数值表格图片不变且零输出及平均方式清楚,main及报告维护人
+A05,统计记录,已发布比较范围的版本化勘误,METADATA_ERRATA.json,将来比较前单独规定字段与容差,原哈希只用于历史文件核验;不承诺实测耗时字节一致,中心误差试验维护人
+A06,统计记录,缓存条件说明保留时限冲突已勘误,METADATA_ERRATA.json,历史期限无法还原时保留不可确认状态,不从孤立布尔字段推定按时能力,对应独立试验维护人
+A07,通用统计软件,潜在边界风险已记录尚未修复,../goal_repro_stats_audit_20260926_v1/STATISTICS_BOUNDARY_TESTS.json,另作普通记录回归维护不运行研究算法,重复键缺失值重复种子保护有测试且不改旧数据,对应统计工具维护人
+A08,历史记录,两个哈希对象对应已核实旧报告标签错配,MAIN_REVIEW.json;owners/D2_review.json,保留旧报告并引用本轮勘误;不与归档恢复混为一事,c9bf对应校验清单而590514对应索引;不宣称载荷已恢复,D2所有者及main
+A09,证据范围,已区分旧v2实测与新v3接线,GOAL_REQUIREMENT_EVIDENCE_REVIEWED.csv;owners/D5_review.json;owners/D6_review.json,只有定位同版本调用配置与结果后才更新接入判断,独立调用或旧高分不替代新版本及原Goal验收,main及模块所有者
+A10,原研究未完成,60项完成分类维持不变,GOAL_REVIEW_CONSOLIDATED.csv,研究缺口继续登记本轮不自动运行,资料核查与研究验收分别计录,main及D1至D7所有者
+A11,状态复核,7模块与main逐项复核完成当前文档入口衔接待办,OWNER_REVIEW_SUMMARY.json,所属模块同步已有状态入口并保留历史章节,不再用生成前快照表示当前状态且不改历史结果,D3至D6所有者及main
+A12,运行条件,完整环境尚未锁定,../goal_evidence_followup_20260926_v1/DYNAMIC_IMPORT_NOTES.json,核查实际依赖及原环境资料,静态清单与运行环境分别有证据,main及环境维护人

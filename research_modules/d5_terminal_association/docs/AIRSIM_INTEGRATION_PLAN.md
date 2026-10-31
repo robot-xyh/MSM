@@ -1,5 +1,10 @@
 # AirSim 离线集成计划
 
+<!-- evidence-status-sync:20260926:begin -->
+> 2026-09-26 仅作资料同步，不是新的实验日期。当前口径统一见 [D5 当前证据状态](CURRENT_EVIDENCE_STATUS_CN.md)。
+> 下列旧章节按其日期作历史阶段阅读；本轮不改旧正文、任务勾选或 GAP，不升级能力，原 Goal 状态不变。
+<!-- evidence-status-sync:20260926:end -->
+
 ## 有状态时序几何接口接入
 
 D5 已提供可由 main 长距离 ComputerVision runtime 调用的

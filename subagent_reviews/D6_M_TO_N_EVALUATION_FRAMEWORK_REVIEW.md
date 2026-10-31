@@ -1,5 +1,11 @@
 # D6 M 对 N 协同拦截评估框架审查
 
+<!-- evidence-status-sync:20260926:begin -->
+2026-09-26 仅做资料同步，不是新的实验日期；原 Goal 状态不变。
+当前边界统一见[D6 当前证据状态](../research_modules/d6_evaluation_metrics/docs/CURRENT_EVIDENCE_STATUS_CN.md)；下文旧章节仅按原日期和范围作为历史阶段记录阅读。
+旧 900-cell、开发批次和本批 450 组须按来源分别阅读，不合并验收分母。
+<!-- evidence-status-sync:20260926:end -->
+
 ## 2026-08-01 多资源末端本地身份分组补充
 
 M 对 N 场景允许多个资源同时观察或拦截同一 `global_track_id`。不同资源、不同相机使用不同

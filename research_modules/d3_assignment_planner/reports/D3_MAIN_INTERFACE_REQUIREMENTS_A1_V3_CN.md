@@ -1,5 +1,10 @@
 # D3 主接口要求：匿名 roster 事件与困难负类
 
+<!-- evidence-status-sync:20260926:begin -->
+> 2026-09-26 仅同步资料，不是新实验日期。当前证据统一见[当前证据状态](../docs/CURRENT_EVIDENCE_STATUS_CN.md)。
+> 下文旧日期、状态及待办仅作带日期历史阶段阅读；原Goal状态、能力、GAP及权限不因本次同步改变。
+<!-- evidence-status-sync:20260926:end -->
+
 日期：2026-08-02。本文是 D3-owned interface requirement，不是 source generation
 授权或正式数据结果。
 

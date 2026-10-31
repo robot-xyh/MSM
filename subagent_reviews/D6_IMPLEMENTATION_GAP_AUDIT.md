@@ -1,5 +1,11 @@
 # D6 实现差距审计
 
+<!-- evidence-status-sync:20260926:begin -->
+2026-09-26 仅做资料同步，不是新的实验日期；原 Goal 状态不变。
+当前边界统一见[D6 当前证据状态](../research_modules/d6_evaluation_metrics/docs/CURRENT_EVIDENCE_STATUS_CN.md)；下文旧章节仅按原日期和范围作为历史阶段记录阅读。
+历史关闭结论仅适用于原章节范围，本次不关闭、重分类或调整 GAP。
+<!-- evidence-status-sync:20260926:end -->
+
 ## 2026-08-10 D5长距离配准评估 P1 部分关闭
 
 ### 已关闭范围

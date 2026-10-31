@@ -1,0 +1,26 @@
+{
+  "tests_run": 12,
+  "failures": 0,
+  "errors": 0,
+  "test_names": [
+    "__main__.StatisticsBoundaries.test_all_missing_search_mean_produces_nonstandard_json",
+    "__main__.StatisticsBoundaries.test_conflicting_equal_round_is_order_dependent",
+    "__main__.StatisticsBoundaries.test_duplicate_seed_is_counted_twice_in_center_aggregate",
+    "__main__.StatisticsBoundaries.test_elapsed_fields_prevent_bytewise_result_equality",
+    "__main__.StatisticsBoundaries.test_final_round_selection",
+    "__main__.StatisticsBoundaries.test_missing_center_precision_is_not_accepted",
+    "__main__.StatisticsBoundaries.test_pooled_precision_is_not_mean_precision",
+    "__main__.StatisticsBoundaries.test_population_std_is_not_sample_std",
+    "__main__.StatisticsBoundaries.test_search_mean_excludes_none",
+    "__main__.StatisticsBoundaries.test_timeout_keeps_quality_but_not_timely_count",
+    "__main__.StatisticsBoundaries.test_zero_labeled_denominator_is_coerced_to_zero",
+    "__main__.StatisticsBoundaries.test_zero_output_precision_is_missing"
+  ],
+  "scope": "Pure statistics helpers extracted via AST; fabricated records only; no module initialization, model, association or simulation executed",
+  "meaning": "Passing risk-reproduction tests confirms observed boundary behavior; it does not mean the production statistics code is free of issues",
+  "source_sha256": {
+    "research_modules/independent_experiments/dual_optical_online_benchmark/report_matrix_replay.py": "d6e209f8396c27ba4d192d361d3967c9eb433a419768b46a97d9b364cea28371",
+    "research_modules/independent_experiments/center_terminal_cv_campaign/exp_center_handover/run_error_matrix.py": "d80528a706e73c61a22198160d187b3d45a8422e2a69d387aad7f2fe4bbf4d82",
+    "research_modules/independent_experiments/center_terminal_cv_campaign/exp_search/run_offline_matrix.py": "986110b7dac47eef15fb1be1cd7c02a1bf18b90cb280cc2168273f343f5825f4"
+  }
+}

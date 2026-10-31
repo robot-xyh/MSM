@@ -1,5 +1,10 @@
 # D5 末端视觉配准与协同身份认证综述及子方案
 
+<!-- evidence-status-sync:20260926:begin -->
+> 2026-09-26 仅作资料同步，不是新的实验日期。当前口径统一见 [D5 当前证据状态](../research_modules/d5_terminal_association/docs/CURRENT_EVIDENCE_STATUS_CN.md)。
+> 下列旧章节按其日期作历史阶段阅读；本轮不改旧正文、任务勾选或 GAP，不升级能力，原 Goal 状态不变。
+<!-- evidence-status-sync:20260926:end -->
+
 ## 2026-08-10 有状态时序几何关联复核
 
 D5 已完成有状态包装层，原无状态几何关联 API 保持兼容。新接口以相机流为状态边界，输出瞬时

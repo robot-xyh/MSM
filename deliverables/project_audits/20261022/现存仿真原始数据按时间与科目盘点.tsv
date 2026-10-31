@@ -1,0 +1,872 @@
+subject	run_date	date_source	run_path	total_bytes	total_gib	file_count	raw_bytes	raw_gib	raw_file_count	raw_types	provenance_bytes	provenance_file_count	recommendation	reason
+D6评估指标	2026-06-30	最早文件时间	research_modules/d6_evaluation_metrics/outputs/example_batch	13042035	0.012	110	0	0.000	0		0	0	复核后删除候选	日期较早且未识别到原始观测；可能主要是可重算派生文件
+D6评估指标	2026-07-01	最早文件时间	research_modules/d6_evaluation_metrics/outputs/integration_smoke	3002191	0.003	30	0	0.000	0		0	0	早期删除候选	早期开发或诊断运行；仍需确认无报告引用且已有后继版本
+集成质点仿真	2026-07-01	最早文件时间	research_modules/integrated_simulation/outputs/smoke	878604	0.001	10	0	0.000	0		0	0	早期删除候选	早期开发或诊断运行；仍需确认无报告引用且已有后继版本
+AirSim其他运行	2026-07-02	最早文件时间	research_modules/airsim_runtime/outputs/blocks_2v2_actor_intercept_001	19745503	0.018	61	19668199	0.018	57	帧级观测流;相机图像/视频	0	0	先归档再考虑删除	日期较早但含可回放原始数据
+AirSim其他运行	2026-07-02	最早文件时间	research_modules/airsim_runtime/outputs/blocks_2v2_actor_intercept_002	34308459	0.032	109	34092975	0.032	98	帧级观测流;相机图像/视频	0	0	先归档再考虑删除	日期较早但含可回放原始数据
+AirSim其他运行	2026-07-02	最早文件时间	research_modules/airsim_runtime/outputs/blocks_2v2_actor_intercept_003	51249898	0.048	157	51046879	0.048	146	帧级观测流;相机图像/视频	0	0	先归档再考虑删除	日期较早但含可回放原始数据
+AirSim其他运行	2026-07-02	最早文件时间	research_modules/airsim_runtime/outputs/blocks_2v2_actor_intercept_004	62927287	0.059	189	62716868	0.058	178	帧级观测流;相机图像/视频	0	0	先归档再考虑删除	日期较早但含可回放原始数据
+AirSim其他运行	2026-07-02	最早文件时间	research_modules/airsim_runtime/outputs/blocks_2v2_actor_intercept_005	50549153	0.047	153	50346801	0.047	142	帧级观测流;相机图像/视频	0	0	先归档再考虑删除	日期较早但含可回放原始数据
+AirSim其他运行	2026-07-02	最早文件时间	research_modules/airsim_runtime/outputs/blocks_2v2_actor_sequence_001	13541589	0.013	52	13416119	0.012	42	帧级观测流;相机图像/视频	0	0	先归档再考虑删除	日期较早但含可回放原始数据
+AirSim其他运行	2026-07-02	最早文件时间	research_modules/airsim_runtime/outputs/blocks_2v2_actor_sequence_002	13179448	0.012	52	13053978	0.012	42	帧级观测流;相机图像/视频	0	0	先归档再考虑删除	日期较早但含可回放原始数据
+AirSim其他运行	2026-07-02	最早文件时间	research_modules/airsim_runtime/outputs/blocks_2v2_actor_sequence_003	22200401	0.021	76	22031671	0.021	66	帧级观测流;相机图像/视频	0	0	先归档再考虑删除	日期较早但含可回放原始数据
+AirSim其他运行	2026-07-02	最早文件时间	research_modules/airsim_runtime/outputs/blocks_2v2_actor_sequence_004	22103388	0.021	76	21934658	0.020	66	帧级观测流;相机图像/视频	0	0	先归档再考虑删除	日期较早但含可回放原始数据
+AirSim其他运行	2026-07-02	最早文件时间	research_modules/airsim_runtime/outputs/blocks_2v2_actor_sequence_005	22261866	0.021	76	22092536	0.021	66	帧级观测流;相机图像/视频	0	0	先归档再考虑删除	日期较早但含可回放原始数据
+AirSim其他运行	2026-07-02	最早文件时间	research_modules/airsim_runtime/outputs/blocks_2v2_actor_sequence_006	3674920	0.003	11	3674920	0.003	11	帧级观测流;相机图像/视频	0	0	先归档再考虑删除	日期较早但含可回放原始数据
+AirSim其他运行	2026-07-02	最早文件时间	research_modules/airsim_runtime/outputs/blocks_2v2_actor_sequence_007	22176522	0.021	76	22007192	0.020	66	帧级观测流;相机图像/视频	0	0	先归档再考虑删除	日期较早但含可回放原始数据
+AirSim其他运行	2026-07-02	最早文件时间	research_modules/airsim_runtime/outputs/blocks_2v2_actor_sequence_008	21826396	0.020	77	21652871	0.020	66	帧级观测流;相机图像/视频	0	0	先归档再考虑删除	日期较早但含可回放原始数据
+AirSim其他运行	2026-07-02	最早文件时间	research_modules/airsim_runtime/outputs/blocks_cv_5v5_d4d5_secondary50_run_001	3155704	0.003	18	2531962	0.002	9	帧级观测流;观测/回放流	0	0	先归档再考虑删除	日期较早但含可回放原始数据
+AirSim其他运行	2026-07-02	最早文件时间	research_modules/airsim_runtime/outputs/blocks_cv_5v5_d4d5_stress_run_002	2823469	0.003	18	2208489	0.002	9	帧级观测流;观测/回放流	0	0	先归档再考虑删除	日期较早但含可回放原始数据
+AirSim其他运行	2026-07-02	最早文件时间	research_modules/airsim_runtime/outputs/blocks_cv_5v5_d4d5_stress_run_003	2880649	0.003	18	2256496	0.002	9	帧级观测流;观测/回放流	0	0	先归档再考虑删除	日期较早但含可回放原始数据
+AirSim其他运行	2026-07-02	最早文件时间	research_modules/airsim_runtime/outputs/cv5v5_camera_pose_d6_report	763	0.000	1	0	0.000	0		0	0	保留或先归档	正式/报告/多种子/训练证据，不能仅按日期删除
+AirSim其他运行	2026-07-02	最早文件时间	research_modules/airsim_runtime/outputs/cv5v5_group_d10_r1	360317	0.000	4	304507	0.000	2	帧级观测流;观测/回放流	0	0	先归档再考虑删除	日期较早但含可回放原始数据
+AirSim其他运行	2026-07-02	最早文件时间	research_modules/airsim_runtime/outputs/cv5v5_group_d14_r15	361986	0.000	4	307154	0.000	2	帧级观测流;观测/回放流	0	0	先归档再考虑删除	日期较早但含可回放原始数据
+AirSim其他运行	2026-07-02	最早文件时间	research_modules/airsim_runtime/outputs/cv5v5_group_d20_r2	359259	0.000	4	303559	0.000	2	帧级观测流;观测/回放流	0	0	先归档再考虑删除	日期较早但含可回放原始数据
+AirSim其他运行	2026-07-02	最早文件时间	research_modules/airsim_runtime/outputs/cv5v5_verify_001	261077	0.000	4	218402	0.000	2	帧级观测流;观测/回放流	0	0	先归档再考虑删除	日期较早但含可回放原始数据
+AirSim其他运行	2026-07-02	最早文件时间	research_modules/airsim_runtime/outputs/cv5v5_verify_002	260552	0.000	4	217877	0.000	2	帧级观测流;观测/回放流	0	0	先归档再考虑删除	日期较早但含可回放原始数据
+AirSim其他运行	2026-07-02	最早文件时间	research_modules/airsim_runtime/outputs/episode_001_d1_sensor	1444419	0.001	5	1444419	0.001	5	帧级观测流;相机图像/视频	0	0	先归档再考虑删除	日期较早但含可回放原始数据
+AirSim其他运行	2026-07-02	最早文件时间	research_modules/airsim_runtime/outputs/episode_002_d2_association	1461644	0.001	7	1448467	0.001	5	帧级观测流;相机图像/视频	0	0	先归档再考虑删除	日期较早但含可回放原始数据
+AirSim其他运行	2026-07-02	最早文件时间	research_modules/airsim_runtime/outputs/episode_003_d3_assignment	1460673	0.001	7	1447496	0.001	5	帧级观测流;相机图像/视频	0	0	先归档再考虑删除	日期较早但含可回放原始数据
+AirSim其他运行	2026-07-02	最早文件时间	research_modules/airsim_runtime/outputs/episode_005_d4_degradation	1460415	0.001	7	1447238	0.001	5	帧级观测流;相机图像/视频	0	0	先归档再考虑删除	日期较早但含可回放原始数据
+AirSim其他运行	2026-07-02	最早文件时间	research_modules/airsim_runtime/outputs/episode_006_full_flow	1462057	0.001	7	1448880	0.001	5	帧级观测流;相机图像/视频	0	0	先归档再考虑删除	日期较早但含可回放原始数据
+AirSim末端闭合/时序	2026-07-02	最早文件时间	research_modules/airsim_runtime/outputs/episode_004_d5_terminal	1461578	0.001	7	1448401	0.001	5	帧级观测流;相机图像/视频	0	0	先归档再考虑删除	日期较早但含可回放原始数据
+集成质点仿真	2026-07-02	最早文件时间	research_modules/integrated_simulation/outputs/check_current_flow	221622	0.000	2	0	0.000	0		0	0	复核后删除候选	日期较早且未识别到原始观测；可能主要是可重算派生文件
+AirSim其他运行	2026-07-03	最早文件时间	research_modules/airsim_runtime/outputs/p0_actor2v2_intercept_001	5719617	0.005	23	5161347	0.005	12	帧级观测流;观测/回放流	0	0	先归档再考虑删除	日期较早但含可回放原始数据
+AirSim其他运行	2026-07-03	最早文件时间	research_modules/airsim_runtime/outputs/p0_cv5v5_d4d5_stress_001	3230747	0.003	18	2605166	0.002	9	帧级观测流;观测/回放流	0	0	先归档再考虑删除	日期较早但含可回放原始数据
+AirSim其他运行	2026-07-03	最早文件时间	research_modules/airsim_runtime/outputs/p0_cv5v5_replay_001	3933887	0.004	22	3449062	0.003	12	帧级观测流;观测/回放流	0	0	先归档再考虑删除	日期较早但含可回放原始数据
+AirSim其他运行	2026-07-03	目录名	research_modules/airsim_runtime/outputs/p1_2v2_active_secondary_visual_png_20260703_175316	4757631	0.004	24	4331393	0.004	12	帧级观测流;观测/回放流	0	0	先归档再考虑删除	日期较早但含可回放原始数据
+AirSim其他运行	2026-07-03	目录名	research_modules/airsim_runtime/outputs/p1_5v5_intercept_20260703	14974153	0.014	23	13620590	0.013	12	帧级观测流;观测/回放流	0	0	先归档再考虑删除	日期较早但含可回放原始数据
+AirSim其他运行	2026-07-03	目录名	research_modules/airsim_runtime/outputs/p1_5v5_intercept_close_20260703	28336107	0.026	23	25412264	0.024	12	帧级观测流;观测/回放流	0	0	先归档再考虑删除	日期较早但含可回放原始数据
+AirSim其他运行	2026-07-03	目录名	research_modules/airsim_runtime/outputs/p1_5v5_intercept_collision_tuned_20260703	31667710	0.029	23	28986791	0.027	12	帧级观测流;观测/回放流	0	0	先归档再考虑删除	日期较早但含可回放原始数据
+AirSim其他运行	2026-07-03	最早文件时间	research_modules/airsim_runtime/outputs/p1_d4d5_200m_002	3312300	0.003	18	2685874	0.003	9	帧级观测流;观测/回放流	0	0	先归档再考虑删除	日期较早但含可回放原始数据
+AirSim其他运行	2026-07-03	目录名	research_modules/airsim_runtime/outputs/p1_full_airsim_2v2_intercept_20260703	4859859	0.005	23	4405154	0.004	12	帧级观测流;观测/回放流	0	0	先归档再考虑删除	日期较早但含可回放原始数据
+AirSim其他运行	2026-07-03	目录名	research_modules/airsim_runtime/outputs/p1_full_airsim_cv5v5_batch_20260703_seed000	2047227	0.002	22	1857901	0.002	12	帧级观测流;观测/回放流	0	0	先归档再考虑删除	日期较早但含可回放原始数据
+AirSim其他运行	2026-07-03	目录名	research_modules/airsim_runtime/outputs/p1_full_airsim_cv5v5_batch_20260703_seed001	2047183	0.002	22	1858593	0.002	12	帧级观测流;观测/回放流	0	0	先归档再考虑删除	日期较早但含可回放原始数据
+AirSim其他运行	2026-07-03	目录名	research_modules/airsim_runtime/outputs/p1_full_airsim_d4d5_200m_20260703	2355310	0.002	18	1858387	0.002	9	帧级观测流;观测/回放流	0	0	先归档再考虑删除	日期较早但含可回放原始数据
+AirSim末端视觉/相机试验	2026-07-03	目录名	research_modules/airsim_runtime/outputs/d5_cv_2v2_geometric_20260703_184952	76920	0.000	2	76920	0.000	2	帧级观测流;观测/回放流	0	0	先归档再考虑删除	日期较早但含可回放原始数据
+AirSim末端视觉/相机试验	2026-07-03	目录名	research_modules/airsim_runtime/outputs/d5_cv_2v2_geometric_close_20260703_185053	137844	0.000	2	137844	0.000	2	帧级观测流;观测/回放流	0	0	先归档再考虑删除	日期较早但含可回放原始数据
+AirSim末端视觉/相机试验	2026-07-03	目录名	research_modules/airsim_runtime/outputs/d5_cv_2v2_geometric_stable_20260703_185141	237718	0.000	2	237718	0.000	2	帧级观测流;观测/回放流	0	0	先归档再考虑删除	日期较早但含可回放原始数据
+AirSim末端闭合/时序	2026-07-03	最早文件时间	research_modules/airsim_runtime/outputs/p1_batch_terminal_handoff_tuned_2seed_seed000	5397426	0.005	23	4850061	0.005	12	帧级观测流;观测/回放流	0	0	先归档再考虑删除	日期较早但含可回放原始数据
+AirSim末端闭合/时序	2026-07-03	最早文件时间	research_modules/airsim_runtime/outputs/p1_terminal_handoff_tuned_001	5957741	0.006	23	5367506	0.005	12	帧级观测流;观测/回放流	0	0	先归档再考虑删除	日期较早但含可回放原始数据
+AirSim末端闭合/时序	2026-07-03	最早文件时间	research_modules/airsim_runtime/outputs/p1_terminal_handoff_tuned_002	5523302	0.005	24	4882278	0.005	12	帧级观测流;观测/回放流	0	0	先归档再考虑删除	日期较早但含可回放原始数据
+AirSim其他运行	2026-07-04	目录名	research_modules/airsim_runtime/outputs/blocks_5v5_active_center_replan_20260704_070009	12377485	0.012	24	11170120	0.010	12	帧级观测流;观测/回放流	0	0	先归档再考虑删除	日期较早但含可回放原始数据
+AirSim其他运行	2026-07-04	目录名	research_modules/airsim_runtime/outputs/blocks_5v5_active_center_replan_tuned_20260704_070424	19792507	0.018	24	18170741	0.017	12	帧级观测流;观测/回放流	0	0	先归档再考虑删除	日期较早但含可回放原始数据
+AirSim其他运行	2026-07-06	目录名	research_modules/airsim_runtime/outputs/blocks_2v2_actor_intercept_continue_20260706_001	12282864	0.011	35	11626386	0.011	24	帧级观测流;观测/回放流	0	0	先归档再考虑删除	日期较早但含可回放原始数据
+AirSim其他运行	2026-07-07	目录名	research_modules/airsim_runtime/outputs/blocks_2v2_actor_intercept_p1_fix_20260707_001	12216823	0.011	35	11560332	0.011	24	帧级观测流;观测/回放流	0	0	先归档再考虑删除	日期较早但含可回放原始数据
+AirSim其他运行	2026-07-07	目录名	research_modules/airsim_runtime/outputs/blocks_2v2_actor_intercept_p1_fix_20260707_002	12174811	0.011	35	11431737	0.011	24	帧级观测流;观测/回放流	0	0	先归档再考虑删除	日期较早但含可回放原始数据
+AirSim其他运行	2026-07-07	目录名	research_modules/airsim_runtime/outputs/blocks_2v2_actor_intercept_p1_fix_20260707_003	12180520	0.011	35	11495444	0.011	24	帧级观测流;观测/回放流	0	0	先归档再考虑删除	日期较早但含可回放原始数据
+AirSim其他运行	2026-07-07	目录名	research_modules/airsim_runtime/outputs/blocks_2v2_actor_intercept_p1_fix_20260707_004	12113023	0.011	35	11472648	0.011	24	帧级观测流;观测/回放流	0	0	先归档再考虑删除	日期较早但含可回放原始数据
+AirSim其他运行	2026-07-07	目录名	research_modules/airsim_runtime/outputs/detect_2v2_tuned_baseline_20260707_202526	2961826	0.003	35	2783651	0.003	24	帧级观测流;观测/回放流	0	0	先归档再考虑删除	日期较早但含可回放原始数据
+AirSim其他运行	2026-07-07	目录名	research_modules/airsim_runtime/outputs/yolo_2v2_tuned_20260707_202343	1782911	0.002	35	1619037	0.002	24	帧级观测流;观测/回放流	0	0	先归档再考虑删除	日期较早但含可回放原始数据
+AirSim其他运行	2026-07-08	目录名	research_modules/airsim_runtime/outputs/p1_calib_2v2_yolo_visual_png_20260708_003355	4496699	0.004	36	4303149	0.004	24	帧级观测流;观测/回放流	0	0	先归档再考虑删除	日期较早但含可回放原始数据
+AirSim其他运行	2026-07-08	目录名	research_modules/airsim_runtime/outputs/p1_calib_5v5_intercept_20260708_002823_seed001	18937826	0.018	36	18341356	0.017	24	帧级观测流;观测/回放流	0	0	先归档再考虑删除	日期较早但含可回放原始数据
+AirSim其他运行	2026-07-08	目录名	research_modules/airsim_runtime/outputs/p1_calib_5v5_intercept_20260708_002823_seed002	18907517	0.018	36	18310419	0.017	24	帧级观测流;观测/回放流	0	0	先归档再考虑删除	日期较早但含可回放原始数据
+AirSim其他运行	2026-07-08	目录名	research_modules/airsim_runtime/outputs/p1_calib_cv5_d4d5_20260708_002235_seed001	5773444	0.005	24	5219755	0.005	15	帧级观测流;观测/回放流	0	0	先归档再考虑删除	日期较早但含可回放原始数据
+AirSim其他运行	2026-07-08	目录名	research_modules/airsim_runtime/outputs/p1_calib_cv5_d4d5_20260708_002235_seed002	5701685	0.005	24	5195892	0.005	15	帧级观测流;观测/回放流	0	0	先归档再考虑删除	日期较早但含可回放原始数据
+AirSim其他运行	2026-07-08	目录名	research_modules/airsim_runtime/outputs/p1_calib_cv5_d4d5_20260708_002235_seed003	5726317	0.005	24	5221021	0.005	15	帧级观测流;观测/回放流	0	0	先归档再考虑删除	日期较早但含可回放原始数据
+AirSim其他运行	2026-07-08	目录名	research_modules/airsim_runtime/outputs/p1_compare_cv5_d4d5_200m_20260708_004519_seed001	5967349	0.006	24	5328896	0.005	15	帧级观测流;观测/回放流	0	0	先归档再考虑删除	日期较早但含可回放原始数据
+AirSim其他运行	2026-07-08	目录名	research_modules/airsim_runtime/outputs/p1_compare_cv5_d4d5_200m_20260708_004519_seed002	5988742	0.006	24	5349914	0.005	15	帧级观测流;观测/回放流	0	0	先归档再考虑删除	日期较早但含可回放原始数据
+AirSim其他运行	2026-07-08	目录名	research_modules/airsim_runtime/outputs/p1_compare_cv5_d4d5_200m_20260708_004519_seed003	5998918	0.006	24	5360815	0.005	15	帧级观测流;观测/回放流	0	0	先归档再考虑删除	日期较早但含可回放原始数据
+AirSim其他运行	2026-07-08	目录名	research_modules/airsim_runtime/outputs/p1_d4d5_200m_down_fov110_1920_detect_20260708_023640_seed001	5815818	0.005	24	5310353	0.005	15	帧级观测流;观测/回放流	0	0	先归档再考虑删除	日期较早但含可回放原始数据
+AirSim其他运行	2026-07-08	目录名	research_modules/airsim_runtime/outputs/p1_d4d5_200m_down_fov110_1920_detect_20260708_023640_seed002	5810136	0.005	24	5304566	0.005	15	帧级观测流;观测/回放流	0	0	先归档再考虑删除	日期较早但含可回放原始数据
+AirSim其他运行	2026-07-08	目录名	research_modules/airsim_runtime/outputs/p1_d4d5_200m_down_fov110_1920_detect_20260708_023640_seed003	5817543	0.005	24	5312189	0.005	15	帧级观测流;观测/回放流	0	0	先归档再考虑删除	日期较早但含可回放原始数据
+AirSim其他运行	2026-07-08	目录名	research_modules/airsim_runtime/outputs/p1_d4d5_200m_down_fov110_1920_funnel_20260708_033235_seed001	6373757	0.006	24	5362516	0.005	15	帧级观测流;观测/回放流	0	0	先归档再考虑删除	日期较早但含可回放原始数据
+AirSim其他运行	2026-07-08	目录名	research_modules/airsim_runtime/outputs/p1_d4d5_200m_down_fov110_1920_funnel_20260708_033235_seed002	6425977	0.006	24	5366384	0.005	15	帧级观测流;观测/回放流	0	0	先归档再考虑删除	日期较早但含可回放原始数据
+AirSim其他运行	2026-07-08	目录名	research_modules/airsim_runtime/outputs/p1_d4d5_200m_down_fov110_1920_funnel_20260708_033235_seed003	6359983	0.006	24	5348743	0.005	15	帧级观测流;观测/回放流	0	0	先归档再考虑删除	日期较早但含可回放原始数据
+AirSim其他运行	2026-07-08	目录名	research_modules/airsim_runtime/outputs/p1_d4d5_200m_down_fov110_1920_funnel_v2_20260708_033739_seed001	6493020	0.006	24	5353900	0.005	15	帧级观测流;观测/回放流	0	0	先归档再考虑删除	日期较早但含可回放原始数据
+AirSim其他运行	2026-07-08	目录名	research_modules/airsim_runtime/outputs/p1_d4d5_200m_down_fov110_1920_funnel_v2_20260708_033739_seed002	6486103	0.006	24	5339685	0.005	15	帧级观测流;观测/回放流	0	0	先归档再考虑删除	日期较早但含可回放原始数据
+AirSim其他运行	2026-07-08	目录名	research_modules/airsim_runtime/outputs/p1_d4d5_200m_down_fov110_1920_funnel_v2_20260708_033739_seed003	6434719	0.006	24	5385334	0.005	15	帧级观测流;观测/回放流	0	0	先归档再考虑删除	日期较早但含可回放原始数据
+AirSim其他运行	2026-07-08	目录名	research_modules/airsim_runtime/outputs/p1_d4d5_200m_down_fov140_detect_20260708_022730_seed001	5931920	0.006	24	5296809	0.005	15	帧级观测流;观测/回放流	0	0	先归档再考虑删除	日期较早但含可回放原始数据
+AirSim其他运行	2026-07-08	目录名	research_modules/airsim_runtime/outputs/p1_d4d5_200m_down_fov140_detect_20260708_022730_seed002	5921384	0.006	24	5289115	0.005	15	帧级观测流;观测/回放流	0	0	先归档再考虑删除	日期较早但含可回放原始数据
+AirSim其他运行	2026-07-08	目录名	research_modules/airsim_runtime/outputs/p1_d4d5_200m_down_fov140_detect_20260708_022730_seed003	5930147	0.006	24	5291480	0.005	15	帧级观测流;观测/回放流	0	0	先归档再考虑删除	日期较早但含可回放原始数据
+AirSim其他运行	2026-07-08	目录名	research_modules/airsim_runtime/outputs/p1_d4d5_mobile_recon_20260708_055948_seed001	6846187	0.006	25	5640620	0.005	15	帧级观测流;观测/回放流	0	0	先归档再考虑删除	日期较早但含可回放原始数据
+AirSim其他运行	2026-07-08	目录名	research_modules/airsim_runtime/outputs/p1_d4d5_mobile_recon_20260708_055948_seed002	6812884	0.006	25	5654879	0.005	15	帧级观测流;观测/回放流	0	0	先归档再考虑删除	日期较早但含可回放原始数据
+AirSim其他运行	2026-07-08	目录名	research_modules/airsim_runtime/outputs/p1_d4d5_mobile_recon_20260708_055948_seed003	6784139	0.006	25	5626515	0.005	15	帧级观测流;观测/回放流	0	0	先归档再考虑删除	日期较早但含可回放原始数据
+AirSim其他运行	2026-07-08	目录名	research_modules/airsim_runtime/outputs/p1_d4d5_registration_calibration_runtime_20260708	6921	0.000	1	0	0.000	0		0	0	复核后删除候选	日期较早且未识别到原始观测；可能主要是可重算派生文件
+AirSim其他运行	2026-07-08	目录名	research_modules/airsim_runtime/outputs/p1_d4d5_registration_calibration_runtime_20260708_h200_f110_sec3_st5	6181307	0.006	28	3907369	0.004	15	帧级观测流;观测/回放流	0	0	先归档再考虑删除	日期较早但含可回放原始数据
+AirSim其他运行	2026-07-08	目录名	research_modules/airsim_runtime/outputs/p1_d4d5_registration_calibration_runtime_v2_20260708	6969	0.000	1	0	0.000	0		0	0	复核后删除候选	日期较早且未识别到原始观测；可能主要是可重算派生文件
+AirSim其他运行	2026-07-08	目录名	research_modules/airsim_runtime/outputs/p1_d4d5_registration_calibration_runtime_v2_20260708_h200_f110_sec3_st5	6381091	0.006	28	3982709	0.004	15	帧级观测流;观测/回放流	0	0	先归档再考虑删除	日期较早但含可回放原始数据
+AirSim其他运行	2026-07-08	目录名	research_modules/airsim_runtime/outputs/p1_long_5v5_intercept_20260708_004812_seed001	33879545	0.032	36	32533162	0.030	24	帧级观测流;观测/回放流	0	0	先归档再考虑删除	日期较早但含可回放原始数据
+AirSim其他运行	2026-07-08	目录名	research_modules/airsim_runtime/outputs/p1_long_5v5_intercept_20260708_004812_seed002	33745061	0.031	36	32378278	0.030	24	帧级观测流;观测/回放流	0	0	先归档再考虑删除	日期较早但含可回放原始数据
+AirSim其他运行	2026-07-08	目录名	research_modules/airsim_runtime/outputs/p1_long_5v5_intercept_20260708_004812_seed003	33723607	0.031	36	32406281	0.030	24	帧级观测流;观测/回放流	0	0	先归档再考虑删除	日期较早但含可回放原始数据
+AirSim其他运行	2026-07-09	目录名	research_modules/airsim_runtime/outputs/airsim_2v2_intercept_20260709_015800	16051849	0.015	35	15585313	0.015	24	帧级观测流;观测/回放流	0	0	先归档再考虑删除	日期较早但含可回放原始数据
+AirSim其他运行	2026-07-09	目录名	research_modules/airsim_runtime/outputs/p0a_d4d5_calibration_multiseed_20260709_h50_f80_sec2_st0_seed001	10367689	0.010	28	7267628	0.007	15	帧级观测流;观测/回放流	0	0	保留或先归档	正式/报告/多种子/训练证据，不能仅按日期删除
+AirSim其他运行	2026-07-09	目录名	research_modules/airsim_runtime/outputs/p0a_d4d5_calibration_multiseed_20260709_h50_f80_sec2_st0_seed002	10389367	0.010	28	7256836	0.007	15	帧级观测流;观测/回放流	0	0	保留或先归档	正式/报告/多种子/训练证据，不能仅按日期删除
+AirSim其他运行	2026-07-09	目录名	research_modules/airsim_runtime/outputs/p0a_d4d5_calibration_multiseed_20260709_h50_f80_sec2_st0_seed003	10416956	0.010	28	7288122	0.007	15	帧级观测流;观测/回放流	0	0	保留或先归档	正式/报告/多种子/训练证据，不能仅按日期删除
+AirSim其他运行	2026-07-09	目录名	research_modules/airsim_runtime/outputs/p0a_d4d5_calibration_multiseed_20260709_h50_f80_sec2_st15_seed001	3193	0.000	1	0	0.000	0		0	0	保留或先归档	正式/报告/多种子/训练证据，不能仅按日期删除
+AirSim其他运行	2026-07-09	目录名	research_modules/airsim_runtime/outputs/p0a_d4d5_calibration_multiseed_20260709_h50_f80_sec2_st15_seed002	3193	0.000	1	0	0.000	0		0	0	保留或先归档	正式/报告/多种子/训练证据，不能仅按日期删除
+AirSim其他运行	2026-07-09	目录名	research_modules/airsim_runtime/outputs/p0a_d4d5_calibration_multiseed_20260709_h50_f80_sec2_st15_seed003	3193	0.000	1	0	0.000	0		0	0	保留或先归档	正式/报告/多种子/训练证据，不能仅按日期删除
+AirSim其他运行	2026-07-09	目录名	research_modules/airsim_runtime/outputs/p0a_d4d5_calibration_multiseed_v2_20260709	35233	0.000	1	0	0.000	0		0	0	保留或先归档	正式/报告/多种子/训练证据，不能仅按日期删除
+AirSim其他运行	2026-07-09	目录名	research_modules/airsim_runtime/outputs/p0a_d4d5_calibration_multiseed_v2_20260709_h200_f110_sec3_st0_seed001	13713332	0.013	28	8457992	0.008	15	帧级观测流;观测/回放流	0	0	保留或先归档	正式/报告/多种子/训练证据，不能仅按日期删除
+AirSim其他运行	2026-07-09	目录名	research_modules/airsim_runtime/outputs/p0a_d4d5_calibration_multiseed_v2_20260709_h200_f110_sec3_st0_seed002	13769876	0.013	28	8452781	0.008	15	帧级观测流;观测/回放流	0	0	保留或先归档	正式/报告/多种子/训练证据，不能仅按日期删除
+AirSim其他运行	2026-07-09	目录名	research_modules/airsim_runtime/outputs/p0a_d4d5_calibration_multiseed_v2_20260709_h200_f110_sec3_st0_seed003	13600789	0.013	28	8422970	0.008	15	帧级观测流;观测/回放流	0	0	保留或先归档	正式/报告/多种子/训练证据，不能仅按日期删除
+AirSim其他运行	2026-07-09	目录名	research_modules/airsim_runtime/outputs/p0a_d4d5_calibration_multiseed_v2_20260709_h50_f110_sec3_st0_seed001	13091318	0.012	28	8241620	0.008	15	帧级观测流;观测/回放流	0	0	保留或先归档	正式/报告/多种子/训练证据，不能仅按日期删除
+AirSim其他运行	2026-07-09	目录名	research_modules/airsim_runtime/outputs/p0a_d4d5_calibration_multiseed_v2_20260709_h50_f110_sec3_st0_seed002	13018791	0.012	28	8217373	0.008	15	帧级观测流;观测/回放流	0	0	保留或先归档	正式/报告/多种子/训练证据，不能仅按日期删除
+AirSim其他运行	2026-07-09	目录名	research_modules/airsim_runtime/outputs/p0a_d4d5_calibration_multiseed_v2_20260709_h50_f110_sec3_st0_seed003	13008832	0.012	28	8240962	0.008	15	帧级观测流;观测/回放流	0	0	保留或先归档	正式/报告/多种子/训练证据，不能仅按日期删除
+AirSim其他运行	2026-07-09	目录名	research_modules/airsim_runtime/outputs/p1_gap_fix_smoke_20260709	15611	0.000	1	0	0.000	0		0	0	早期删除候选	早期开发或诊断运行；仍需确认无报告引用且已有后继版本
+AirSim其他运行	2026-07-10	目录名	research_modules/airsim_runtime/outputs/p0_truth_isolation_smoke_20260710	6176068	0.006	28	3638368	0.003	15	帧级观测流;观测/回放流	0	0	早期删除候选	早期开发或诊断运行；仍需确认无报告引用且已有后继版本
+AirSim其他运行	2026-07-10	目录名	research_modules/airsim_runtime/outputs/p1_gap_closure_2v2_multiseed_20260710	365248	0.000	4	0	0.000	0		0	0	保留或先归档	正式/报告/多种子/训练证据，不能仅按日期删除
+AirSim其他运行	2026-07-10	目录名	research_modules/airsim_runtime/outputs/p1_gap_closure_2v2_multiseed_20260710_seed001	15581381	0.015	36	15097133	0.014	24	帧级观测流;观测/回放流	0	0	保留或先归档	正式/报告/多种子/训练证据，不能仅按日期删除
+AirSim其他运行	2026-07-10	目录名	research_modules/airsim_runtime/outputs/p1_gap_closure_2v2_multiseed_20260710_seed002	15703608	0.015	36	15185372	0.014	24	帧级观测流;观测/回放流	0	0	保留或先归档	正式/报告/多种子/训练证据，不能仅按日期删除
+AirSim其他运行	2026-07-10	目录名	research_modules/airsim_runtime/outputs/p1_gap_closure_2v2_multiseed_20260710_seed003	21573769	0.020	36	21022311	0.020	24	帧级观测流;观测/回放流	0	0	保留或先归档	正式/报告/多种子/训练证据，不能仅按日期删除
+AirSim其他运行	2026-07-10	目录名	research_modules/airsim_runtime/outputs/p1_gap_closure_2v2_multiseed_20260710_seed004	15611729	0.015	36	15094246	0.014	24	帧级观测流;观测/回放流	0	0	保留或先归档	正式/报告/多种子/训练证据，不能仅按日期删除
+AirSim其他运行	2026-07-10	目录名	research_modules/airsim_runtime/outputs/p1_gap_closure_2v2_multiseed_20260710_seed005	15620685	0.015	36	15102551	0.014	24	帧级观测流;观测/回放流	0	0	保留或先归档	正式/报告/多种子/训练证据，不能仅按日期删除
+AirSim其他运行	2026-07-10	目录名	research_modules/airsim_runtime/outputs/p1_gap_closure_2v2_multiseed_20260710_seed006	15673387	0.015	36	15188196	0.014	24	帧级观测流;观测/回放流	0	0	保留或先归档	正式/报告/多种子/训练证据，不能仅按日期删除
+AirSim其他运行	2026-07-10	目录名	research_modules/airsim_runtime/outputs/p1_gap_closure_2v2_multiseed_20260710_seed007	15618558	0.015	36	15102078	0.014	24	帧级观测流;观测/回放流	0	0	保留或先归档	正式/报告/多种子/训练证据，不能仅按日期删除
+AirSim其他运行	2026-07-10	目录名	research_modules/airsim_runtime/outputs/p1_gap_closure_2v2_multiseed_20260710_seed008	15624908	0.015	36	15107416	0.014	24	帧级观测流;观测/回放流	0	0	保留或先归档	正式/报告/多种子/训练证据，不能仅按日期删除
+AirSim其他运行	2026-07-10	目录名	research_modules/airsim_runtime/outputs/p1_gap_closure_2v2_multiseed_20260710_seed009	15777642	0.015	36	15259151	0.014	24	帧级观测流;观测/回放流	0	0	保留或先归档	正式/报告/多种子/训练证据，不能仅按日期删除
+AirSim其他运行	2026-07-10	目录名	research_modules/airsim_runtime/outputs/p1_gap_closure_2v2_multiseed_20260710_seed010	21342858	0.020	36	20822130	0.019	24	帧级观测流;观测/回放流	0	0	保留或先归档	正式/报告/多种子/训练证据，不能仅按日期删除
+AirSim其他运行	2026-07-10	目录名	research_modules/airsim_runtime/outputs/p1_gap_closure_2v2_smoke_20260710	15439783	0.014	36	14954865	0.014	24	帧级观测流;观测/回放流	0	0	早期删除候选	早期开发或诊断运行；仍需确认无报告引用且已有后继版本
+AirSim其他运行	2026-07-10	目录名	research_modules/airsim_runtime/outputs/p1_gap_closure_calibration_20260710	314024	0.000	4	0	0.000	0		0	0	复核后删除候选	日期较早且未识别到原始观测；可能主要是可重算派生文件
+AirSim其他运行	2026-07-10	目录名	research_modules/airsim_runtime/outputs/p1_gap_closure_calibration_20260710_h200_f110_sec3_st0_seed001	16191099	0.015	28	9514572	0.009	15	帧级观测流;观测/回放流	0	0	先归档再考虑删除	日期较早但含可回放原始数据
+AirSim其他运行	2026-07-10	目录名	research_modules/airsim_runtime/outputs/p1_gap_closure_calibration_20260710_h200_f110_sec3_st0_seed002	16161459	0.015	28	9476883	0.009	15	帧级观测流;观测/回放流	0	0	先归档再考虑删除	日期较早但含可回放原始数据
+AirSim其他运行	2026-07-10	目录名	research_modules/airsim_runtime/outputs/p1_gap_closure_calibration_20260710_h200_f110_sec3_st0_seed003	16206223	0.015	28	9501379	0.009	15	帧级观测流;观测/回放流	0	0	先归档再考虑删除	日期较早但含可回放原始数据
+AirSim其他运行	2026-07-10	目录名	research_modules/airsim_runtime/outputs/p1_gap_closure_calibration_20260710_h200_f110_sec3_st0_seed004	16075738	0.015	28	9462994	0.009	15	帧级观测流;观测/回放流	0	0	先归档再考虑删除	日期较早但含可回放原始数据
+AirSim其他运行	2026-07-10	目录名	research_modules/airsim_runtime/outputs/p1_gap_closure_calibration_20260710_h200_f110_sec3_st0_seed005	16169398	0.015	28	9516754	0.009	15	帧级观测流;观测/回放流	0	0	先归档再考虑删除	日期较早但含可回放原始数据
+AirSim其他运行	2026-07-10	目录名	research_modules/airsim_runtime/outputs/p1_gap_closure_calibration_20260710_h200_f110_sec3_st0_seed006	15972244	0.015	28	9446209	0.009	15	帧级观测流;观测/回放流	0	0	先归档再考虑删除	日期较早但含可回放原始数据
+AirSim其他运行	2026-07-10	目录名	research_modules/airsim_runtime/outputs/p1_gap_closure_calibration_20260710_h200_f110_sec3_st0_seed007	16353711	0.015	28	9548498	0.009	15	帧级观测流;观测/回放流	0	0	先归档再考虑删除	日期较早但含可回放原始数据
+AirSim其他运行	2026-07-10	目录名	research_modules/airsim_runtime/outputs/p1_gap_closure_calibration_20260710_h200_f110_sec3_st0_seed008	16192773	0.015	28	9529557	0.009	15	帧级观测流;观测/回放流	0	0	先归档再考虑删除	日期较早但含可回放原始数据
+AirSim其他运行	2026-07-10	目录名	research_modules/airsim_runtime/outputs/p1_gap_closure_calibration_20260710_h200_f110_sec3_st0_seed009	16180593	0.015	28	9503825	0.009	15	帧级观测流;观测/回放流	0	0	先归档再考虑删除	日期较早但含可回放原始数据
+AirSim其他运行	2026-07-10	目录名	research_modules/airsim_runtime/outputs/p1_gap_closure_calibration_20260710_h200_f110_sec3_st0_seed010	16364270	0.015	28	9561927	0.009	15	帧级观测流;观测/回放流	0	0	先归档再考虑删除	日期较早但含可回放原始数据
+AirSim其他运行	2026-07-10	目录名	research_modules/airsim_runtime/outputs/p1_gap_closure_calibration_20260710_h50_f110_sec3_st0_seed001	15394016	0.014	28	9231769	0.009	15	帧级观测流;观测/回放流	0	0	先归档再考虑删除	日期较早但含可回放原始数据
+AirSim其他运行	2026-07-10	目录名	research_modules/airsim_runtime/outputs/p1_gap_closure_calibration_20260710_h50_f110_sec3_st0_seed002	15447065	0.014	28	9285062	0.009	15	帧级观测流;观测/回放流	0	0	先归档再考虑删除	日期较早但含可回放原始数据
+AirSim其他运行	2026-07-10	目录名	research_modules/airsim_runtime/outputs/p1_gap_closure_calibration_20260710_h50_f110_sec3_st0_seed003	15414042	0.014	28	9264670	0.009	15	帧级观测流;观测/回放流	0	0	先归档再考虑删除	日期较早但含可回放原始数据
+AirSim其他运行	2026-07-10	目录名	research_modules/airsim_runtime/outputs/p1_gap_closure_calibration_20260710_h50_f110_sec3_st0_seed004	15667275	0.015	28	9341494	0.009	15	帧级观测流;观测/回放流	0	0	先归档再考虑删除	日期较早但含可回放原始数据
+AirSim其他运行	2026-07-10	目录名	research_modules/airsim_runtime/outputs/p1_gap_closure_calibration_20260710_h50_f110_sec3_st0_seed005	15459174	0.014	28	9285567	0.009	15	帧级观测流;观测/回放流	0	0	先归档再考虑删除	日期较早但含可回放原始数据
+AirSim其他运行	2026-07-10	目录名	research_modules/airsim_runtime/outputs/p1_gap_closure_calibration_20260710_h50_f110_sec3_st0_seed006	15423654	0.014	28	9264741	0.009	15	帧级观测流;观测/回放流	0	0	先归档再考虑删除	日期较早但含可回放原始数据
+AirSim其他运行	2026-07-10	目录名	research_modules/airsim_runtime/outputs/p1_gap_closure_calibration_20260710_h50_f110_sec3_st0_seed007	15379879	0.014	28	9267661	0.009	15	帧级观测流;观测/回放流	0	0	先归档再考虑删除	日期较早但含可回放原始数据
+AirSim其他运行	2026-07-10	目录名	research_modules/airsim_runtime/outputs/p1_gap_closure_calibration_20260710_h50_f110_sec3_st0_seed008	15530455	0.014	28	9317982	0.009	15	帧级观测流;观测/回放流	0	0	先归档再考虑删除	日期较早但含可回放原始数据
+AirSim其他运行	2026-07-10	目录名	research_modules/airsim_runtime/outputs/p1_gap_closure_calibration_20260710_h50_f110_sec3_st0_seed009	15387263	0.014	28	9273146	0.009	15	帧级观测流;观测/回放流	0	0	先归档再考虑删除	日期较早但含可回放原始数据
+AirSim其他运行	2026-07-10	目录名	research_modules/airsim_runtime/outputs/p1_gap_closure_calibration_20260710_h50_f110_sec3_st0_seed010	15348137	0.014	28	9260534	0.009	15	帧级观测流;观测/回放流	0	0	先归档再考虑删除	日期较早但含可回放原始数据
+AirSim P1/P2综合验证	2026-07-11	目录名	research_modules/airsim_runtime/outputs/p1_p2_validation_20260711	327008132	0.305	1799	266963130	0.249	1130	帧级观测流;真值/标签;观测/回放流	0	0	保留或先归档	正式/报告/多种子/训练证据，不能仅按日期删除
+AirSim其他运行	2026-07-11	目录名	research_modules/airsim_runtime/outputs/blocks_cv_m5_n2_liveness_batch_20260711_seed017	22188827	0.021	35	21648829	0.020	24	帧级观测流;观测/回放流	0	0	先归档再考虑删除	日期较早但含可回放原始数据
+AirSim其他运行	2026-07-11	目录名	research_modules/airsim_runtime/outputs/blocks_cv_m5_n2_liveness_batch_20260711_seed027	22196281	0.021	35	21655551	0.020	24	帧级观测流;观测/回放流	0	0	先归档再考虑删除	日期较早但含可回放原始数据
+AirSim其他运行	2026-07-11	目录名	research_modules/airsim_runtime/outputs/blocks_cv_m5_n2_liveness_seed7_20260711	22239339	0.021	35	21656520	0.020	24	帧级观测流;观测/回放流	0	0	先归档再考虑删除	日期较早但含可回放原始数据
+AirSim其他运行	2026-07-11	目录名	research_modules/airsim_runtime/outputs/blocks_cv_m5_n2_replan_convergence_seed7_20260711	22886046	0.021	35	22303148	0.021	24	帧级观测流;观测/回放流	0	0	先归档再考虑删除	日期较早但含可回放原始数据
+AirSim其他运行	2026-07-11	目录名	research_modules/airsim_runtime/outputs/blocks_cv_m5_n2_replan_cooldown_seed7_20260711	22717386	0.021	35	22134353	0.021	24	帧级观测流;观测/回放流	0	0	先归档再考虑删除	日期较早但含可回放原始数据
+AirSim其他运行	2026-07-11	目录名	research_modules/airsim_runtime/outputs/blocks_cv_m5_n2_snapshot_scope_seed7_20260711	22646119	0.021	35	22063102	0.021	24	帧级观测流;观测/回放流	0	0	先归档再考虑删除	日期较早但含可回放原始数据
+AirSim其他运行	2026-07-11	目录名	research_modules/airsim_runtime/outputs/p1_guidance_four_law_smoke_20260711	6025	0.000	2	0	0.000	0		0	0	早期删除候选	早期开发或诊断运行；仍需确认无报告引用且已有后继版本
+AirSim其他运行	2026-07-11	目录名	research_modules/airsim_runtime/outputs/p1_runtime_truth_isolated_d4d5_50m_20260711	5692369	0.005	28	3600534	0.003	15	帧级观测流;观测/回放流	0	0	先归档再考虑删除	日期较早但含可回放原始数据
+AirSim其他运行	2026-07-11	目录名	research_modules/airsim_runtime/outputs/p1_runtime_truth_isolated_d4d5_secondary5_20260711	9176979	0.009	28	4750229	0.004	15	帧级观测流;观测/回放流	0	0	先归档再考虑删除	日期较早但含可回放原始数据
+AirSim其他运行	2026-07-11	目录名	research_modules/airsim_runtime/outputs/p1_runtime_truth_isolated_d4d5_smoke_20260711	5901017	0.005	28	3657957	0.003	15	帧级观测流;观测/回放流	0	0	早期删除候选	早期开发或诊断运行；仍需确认无报告引用且已有后继版本
+AirSim其他运行	2026-07-11	目录名	research_modules/airsim_runtime/outputs/p1_yolov8_bytetrack_smoke_fixed_20260711	2506582	0.002	34	2424582	0.002	24	帧级观测流;观测/回放流	0	0	早期删除候选	早期开发或诊断运行；仍需确认无报告引用且已有后继版本
+AirSim协同闭合	2026-07-11	目录名	research_modules/airsim_runtime/outputs/blocks_cv_m5_n2_cooperative_filter_fix_20260711	11842541	0.011	29	11543152	0.011	20	帧级观测流;观测/回放流	0	0	先归档再考虑删除	日期较早但含可回放原始数据
+AirSim协同闭合	2026-07-11	目录名	research_modules/airsim_runtime/outputs/blocks_cv_m5_n2_cooperative_filter_fix_complete_20260711	10844191	0.010	35	10558463	0.010	24	帧级观测流;观测/回放流	0	0	先归档再考虑删除	日期较早但含可回放原始数据
+AirSim协同闭合	2026-07-11	目录名	research_modules/airsim_runtime/outputs/blocks_cv_m5_n2_cooperative_live_20260711	7224371	0.007	35	7029540	0.007	24	帧级观测流;观测/回放流	0	0	先归档再考虑删除	日期较早但含可回放原始数据
+AirSim其他运行	2026-07-12	目录名	research_modules/airsim_runtime/outputs/p1_5m_2v2_detect_kf_coast_fault_20260712	3015098	0.003	9	2427022	0.002	5	帧级观测流;真值/标签;观测/回放流	0	0	先归档再考虑删除	日期较早但含可回放原始数据
+AirSim其他运行	2026-07-12	目录名	research_modules/airsim_runtime/outputs/p1_5m_2v2_detect_kf_coast_reacquire_20260712	3035567	0.003	9	2447499	0.002	5	帧级观测流;真值/标签;观测/回放流	0	0	先归档再考虑删除	日期较早但含可回放原始数据
+AirSim其他运行	2026-07-12	目录名	research_modules/airsim_runtime/outputs/p1_5m_2v2_multiseed_20260712_seed001	12842933	0.012	47	9870449	0.009	30	帧级观测流;真值/标签;观测/回放流	0	0	保留或先归档	正式/报告/多种子/训练证据，不能仅按日期删除
+AirSim其他运行	2026-07-12	目录名	research_modules/airsim_runtime/outputs/p1_5m_2v2_multiseed_20260712_seed002	12664507	0.012	47	9727924	0.009	30	帧级观测流;真值/标签;观测/回放流	0	0	保留或先归档	正式/报告/多种子/训练证据，不能仅按日期删除
+AirSim其他运行	2026-07-12	目录名	research_modules/airsim_runtime/outputs/p1_5m_2v2_multiseed_20260712_seed003	8286974	0.008	47	6301844	0.006	30	帧级观测流;真值/标签;观测/回放流	0	0	保留或先归档	正式/报告/多种子/训练证据，不能仅按日期删除
+AirSim其他运行	2026-07-12	目录名	research_modules/airsim_runtime/outputs/p1_5m_2v2_multiseed_20260712_seed004	50270997	0.047	47	38416207	0.036	30	帧级观测流;真值/标签;观测/回放流	0	0	保留或先归档	正式/报告/多种子/训练证据，不能仅按日期删除
+AirSim其他运行	2026-07-12	目录名	research_modules/airsim_runtime/outputs/p1_5m_2v2_multiseed_20260712_seed005	8769262	0.008	47	6678294	0.006	30	帧级观测流;真值/标签;观测/回放流	0	0	保留或先归档	正式/报告/多种子/训练证据，不能仅按日期删除
+AirSim其他运行	2026-07-12	目录名	research_modules/airsim_runtime/outputs/p1_5m_2v2_multiseed_20260712_seed006	12668778	0.012	47	9731761	0.009	30	帧级观测流;真值/标签;观测/回放流	0	0	保留或先归档	正式/报告/多种子/训练证据，不能仅按日期删除
+AirSim其他运行	2026-07-12	目录名	research_modules/airsim_runtime/outputs/p1_5m_2v2_multiseed_20260712_seed007	12510826	0.012	47	9609051	0.009	30	帧级观测流;真值/标签;观测/回放流	0	0	保留或先归档	正式/报告/多种子/训练证据，不能仅按日期删除
+AirSim其他运行	2026-07-12	目录名	research_modules/airsim_runtime/outputs/p1_5m_2v2_multiseed_20260712_seed008	12520304	0.012	47	9619006	0.009	30	帧级观测流;真值/标签;观测/回放流	0	0	保留或先归档	正式/报告/多种子/训练证据，不能仅按日期删除
+AirSim其他运行	2026-07-12	目录名	research_modules/airsim_runtime/outputs/p1_5m_2v2_multiseed_20260712_seed009	8135636	0.008	47	6186081	0.006	30	帧级观测流;真值/标签;观测/回放流	0	0	保留或先归档	正式/报告/多种子/训练证据，不能仅按日期删除
+AirSim其他运行	2026-07-12	目录名	research_modules/airsim_runtime/outputs/p1_5m_2v2_multiseed_20260712_seed010	12194874	0.011	47	9361158	0.009	30	帧级观测流;真值/标签;观测/回放流	0	0	保留或先归档	正式/报告/多种子/训练证据，不能仅按日期删除
+AirSim其他运行	2026-07-12	目录名	research_modules/airsim_runtime/outputs/p1_5m_2v2_pilot_20260712	4746140	0.004	38	3575617	0.003	25	帧级观测流;真值/标签;观测/回放流	0	0	先归档再考虑删除	日期较早但含可回放原始数据
+AirSim其他运行	2026-07-12	目录名	research_modules/airsim_runtime/outputs/p1_5m_2v2_pilot_30m_gate_20260712	12654111	0.012	47	9717081	0.009	30	帧级观测流;真值/标签;观测/回放流	0	0	先归档再考虑删除	日期较早但含可回放原始数据
+AirSim其他运行	2026-07-12	目录名	research_modules/airsim_runtime/outputs/p1_5m_2v2_pilot_contract_fix_20260712	12495098	0.012	47	9593305	0.009	30	帧级观测流;真值/标签;观测/回放流	0	0	先归档再考虑删除	日期较早但含可回放原始数据
+AirSim其他运行	2026-07-12	目录名	research_modules/airsim_runtime/outputs/p1_5m_2v2_pilot_fix2_20260712	12421150	0.012	47	9509382	0.009	30	帧级观测流;真值/标签;观测/回放流	0	0	先归档再考虑删除	日期较早但含可回放原始数据
+AirSim其他运行	2026-07-12	目录名	research_modules/airsim_runtime/outputs/p1_5m_2v2_pilot_fix_20260712	7929602	0.007	47	6017294	0.006	30	帧级观测流;真值/标签;观测/回放流	0	0	先归档再考虑删除	日期较早但含可回放原始数据
+AirSim其他运行	2026-07-12	目录名	research_modules/airsim_runtime/outputs/p1_5m_2v2_pilot_gate_cal_20260712	12886313	0.012	47	9867656	0.009	30	帧级观测流;真值/标签;观测/回放流	0	0	先归档再考虑删除	日期较早但含可回放原始数据
+AirSim其他运行	2026-07-12	目录名	research_modules/airsim_runtime/outputs/p1_5m_m5n2_clearance_pilot_20260712	51238253	0.048	10	44169135	0.041	5	帧级观测流;真值/标签;观测/回放流	0	0	先归档再考虑删除	日期较早但含可回放原始数据
+AirSim其他运行	2026-07-12	目录名	research_modules/airsim_runtime/outputs/p1_5m_m5n2_continuous_detect_fix_pilot_20260712	60771152	0.057	10	52223697	0.049	5	帧级观测流;真值/标签;观测/回放流	0	0	先归档再考虑删除	日期较早但含可回放原始数据
+AirSim其他运行	2026-07-12	目录名	research_modules/airsim_runtime/outputs/p1_5m_m5n2_high_clearance_pilot_20260712	37615692	0.035	10	32793108	0.031	5	帧级观测流;真值/标签;观测/回放流	0	0	先归档再考虑删除	日期较早但含可回放原始数据
+AirSim其他运行	2026-07-12	目录名	research_modules/airsim_runtime/outputs/p1_5m_m5n2_high_clearance_radar_continue_pilot_20260712	65797703	0.061	10	57295459	0.053	5	帧级观测流;真值/标签;观测/回放流	0	0	先归档再考虑删除	日期较早但含可回放原始数据
+AirSim其他运行	2026-07-12	目录名	research_modules/airsim_runtime/outputs/p1_5m_m5n2_multiseed_20260712_seed001	203477641	0.190	48	168157899	0.157	30	帧级观测流;真值/标签;观测/回放流	0	0	保留或先归档	正式/报告/多种子/训练证据，不能仅按日期删除
+AirSim其他运行	2026-07-12	目录名	research_modules/airsim_runtime/outputs/p1_5m_m5n2_multiseed_20260712_seed002	6571469	0.006	39	5360119	0.005	25	帧级观测流;真值/标签;观测/回放流	0	0	保留或先归档	正式/报告/多种子/训练证据，不能仅按日期删除
+AirSim其他运行	2026-07-12	目录名	research_modules/airsim_runtime/outputs/p1_5m_m5n2_multiseed_20260712_seed003	6834	0.000	1	0	0.000	0		0	0	保留或先归档	正式/报告/多种子/训练证据，不能仅按日期删除
+AirSim其他运行	2026-07-12	目录名	research_modules/airsim_runtime/outputs/p1_5m_m5n2_multiseed_20260712_seed004	6834	0.000	1	0	0.000	0		0	0	保留或先归档	正式/报告/多种子/训练证据，不能仅按日期删除
+AirSim其他运行	2026-07-12	目录名	research_modules/airsim_runtime/outputs/p1_5m_m5n2_multiseed_20260712_seed005	6834	0.000	1	0	0.000	0		0	0	保留或先归档	正式/报告/多种子/训练证据，不能仅按日期删除
+AirSim其他运行	2026-07-12	目录名	research_modules/airsim_runtime/outputs/p1_5m_m5n2_multiseed_20260712_seed006	6834	0.000	1	0	0.000	0		0	0	保留或先归档	正式/报告/多种子/训练证据，不能仅按日期删除
+AirSim其他运行	2026-07-12	目录名	research_modules/airsim_runtime/outputs/p1_5m_m5n2_multiseed_20260712_seed007	6834	0.000	1	0	0.000	0		0	0	保留或先归档	正式/报告/多种子/训练证据，不能仅按日期删除
+AirSim其他运行	2026-07-12	目录名	research_modules/airsim_runtime/outputs/p1_5m_m5n2_multiseed_20260712_seed008	6834	0.000	1	0	0.000	0		0	0	保留或先归档	正式/报告/多种子/训练证据，不能仅按日期删除
+AirSim其他运行	2026-07-12	目录名	research_modules/airsim_runtime/outputs/p1_5m_m5n2_multiseed_20260712_seed009	6834	0.000	1	0	0.000	0		0	0	保留或先归档	正式/报告/多种子/训练证据，不能仅按日期删除
+AirSim其他运行	2026-07-12	目录名	research_modules/airsim_runtime/outputs/p1_5m_m5n2_multiseed_20260712_seed010	6834	0.000	1	0	0.000	0		0	0	保留或先归档	正式/报告/多种子/训练证据，不能仅按日期删除
+AirSim其他运行	2026-07-12	目录名	research_modules/airsim_runtime/outputs/p1_5m_m5n2_multiseed_high_clearance_20260712_seed001	76537614	0.071	10	66645502	0.062	5	帧级观测流;真值/标签;观测/回放流	0	0	保留或先归档	正式/报告/多种子/训练证据，不能仅按日期删除
+AirSim其他运行	2026-07-12	目录名	research_modules/airsim_runtime/outputs/p1_5m_m5n2_multiseed_high_clearance_20260712_seed002	76320931	0.071	10	66393641	0.062	5	帧级观测流;真值/标签;观测/回放流	0	0	保留或先归档	正式/报告/多种子/训练证据，不能仅按日期删除
+AirSim其他运行	2026-07-12	目录名	research_modules/airsim_runtime/outputs/p1_5m_m5n2_multiseed_high_clearance_20260712_seed003	76583974	0.071	10	66657381	0.062	5	帧级观测流;真值/标签;观测/回放流	0	0	保留或先归档	正式/报告/多种子/训练证据，不能仅按日期删除
+AirSim其他运行	2026-07-12	目录名	research_modules/airsim_runtime/outputs/p1_5m_m5n2_reacquire_binding_fix_pilot_20260712	60715875	0.057	10	52263550	0.049	5	帧级观测流;真值/标签;观测/回放流	0	0	先归档再考虑删除	日期较早但含可回放原始数据
+AirSim其他运行	2026-07-12	目录名	research_modules/airsim_runtime/outputs/p1_5m_m5n2_reacquire_pilot_20260712	60524059	0.056	10	51879081	0.048	5	帧级观测流;真值/标签;观测/回放流	0	0	先归档再考虑删除	日期较早但含可回放原始数据
+AirSim其他运行	2026-07-12	目录名	research_modules/airsim_runtime/outputs/p1_dense_crossing_cv20_20260712_seed000	14998137	0.014	9	10928346	0.010	5	帧级观测流;真值/标签;观测/回放流	0	0	先归档再考虑删除	日期较早但含可回放原始数据
+AirSim其他运行	2026-07-12	目录名	research_modules/airsim_runtime/outputs/p1_dense_crossing_cv20_20260712_seed001	15004601	0.014	9	10926623	0.010	5	帧级观测流;真值/标签;观测/回放流	0	0	先归档再考虑删除	日期较早但含可回放原始数据
+AirSim其他运行	2026-07-12	目录名	research_modules/airsim_runtime/outputs/p1_dense_crossing_cv20_20260712_seed002	14988852	0.014	9	10919192	0.010	5	帧级观测流;真值/标签;观测/回放流	0	0	先归档再考虑删除	日期较早但含可回放原始数据
+AirSim其他运行	2026-07-12	目录名	research_modules/airsim_runtime/outputs/p1_dense_crossing_cv20_20260712_seed003	14996284	0.014	9	10917770	0.010	5	帧级观测流;真值/标签;观测/回放流	0	0	先归档再考虑删除	日期较早但含可回放原始数据
+AirSim其他运行	2026-07-12	目录名	research_modules/airsim_runtime/outputs/p1_dense_crossing_cv20_20260712_seed004	15043156	0.014	9	10931191	0.010	5	帧级观测流;真值/标签;观测/回放流	0	0	先归档再考虑删除	日期较早但含可回放原始数据
+AirSim其他运行	2026-07-12	目录名	research_modules/airsim_runtime/outputs/p1_dense_crossing_cv20_20260712_seed005	15010556	0.014	9	10924437	0.010	5	帧级观测流;真值/标签;观测/回放流	0	0	先归档再考虑删除	日期较早但含可回放原始数据
+AirSim其他运行	2026-07-12	目录名	research_modules/airsim_runtime/outputs/p1_dense_crossing_cv20_20260712_seed006	15006098	0.014	9	10927614	0.010	5	帧级观测流;真值/标签;观测/回放流	0	0	先归档再考虑删除	日期较早但含可回放原始数据
+AirSim其他运行	2026-07-12	目录名	research_modules/airsim_runtime/outputs/p1_dense_crossing_cv20_20260712_seed007	14997719	0.014	9	10919264	0.010	5	帧级观测流;真值/标签;观测/回放流	0	0	先归档再考虑删除	日期较早但含可回放原始数据
+AirSim其他运行	2026-07-12	目录名	research_modules/airsim_runtime/outputs/p1_dense_crossing_cv20_20260712_seed008	15007295	0.014	9	10920405	0.010	5	帧级观测流;真值/标签;观测/回放流	0	0	先归档再考虑删除	日期较早但含可回放原始数据
+AirSim其他运行	2026-07-12	目录名	research_modules/airsim_runtime/outputs/p1_dense_crossing_cv20_20260712_seed009	15009406	0.014	9	10922899	0.010	5	帧级观测流;真值/标签;观测/回放流	0	0	先归档再考虑删除	日期较早但含可回放原始数据
+AirSim其他运行	2026-07-12	目录名	research_modules/airsim_runtime/outputs/p1_dense_crossing_cv20_20260712_seed010	14994289	0.014	9	10904134	0.010	5	帧级观测流;真值/标签;观测/回放流	0	0	先归档再考虑删除	日期较早但含可回放原始数据
+AirSim其他运行	2026-07-12	目录名	research_modules/airsim_runtime/outputs/p1_dense_crossing_cv20_20260712_seed011	15007906	0.014	9	10926618	0.010	5	帧级观测流;真值/标签;观测/回放流	0	0	先归档再考虑删除	日期较早但含可回放原始数据
+AirSim其他运行	2026-07-12	目录名	research_modules/airsim_runtime/outputs/p1_dense_crossing_cv20_20260712_seed012	15007773	0.014	9	10926549	0.010	5	帧级观测流;真值/标签;观测/回放流	0	0	先归档再考虑删除	日期较早但含可回放原始数据
+AirSim其他运行	2026-07-12	目录名	research_modules/airsim_runtime/outputs/p1_dense_crossing_cv20_20260712_seed013	15025715	0.014	9	10927780	0.010	5	帧级观测流;真值/标签;观测/回放流	0	0	先归档再考虑删除	日期较早但含可回放原始数据
+AirSim其他运行	2026-07-12	目录名	research_modules/airsim_runtime/outputs/p1_dense_crossing_cv20_20260712_seed014	15011526	0.014	9	10921584	0.010	5	帧级观测流;真值/标签;观测/回放流	0	0	先归档再考虑删除	日期较早但含可回放原始数据
+AirSim其他运行	2026-07-12	目录名	research_modules/airsim_runtime/outputs/p1_dense_crossing_cv20_20260712_seed015	15037662	0.014	9	10930504	0.010	5	帧级观测流;真值/标签;观测/回放流	0	0	先归档再考虑删除	日期较早但含可回放原始数据
+AirSim其他运行	2026-07-12	目录名	research_modules/airsim_runtime/outputs/p1_dense_crossing_cv20_20260712_seed016	15039958	0.014	9	10933215	0.010	5	帧级观测流;真值/标签;观测/回放流	0	0	先归档再考虑删除	日期较早但含可回放原始数据
+AirSim其他运行	2026-07-12	目录名	research_modules/airsim_runtime/outputs/p1_dense_crossing_cv20_20260712_seed017	15025350	0.014	9	10927403	0.010	5	帧级观测流;真值/标签;观测/回放流	0	0	先归档再考虑删除	日期较早但含可回放原始数据
+AirSim其他运行	2026-07-12	目录名	research_modules/airsim_runtime/outputs/p1_dense_crossing_cv20_20260712_seed018	15019544	0.014	9	10912723	0.010	5	帧级观测流;真值/标签;观测/回放流	0	0	先归档再考虑删除	日期较早但含可回放原始数据
+AirSim其他运行	2026-07-12	目录名	research_modules/airsim_runtime/outputs/p1_dense_crossing_cv20_20260712_seed019	15021313	0.014	9	10922777	0.010	5	帧级观测流;真值/标签;观测/回放流	0	0	先归档再考虑删除	日期较早但含可回放原始数据
+AirSim其他运行	2026-07-12	目录名	research_modules/airsim_runtime/outputs/p1_native_mot_20m_confirm_20260712_confirm20-botsort-c0.10	8799578	0.008	7	7478055	0.007	5	帧级观测流;真值/标签;观测/回放流	0	0	先归档再考虑删除	日期较早但含可回放原始数据
+AirSim其他运行	2026-07-12	目录名	research_modules/airsim_runtime/outputs/p1_native_mot_20m_confirm_20260712_confirm20-bytetrack-c0.10	8810117	0.008	7	7486774	0.007	5	帧级观测流;真值/标签;观测/回放流	0	0	先归档再考虑删除	日期较早但含可回放原始数据
+AirSim其他运行	2026-07-12	目录名	research_modules/airsim_runtime/outputs/p1_native_mot_range_matrix_20260712_range-botsort-r20-c0.10	3575245	0.003	7	3037078	0.003	5	帧级观测流;真值/标签;观测/回放流	0	0	先归档再考虑删除	日期较早但含可回放原始数据
+AirSim其他运行	2026-07-12	目录名	research_modules/airsim_runtime/outputs/p1_native_mot_range_matrix_20260712_range-botsort-r30-c0.10	3336143	0.003	7	2797947	0.003	5	帧级观测流;真值/标签;观测/回放流	0	0	先归档再考虑删除	日期较早但含可回放原始数据
+AirSim其他运行	2026-07-12	目录名	research_modules/airsim_runtime/outputs/p1_native_mot_range_matrix_20260712_range-botsort-r50-c0.10	3335650	0.003	7	2797478	0.003	5	帧级观测流;真值/标签;观测/回放流	0	0	先归档再考虑删除	日期较早但含可回放原始数据
+AirSim其他运行	2026-07-12	目录名	research_modules/airsim_runtime/outputs/p1_native_mot_range_matrix_20260712_range-bytetrack-r20-c0.10	3579128	0.003	7	3040227	0.003	5	帧级观测流;真值/标签;观测/回放流	0	0	先归档再考虑删除	日期较早但含可回放原始数据
+AirSim其他运行	2026-07-12	目录名	research_modules/airsim_runtime/outputs/p1_native_mot_range_matrix_20260712_range-bytetrack-r30-c0.10	3338327	0.003	7	2799391	0.003	5	帧级观测流;真值/标签;观测/回放流	0	0	先归档再考虑删除	日期较早但含可回放原始数据
+AirSim其他运行	2026-07-12	目录名	research_modules/airsim_runtime/outputs/p1_native_mot_range_matrix_20260712_range-bytetrack-r50-c0.10	3338177	0.003	7	2799259	0.003	5	帧级观测流;真值/标签;观测/回放流	0	0	先归档再考虑删除	日期较早但含可回放原始数据
+AirSim其他运行	2026-07-12	目录名	research_modules/airsim_runtime/outputs/p1_native_mot_smoke_20260712	2087680	0.002	9	1792884	0.002	5	帧级观测流;真值/标签;观测/回放流	0	0	早期删除候选	早期开发或诊断运行；仍需确认无报告引用且已有后继版本
+AirSim其他运行	2026-07-12	目录名	research_modules/airsim_runtime/outputs/p1_sparse_binding_owner_smoke_20260712	29120961	0.027	10	25216497	0.023	5	帧级观测流;真值/标签;观测/回放流	0	0	早期删除候选	早期开发或诊断运行；仍需确认无报告引用且已有后继版本
+AirSim其他运行	2026-07-12	目录名	research_modules/airsim_runtime/outputs/png_delivery_candidate_2v2_20260712_seed001	2666554	0.002	9	2062283	0.002	5	帧级观测流;真值/标签;观测/回放流	0	0	先归档再考虑删除	日期较早但含可回放原始数据
+AirSim其他运行	2026-07-12	目录名	research_modules/airsim_runtime/outputs/png_delivery_candidate_2v2_20260712_seed002	2821177	0.003	9	2190471	0.002	5	帧级观测流;真值/标签;观测/回放流	0	0	先归档再考虑删除	日期较早但含可回放原始数据
+AirSim其他运行	2026-07-12	目录名	research_modules/airsim_runtime/outputs/png_delivery_candidate_2v2_20260712_seed003	2818945	0.003	9	2188251	0.002	5	帧级观测流;真值/标签;观测/回放流	0	0	先归档再考虑删除	日期较早但含可回放原始数据
+AirSim其他运行	2026-07-12	目录名	research_modules/airsim_runtime/outputs/png_delivery_candidate_2v2_20260712_seed004	2969000	0.003	9	2312039	0.002	5	帧级观测流;真值/标签;观测/回放流	0	0	先归档再考虑删除	日期较早但含可回放原始数据
+AirSim其他运行	2026-07-12	目录名	research_modules/airsim_runtime/outputs/png_delivery_candidate_2v2_20260712_seed005	2821220	0.003	9	2190507	0.002	5	帧级观测流;真值/标签;观测/回放流	0	0	先归档再考虑删除	日期较早但含可回放原始数据
+AirSim其他运行	2026-07-12	目录名	research_modules/airsim_runtime/outputs/png_delivery_candidate_2v2_20260712_seed006	2812556	0.003	9	2181904	0.002	5	帧级观测流;真值/标签;观测/回放流	0	0	先归档再考虑删除	日期较早但含可回放原始数据
+AirSim其他运行	2026-07-12	目录名	research_modules/airsim_runtime/outputs/png_delivery_candidate_2v2_20260712_seed007	2818720	0.003	9	2188048	0.002	5	帧级观测流;真值/标签;观测/回放流	0	0	先归档再考虑删除	日期较早但含可回放原始数据
+AirSim其他运行	2026-07-12	目录名	research_modules/airsim_runtime/outputs/png_delivery_candidate_2v2_20260712_seed008	2968161	0.003	9	2311373	0.002	5	帧级观测流;真值/标签;观测/回放流	0	0	先归档再考虑删除	日期较早但含可回放原始数据
+AirSim其他运行	2026-07-12	目录名	research_modules/airsim_runtime/outputs/png_delivery_candidate_2v2_20260712_seed009	2821409	0.003	9	2190698	0.002	5	帧级观测流;真值/标签;观测/回放流	0	0	先归档再考虑删除	日期较早但含可回放原始数据
+AirSim其他运行	2026-07-12	目录名	research_modules/airsim_runtime/outputs/png_delivery_candidate_2v2_20260712_seed010	2819714	0.003	9	2188509	0.002	5	帧级观测流;真值/标签;观测/回放流	0	0	先归档再考虑删除	日期较早但含可回放原始数据
+AirSim其他运行	2026-07-12	目录名	research_modules/airsim_runtime/outputs/png_delivery_candidate_dropout_2v2_20260712	2631614	0.002	9	2027193	0.002	5	帧级观测流;真值/标签;观测/回放流	0	0	先归档再考虑删除	日期较早但含可回放原始数据
+AirSim其他运行	2026-07-12	目录名	research_modules/airsim_runtime/outputs/png_delivery_candidate_m5n2_20260712_seed001	61906910	0.058	10	53125845	0.049	5	帧级观测流;真值/标签;观测/回放流	0	0	先归档再考虑删除	日期较早但含可回放原始数据
+AirSim其他运行	2026-07-12	目录名	research_modules/airsim_runtime/outputs/png_delivery_candidate_m5n2_20260712_seed002	6834	0.000	1	0	0.000	0		0	0	复核后删除候选	日期较早且未识别到原始观测；可能主要是可重算派生文件
+AirSim其他运行	2026-07-12	目录名	research_modules/airsim_runtime/outputs/png_delivery_candidate_m5n2_20260712_seed003	6834	0.000	1	0	0.000	0		0	0	复核后删除候选	日期较早且未识别到原始观测；可能主要是可重算派生文件
+AirSim其他运行	2026-07-12	目录名	research_modules/airsim_runtime/outputs/png_delivery_candidate_m5n2_short_20260712_seed001	16937569	0.016	10	14486565	0.013	5	帧级观测流;真值/标签;观测/回放流	0	0	先归档再考虑删除	日期较早但含可回放原始数据
+AirSim其他运行	2026-07-12	目录名	research_modules/airsim_runtime/outputs/png_delivery_candidate_m5n2_short_20260712_seed002	16940605	0.016	10	14484647	0.013	5	帧级观测流;真值/标签;观测/回放流	0	0	先归档再考虑删除	日期较早但含可回放原始数据
+AirSim其他运行	2026-07-12	目录名	research_modules/airsim_runtime/outputs/png_delivery_candidate_m5n2_short_20260712_seed003	16935870	0.016	10	14473936	0.013	5	帧级观测流;真值/标签;观测/回放流	0	0	先归档再考虑删除	日期较早但含可回放原始数据
+AirSim其他运行	2026-07-12	目录名	research_modules/airsim_runtime/outputs/png_delivery_candidate_postlock_dropout_2v2_20260712	2783718	0.003	9	2152249	0.002	5	帧级观测流;真值/标签;观测/回放流	0	0	先归档再考虑删除	日期较早但含可回放原始数据
+AirSim其他运行	2026-07-12	目录名	research_modules/airsim_runtime/outputs/png_delivery_enhancement_eval_20260712	47604	0.000	2	0	0.000	0		0	0	复核后删除候选	日期较早且未识别到原始观测；可能主要是可重算派生文件
+AirSim末端闭合/时序	2026-07-12	目录名	research_modules/airsim_runtime/outputs/p1_terminal_closure_10seed_20260712	1586542	0.001	10	0	0.000	0		0	0	复核后删除候选	日期较早且未识别到原始观测；可能主要是可重算派生文件
+AirSim末端闭合/时序	2026-07-12	目录名	research_modules/airsim_runtime/outputs/p1_terminal_closure_10seed_20260712_dropout_1f_seed001	2751422	0.003	10	2174340	0.002	5	帧级观测流;真值/标签;观测/回放流	0	0	先归档再考虑删除	日期较早但含可回放原始数据
+AirSim末端闭合/时序	2026-07-12	目录名	research_modules/airsim_runtime/outputs/p1_terminal_closure_10seed_20260712_dropout_1f_seed002	2733920	0.003	10	2157518	0.002	5	帧级观测流;真值/标签;观测/回放流	0	0	先归档再考虑删除	日期较早但含可回放原始数据
+AirSim末端闭合/时序	2026-07-12	目录名	research_modules/airsim_runtime/outputs/p1_terminal_closure_10seed_20260712_dropout_1f_seed003	2753783	0.003	10	2176678	0.002	5	帧级观测流;真值/标签;观测/回放流	0	0	先归档再考虑删除	日期较早但含可回放原始数据
+AirSim末端闭合/时序	2026-07-12	目录名	research_modules/airsim_runtime/outputs/p1_terminal_closure_10seed_20260712_dropout_1f_seed004	2897400	0.003	10	2294189	0.002	5	帧级观测流;真值/标签;观测/回放流	0	0	先归档再考虑删除	日期较早但含可回放原始数据
+AirSim末端闭合/时序	2026-07-12	目录名	research_modules/airsim_runtime/outputs/p1_terminal_closure_10seed_20260712_dropout_1f_seed005	2751417	0.003	10	2174316	0.002	5	帧级观测流;真值/标签;观测/回放流	0	0	先归档再考虑删除	日期较早但含可回放原始数据
+AirSim末端闭合/时序	2026-07-12	目录名	research_modules/airsim_runtime/outputs/p1_terminal_closure_10seed_20260712_dropout_1f_seed006	2750192	0.003	10	2173123	0.002	5	帧级观测流;真值/标签;观测/回放流	0	0	先归档再考虑删除	日期较早但含可回放原始数据
+AirSim末端闭合/时序	2026-07-12	目录名	research_modules/airsim_runtime/outputs/p1_terminal_closure_10seed_20260712_dropout_1f_seed007	2753687	0.003	10	2176562	0.002	5	帧级观测流;真值/标签;观测/回放流	0	0	先归档再考虑删除	日期较早但含可回放原始数据
+AirSim末端闭合/时序	2026-07-12	目录名	research_modules/airsim_runtime/outputs/p1_terminal_closure_10seed_20260712_dropout_1f_seed008	2751356	0.003	10	2174289	0.002	5	帧级观测流;真值/标签;观测/回放流	0	0	先归档再考虑删除	日期较早但含可回放原始数据
+AirSim末端闭合/时序	2026-07-12	目录名	research_modules/airsim_runtime/outputs/p1_terminal_closure_10seed_20260712_dropout_1f_seed009	2901657	0.003	10	2298428	0.002	5	帧级观测流;真值/标签;观测/回放流	0	0	先归档再考虑删除	日期较早但含可回放原始数据
+AirSim末端闭合/时序	2026-07-12	目录名	research_modules/airsim_runtime/outputs/p1_terminal_closure_10seed_20260712_dropout_1f_seed010	2752484	0.003	10	2174808	0.002	5	帧级观测流;真值/标签;观测/回放流	0	0	先归档再考虑删除	日期较早但含可回放原始数据
+AirSim末端闭合/时序	2026-07-12	目录名	research_modules/airsim_runtime/outputs/p1_terminal_closure_10seed_20260712_dropout_2f_seed001	2881191	0.003	10	2277900	0.002	5	帧级观测流;真值/标签;观测/回放流	0	0	先归档再考虑删除	日期较早但含可回放原始数据
+AirSim末端闭合/时序	2026-07-12	目录名	research_modules/airsim_runtime/outputs/p1_terminal_closure_10seed_20260712_dropout_2f_seed002	2731283	0.003	10	2154227	0.002	5	帧级观测流;真值/标签;观测/回放流	0	0	先归档再考虑删除	日期较早但含可回放原始数据
+AirSim末端闭合/时序	2026-07-12	目录名	research_modules/airsim_runtime/outputs/p1_terminal_closure_10seed_20260712_dropout_2f_seed003	2730776	0.003	10	2153666	0.002	5	帧级观测流;真值/标签;观测/回放流	0	0	先归档再考虑删除	日期较早但含可回放原始数据
+AirSim末端闭合/时序	2026-07-12	目录名	research_modules/airsim_runtime/outputs/p1_terminal_closure_10seed_20260712_dropout_2f_seed004	2881710	0.003	10	2278424	0.002	5	帧级观测流;真值/标签;观测/回放流	0	0	先归档再考虑删除	日期较早但含可回放原始数据
+AirSim末端闭合/时序	2026-07-12	目录名	research_modules/airsim_runtime/outputs/p1_terminal_closure_10seed_20260712_dropout_2f_seed005	2728936	0.003	10	2151808	0.002	5	帧级观测流;真值/标签;观测/回放流	0	0	先归档再考虑删除	日期较早但含可回放原始数据
+AirSim末端闭合/时序	2026-07-12	目录名	research_modules/airsim_runtime/outputs/p1_terminal_closure_10seed_20260712_dropout_2f_seed006	2730532	0.003	10	2153405	0.002	5	帧级观测流;真值/标签;观测/回放流	0	0	先归档再考虑删除	日期较早但含可回放原始数据
+AirSim末端闭合/时序	2026-07-12	目录名	research_modules/airsim_runtime/outputs/p1_terminal_closure_10seed_20260712_dropout_2f_seed007	2731462	0.003	10	2154333	0.002	5	帧级观测流;真值/标签;观测/回放流	0	0	先归档再考虑删除	日期较早但含可回放原始数据
+AirSim末端闭合/时序	2026-07-12	目录名	research_modules/airsim_runtime/outputs/p1_terminal_closure_10seed_20260712_dropout_2f_seed008	2726723	0.003	10	2149608	0.002	5	帧级观测流;真值/标签;观测/回放流	0	0	先归档再考虑删除	日期较早但含可回放原始数据
+AirSim末端闭合/时序	2026-07-12	目录名	research_modules/airsim_runtime/outputs/p1_terminal_closure_10seed_20260712_dropout_2f_seed009	2733601	0.003	10	2156472	0.002	5	帧级观测流;真值/标签;观测/回放流	0	0	先归档再考虑删除	日期较早但含可回放原始数据
+AirSim末端闭合/时序	2026-07-12	目录名	research_modules/airsim_runtime/outputs/p1_terminal_closure_10seed_20260712_dropout_2f_seed010	2883929	0.003	10	2280228	0.002	5	帧级观测流;真值/标签;观测/回放流	0	0	先归档再考虑删除	日期较早但含可回放原始数据
+AirSim末端闭合/时序	2026-07-12	目录名	research_modules/airsim_runtime/outputs/p1_terminal_closure_10seed_20260712_dropout_3f_seed001	2713354	0.003	10	2136198	0.002	5	帧级观测流;真值/标签;观测/回放流	0	0	先归档再考虑删除	日期较早但含可回放原始数据
+AirSim末端闭合/时序	2026-07-12	目录名	research_modules/airsim_runtime/outputs/p1_terminal_closure_10seed_20260712_dropout_3f_seed002	2715590	0.003	10	2138522	0.002	5	帧级观测流;真值/标签;观测/回放流	0	0	先归档再考虑删除	日期较早但含可回放原始数据
+AirSim末端闭合/时序	2026-07-12	目录名	research_modules/airsim_runtime/outputs/p1_terminal_closure_10seed_20260712_dropout_3f_seed003	2715775	0.003	10	2138644	0.002	5	帧级观测流;真值/标签;观测/回放流	0	0	先归档再考虑删除	日期较早但含可回放原始数据
+AirSim末端闭合/时序	2026-07-12	目录名	research_modules/airsim_runtime/outputs/p1_terminal_closure_10seed_20260712_dropout_3f_seed004	2865939	0.003	10	2262643	0.002	5	帧级观测流;真值/标签;观测/回放流	0	0	先归档再考虑删除	日期较早但含可回放原始数据
+AirSim末端闭合/时序	2026-07-12	目录名	research_modules/airsim_runtime/outputs/p1_terminal_closure_10seed_20260712_dropout_3f_seed005	2717981	0.003	10	2140815	0.002	5	帧级观测流;真值/标签;观测/回放流	0	0	先归档再考虑删除	日期较早但含可回放原始数据
+AirSim末端闭合/时序	2026-07-12	目录名	research_modules/airsim_runtime/outputs/p1_terminal_closure_10seed_20260712_dropout_3f_seed006	2717993	0.003	10	2140871	0.002	5	帧级观测流;真值/标签;观测/回放流	0	0	先归档再考虑删除	日期较早但含可回放原始数据
+AirSim末端闭合/时序	2026-07-12	目录名	research_modules/airsim_runtime/outputs/p1_terminal_closure_10seed_20260712_dropout_3f_seed007	2863711	0.003	10	2260394	0.002	5	帧级观测流;真值/标签;观测/回放流	0	0	先归档再考虑删除	日期较早但含可回放原始数据
+AirSim末端闭合/时序	2026-07-12	目录名	research_modules/airsim_runtime/outputs/p1_terminal_closure_10seed_20260712_dropout_3f_seed008	2865870	0.003	10	2262611	0.002	5	帧级观测流;真值/标签;观测/回放流	0	0	先归档再考虑删除	日期较早但含可回放原始数据
+AirSim末端闭合/时序	2026-07-12	目录名	research_modules/airsim_runtime/outputs/p1_terminal_closure_10seed_20260712_dropout_3f_seed009	2867631	0.003	10	2264365	0.002	5	帧级观测流;真值/标签;观测/回放流	0	0	先归档再考虑删除	日期较早但含可回放原始数据
+AirSim末端闭合/时序	2026-07-12	目录名	research_modules/airsim_runtime/outputs/p1_terminal_closure_10seed_20260712_dropout_3f_seed010	2716266	0.003	10	2138672	0.002	5	帧级观测流;真值/标签;观测/回放流	0	0	先归档再考虑删除	日期较早但含可回放原始数据
+AirSim末端闭合/时序	2026-07-12	目录名	research_modules/airsim_runtime/outputs/p1_terminal_closure_10seed_20260712_dropout_4f_seed001	2830668	0.003	10	2227588	0.002	5	帧级观测流;真值/标签;观测/回放流	0	0	先归档再考虑删除	日期较早但含可回放原始数据
+AirSim末端闭合/时序	2026-07-12	目录名	research_modules/airsim_runtime/outputs/p1_terminal_closure_10seed_20260712_dropout_4f_seed002	2686857	0.003	10	2110047	0.002	5	帧级观测流;真值/标签;观测/回放流	0	0	先归档再考虑删除	日期较早但含可回放原始数据
+AirSim末端闭合/时序	2026-07-12	目录名	research_modules/airsim_runtime/outputs/p1_terminal_closure_10seed_20260712_dropout_4f_seed003	2686715	0.003	10	2109822	0.002	5	帧级观测流;真值/标签;观测/回放流	0	0	先归档再考虑删除	日期较早但含可回放原始数据
+AirSim末端闭合/时序	2026-07-12	目录名	research_modules/airsim_runtime/outputs/p1_terminal_closure_10seed_20260712_dropout_4f_seed004	2685222	0.003	10	2108220	0.002	5	帧级观测流;真值/标签;观测/回放流	0	0	先归档再考虑删除	日期较早但含可回放原始数据
+AirSim末端闭合/时序	2026-07-12	目录名	research_modules/airsim_runtime/outputs/p1_terminal_closure_10seed_20260712_dropout_4f_seed005	2839195	0.003	10	2236145	0.002	5	帧级观测流;真值/标签;观测/回放流	0	0	先归档再考虑删除	日期较早但含可回放原始数据
+AirSim末端闭合/时序	2026-07-12	目录名	research_modules/airsim_runtime/outputs/p1_terminal_closure_10seed_20260712_dropout_4f_seed006	2688080	0.003	10	2111208	0.002	5	帧级观测流;真值/标签;观测/回放流	0	0	先归档再考虑删除	日期较早但含可回放原始数据
+AirSim末端闭合/时序	2026-07-12	目录名	research_modules/airsim_runtime/outputs/p1_terminal_closure_10seed_20260712_dropout_4f_seed007	2686852	0.003	10	2109971	0.002	5	帧级观测流;真值/标签;观测/回放流	0	0	先归档再考虑删除	日期较早但含可回放原始数据
+AirSim末端闭合/时序	2026-07-12	目录名	research_modules/airsim_runtime/outputs/p1_terminal_closure_10seed_20260712_dropout_4f_seed008	2686916	0.003	10	2110038	0.002	5	帧级观测流;真值/标签;观测/回放流	0	0	先归档再考虑删除	日期较早但含可回放原始数据
+AirSim末端闭合/时序	2026-07-12	目录名	research_modules/airsim_runtime/outputs/p1_terminal_closure_10seed_20260712_dropout_4f_seed009	2684636	0.003	10	2107748	0.002	5	帧级观测流;真值/标签;观测/回放流	0	0	先归档再考虑删除	日期较早但含可回放原始数据
+AirSim末端闭合/时序	2026-07-12	目录名	research_modules/airsim_runtime/outputs/p1_terminal_closure_10seed_20260712_dropout_4f_seed010	2687332	0.003	10	2109992	0.002	5	帧级观测流;真值/标签;观测/回放流	0	0	先归档再考虑删除	日期较早但含可回放原始数据
+AirSim末端闭合/时序	2026-07-12	目录名	research_modules/airsim_runtime/outputs/p1_terminal_closure_10seed_20260712_dropout_5f_seed001	2684642	0.003	10	2107746	0.002	5	帧级观测流;真值/标签;观测/回放流	0	0	先归档再考虑删除	日期较早但含可回放原始数据
+AirSim末端闭合/时序	2026-07-12	目录名	research_modules/airsim_runtime/outputs/p1_terminal_closure_10seed_20260712_dropout_5f_seed002	2688820	0.003	10	2112003	0.002	5	帧级观测流;真值/标签;观测/回放流	0	0	先归档再考虑删除	日期较早但含可回放原始数据
+AirSim末端闭合/时序	2026-07-12	目录名	research_modules/airsim_runtime/outputs/p1_terminal_closure_10seed_20260712_dropout_5f_seed003	2836893	0.003	10	2233837	0.002	5	帧级观测流;真值/标签;观测/回放流	0	0	先归档再考虑删除	日期较早但含可回放原始数据
+AirSim末端闭合/时序	2026-07-12	目录名	research_modules/airsim_runtime/outputs/p1_terminal_closure_10seed_20260712_dropout_5f_seed004	2684586	0.003	10	2107696	0.002	5	帧级观测流;真值/标签;观测/回放流	0	0	先归档再考虑删除	日期较早但含可回放原始数据
+AirSim末端闭合/时序	2026-07-12	目录名	research_modules/airsim_runtime/outputs/p1_terminal_closure_10seed_20260712_dropout_5f_seed005	2684708	0.003	10	2107799	0.002	5	帧级观测流;真值/标签;观测/回放流	0	0	先归档再考虑删除	日期较早但含可回放原始数据
+AirSim末端闭合/时序	2026-07-12	目录名	research_modules/airsim_runtime/outputs/p1_terminal_closure_10seed_20260712_dropout_5f_seed006	2684068	0.002	10	2107194	0.002	5	帧级观测流;真值/标签;观测/回放流	0	0	先归档再考虑删除	日期较早但含可回放原始数据
+AirSim末端闭合/时序	2026-07-12	目录名	research_modules/airsim_runtime/outputs/p1_terminal_closure_10seed_20260712_dropout_5f_seed007	2686822	0.003	10	2109921	0.002	5	帧级观测流;真值/标签;观测/回放流	0	0	先归档再考虑删除	日期较早但含可回放原始数据
+AirSim末端闭合/时序	2026-07-12	目录名	research_modules/airsim_runtime/outputs/p1_terminal_closure_10seed_20260712_dropout_5f_seed008	2685466	0.003	10	2108613	0.002	5	帧级观测流;真值/标签;观测/回放流	0	0	先归档再考虑删除	日期较早但含可回放原始数据
+AirSim末端闭合/时序	2026-07-12	目录名	research_modules/airsim_runtime/outputs/p1_terminal_closure_10seed_20260712_dropout_5f_seed009	2686881	0.003	10	2110004	0.002	5	帧级观测流;真值/标签;观测/回放流	0	0	先归档再考虑删除	日期较早但含可回放原始数据
+AirSim末端闭合/时序	2026-07-12	目录名	research_modules/airsim_runtime/outputs/p1_terminal_closure_10seed_20260712_dropout_5f_seed010	2684164	0.002	10	2107661	0.002	5	帧级观测流;真值/标签;观测/回放流	0	0	先归档再考虑删除	日期较早但含可回放原始数据
+AirSim末端闭合/时序	2026-07-12	目录名	research_modules/airsim_runtime/outputs/p1_terminal_closure_10seed_20260712_m5n2_baseline_seed001	78692517	0.073	10	68431222	0.064	5	帧级观测流;真值/标签;观测/回放流	0	0	先归档再考虑删除	日期较早但含可回放原始数据
+AirSim末端闭合/时序	2026-07-12	目录名	research_modules/airsim_runtime/outputs/p1_terminal_closure_10seed_20260712_m5n2_baseline_seed002	78634120	0.073	10	68389699	0.064	5	帧级观测流;真值/标签;观测/回放流	0	0	先归档再考虑删除	日期较早但含可回放原始数据
+AirSim末端闭合/时序	2026-07-12	目录名	research_modules/airsim_runtime/outputs/p1_terminal_closure_10seed_20260712_m5n2_baseline_seed003	78648100	0.073	10	68380570	0.064	5	帧级观测流;真值/标签;观测/回放流	0	0	先归档再考虑删除	日期较早但含可回放原始数据
+AirSim末端闭合/时序	2026-07-12	目录名	research_modules/airsim_runtime/outputs/p1_terminal_closure_10seed_20260712_m5n2_baseline_seed004	79823422	0.074	10	69614682	0.065	5	帧级观测流;真值/标签;观测/回放流	0	0	先归档再考虑删除	日期较早但含可回放原始数据
+AirSim末端闭合/时序	2026-07-12	目录名	research_modules/airsim_runtime/outputs/p1_terminal_closure_10seed_20260712_m5n2_baseline_seed005	78968052	0.074	10	68712582	0.064	5	帧级观测流;真值/标签;观测/回放流	0	0	先归档再考虑删除	日期较早但含可回放原始数据
+AirSim末端闭合/时序	2026-07-12	目录名	research_modules/airsim_runtime/outputs/p1_terminal_closure_10seed_20260712_m5n2_baseline_seed006	78038127	0.073	10	67813296	0.063	5	帧级观测流;真值/标签;观测/回放流	0	0	先归档再考虑删除	日期较早但含可回放原始数据
+AirSim末端闭合/时序	2026-07-12	目录名	research_modules/airsim_runtime/outputs/p1_terminal_closure_10seed_20260712_m5n2_baseline_seed007	78010951	0.073	10	67764531	0.063	5	帧级观测流;真值/标签;观测/回放流	0	0	先归档再考虑删除	日期较早但含可回放原始数据
+AirSim末端闭合/时序	2026-07-12	目录名	research_modules/airsim_runtime/outputs/p1_terminal_closure_10seed_20260712_m5n2_baseline_seed008	78363957	0.073	10	68134546	0.063	5	帧级观测流;真值/标签;观测/回放流	0	0	先归档再考虑删除	日期较早但含可回放原始数据
+AirSim末端闭合/时序	2026-07-12	目录名	research_modules/airsim_runtime/outputs/p1_terminal_closure_10seed_20260712_m5n2_baseline_seed009	68678798	0.064	10	59868241	0.056	5	帧级观测流;真值/标签;观测/回放流	0	0	先归档再考虑删除	日期较早但含可回放原始数据
+AirSim末端闭合/时序	2026-07-12	目录名	research_modules/airsim_runtime/outputs/p1_terminal_closure_10seed_20260712_m5n2_baseline_seed010	79158557	0.074	10	68910718	0.064	5	帧级观测流;真值/标签;观测/回放流	0	0	先归档再考虑删除	日期较早但含可回放原始数据
+AirSim末端闭合/时序	2026-07-12	目录名	research_modules/airsim_runtime/outputs/p1_terminal_closure_10seed_20260712_m5n2_candidate_soft_prediction_trend_coast_seed001	77070741	0.072	10	66795013	0.062	5	帧级观测流;真值/标签;观测/回放流	0	0	先归档再考虑删除	日期较早但含可回放原始数据
+AirSim末端闭合/时序	2026-07-12	目录名	research_modules/airsim_runtime/outputs/p1_terminal_closure_10seed_20260712_m5n2_candidate_soft_prediction_trend_coast_seed002	78915913	0.073	10	68653583	0.064	5	帧级观测流;真值/标签;观测/回放流	0	0	先归档再考虑删除	日期较早但含可回放原始数据
+AirSim末端闭合/时序	2026-07-12	目录名	research_modules/airsim_runtime/outputs/p1_terminal_closure_10seed_20260712_m5n2_candidate_soft_prediction_trend_coast_seed003	77006142	0.072	10	67129674	0.063	5	帧级观测流;真值/标签;观测/回放流	0	0	先归档再考虑删除	日期较早但含可回放原始数据
+AirSim末端闭合/时序	2026-07-12	目录名	research_modules/airsim_runtime/outputs/p1_terminal_closure_10seed_20260712_m5n2_candidate_soft_prediction_trend_coast_seed004	71401017	0.066	10	62183330	0.058	5	帧级观测流;真值/标签;观测/回放流	0	0	先归档再考虑删除	日期较早但含可回放原始数据
+AirSim末端闭合/时序	2026-07-12	目录名	research_modules/airsim_runtime/outputs/p1_terminal_closure_10seed_20260712_m5n2_candidate_soft_prediction_trend_coast_seed005	78687296	0.073	10	68407595	0.064	5	帧级观测流;真值/标签;观测/回放流	0	0	先归档再考虑删除	日期较早但含可回放原始数据
+AirSim末端闭合/时序	2026-07-12	目录名	research_modules/airsim_runtime/outputs/p1_terminal_closure_10seed_20260712_m5n2_candidate_soft_prediction_trend_coast_seed006	79829327	0.074	10	69592517	0.065	5	帧级观测流;真值/标签;观测/回放流	0	0	先归档再考虑删除	日期较早但含可回放原始数据
+AirSim末端闭合/时序	2026-07-12	目录名	research_modules/airsim_runtime/outputs/p1_terminal_closure_10seed_20260712_m5n2_candidate_soft_prediction_trend_coast_seed007	78966299	0.074	10	68692620	0.064	5	帧级观测流;真值/标签;观测/回放流	0	0	先归档再考虑删除	日期较早但含可回放原始数据
+AirSim末端闭合/时序	2026-07-12	目录名	research_modules/airsim_runtime/outputs/p1_terminal_closure_10seed_20260712_m5n2_candidate_soft_prediction_trend_coast_seed008	78634390	0.073	10	68399462	0.064	5	帧级观测流;真值/标签;观测/回放流	0	0	先归档再考虑删除	日期较早但含可回放原始数据
+AirSim末端闭合/时序	2026-07-12	目录名	research_modules/airsim_runtime/outputs/p1_terminal_closure_10seed_20260712_m5n2_candidate_soft_prediction_trend_coast_seed009	78372491	0.073	10	68113657	0.063	5	帧级观测流;真值/标签;观测/回放流	0	0	先归档再考虑删除	日期较早但含可回放原始数据
+AirSim末端闭合/时序	2026-07-12	目录名	research_modules/airsim_runtime/outputs/p1_terminal_closure_10seed_20260712_m5n2_candidate_soft_prediction_trend_coast_seed010	79394779	0.074	10	69112583	0.064	5	帧级观测流;真值/标签;观测/回放流	0	0	先归档再考虑删除	日期较早但含可回放原始数据
+AirSim末端闭合/时序	2026-07-12	目录名	research_modules/airsim_runtime/outputs/p1_terminal_closure_10seed_20260712_png_ttc_2v2_seed001	2757133	0.003	10	2180278	0.002	5	帧级观测流;真值/标签;观测/回放流	0	0	先归档再考虑删除	日期较早但含可回放原始数据
+AirSim末端闭合/时序	2026-07-12	目录名	research_modules/airsim_runtime/outputs/p1_terminal_closure_10seed_20260712_png_ttc_2v2_seed002	2767873	0.003	10	2191159	0.002	5	帧级观测流;真值/标签;观测/回放流	0	0	先归档再考虑删除	日期较早但含可回放原始数据
+AirSim末端闭合/时序	2026-07-12	目录名	research_modules/airsim_runtime/outputs/p1_terminal_closure_10seed_20260712_png_ttc_2v2_seed003	2767876	0.003	10	2191002	0.002	5	帧级观测流;真值/标签;观测/回放流	0	0	先归档再考虑删除	日期较早但含可回放原始数据
+AirSim末端闭合/时序	2026-07-12	目录名	research_modules/airsim_runtime/outputs/p1_terminal_closure_10seed_20260712_png_ttc_2v2_seed004	2766842	0.003	10	2190055	0.002	5	帧级观测流;真值/标签;观测/回放流	0	0	先归档再考虑删除	日期较早但含可回放原始数据
+AirSim末端闭合/时序	2026-07-12	目录名	research_modules/airsim_runtime/outputs/p1_terminal_closure_10seed_20260712_png_ttc_2v2_seed005	2767743	0.003	10	2190923	0.002	5	帧级观测流;真值/标签;观测/回放流	0	0	先归档再考虑删除	日期较早但含可回放原始数据
+AirSim末端闭合/时序	2026-07-12	目录名	research_modules/airsim_runtime/outputs/p1_terminal_closure_10seed_20260712_png_ttc_2v2_seed006	2761371	0.003	10	2184559	0.002	5	帧级观测流;真值/标签;观测/回放流	0	0	先归档再考虑删除	日期较早但含可回放原始数据
+AirSim末端闭合/时序	2026-07-12	目录名	research_modules/airsim_runtime/outputs/p1_terminal_closure_10seed_20260712_png_ttc_2v2_seed007	2922511	0.003	10	2319566	0.002	5	帧级观测流;真值/标签;观测/回放流	0	0	先归档再考虑删除	日期较早但含可回放原始数据
+AirSim末端闭合/时序	2026-07-12	目录名	research_modules/airsim_runtime/outputs/p1_terminal_closure_10seed_20260712_png_ttc_2v2_seed008	2767684	0.003	10	2190933	0.002	5	帧级观测流;真值/标签;观测/回放流	0	0	先归档再考虑删除	日期较早但含可回放原始数据
+AirSim末端闭合/时序	2026-07-12	目录名	research_modules/airsim_runtime/outputs/p1_terminal_closure_10seed_20260712_png_ttc_2v2_seed009	2761465	0.003	10	2184595	0.002	5	帧级观测流;真值/标签;观测/回放流	0	0	先归档再考虑删除	日期较早但含可回放原始数据
+AirSim末端闭合/时序	2026-07-12	目录名	research_modules/airsim_runtime/outputs/p1_terminal_closure_10seed_20260712_png_ttc_2v2_seed010	2768379	0.003	10	2191047	0.002	5	帧级观测流;真值/标签;观测/回放流	0	0	先归档再考虑删除	日期较早但含可回放原始数据
+AirSim目标身份关联	2026-07-12	目录名	research_modules/airsim_runtime/outputs/p1_identity_dense_crossing_cv20_20260712	208536731	0.194	104	116347881	0.108	60	帧级观测流;真值/标签;观测/回放流	4604870	20	先归档再考虑删除	日期较早但含可回放原始数据
+AirSim其他运行	2026-07-13	目录名	research_modules/airsim_runtime/outputs/cv5v5_target2x_1080p4k_yolo_detect_dual_20260713	4547173	0.004	9	3621330	0.003	5	帧级观测流;真值/标签;观测/回放流	0	0	先归档再考虑删除	日期较早但含可回放原始数据
+AirSim其他运行	2026-07-13	目录名	research_modules/airsim_runtime/outputs/cv5v5_target2x_1080p4k_yolo_detect_dual_reportfixed_20260713	4586196	0.004	9	3660353	0.003	5	帧级观测流;真值/标签;观测/回放流	0	0	保留或先归档	正式/报告/多种子/训练证据，不能仅按日期删除
+AirSim其他运行	2026-07-13	目录名	research_modules/airsim_runtime/outputs/cv5v5_target2x_primary1080p_recon4k_20260713	4028988	0.004	9	3109739	0.003	5	帧级观测流;真值/标签;观测/回放流	0	0	先归档再考虑删除	日期较早但含可回放原始数据
+AirSim其他运行	2026-07-13	目录名	research_modules/airsim_runtime/outputs/cv5v5_target2x_primary1080p_recon4k_d5fixed_20260713	4037982	0.004	9	3118733	0.003	5	帧级观测流;真值/标签;观测/回放流	0	0	先归档再考虑删除	日期较早但含可回放原始数据
+AirSim其他运行	2026-07-13	目录名	research_modules/airsim_runtime/outputs/explicit_cv_reassignment_stress_2v2_20260713	997746	0.001	9	777750	0.001	5	帧级观测流;真值/标签;观测/回放流	0	0	先归档再考虑删除	日期较早但含可回放原始数据
+AirSim其他运行	2026-07-13	目录名	research_modules/airsim_runtime/outputs/explicit_cv_reassignment_stress_5v5_v2_20260713	1817940	0.002	9	1402672	0.001	5	帧级观测流;真值/标签;观测/回放流	0	0	先归档再考虑删除	日期较早但含可回放原始数据
+AirSim其他运行	2026-07-13	目录名	research_modules/airsim_runtime/outputs/p1_dense_nominal_4m_20260713_seed001	16544450	0.015	9	12470066	0.012	5	帧级观测流;真值/标签;观测/回放流	0	0	先归档再考虑删除	日期较早但含可回放原始数据
+AirSim其他运行	2026-07-13	目录名	research_modules/airsim_runtime/outputs/p1_dense_nominal_4m_20260713_seed002	16540379	0.015	9	12466048	0.012	5	帧级观测流;真值/标签;观测/回放流	0	0	先归档再考虑删除	日期较早但含可回放原始数据
+AirSim其他运行	2026-07-13	目录名	research_modules/airsim_runtime/outputs/p1_dense_nominal_4m_20260713_seed003	16517420	0.015	9	12443202	0.012	5	帧级观测流;真值/标签;观测/回放流	0	0	先归档再考虑删除	日期较早但含可回放原始数据
+AirSim其他运行	2026-07-13	目录名	research_modules/airsim_runtime/outputs/p1_dense_nominal_4m_20260713_seed004	16579346	0.015	9	12479511	0.012	5	帧级观测流;真值/标签;观测/回放流	0	0	先归档再考虑删除	日期较早但含可回放原始数据
+AirSim其他运行	2026-07-13	目录名	research_modules/airsim_runtime/outputs/p1_dense_nominal_4m_20260713_seed005	16539263	0.015	9	12456477	0.012	5	帧级观测流;真值/标签;观测/回放流	0	0	先归档再考虑删除	日期较早但含可回放原始数据
+AirSim其他运行	2026-07-13	目录名	research_modules/airsim_runtime/outputs/p1_dense_nominal_4m_20260713_seed006	16563622	0.015	9	12472325	0.012	5	帧级观测流;真值/标签;观测/回放流	0	0	先归档再考虑删除	日期较早但含可回放原始数据
+AirSim其他运行	2026-07-13	目录名	research_modules/airsim_runtime/outputs/p1_dense_nominal_4m_20260713_seed007	16553719	0.015	9	12479603	0.012	5	帧级观测流;真值/标签;观测/回放流	0	0	先归档再考虑删除	日期较早但含可回放原始数据
+AirSim其他运行	2026-07-13	目录名	research_modules/airsim_runtime/outputs/p1_dense_nominal_4m_20260713_seed008	16532843	0.015	9	12432649	0.012	5	帧级观测流;真值/标签;观测/回放流	0	0	先归档再考虑删除	日期较早但含可回放原始数据
+AirSim其他运行	2026-07-13	目录名	research_modules/airsim_runtime/outputs/p1_dense_nominal_4m_20260713_seed009	16510625	0.015	9	12436450	0.012	5	帧级观测流;真值/标签;观测/回放流	0	0	先归档再考虑删除	日期较早但含可回放原始数据
+AirSim其他运行	2026-07-13	目录名	research_modules/airsim_runtime/outputs/p1_dense_nominal_4m_20260713_seed010	16562485	0.015	9	12467953	0.012	5	帧级观测流;真值/标签;观测/回放流	0	0	先归档再考虑删除	日期较早但含可回放原始数据
+AirSim其他运行	2026-07-13	目录名	research_modules/airsim_runtime/outputs/p1_dense_nominal_4m_20260713_seed011	16525865	0.015	9	12440101	0.012	5	帧级观测流;真值/标签;观测/回放流	0	0	先归档再考虑删除	日期较早但含可回放原始数据
+AirSim其他运行	2026-07-13	目录名	research_modules/airsim_runtime/outputs/p1_dense_nominal_4m_20260713_seed012	16541849	0.015	9	12464568	0.012	5	帧级观测流;真值/标签;观测/回放流	0	0	先归档再考虑删除	日期较早但含可回放原始数据
+AirSim其他运行	2026-07-13	目录名	research_modules/airsim_runtime/outputs/p1_dense_nominal_4m_20260713_seed013	16556437	0.015	9	12470797	0.012	5	帧级观测流;真值/标签;观测/回放流	0	0	先归档再考虑删除	日期较早但含可回放原始数据
+AirSim其他运行	2026-07-13	目录名	research_modules/airsim_runtime/outputs/p1_dense_nominal_4m_20260713_seed014	16565667	0.015	9	12471334	0.012	5	帧级观测流;真值/标签;观测/回放流	0	0	先归档再考虑删除	日期较早但含可回放原始数据
+AirSim其他运行	2026-07-13	目录名	research_modules/airsim_runtime/outputs/p1_dense_nominal_4m_20260713_seed015	16528393	0.015	9	12451011	0.012	5	帧级观测流;真值/标签;观测/回放流	0	0	先归档再考虑删除	日期较早但含可回放原始数据
+AirSim其他运行	2026-07-13	目录名	research_modules/airsim_runtime/outputs/p1_dense_nominal_4m_20260713_seed016	16542013	0.015	9	12464680	0.012	5	帧级观测流;真值/标签;观测/回放流	0	0	先归档再考虑删除	日期较早但含可回放原始数据
+AirSim其他运行	2026-07-13	目录名	research_modules/airsim_runtime/outputs/p1_dense_nominal_4m_20260713_seed017	16541578	0.015	9	12456181	0.012	5	帧级观测流;真值/标签;观测/回放流	0	0	先归档再考虑删除	日期较早但含可回放原始数据
+AirSim其他运行	2026-07-13	目录名	research_modules/airsim_runtime/outputs/p1_dense_nominal_4m_20260713_seed018	16550727	0.015	9	12464662	0.012	5	帧级观测流;真值/标签;观测/回放流	0	0	先归档再考虑删除	日期较早但含可回放原始数据
+AirSim其他运行	2026-07-13	目录名	research_modules/airsim_runtime/outputs/p1_dense_nominal_4m_20260713_seed019	16550396	0.015	9	12464398	0.012	5	帧级观测流;真值/标签;观测/回放流	0	0	先归档再考虑删除	日期较早但含可回放原始数据
+AirSim其他运行	2026-07-13	目录名	research_modules/airsim_runtime/outputs/p1_dense_nominal_4m_20260713_seed020	16557767	0.015	9	12463886	0.012	5	帧级观测流;真值/标签;观测/回放流	0	0	先归档再考虑删除	日期较早但含可回放原始数据
+AirSim其他运行	2026-07-13	目录名	research_modules/airsim_runtime/outputs/p1_dense_nominal_4m_strict_20260713_seed001	17108684	0.016	9	13035433	0.012	5	帧级观测流;真值/标签;观测/回放流	0	0	先归档再考虑删除	日期较早但含可回放原始数据
+AirSim其他运行	2026-07-13	目录名	research_modules/airsim_runtime/outputs/p1_dense_nominal_4m_strict_20260713_seed002	17101931	0.016	9	13029246	0.012	5	帧级观测流;真值/标签;观测/回放流	0	0	先归档再考虑删除	日期较早但含可回放原始数据
+AirSim其他运行	2026-07-13	目录名	research_modules/airsim_runtime/outputs/p1_dense_nominal_4m_strict_20260713_seed003	17100745	0.016	9	13027804	0.012	5	帧级观测流;真值/标签;观测/回放流	0	0	先归档再考虑删除	日期较早但含可回放原始数据
+AirSim其他运行	2026-07-13	目录名	research_modules/airsim_runtime/outputs/p1_dense_nominal_4m_strict_20260713_seed004	17107885	0.016	9	13035057	0.012	5	帧级观测流;真值/标签;观测/回放流	0	0	先归档再考虑删除	日期较早但含可回放原始数据
+AirSim其他运行	2026-07-13	目录名	research_modules/airsim_runtime/outputs/p1_dense_nominal_4m_strict_20260713_seed005	17105753	0.016	9	13024768	0.012	5	帧级观测流;真值/标签;观测/回放流	0	0	先归档再考虑删除	日期较早但含可回放原始数据
+AirSim其他运行	2026-07-13	目录名	research_modules/airsim_runtime/outputs/p1_dense_nominal_4m_strict_20260713_seed006	17095833	0.016	9	13031406	0.012	5	帧级观测流;真值/标签;观测/回放流	0	0	先归档再考虑删除	日期较早但含可回放原始数据
+AirSim其他运行	2026-07-13	目录名	research_modules/airsim_runtime/outputs/p1_dense_nominal_4m_strict_20260713_seed007	17114096	0.016	9	13041269	0.012	5	帧级观测流;真值/标签;观测/回放流	0	0	先归档再考虑删除	日期较早但含可回放原始数据
+AirSim其他运行	2026-07-13	目录名	research_modules/airsim_runtime/outputs/p1_dense_nominal_4m_strict_20260713_seed008	17119349	0.016	9	13029017	0.012	5	帧级观测流;真值/标签;观测/回放流	0	0	先归档再考虑删除	日期较早但含可回放原始数据
+AirSim其他运行	2026-07-13	目录名	research_modules/airsim_runtime/outputs/p1_dense_nominal_4m_strict_20260713_seed009	17112368	0.016	9	13030558	0.012	5	帧级观测流;真值/标签;观测/回放流	0	0	先归档再考虑删除	日期较早但含可回放原始数据
+AirSim其他运行	2026-07-13	目录名	research_modules/airsim_runtime/outputs/p1_dense_nominal_4m_strict_20260713_seed010	17077150	0.016	9	13010081	0.012	5	帧级观测流;真值/标签;观测/回放流	0	0	先归档再考虑删除	日期较早但含可回放原始数据
+AirSim其他运行	2026-07-13	目录名	research_modules/airsim_runtime/outputs/p1_dense_nominal_4m_strict_20260713_seed011	17111985	0.016	9	13036150	0.012	5	帧级观测流;真值/标签;观测/回放流	0	0	先归档再考虑删除	日期较早但含可回放原始数据
+AirSim其他运行	2026-07-13	目录名	research_modules/airsim_runtime/outputs/p1_dense_nominal_4m_strict_20260713_seed012	17100926	0.016	9	13024924	0.012	5	帧级观测流;真值/标签;观测/回放流	0	0	先归档再考虑删除	日期较早但含可回放原始数据
+AirSim其他运行	2026-07-13	目录名	research_modules/airsim_runtime/outputs/p1_dense_nominal_4m_strict_20260713_seed013	17092536	0.016	9	13024920	0.012	5	帧级观测流;真值/标签;观测/回放流	0	0	先归档再考虑删除	日期较早但含可回放原始数据
+AirSim其他运行	2026-07-13	目录名	research_modules/airsim_runtime/outputs/p1_dense_nominal_4m_strict_20260713_seed014	17108411	0.016	9	13041157	0.012	5	帧级观测流;真值/标签;观测/回放流	0	0	先归档再考虑删除	日期较早但含可回放原始数据
+AirSim其他运行	2026-07-13	目录名	research_modules/airsim_runtime/outputs/p1_dense_nominal_4m_strict_20260713_seed015	17115486	0.016	9	13039764	0.012	5	帧级观测流;真值/标签;观测/回放流	0	0	先归档再考虑删除	日期较早但含可回放原始数据
+AirSim其他运行	2026-07-13	目录名	research_modules/airsim_runtime/outputs/p1_dense_nominal_4m_strict_20260713_seed016	17108404	0.016	9	13032629	0.012	5	帧级观测流;真值/标签;观测/回放流	0	0	先归档再考虑删除	日期较早但含可回放原始数据
+AirSim其他运行	2026-07-13	目录名	research_modules/airsim_runtime/outputs/p1_dense_nominal_4m_strict_20260713_seed017	17102571	0.016	9	13026301	0.012	5	帧级观测流;真值/标签;观测/回放流	0	0	先归档再考虑删除	日期较早但含可回放原始数据
+AirSim其他运行	2026-07-13	目录名	research_modules/airsim_runtime/outputs/p1_dense_nominal_4m_strict_20260713_seed018	17101739	0.016	9	13025968	0.012	5	帧级观测流;真值/标签;观测/回放流	0	0	先归档再考虑删除	日期较早但含可回放原始数据
+AirSim其他运行	2026-07-13	目录名	research_modules/airsim_runtime/outputs/p1_dense_nominal_4m_strict_20260713_seed019	17096538	0.016	9	13029363	0.012	5	帧级观测流;真值/标签;观测/回放流	0	0	先归档再考虑删除	日期较早但含可回放原始数据
+AirSim其他运行	2026-07-13	目录名	research_modules/airsim_runtime/outputs/p1_dense_nominal_4m_strict_20260713_seed020	17100011	0.016	9	13032706	0.012	5	帧级观测流;真值/标签;观测/回放流	0	0	先归档再考虑删除	日期较早但含可回放原始数据
+AirSim其他运行	2026-07-13	目录名	research_modules/airsim_runtime/outputs/p1_dense_tight_2m_20260713_seed001	18504017	0.017	9	14440064	0.013	5	帧级观测流;真值/标签;观测/回放流	0	0	先归档再考虑删除	日期较早但含可回放原始数据
+AirSim其他运行	2026-07-13	目录名	research_modules/airsim_runtime/outputs/p1_dense_tight_2m_20260713_seed002	18496428	0.017	9	14432364	0.013	5	帧级观测流;真值/标签;观测/回放流	0	0	先归档再考虑删除	日期较早但含可回放原始数据
+AirSim其他运行	2026-07-13	目录名	research_modules/airsim_runtime/outputs/p1_dense_tight_2m_20260713_seed003	18515748	0.017	9	14443115	0.013	5	帧级观测流;真值/标签;观测/回放流	0	0	先归档再考虑删除	日期较早但含可回放原始数据
+AirSim其他运行	2026-07-13	目录名	research_modules/airsim_runtime/outputs/p1_dense_tight_2m_20260713_seed004	3179	0.000	1	0	0.000	0		0	0	复核后删除候选	日期较早且未识别到原始观测；可能主要是可重算派生文件
+AirSim其他运行	2026-07-13	目录名	research_modules/airsim_runtime/outputs/p1_dense_tight_2m_20260713_seed005	3179	0.000	1	0	0.000	0		0	0	复核后删除候选	日期较早且未识别到原始观测；可能主要是可重算派生文件
+AirSim其他运行	2026-07-13	目录名	research_modules/airsim_runtime/outputs/p1_dense_tight_2m_20260713_seed006	3179	0.000	1	0	0.000	0		0	0	复核后删除候选	日期较早且未识别到原始观测；可能主要是可重算派生文件
+AirSim其他运行	2026-07-13	目录名	research_modules/airsim_runtime/outputs/p1_dense_tight_2m_20260713_seed007	3179	0.000	1	0	0.000	0		0	0	复核后删除候选	日期较早且未识别到原始观测；可能主要是可重算派生文件
+AirSim其他运行	2026-07-13	目录名	research_modules/airsim_runtime/outputs/p1_dense_tight_2m_20260713_seed008	3179	0.000	1	0	0.000	0		0	0	复核后删除候选	日期较早且未识别到原始观测；可能主要是可重算派生文件
+AirSim其他运行	2026-07-13	目录名	research_modules/airsim_runtime/outputs/p1_dense_tight_2m_20260713_seed009	3179	0.000	1	0	0.000	0		0	0	复核后删除候选	日期较早且未识别到原始观测；可能主要是可重算派生文件
+AirSim其他运行	2026-07-13	目录名	research_modules/airsim_runtime/outputs/p1_dense_tight_2m_20260713_seed010	3179	0.000	1	0	0.000	0		0	0	复核后删除候选	日期较早且未识别到原始观测；可能主要是可重算派生文件
+AirSim其他运行	2026-07-13	目录名	research_modules/airsim_runtime/outputs/p1_dense_tight_2m_20260713_seed011	3179	0.000	1	0	0.000	0		0	0	复核后删除候选	日期较早且未识别到原始观测；可能主要是可重算派生文件
+AirSim其他运行	2026-07-13	目录名	research_modules/airsim_runtime/outputs/p1_dense_tight_2m_20260713_seed012	3179	0.000	1	0	0.000	0		0	0	复核后删除候选	日期较早且未识别到原始观测；可能主要是可重算派生文件
+AirSim其他运行	2026-07-13	目录名	research_modules/airsim_runtime/outputs/p1_dense_tight_2m_20260713_seed013	3179	0.000	1	0	0.000	0		0	0	复核后删除候选	日期较早且未识别到原始观测；可能主要是可重算派生文件
+AirSim其他运行	2026-07-13	目录名	research_modules/airsim_runtime/outputs/p1_dense_tight_2m_20260713_seed014	3179	0.000	1	0	0.000	0		0	0	复核后删除候选	日期较早且未识别到原始观测；可能主要是可重算派生文件
+AirSim其他运行	2026-07-13	目录名	research_modules/airsim_runtime/outputs/p1_dense_tight_2m_20260713_seed015	3179	0.000	1	0	0.000	0		0	0	复核后删除候选	日期较早且未识别到原始观测；可能主要是可重算派生文件
+AirSim其他运行	2026-07-13	目录名	research_modules/airsim_runtime/outputs/p1_dense_tight_2m_20260713_seed016	3179	0.000	1	0	0.000	0		0	0	复核后删除候选	日期较早且未识别到原始观测；可能主要是可重算派生文件
+AirSim其他运行	2026-07-13	目录名	research_modules/airsim_runtime/outputs/p1_dense_tight_2m_20260713_seed017	3179	0.000	1	0	0.000	0		0	0	复核后删除候选	日期较早且未识别到原始观测；可能主要是可重算派生文件
+AirSim其他运行	2026-07-13	目录名	research_modules/airsim_runtime/outputs/p1_dense_tight_2m_20260713_seed018	3179	0.000	1	0	0.000	0		0	0	复核后删除候选	日期较早且未识别到原始观测；可能主要是可重算派生文件
+AirSim其他运行	2026-07-13	目录名	research_modules/airsim_runtime/outputs/p1_dense_tight_2m_20260713_seed019	3179	0.000	1	0	0.000	0		0	0	复核后删除候选	日期较早且未识别到原始观测；可能主要是可重算派生文件
+AirSim其他运行	2026-07-13	目录名	research_modules/airsim_runtime/outputs/p1_dense_tight_2m_20260713_seed020	3179	0.000	1	0	0.000	0		0	0	复核后删除候选	日期较早且未识别到原始观测；可能主要是可重算派生文件
+AirSim其他运行	2026-07-13	目录名	research_modules/airsim_runtime/outputs/p1_dense_tight_2m_strict_20260713_seed001	12774977	0.012	9	8831781	0.008	5	帧级观测流;真值/标签;观测/回放流	0	0	先归档再考虑删除	日期较早但含可回放原始数据
+AirSim其他运行	2026-07-13	目录名	research_modules/airsim_runtime/outputs/p1_dense_tight_2m_strict_20260713_seed002	12772066	0.012	9	8837388	0.008	5	帧级观测流;真值/标签;观测/回放流	0	0	先归档再考虑删除	日期较早但含可回放原始数据
+AirSim其他运行	2026-07-13	目录名	research_modules/airsim_runtime/outputs/p1_dense_tight_2m_strict_20260713_seed003	12767343	0.012	9	8832872	0.008	5	帧级观测流;真值/标签;观测/回放流	0	0	先归档再考虑删除	日期较早但含可回放原始数据
+AirSim其他运行	2026-07-13	目录名	research_modules/airsim_runtime/outputs/p1_dense_tight_2m_strict_20260713_seed004	12770726	0.012	9	8836273	0.008	5	帧级观测流;真值/标签;观测/回放流	0	0	先归档再考虑删除	日期较早但含可回放原始数据
+AirSim其他运行	2026-07-13	目录名	research_modules/airsim_runtime/outputs/p1_dense_tight_2m_strict_20260713_seed005	12789064	0.012	9	8837426	0.008	5	帧级观测流;真值/标签;观测/回放流	0	0	先归档再考虑删除	日期较早但含可回放原始数据
+AirSim其他运行	2026-07-13	目录名	research_modules/airsim_runtime/outputs/p1_dense_tight_2m_strict_20260713_seed006	12779854	0.012	9	8828665	0.008	5	帧级观测流;真值/标签;观测/回放流	0	0	先归档再考虑删除	日期较早但含可回放原始数据
+AirSim其他运行	2026-07-13	目录名	research_modules/airsim_runtime/outputs/p1_dense_tight_2m_strict_20260713_seed007	12774204	0.012	9	8822285	0.008	5	帧级观测流;真值/标签;观测/回放流	0	0	先归档再考虑删除	日期较早但含可回放原始数据
+AirSim其他运行	2026-07-13	目录名	research_modules/airsim_runtime/outputs/p1_dense_tight_2m_strict_20260713_seed008	12776402	0.012	9	8825008	0.008	5	帧级观测流;真值/标签;观测/回放流	0	0	先归档再考虑删除	日期较早但含可回放原始数据
+AirSim其他运行	2026-07-13	目录名	research_modules/airsim_runtime/outputs/p1_dense_tight_2m_strict_20260713_seed009	12772862	0.012	9	8830154	0.008	5	帧级观测流;真值/标签;观测/回放流	0	0	先归档再考虑删除	日期较早但含可回放原始数据
+AirSim其他运行	2026-07-13	目录名	research_modules/airsim_runtime/outputs/p1_dense_tight_2m_strict_20260713_seed010	12790874	0.012	9	8836296	0.008	5	帧级观测流;真值/标签;观测/回放流	0	0	先归档再考虑删除	日期较早但含可回放原始数据
+AirSim其他运行	2026-07-13	目录名	research_modules/airsim_runtime/outputs/p1_dense_tight_2m_strict_20260713_seed011	12780569	0.012	9	8834109	0.008	5	帧级观测流;真值/标签;观测/回放流	0	0	先归档再考虑删除	日期较早但含可回放原始数据
+AirSim其他运行	2026-07-13	目录名	research_modules/airsim_runtime/outputs/p1_dense_tight_2m_strict_20260713_seed012	12788796	0.012	9	8834535	0.008	5	帧级观测流;真值/标签;观测/回放流	0	0	先归档再考虑删除	日期较早但含可回放原始数据
+AirSim其他运行	2026-07-13	目录名	research_modules/airsim_runtime/outputs/p1_dense_tight_2m_strict_20260713_seed013	12787330	0.012	9	8832365	0.008	5	帧级观测流;真值/标签;观测/回放流	0	0	先归档再考虑删除	日期较早但含可回放原始数据
+AirSim其他运行	2026-07-13	目录名	research_modules/airsim_runtime/outputs/p1_dense_tight_2m_strict_20260713_seed014	12775432	0.012	9	8821009	0.008	5	帧级观测流;真值/标签;观测/回放流	0	0	先归档再考虑删除	日期较早但含可回放原始数据
+AirSim其他运行	2026-07-13	目录名	research_modules/airsim_runtime/outputs/p1_dense_tight_2m_strict_20260713_seed015	12790384	0.012	9	8835771	0.008	5	帧级观测流;真值/标签;观测/回放流	0	0	先归档再考虑删除	日期较早但含可回放原始数据
+AirSim其他运行	2026-07-13	目录名	research_modules/airsim_runtime/outputs/p1_dense_tight_2m_strict_20260713_seed016	12781948	0.012	9	8827255	0.008	5	帧级观测流;真值/标签;观测/回放流	0	0	先归档再考虑删除	日期较早但含可回放原始数据
+AirSim其他运行	2026-07-13	目录名	research_modules/airsim_runtime/outputs/p1_dense_tight_2m_strict_20260713_seed017	12775340	0.012	9	8820675	0.008	5	帧级观测流;真值/标签;观测/回放流	0	0	先归档再考虑删除	日期较早但含可回放原始数据
+AirSim其他运行	2026-07-13	目录名	research_modules/airsim_runtime/outputs/p1_dense_tight_2m_strict_20260713_seed018	12805090	0.012	9	8833883	0.008	5	帧级观测流;真值/标签;观测/回放流	0	0	先归档再考虑删除	日期较早但含可回放原始数据
+AirSim其他运行	2026-07-13	目录名	research_modules/airsim_runtime/outputs/p1_dense_tight_2m_strict_20260713_seed019	12776747	0.012	9	8821786	0.008	5	帧级观测流;真值/标签;观测/回放流	0	0	先归档再考虑删除	日期较早但含可回放原始数据
+AirSim其他运行	2026-07-13	目录名	research_modules/airsim_runtime/outputs/p1_dense_tight_2m_strict_20260713_seed020	12792784	0.012	9	8838189	0.008	5	帧级观测流;真值/标签;观测/回放流	0	0	先归档再考虑删除	日期较早但含可回放原始数据
+AirSim其他运行	2026-07-13	目录名	research_modules/airsim_runtime/outputs/p1_native_mot_strict_20260713_mot-screen-botsort-c0.10-r20-seed007	964	0.000	1	0	0.000	0		0	0	复核后删除候选	日期较早且未识别到原始观测；可能主要是可重算派生文件
+AirSim其他运行	2026-07-13	目录名	research_modules/airsim_runtime/outputs/p1_native_mot_strict_20260713_mot-screen-botsort-c0.10-r30-seed007	964	0.000	1	0	0.000	0		0	0	复核后删除候选	日期较早且未识别到原始观测；可能主要是可重算派生文件
+AirSim其他运行	2026-07-13	目录名	research_modules/airsim_runtime/outputs/p1_native_mot_strict_20260713_mot-screen-botsort-c0.10-r50-seed007	964	0.000	1	0	0.000	0		0	0	复核后删除候选	日期较早且未识别到原始观测；可能主要是可重算派生文件
+AirSim其他运行	2026-07-13	目录名	research_modules/airsim_runtime/outputs/p1_native_mot_strict_20260713_mot-screen-botsort-c0.20-r20-seed007	964	0.000	1	0	0.000	0		0	0	复核后删除候选	日期较早且未识别到原始观测；可能主要是可重算派生文件
+AirSim其他运行	2026-07-13	目录名	research_modules/airsim_runtime/outputs/p1_native_mot_strict_20260713_mot-screen-botsort-c0.20-r30-seed007	964	0.000	1	0	0.000	0		0	0	复核后删除候选	日期较早且未识别到原始观测；可能主要是可重算派生文件
+AirSim其他运行	2026-07-13	目录名	research_modules/airsim_runtime/outputs/p1_native_mot_strict_20260713_mot-screen-botsort-c0.20-r50-seed007	964	0.000	1	0	0.000	0		0	0	复核后删除候选	日期较早且未识别到原始观测；可能主要是可重算派生文件
+AirSim其他运行	2026-07-13	目录名	research_modules/airsim_runtime/outputs/p1_native_mot_strict_20260713_mot-screen-botsort-c0.30-r20-seed007	964	0.000	1	0	0.000	0		0	0	复核后删除候选	日期较早且未识别到原始观测；可能主要是可重算派生文件
+AirSim其他运行	2026-07-13	目录名	research_modules/airsim_runtime/outputs/p1_native_mot_strict_20260713_mot-screen-botsort-c0.30-r30-seed007	964	0.000	1	0	0.000	0		0	0	复核后删除候选	日期较早且未识别到原始观测；可能主要是可重算派生文件
+AirSim其他运行	2026-07-13	目录名	research_modules/airsim_runtime/outputs/p1_native_mot_strict_20260713_mot-screen-botsort-c0.30-r50-seed007	964	0.000	1	0	0.000	0		0	0	复核后删除候选	日期较早且未识别到原始观测；可能主要是可重算派生文件
+AirSim其他运行	2026-07-13	目录名	research_modules/airsim_runtime/outputs/p1_native_mot_strict_20260713_mot-screen-bytetrack-c0.10-r20-seed007	964	0.000	1	0	0.000	0		0	0	复核后删除候选	日期较早且未识别到原始观测；可能主要是可重算派生文件
+AirSim其他运行	2026-07-13	目录名	research_modules/airsim_runtime/outputs/p1_native_mot_strict_20260713_mot-screen-bytetrack-c0.10-r30-seed007	964	0.000	1	0	0.000	0		0	0	复核后删除候选	日期较早且未识别到原始观测；可能主要是可重算派生文件
+AirSim其他运行	2026-07-13	目录名	research_modules/airsim_runtime/outputs/p1_native_mot_strict_20260713_mot-screen-bytetrack-c0.10-r50-seed007	964	0.000	1	0	0.000	0		0	0	复核后删除候选	日期较早且未识别到原始观测；可能主要是可重算派生文件
+AirSim其他运行	2026-07-13	目录名	research_modules/airsim_runtime/outputs/p1_native_mot_strict_20260713_mot-screen-bytetrack-c0.20-r20-seed007	964	0.000	1	0	0.000	0		0	0	复核后删除候选	日期较早且未识别到原始观测；可能主要是可重算派生文件
+AirSim其他运行	2026-07-13	目录名	research_modules/airsim_runtime/outputs/p1_native_mot_strict_20260713_mot-screen-bytetrack-c0.20-r30-seed007	964	0.000	1	0	0.000	0		0	0	复核后删除候选	日期较早且未识别到原始观测；可能主要是可重算派生文件
+AirSim其他运行	2026-07-13	目录名	research_modules/airsim_runtime/outputs/p1_native_mot_strict_20260713_mot-screen-bytetrack-c0.20-r50-seed007	964	0.000	1	0	0.000	0		0	0	复核后删除候选	日期较早且未识别到原始观测；可能主要是可重算派生文件
+AirSim其他运行	2026-07-13	目录名	research_modules/airsim_runtime/outputs/p1_native_mot_strict_20260713_mot-screen-bytetrack-c0.30-r20-seed007	964	0.000	1	0	0.000	0		0	0	复核后删除候选	日期较早且未识别到原始观测；可能主要是可重算派生文件
+AirSim其他运行	2026-07-13	目录名	research_modules/airsim_runtime/outputs/p1_native_mot_strict_20260713_mot-screen-bytetrack-c0.30-r30-seed007	964	0.000	1	0	0.000	0		0	0	复核后删除候选	日期较早且未识别到原始观测；可能主要是可重算派生文件
+AirSim其他运行	2026-07-13	目录名	research_modules/airsim_runtime/outputs/p1_native_mot_strict_20260713_mot-screen-bytetrack-c0.30-r50-seed007	964	0.000	1	0	0.000	0		0	0	复核后删除候选	日期较早且未识别到原始观测；可能主要是可重算派生文件
+AirSim其他运行	2026-07-13	目录名	research_modules/airsim_runtime/outputs/p1_native_mot_strict_v2_20260713_mot-screen-botsort-c0.10-r20-seed007	9011522	0.008	7	7678181	0.007	5	帧级观测流;真值/标签;观测/回放流	0	0	先归档再考虑删除	日期较早但含可回放原始数据
+AirSim其他运行	2026-07-13	目录名	research_modules/airsim_runtime/outputs/p1_native_mot_strict_v2_20260713_mot-screen-botsort-c0.10-r30-seed007	8361116	0.008	7	7027729	0.007	5	帧级观测流;真值/标签;观测/回放流	0	0	先归档再考虑删除	日期较早但含可回放原始数据
+AirSim其他运行	2026-07-13	目录名	research_modules/airsim_runtime/outputs/p1_native_mot_strict_v2_20260713_mot-screen-botsort-c0.10-r50-seed007	8362240	0.008	7	7028823	0.007	5	帧级观测流;真值/标签;观测/回放流	0	0	先归档再考虑删除	日期较早但含可回放原始数据
+AirSim其他运行	2026-07-13	目录名	research_modules/airsim_runtime/outputs/p1_native_mot_strict_v2_20260713_mot-screen-botsort-c0.20-r20-seed007	9010580	0.008	7	7677233	0.007	5	帧级观测流;真值/标签;观测/回放流	0	0	先归档再考虑删除	日期较早但含可回放原始数据
+AirSim其他运行	2026-07-13	目录名	research_modules/airsim_runtime/outputs/p1_native_mot_strict_v2_20260713_mot-screen-botsort-c0.20-r30-seed007	8361728	0.008	7	7028329	0.007	5	帧级观测流;真值/标签;观测/回放流	0	0	先归档再考虑删除	日期较早但含可回放原始数据
+AirSim其他运行	2026-07-13	目录名	research_modules/airsim_runtime/outputs/p1_native_mot_strict_v2_20260713_mot-screen-botsort-c0.20-r50-seed007	8362296	0.008	7	7028879	0.007	5	帧级观测流;真值/标签;观测/回放流	0	0	先归档再考虑删除	日期较早但含可回放原始数据
+AirSim其他运行	2026-07-13	目录名	research_modules/airsim_runtime/outputs/p1_native_mot_strict_v2_20260713_mot-screen-botsort-c0.30-r20-seed007	9010680	0.008	7	7677327	0.007	5	帧级观测流;真值/标签;观测/回放流	0	0	先归档再考虑删除	日期较早但含可回放原始数据
+AirSim其他运行	2026-07-13	目录名	research_modules/airsim_runtime/outputs/p1_native_mot_strict_v2_20260713_mot-screen-botsort-c0.30-r30-seed007	8361716	0.008	7	7028317	0.007	5	帧级观测流;真值/标签;观测/回放流	0	0	先归档再考虑删除	日期较早但含可回放原始数据
+AirSim其他运行	2026-07-13	目录名	research_modules/airsim_runtime/outputs/p1_native_mot_strict_v2_20260713_mot-screen-botsort-c0.30-r50-seed007	8362289	0.008	7	7028872	0.007	5	帧级观测流;真值/标签;观测/回放流	0	0	先归档再考虑删除	日期较早但含可回放原始数据
+AirSim其他运行	2026-07-13	目录名	research_modules/airsim_runtime/outputs/p1_native_mot_strict_v2_20260713_mot-screen-bytetrack-c0.10-r20-seed007	9022710	0.008	7	7687537	0.007	5	帧级观测流;真值/标签;观测/回放流	0	0	先归档再考虑删除	日期较早但含可回放原始数据
+AirSim其他运行	2026-07-13	目录名	research_modules/airsim_runtime/outputs/p1_native_mot_strict_v2_20260713_mot-screen-bytetrack-c0.10-r30-seed007	8367502	0.008	7	7032283	0.007	5	帧级观测流;真值/标签;观测/回放流	0	0	先归档再考虑删除	日期较早但含可回放原始数据
+AirSim其他运行	2026-07-13	目录名	research_modules/airsim_runtime/outputs/p1_native_mot_strict_v2_20260713_mot-screen-bytetrack-c0.10-r50-seed007	8368022	0.008	7	7032785	0.007	5	帧级观测流;真值/标签;观测/回放流	0	0	先归档再考虑删除	日期较早但含可回放原始数据
+AirSim其他运行	2026-07-13	目录名	research_modules/airsim_runtime/outputs/p1_native_mot_strict_v2_20260713_mot-screen-bytetrack-c0.20-r20-seed007	9018064	0.008	7	7682891	0.007	5	帧级观测流;真值/标签;观测/回放流	0	0	先归档再考虑删除	日期较早但含可回放原始数据
+AirSim其他运行	2026-07-13	目录名	research_modules/airsim_runtime/outputs/p1_native_mot_strict_v2_20260713_mot-screen-bytetrack-c0.20-r30-seed007	8367159	0.008	7	7031946	0.007	5	帧级观测流;真值/标签;观测/回放流	0	0	先归档再考虑删除	日期较早但含可回放原始数据
+AirSim其他运行	2026-07-13	目录名	research_modules/airsim_runtime/outputs/p1_native_mot_strict_v2_20260713_mot-screen-bytetrack-c0.20-r50-seed007	8368025	0.008	7	7032788	0.007	5	帧级观测流;真值/标签;观测/回放流	0	0	先归档再考虑删除	日期较早但含可回放原始数据
+AirSim其他运行	2026-07-13	目录名	research_modules/airsim_runtime/outputs/p1_native_mot_strict_v2_20260713_mot-screen-bytetrack-c0.30-r20-seed007	9014155	0.008	7	7678982	0.007	5	帧级观测流;真值/标签;观测/回放流	0	0	先归档再考虑删除	日期较早但含可回放原始数据
+AirSim其他运行	2026-07-13	目录名	research_modules/airsim_runtime/outputs/p1_native_mot_strict_v2_20260713_mot-screen-bytetrack-c0.30-r30-seed007	8367498	0.008	7	7032279	0.007	5	帧级观测流;真值/标签;观测/回放流	0	0	先归档再考虑删除	日期较早但含可回放原始数据
+AirSim其他运行	2026-07-13	目录名	research_modules/airsim_runtime/outputs/p1_native_mot_strict_v2_20260713_mot-screen-bytetrack-c0.30-r50-seed007	8367392	0.008	7	7032167	0.007	5	帧级观测流;真值/标签;观测/回放流	0	0	先归档再考虑删除	日期较早但含可回放原始数据
+AirSim其他运行	2026-07-13	目录名	research_modules/airsim_runtime/outputs/p1_native_mot_target2x_1080p_20260713_mot-screen-botsort-c0.10-r20-seed007	8809450	0.008	7	7476097	0.007	5	帧级观测流;真值/标签;观测/回放流	0	0	先归档再考虑删除	日期较早但含可回放原始数据
+AirSim其他运行	2026-07-13	目录名	research_modules/airsim_runtime/outputs/p1_native_mot_target2x_1080p_20260713_mot-screen-botsort-c0.10-r30-seed007	8235167	0.008	7	6901774	0.006	5	帧级观测流;真值/标签;观测/回放流	0	0	先归档再考虑删除	日期较早但含可回放原始数据
+AirSim其他运行	2026-07-13	目录名	research_modules/airsim_runtime/outputs/p1_native_mot_target2x_1080p_20260713_mot-screen-botsort-c0.10-r50-seed007	8236059	0.008	7	6902642	0.006	5	帧级观测流;真值/标签;观测/回放流	0	0	先归档再考虑删除	日期较早但含可回放原始数据
+AirSim其他运行	2026-07-13	目录名	research_modules/airsim_runtime/outputs/p1_native_mot_target2x_1080p_20260713_mot-screen-botsort-c0.20-r20-seed007	8809670	0.008	7	7476323	0.007	5	帧级观测流;真值/标签;观测/回放流	0	0	先归档再考虑删除	日期较早但含可回放原始数据
+AirSim其他运行	2026-07-13	目录名	research_modules/airsim_runtime/outputs/p1_native_mot_target2x_1080p_20260713_mot-screen-botsort-c0.20-r30-seed007	8234849	0.008	7	6901462	0.006	5	帧级观测流;真值/标签;观测/回放流	0	0	先归档再考虑删除	日期较早但含可回放原始数据
+AirSim其他运行	2026-07-13	目录名	research_modules/airsim_runtime/outputs/p1_native_mot_target2x_1080p_20260713_mot-screen-botsort-c0.20-r50-seed007	8236045	0.008	7	6902628	0.006	5	帧级观测流;真值/标签;观测/回放流	0	0	先归档再考虑删除	日期较早但含可回放原始数据
+AirSim其他运行	2026-07-13	目录名	research_modules/airsim_runtime/outputs/p1_native_mot_target2x_1080p_20260713_mot-screen-botsort-c0.30-r20-seed007	8809832	0.008	7	7476485	0.007	5	帧级观测流;真值/标签;观测/回放流	0	0	先归档再考虑删除	日期较早但含可回放原始数据
+AirSim其他运行	2026-07-13	目录名	research_modules/airsim_runtime/outputs/p1_native_mot_target2x_1080p_20260713_mot-screen-botsort-c0.30-r30-seed007	8235483	0.008	7	6902084	0.006	5	帧级观测流;真值/标签;观测/回放流	0	0	先归档再考虑删除	日期较早但含可回放原始数据
+AirSim其他运行	2026-07-13	目录名	research_modules/airsim_runtime/outputs/p1_native_mot_target2x_1080p_20260713_mot-screen-botsort-c0.30-r50-seed007	8236020	0.008	7	6902603	0.006	5	帧级观测流;真值/标签;观测/回放流	0	0	先归档再考虑删除	日期较早但含可回放原始数据
+AirSim其他运行	2026-07-13	目录名	research_modules/airsim_runtime/outputs/p1_native_mot_target2x_1080p_20260713_mot-screen-bytetrack-c0.10-r20-seed007	8821167	0.008	7	7485994	0.007	5	帧级观测流;真值/标签;观测/回放流	0	0	先归档再考虑删除	日期较早但含可回放原始数据
+AirSim其他运行	2026-07-13	目录名	research_modules/airsim_runtime/outputs/p1_native_mot_target2x_1080p_20260713_mot-screen-bytetrack-c0.10-r30-seed007	8240848	0.008	7	6905629	0.006	5	帧级观测流;真值/标签;观测/回放流	0	0	先归档再考虑删除	日期较早但含可回放原始数据
+AirSim其他运行	2026-07-13	目录名	research_modules/airsim_runtime/outputs/p1_native_mot_target2x_1080p_20260713_mot-screen-bytetrack-c0.10-r50-seed007	8241437	0.008	7	6906200	0.006	5	帧级观测流;真值/标签;观测/回放流	0	0	先归档再考虑删除	日期较早但含可回放原始数据
+AirSim其他运行	2026-07-13	目录名	research_modules/airsim_runtime/outputs/p1_native_mot_target2x_1080p_20260713_mot-screen-bytetrack-c0.20-r20-seed007	8824103	0.008	7	7488930	0.007	5	帧级观测流;真值/标签;观测/回放流	0	0	先归档再考虑删除	日期较早但含可回放原始数据
+AirSim其他运行	2026-07-13	目录名	research_modules/airsim_runtime/outputs/p1_native_mot_target2x_1080p_20260713_mot-screen-bytetrack-c0.20-r30-seed007	8240858	0.008	7	6905639	0.006	5	帧级观测流;真值/标签;观测/回放流	0	0	先归档再考虑删除	日期较早但含可回放原始数据
+AirSim其他运行	2026-07-13	目录名	research_modules/airsim_runtime/outputs/p1_native_mot_target2x_1080p_20260713_mot-screen-bytetrack-c0.20-r50-seed007	8241414	0.008	7	6906177	0.006	5	帧级观测流;真值/标签;观测/回放流	0	0	先归档再考虑删除	日期较早但含可回放原始数据
+AirSim其他运行	2026-07-13	目录名	research_modules/airsim_runtime/outputs/p1_native_mot_target2x_1080p_20260713_mot-screen-bytetrack-c0.30-r20-seed007	8824634	0.008	7	7489461	0.007	5	帧级观测流;真值/标签;观测/回放流	0	0	先归档再考虑删除	日期较早但含可回放原始数据
+AirSim其他运行	2026-07-13	目录名	research_modules/airsim_runtime/outputs/p1_native_mot_target2x_1080p_20260713_mot-screen-bytetrack-c0.30-r30-seed007	8240856	0.008	7	6905637	0.006	5	帧级观测流;真值/标签;观测/回放流	0	0	先归档再考虑删除	日期较早但含可回放原始数据
+AirSim其他运行	2026-07-13	目录名	research_modules/airsim_runtime/outputs/p1_native_mot_target2x_1080p_20260713_mot-screen-bytetrack-c0.30-r50-seed007	8241110	0.008	7	6905879	0.006	5	帧级观测流;真值/标签;观测/回放流	0	0	先归档再考虑删除	日期较早但含可回放原始数据
+AirSim其他运行	2026-07-13	目录名	research_modules/airsim_runtime/outputs/radar_direct_2v2_far_policy_20260713	993458	0.001	9	768066	0.001	5	帧级观测流;真值/标签;观测/回放流	0	0	先归档再考虑删除	日期较早但含可回放原始数据
+AirSim其他运行	2026-07-13	目录名	research_modules/airsim_runtime/outputs/radar_direct_2v2_far_policy_v2_20260713	992531	0.001	9	767139	0.001	5	帧级观测流;真值/标签;观测/回放流	0	0	先归档再考虑删除	日期较早但含可回放原始数据
+AirSim其他运行	2026-07-13	目录名	research_modules/airsim_runtime/outputs/radar_direct_2v2_policy_20260713	980680	0.001	9	772255	0.001	5	帧级观测流;真值/标签;观测/回放流	0	0	先归档再考虑删除	日期较早但含可回放原始数据
+AirSim其他运行	2026-07-13	目录名	research_modules/airsim_runtime/outputs/radar_direct_5v5_yolo_bytetrack_20260713_seed007	2814123	0.003	9	2228722	0.002	5	帧级观测流;真值/标签;观测/回放流	0	0	先归档再考虑删除	日期较早但含可回放原始数据
+AirSim其他运行	2026-07-13	目录名	research_modules/airsim_runtime/outputs/radar_direct_5v5_yolo_bytetrack_20260713_seed017	2807573	0.003	9	2228596	0.002	5	帧级观测流;真值/标签;观测/回放流	0	0	先归档再考虑删除	日期较早但含可回放原始数据
+AirSim其他运行	2026-07-13	目录名	research_modules/airsim_runtime/outputs/radar_direct_5v5_yolo_bytetrack_20260713_seed027	2807333	0.003	9	2228636	0.002	5	帧级观测流;真值/标签;观测/回放流	0	0	先归档再考虑删除	日期较早但含可回放原始数据
+AirSim协同闭合	2026-07-13	目录名	research_modules/airsim_runtime/outputs/p1_m5n2_cooperative_10seed_20260713_baseline_seed001	55449019	0.052	10	48710807	0.045	5	帧级观测流;真值/标签;观测/回放流	0	0	先归档再考虑删除	日期较早但含可回放原始数据
+AirSim协同闭合	2026-07-13	目录名	research_modules/airsim_runtime/outputs/p1_m5n2_cooperative_10seed_20260713_baseline_seed002	31939705	0.030	10	27389274	0.026	5	帧级观测流;真值/标签;观测/回放流	0	0	先归档再考虑删除	日期较早但含可回放原始数据
+AirSim协同闭合	2026-07-13	目录名	research_modules/airsim_runtime/outputs/p1_m5n2_cooperative_10seed_20260713_baseline_seed003	34566038	0.032	10	29937749	0.028	5	帧级观测流;真值/标签;观测/回放流	0	0	先归档再考虑删除	日期较早但含可回放原始数据
+AirSim协同闭合	2026-07-13	目录名	research_modules/airsim_runtime/outputs/p1_m5n2_cooperative_10seed_20260713_baseline_seed004	35095023	0.033	10	30457886	0.028	5	帧级观测流;真值/标签;观测/回放流	0	0	先归档再考虑删除	日期较早但含可回放原始数据
+AirSim协同闭合	2026-07-13	目录名	research_modules/airsim_runtime/outputs/p1_m5n2_cooperative_10seed_20260713_baseline_seed005	37482011	0.035	10	32660430	0.030	5	帧级观测流;真值/标签;观测/回放流	0	0	先归档再考虑删除	日期较早但含可回放原始数据
+AirSim协同闭合	2026-07-13	目录名	research_modules/airsim_runtime/outputs/p1_m5n2_cooperative_10seed_20260713_baseline_seed006	83533852	0.078	10	73373355	0.068	5	帧级观测流;真值/标签;观测/回放流	0	0	先归档再考虑删除	日期较早但含可回放原始数据
+AirSim协同闭合	2026-07-13	目录名	research_modules/airsim_runtime/outputs/p1_m5n2_cooperative_10seed_20260713_baseline_seed007	82814115	0.077	10	72615087	0.068	5	帧级观测流;真值/标签;观测/回放流	0	0	先归档再考虑删除	日期较早但含可回放原始数据
+AirSim协同闭合	2026-07-13	目录名	research_modules/airsim_runtime/outputs/p1_m5n2_cooperative_10seed_20260713_baseline_seed008	83042785	0.077	10	72835172	0.068	5	帧级观测流;真值/标签;观测/回放流	0	0	先归档再考虑删除	日期较早但含可回放原始数据
+AirSim协同闭合	2026-07-13	目录名	research_modules/airsim_runtime/outputs/p1_m5n2_cooperative_10seed_20260713_baseline_seed009	43590774	0.041	10	38154769	0.036	5	帧级观测流;真值/标签;观测/回放流	0	0	先归档再考虑删除	日期较早但含可回放原始数据
+AirSim协同闭合	2026-07-13	目录名	research_modules/airsim_runtime/outputs/p1_m5n2_cooperative_10seed_20260713_baseline_seed010	82690384	0.077	10	72487372	0.068	5	帧级观测流;真值/标签;观测/回放流	0	0	先归档再考虑删除	日期较早但含可回放原始数据
+AirSim协同闭合	2026-07-13	目录名	research_modules/airsim_runtime/outputs/p1_m5n2_cooperative_10seed_20260713_d3-p1-h020.0-w03.0-s040.0_seed001	57590520	0.054	10	50565053	0.047	5	帧级观测流;真值/标签;观测/回放流	0	0	先归档再考虑删除	日期较早但含可回放原始数据
+AirSim协同闭合	2026-07-13	目录名	research_modules/airsim_runtime/outputs/p1_m5n2_cooperative_10seed_20260713_d3-p1-h020.0-w03.0-s040.0_seed002	39832991	0.037	10	34822044	0.032	5	帧级观测流;真值/标签;观测/回放流	0	0	先归档再考虑删除	日期较早但含可回放原始数据
+AirSim协同闭合	2026-07-13	目录名	research_modules/airsim_runtime/outputs/p1_m5n2_cooperative_10seed_20260713_d3-p1-h020.0-w03.0-s040.0_seed003	39125898	0.036	10	34250610	0.032	5	帧级观测流;真值/标签;观测/回放流	0	0	先归档再考虑删除	日期较早但含可回放原始数据
+AirSim协同闭合	2026-07-13	目录名	research_modules/airsim_runtime/outputs/p1_m5n2_cooperative_10seed_20260713_d3-p1-h020.0-w03.0-s040.0_seed004	49834864	0.046	10	43453199	0.040	5	帧级观测流;真值/标签;观测/回放流	0	0	先归档再考虑删除	日期较早但含可回放原始数据
+AirSim协同闭合	2026-07-13	目录名	research_modules/airsim_runtime/outputs/p1_m5n2_cooperative_10seed_20260713_d3-p1-h020.0-w03.0-s040.0_seed005	85213913	0.079	10	74955129	0.070	5	帧级观测流;真值/标签;观测/回放流	0	0	先归档再考虑删除	日期较早但含可回放原始数据
+AirSim协同闭合	2026-07-13	目录名	research_modules/airsim_runtime/outputs/p1_m5n2_cooperative_10seed_20260713_d3-p1-h020.0-w03.0-s040.0_seed006	85512456	0.080	10	75272555	0.070	5	帧级观测流;真值/标签;观测/回放流	0	0	先归档再考虑删除	日期较早但含可回放原始数据
+AirSim协同闭合	2026-07-13	目录名	research_modules/airsim_runtime/outputs/p1_m5n2_cooperative_10seed_20260713_d3-p1-h020.0-w03.0-s040.0_seed007	84842988	0.079	10	74621726	0.069	5	帧级观测流;真值/标签;观测/回放流	0	0	先归档再考虑删除	日期较早但含可回放原始数据
+AirSim协同闭合	2026-07-13	目录名	research_modules/airsim_runtime/outputs/p1_m5n2_cooperative_10seed_20260713_d3-p1-h020.0-w03.0-s040.0_seed008	85288834	0.079	10	75049755	0.070	5	帧级观测流;真值/标签;观测/回放流	0	0	先归档再考虑删除	日期较早但含可回放原始数据
+AirSim协同闭合	2026-07-13	目录名	research_modules/airsim_runtime/outputs/p1_m5n2_cooperative_10seed_20260713_d3-p1-h020.0-w03.0-s040.0_seed009	45920852	0.043	10	40208972	0.037	5	帧级观测流;真值/标签;观测/回放流	0	0	先归档再考虑删除	日期较早但含可回放原始数据
+AirSim协同闭合	2026-07-13	目录名	research_modules/airsim_runtime/outputs/p1_m5n2_cooperative_10seed_20260713_d3-p1-h020.0-w03.0-s040.0_seed010	84470378	0.079	10	74245266	0.069	5	帧级观测流;真值/标签;观测/回放流	0	0	先归档再考虑删除	日期较早但含可回放原始数据
+AirSim协同闭合	2026-07-13	目录名	research_modules/airsim_runtime/outputs/p1_m5n2_cooperative_10seed_20260713_d3-p1-h020.0-w05.0-s040.0_seed001	47350922	0.044	10	41753935	0.039	5	帧级观测流;真值/标签;观测/回放流	0	0	先归档再考虑删除	日期较早但含可回放原始数据
+AirSim协同闭合	2026-07-13	目录名	research_modules/airsim_runtime/outputs/p1_m5n2_cooperative_10seed_20260713_d3-p1-h020.0-w05.0-s040.0_seed002	40516118	0.038	10	35614242	0.033	5	帧级观测流;真值/标签;观测/回放流	0	0	先归档再考虑删除	日期较早但含可回放原始数据
+AirSim协同闭合	2026-07-13	目录名	research_modules/airsim_runtime/outputs/p1_m5n2_cooperative_10seed_20260713_d3-p1-h020.0-w05.0-s040.0_seed003	43352303	0.040	10	38147346	0.036	5	帧级观测流;真值/标签;观测/回放流	0	0	先归档再考虑删除	日期较早但含可回放原始数据
+AirSim协同闭合	2026-07-13	目录名	research_modules/airsim_runtime/outputs/p1_m5n2_cooperative_10seed_20260713_d3-p1-h020.0-w05.0-s040.0_seed004	38058035	0.035	10	33155833	0.031	5	帧级观测流;真值/标签;观测/回放流	0	0	先归档再考虑删除	日期较早但含可回放原始数据
+AirSim协同闭合	2026-07-13	目录名	research_modules/airsim_runtime/outputs/p1_m5n2_cooperative_10seed_20260713_d3-p1-h020.0-w05.0-s040.0_seed005	51541886	0.048	10	44973417	0.042	5	帧级观测流;真值/标签;观测/回放流	0	0	先归档再考虑删除	日期较早但含可回放原始数据
+AirSim协同闭合	2026-07-13	目录名	research_modules/airsim_runtime/outputs/p1_m5n2_cooperative_10seed_20260713_d3-p1-h020.0-w05.0-s040.0_seed006	84202396	0.078	10	73962088	0.069	5	帧级观测流;真值/标签;观测/回放流	0	0	先归档再考虑删除	日期较早但含可回放原始数据
+AirSim协同闭合	2026-07-13	目录名	research_modules/airsim_runtime/outputs/p1_m5n2_cooperative_10seed_20260713_d3-p1-h020.0-w05.0-s040.0_seed007	84528808	0.079	10	74315968	0.069	5	帧级观测流;真值/标签;观测/回放流	0	0	先归档再考虑删除	日期较早但含可回放原始数据
+AirSim协同闭合	2026-07-13	目录名	research_modules/airsim_runtime/outputs/p1_m5n2_cooperative_10seed_20260713_d3-p1-h020.0-w05.0-s040.0_seed008	57931840	0.054	10	50975500	0.047	5	帧级观测流;真值/标签;观测/回放流	0	0	先归档再考虑删除	日期较早但含可回放原始数据
+AirSim协同闭合	2026-07-13	目录名	research_modules/airsim_runtime/outputs/p1_m5n2_cooperative_10seed_20260713_d3-p1-h020.0-w05.0-s040.0_seed009	85288265	0.079	10	75045843	0.070	5	帧级观测流;真值/标签;观测/回放流	0	0	先归档再考虑删除	日期较早但含可回放原始数据
+AirSim协同闭合	2026-07-13	目录名	research_modules/airsim_runtime/outputs/p1_m5n2_cooperative_10seed_20260713_d3-p1-h020.0-w05.0-s040.0_seed010	85540814	0.080	10	75296017	0.070	5	帧级观测流;真值/标签;观测/回放流	0	0	先归档再考虑删除	日期较早但含可回放原始数据
+AirSim协同闭合	2026-07-13	目录名	research_modules/airsim_runtime/outputs/p1_m5n2_cooperative_10seed_20260713_d3-p1-h020.0-w08.0-s040.0_seed001	36952585	0.034	10	32217159	0.030	5	帧级观测流;真值/标签;观测/回放流	0	0	先归档再考虑删除	日期较早但含可回放原始数据
+AirSim协同闭合	2026-07-13	目录名	research_modules/airsim_runtime/outputs/p1_m5n2_cooperative_10seed_20260713_d3-p1-h020.0-w08.0-s040.0_seed002	42547381	0.040	10	37340209	0.035	5	帧级观测流;真值/标签;观测/回放流	0	0	先归档再考虑删除	日期较早但含可回放原始数据
+AirSim协同闭合	2026-07-13	目录名	research_modules/airsim_runtime/outputs/p1_m5n2_cooperative_10seed_20260713_d3-p1-h020.0-w08.0-s040.0_seed003	38750682	0.036	10	33836737	0.032	5	帧级观测流;真值/标签;观测/回放流	0	0	先归档再考虑删除	日期较早但含可回放原始数据
+AirSim协同闭合	2026-07-13	目录名	research_modules/airsim_runtime/outputs/p1_m5n2_cooperative_10seed_20260713_d3-p1-h020.0-w08.0-s040.0_seed004	39648092	0.037	10	34857098	0.032	5	帧级观测流;真值/标签;观测/回放流	0	0	先归档再考虑删除	日期较早但含可回放原始数据
+AirSim协同闭合	2026-07-13	目录名	research_modules/airsim_runtime/outputs/p1_m5n2_cooperative_10seed_20260713_d3-p1-h020.0-w08.0-s040.0_seed005	54538999	0.051	10	47794349	0.045	5	帧级观测流;真值/标签;观测/回放流	0	0	先归档再考虑删除	日期较早但含可回放原始数据
+AirSim协同闭合	2026-07-13	目录名	research_modules/airsim_runtime/outputs/p1_m5n2_cooperative_10seed_20260713_d3-p1-h020.0-w08.0-s040.0_seed006	75802017	0.071	10	66686131	0.062	5	帧级观测流;真值/标签;观测/回放流	0	0	先归档再考虑删除	日期较早但含可回放原始数据
+AirSim协同闭合	2026-07-13	目录名	research_modules/airsim_runtime/outputs/p1_m5n2_cooperative_10seed_20260713_d3-p1-h020.0-w08.0-s040.0_seed007	86504887	0.081	10	76273465	0.071	5	帧级观测流;真值/标签;观测/回放流	0	0	先归档再考虑删除	日期较早但含可回放原始数据
+AirSim协同闭合	2026-07-13	目录名	research_modules/airsim_runtime/outputs/p1_m5n2_cooperative_10seed_20260713_d3-p1-h020.0-w08.0-s040.0_seed008	56904524	0.053	10	50214070	0.047	5	帧级观测流;真值/标签;观测/回放流	0	0	先归档再考虑删除	日期较早但含可回放原始数据
+AirSim协同闭合	2026-07-13	目录名	research_modules/airsim_runtime/outputs/p1_m5n2_cooperative_10seed_20260713_d3-p1-h020.0-w08.0-s040.0_seed009	85750607	0.080	10	75531381	0.070	5	帧级观测流;真值/标签;观测/回放流	0	0	先归档再考虑删除	日期较早但含可回放原始数据
+AirSim协同闭合	2026-07-13	目录名	research_modules/airsim_runtime/outputs/p1_m5n2_cooperative_10seed_20260713_d3-p1-h020.0-w08.0-s040.0_seed010	44108376	0.041	10	38851893	0.036	5	帧级观测流;真值/标签;观测/回放流	0	0	先归档再考虑删除	日期较早但含可回放原始数据
+AirSim目标身份关联	2026-07-13	目录名	research_modules/airsim_runtime/outputs/p1_identity_strict_4m_2m_20260713	1078635706	1.005	324	237696187	0.221	120	帧级观测流;真值/标签;观测/回放流	9301424	40	先归档再考虑删除	日期较早但含可回放原始数据
+AirSim其他运行	2026-07-14	目录名	research_modules/airsim_runtime/outputs/p0_actual_v2_2v2_seed001_20260714	6405614	0.006	10	5005512	0.005	5	帧级观测流;真值/标签;观测/回放流	0	0	先归档再考虑删除	日期较早但含可回放原始数据
+AirSim其他运行	2026-07-14	目录名	research_modules/airsim_runtime/outputs/p0_actual_v2_m5n2_seed001_20260714	76898933	0.072	10	64730818	0.060	5	帧级观测流;真值/标签;观测/回放流	0	0	先归档再考虑删除	日期较早但含可回放原始数据
+AirSim其他运行	2026-07-14	目录名	research_modules/airsim_runtime/outputs/p1_actual_v2_seed1_20260714_dropout_1f_seed001	6962639	0.006	10	5501596	0.005	5	帧级观测流;真值/标签;观测/回放流	0	0	先归档再考虑删除	日期较早但含可回放原始数据
+AirSim其他运行	2026-07-14	目录名	research_modules/airsim_runtime/outputs/p1_actual_v2_seed1_20260714_m5n2_baseline_seed001	126285301	0.118	10	105516753	0.098	5	帧级观测流;真值/标签;观测/回放流	0	0	先归档再考虑删除	日期较早但含可回放原始数据
+AirSim其他运行	2026-07-14	目录名	research_modules/airsim_runtime/outputs/p1_actual_v2_seed1_20260714_m5n2_candidate_soft_prediction_trend_coast_seed001	78824159	0.073	10	66348783	0.062	5	帧级观测流;真值/标签;观测/回放流	0	0	先归档再考虑删除	日期较早但含可回放原始数据
+AirSim其他运行	2026-07-14	目录名	research_modules/airsim_runtime/outputs/p1_actual_v2_seed1_20260714_png_ttc_2v2_seed001	6392000	0.006	10	5005868	0.005	5	帧级观测流;真值/标签;观测/回放流	0	0	先归档再考虑删除	日期较早但含可回放原始数据
+AirSim末端闭合/时序	2026-07-14	目录名	research_modules/airsim_runtime/outputs/p1_terminal_closure_postbatch_seed1_20260714_dropout_1f_seed001	3127	0.000	1	0	0.000	0		0	0	复核后删除候选	日期较早且未识别到原始观测；可能主要是可重算派生文件
+AirSim末端闭合/时序	2026-07-14	目录名	research_modules/airsim_runtime/outputs/p1_terminal_closure_postbatch_seed1_20260714_m5n2_baseline_seed001	47895532	0.045	10	39829570	0.037	5	帧级观测流;真值/标签;观测/回放流	0	0	先归档再考虑删除	日期较早但含可回放原始数据
+AirSim末端闭合/时序	2026-07-14	目录名	research_modules/airsim_runtime/outputs/p1_terminal_closure_postbatch_seed1_20260714_m5n2_candidate_soft_prediction_trend_coast_seed001	48388802	0.045	10	40034127	0.037	5	帧级观测流;真值/标签;观测/回放流	0	0	先归档再考虑删除	日期较早但含可回放原始数据
+AirSim末端闭合/时序	2026-07-14	目录名	research_modules/airsim_runtime/outputs/p1_terminal_closure_postbatch_seed1_20260714_png_ttc_2v2_seed001	3127	0.000	1	0	0.000	0		0	0	复核后删除候选	日期较早且未识别到原始观测；可能主要是可重算派生文件
+AirSim末端闭合/时序	2026-07-14	目录名	research_modules/airsim_runtime/outputs/p1_terminal_closure_semantics_v2_seed1_20260714_dropout_1f_seed001	7713392	0.007	10	5972610	0.006	5	帧级观测流;真值/标签;观测/回放流	0	0	先归档再考虑删除	日期较早但含可回放原始数据
+AirSim末端闭合/时序	2026-07-14	目录名	research_modules/airsim_runtime/outputs/p1_terminal_closure_semantics_v2_seed1_20260714_m5n2_baseline_seed001	105811393	0.099	10	79202137	0.074	5	帧级观测流;真值/标签;观测/回放流	0	0	先归档再考虑删除	日期较早但含可回放原始数据
+AirSim末端闭合/时序	2026-07-14	目录名	research_modules/airsim_runtime/outputs/p1_terminal_closure_semantics_v2_seed1_20260714_m5n2_candidate_soft_prediction_trend_coast_seed001	105693024	0.098	10	78858418	0.073	5	帧级观测流;真值/标签;观测/回放流	0	0	先归档再考虑删除	日期较早但含可回放原始数据
+AirSim末端闭合/时序	2026-07-14	目录名	research_modules/airsim_runtime/outputs/p1_terminal_closure_semantics_v2_seed1_20260714_png_ttc_2v2_seed001	6102430	0.006	10	4664069	0.004	5	帧级观测流;真值/标签;观测/回放流	0	0	先归档再考虑删除	日期较早但含可回放原始数据
+AirSim末端闭合/时序	2026-07-14	目录名	research_modules/airsim_runtime/outputs/p1_terminal_closure_truthisolated_postfix_seed1_20260714_dropout_1f_seed001	9732426	0.009	10	7396407	0.007	5	帧级观测流;真值/标签;观测/回放流	0	0	先归档再考虑删除	日期较早但含可回放原始数据
+AirSim末端闭合/时序	2026-07-14	目录名	research_modules/airsim_runtime/outputs/p1_terminal_closure_truthisolated_postfix_seed1_20260714_m5n2_baseline_seed001	104642948	0.097	10	82016077	0.076	5	帧级观测流;真值/标签;观测/回放流	0	0	先归档再考虑删除	日期较早但含可回放原始数据
+AirSim末端闭合/时序	2026-07-14	目录名	research_modules/airsim_runtime/outputs/p1_terminal_closure_truthisolated_postfix_seed1_20260714_m5n2_candidate_soft_prediction_trend_coast_seed001	103774346	0.097	10	81446877	0.076	5	帧级观测流;真值/标签;观测/回放流	0	0	先归档再考虑删除	日期较早但含可回放原始数据
+AirSim末端闭合/时序	2026-07-14	目录名	research_modules/airsim_runtime/outputs/p1_terminal_closure_truthisolated_postfix_seed1_20260714_png_ttc_2v2_seed001	5284424	0.005	10	3996945	0.004	5	帧级观测流;真值/标签;观测/回放流	0	0	先归档再考虑删除	日期较早但含可回放原始数据
+AirSim末端闭合/时序	2026-07-14	目录名	research_modules/airsim_runtime/outputs/p1_terminal_closure_truthisolated_preflight_v2_20260714_m5n2_baseline_seed001	131211549	0.122	10	96640105	0.090	5	帧级观测流;真值/标签;观测/回放流	0	0	早期删除候选	早期开发或诊断运行；仍需确认无报告引用且已有后继版本
+AirSim时钟倍率评估	2026-07-15	目录名	research_modules/airsim_runtime/outputs/p1_clockspeed_0p1_m5n2_20case_20260715	8485450	0.008	2	0	0.000	0		0	0	复核后删除候选	日期较早且未识别到原始观测；可能主要是可重算派生文件
+AirSim时钟倍率评估	2026-07-15	目录名	research_modules/airsim_runtime/outputs/p1_clockspeed_0p1_m5n2_20case_20260715_m5n2_baseline_seed001	135174293	0.126	12	110783996	0.103	5	帧级观测流;真值/标签;观测/回放流	0	0	先归档再考虑删除	日期较早但含可回放原始数据
+AirSim时钟倍率评估	2026-07-15	目录名	research_modules/airsim_runtime/outputs/p1_clockspeed_0p1_m5n2_20case_20260715_m5n2_baseline_seed002	128455441	0.120	12	107150652	0.100	5	帧级观测流;真值/标签;观测/回放流	0	0	先归档再考虑删除	日期较早但含可回放原始数据
+AirSim时钟倍率评估	2026-07-15	目录名	research_modules/airsim_runtime/outputs/p1_clockspeed_0p1_m5n2_20case_20260715_m5n2_baseline_seed003	43030567	0.040	12	35397743	0.033	5	帧级观测流;真值/标签;观测/回放流	0	0	先归档再考虑删除	日期较早但含可回放原始数据
+AirSim时钟倍率评估	2026-07-15	目录名	research_modules/airsim_runtime/outputs/p1_clockspeed_0p1_m5n2_20case_20260715_m5n2_baseline_seed004	42571165	0.040	12	35088131	0.033	5	帧级观测流;真值/标签;观测/回放流	0	0	先归档再考虑删除	日期较早但含可回放原始数据
+AirSim时钟倍率评估	2026-07-15	目录名	research_modules/airsim_runtime/outputs/p1_clockspeed_0p1_m5n2_20case_20260715_m5n2_baseline_seed005	46704449	0.043	12	37795830	0.035	5	帧级观测流;真值/标签;观测/回放流	0	0	先归档再考虑删除	日期较早但含可回放原始数据
+AirSim时钟倍率评估	2026-07-15	目录名	research_modules/airsim_runtime/outputs/p1_clockspeed_0p1_m5n2_20case_20260715_m5n2_baseline_seed006	50298161	0.047	12	40579895	0.038	5	帧级观测流;真值/标签;观测/回放流	0	0	先归档再考虑删除	日期较早但含可回放原始数据
+AirSim时钟倍率评估	2026-07-15	目录名	research_modules/airsim_runtime/outputs/p1_clockspeed_0p1_m5n2_20case_20260715_m5n2_baseline_seed007	127063050	0.118	12	105327764	0.098	5	帧级观测流;真值/标签;观测/回放流	0	0	先归档再考虑删除	日期较早但含可回放原始数据
+AirSim时钟倍率评估	2026-07-15	目录名	research_modules/airsim_runtime/outputs/p1_clockspeed_0p1_m5n2_20case_20260715_m5n2_baseline_seed008	127640407	0.119	12	105694218	0.098	5	帧级观测流;真值/标签;观测/回放流	0	0	先归档再考虑删除	日期较早但含可回放原始数据
+AirSim时钟倍率评估	2026-07-15	目录名	research_modules/airsim_runtime/outputs/p1_clockspeed_0p1_m5n2_20case_20260715_m5n2_baseline_seed009	40040781	0.037	12	32955137	0.031	5	帧级观测流;真值/标签;观测/回放流	0	0	先归档再考虑删除	日期较早但含可回放原始数据
+AirSim时钟倍率评估	2026-07-15	目录名	research_modules/airsim_runtime/outputs/p1_clockspeed_0p1_m5n2_20case_20260715_m5n2_baseline_seed010	136977340	0.128	12	111627791	0.104	5	帧级观测流;真值/标签;观测/回放流	0	0	先归档再考虑删除	日期较早但含可回放原始数据
+AirSim时钟倍率评估	2026-07-15	目录名	research_modules/airsim_runtime/outputs/p1_clockspeed_0p1_m5n2_20case_20260715_m5n2_candidate_soft_prediction_trend_coast_seed001	47138490	0.044	12	38180988	0.036	5	帧级观测流;真值/标签;观测/回放流	0	0	先归档再考虑删除	日期较早但含可回放原始数据
+AirSim时钟倍率评估	2026-07-15	目录名	research_modules/airsim_runtime/outputs/p1_clockspeed_0p1_m5n2_20case_20260715_m5n2_candidate_soft_prediction_trend_coast_seed002	127476498	0.119	12	105916345	0.099	5	帧级观测流;真值/标签;观测/回放流	0	0	先归档再考虑删除	日期较早但含可回放原始数据
+AirSim时钟倍率评估	2026-07-15	目录名	research_modules/airsim_runtime/outputs/p1_clockspeed_0p1_m5n2_20case_20260715_m5n2_candidate_soft_prediction_trend_coast_seed003	130265432	0.121	12	107887887	0.100	5	帧级观测流;真值/标签;观测/回放流	0	0	先归档再考虑删除	日期较早但含可回放原始数据
+AirSim时钟倍率评估	2026-07-15	目录名	research_modules/airsim_runtime/outputs/p1_clockspeed_0p1_m5n2_20case_20260715_m5n2_candidate_soft_prediction_trend_coast_seed004	47494866	0.044	12	38467143	0.036	5	帧级观测流;真值/标签;观测/回放流	0	0	先归档再考虑删除	日期较早但含可回放原始数据
+AirSim时钟倍率评估	2026-07-15	目录名	research_modules/airsim_runtime/outputs/p1_clockspeed_0p1_m5n2_20case_20260715_m5n2_candidate_soft_prediction_trend_coast_seed005	52605670	0.049	12	43450483	0.040	5	帧级观测流;真值/标签;观测/回放流	0	0	先归档再考虑删除	日期较早但含可回放原始数据
+AirSim时钟倍率评估	2026-07-15	目录名	research_modules/airsim_runtime/outputs/p1_clockspeed_0p1_m5n2_20case_20260715_m5n2_candidate_soft_prediction_trend_coast_seed006	42509009	0.040	12	34965320	0.033	5	帧级观测流;真值/标签;观测/回放流	0	0	先归档再考虑删除	日期较早但含可回放原始数据
+AirSim时钟倍率评估	2026-07-15	目录名	research_modules/airsim_runtime/outputs/p1_clockspeed_0p1_m5n2_20case_20260715_m5n2_candidate_soft_prediction_trend_coast_seed007	41565315	0.039	12	34135366	0.032	5	帧级观测流;真值/标签;观测/回放流	0	0	先归档再考虑删除	日期较早但含可回放原始数据
+AirSim时钟倍率评估	2026-07-15	目录名	research_modules/airsim_runtime/outputs/p1_clockspeed_0p1_m5n2_20case_20260715_m5n2_candidate_soft_prediction_trend_coast_seed008	53579211	0.050	12	43237099	0.040	5	帧级观测流;真值/标签;观测/回放流	0	0	先归档再考虑删除	日期较早但含可回放原始数据
+AirSim时钟倍率评估	2026-07-15	目录名	research_modules/airsim_runtime/outputs/p1_clockspeed_0p1_m5n2_20case_20260715_m5n2_candidate_soft_prediction_trend_coast_seed009	60160631	0.056	12	48821600	0.045	5	帧级观测流;真值/标签;观测/回放流	0	0	先归档再考虑删除	日期较早但含可回放原始数据
+AirSim时钟倍率评估	2026-07-15	目录名	research_modules/airsim_runtime/outputs/p1_clockspeed_0p1_m5n2_20case_20260715_m5n2_candidate_soft_prediction_trend_coast_seed010	40375607	0.038	12	33152790	0.031	5	帧级观测流;真值/标签;观测/回放流	0	0	先归档再考虑删除	日期较早但含可回放原始数据
+AirSim时钟倍率评估	2026-07-15	目录名	research_modules/airsim_runtime/outputs/p1_clockspeed_0p2_m5n2_20case_20260715_m5n2_baseline_seed001	6854	0.000	1	0	0.000	0		0	0	复核后删除候选	日期较早且未识别到原始观测；可能主要是可重算派生文件
+AirSim时钟倍率评估	2026-07-15	目录名	research_modules/airsim_runtime/outputs/p1_clockspeed_0p2_m5n2_20case_20260715_m5n2_baseline_seed002	6854	0.000	1	0	0.000	0		0	0	复核后删除候选	日期较早且未识别到原始观测；可能主要是可重算派生文件
+AirSim时钟倍率评估	2026-07-15	目录名	research_modules/airsim_runtime/outputs/p1_clockspeed_0p2_m5n2_20case_20260715_m5n2_baseline_seed003	6854	0.000	1	0	0.000	0		0	0	复核后删除候选	日期较早且未识别到原始观测；可能主要是可重算派生文件
+AirSim时钟倍率评估	2026-07-15	目录名	research_modules/airsim_runtime/outputs/p1_clockspeed_0p2_m5n2_20case_20260715_m5n2_baseline_seed004	6854	0.000	1	0	0.000	0		0	0	复核后删除候选	日期较早且未识别到原始观测；可能主要是可重算派生文件
+AirSim时钟倍率评估	2026-07-15	目录名	research_modules/airsim_runtime/outputs/p1_clockspeed_0p2_m5n2_20case_20260715_m5n2_baseline_seed005	6854	0.000	1	0	0.000	0		0	0	复核后删除候选	日期较早且未识别到原始观测；可能主要是可重算派生文件
+AirSim时钟倍率评估	2026-07-15	目录名	research_modules/airsim_runtime/outputs/p1_clockspeed_0p2_m5n2_20case_20260715_m5n2_baseline_seed006	6854	0.000	1	0	0.000	0		0	0	复核后删除候选	日期较早且未识别到原始观测；可能主要是可重算派生文件
+AirSim时钟倍率评估	2026-07-15	目录名	research_modules/airsim_runtime/outputs/p1_clockspeed_0p2_m5n2_20case_20260715_m5n2_baseline_seed007	6854	0.000	1	0	0.000	0		0	0	复核后删除候选	日期较早且未识别到原始观测；可能主要是可重算派生文件
+AirSim时钟倍率评估	2026-07-15	目录名	research_modules/airsim_runtime/outputs/p1_clockspeed_0p2_m5n2_20case_20260715_m5n2_baseline_seed008	6854	0.000	1	0	0.000	0		0	0	复核后删除候选	日期较早且未识别到原始观测；可能主要是可重算派生文件
+AirSim时钟倍率评估	2026-07-15	目录名	research_modules/airsim_runtime/outputs/p1_clockspeed_0p2_m5n2_20case_20260715_m5n2_baseline_seed009	6854	0.000	1	0	0.000	0		0	0	复核后删除候选	日期较早且未识别到原始观测；可能主要是可重算派生文件
+AirSim时钟倍率评估	2026-07-15	目录名	research_modules/airsim_runtime/outputs/p1_clockspeed_0p2_m5n2_20case_20260715_m5n2_baseline_seed010	6854	0.000	1	0	0.000	0		0	0	复核后删除候选	日期较早且未识别到原始观测；可能主要是可重算派生文件
+AirSim时钟倍率评估	2026-07-15	目录名	research_modules/airsim_runtime/outputs/p1_clockspeed_0p2_m5n2_20case_20260715_m5n2_candidate_soft_prediction_trend_coast_seed001	6854	0.000	1	0	0.000	0		0	0	复核后删除候选	日期较早且未识别到原始观测；可能主要是可重算派生文件
+AirSim时钟倍率评估	2026-07-15	目录名	research_modules/airsim_runtime/outputs/p1_clockspeed_0p2_m5n2_20case_20260715_m5n2_candidate_soft_prediction_trend_coast_seed002	6854	0.000	1	0	0.000	0		0	0	复核后删除候选	日期较早且未识别到原始观测；可能主要是可重算派生文件
+AirSim时钟倍率评估	2026-07-15	目录名	research_modules/airsim_runtime/outputs/p1_clockspeed_0p2_m5n2_20case_20260715_m5n2_candidate_soft_prediction_trend_coast_seed003	6854	0.000	1	0	0.000	0		0	0	复核后删除候选	日期较早且未识别到原始观测；可能主要是可重算派生文件
+AirSim时钟倍率评估	2026-07-15	目录名	research_modules/airsim_runtime/outputs/p1_clockspeed_0p2_m5n2_20case_20260715_m5n2_candidate_soft_prediction_trend_coast_seed004	6854	0.000	1	0	0.000	0		0	0	复核后删除候选	日期较早且未识别到原始观测；可能主要是可重算派生文件
+AirSim时钟倍率评估	2026-07-15	目录名	research_modules/airsim_runtime/outputs/p1_clockspeed_0p2_m5n2_20case_20260715_m5n2_candidate_soft_prediction_trend_coast_seed005	6854	0.000	1	0	0.000	0		0	0	复核后删除候选	日期较早且未识别到原始观测；可能主要是可重算派生文件
+AirSim时钟倍率评估	2026-07-15	目录名	research_modules/airsim_runtime/outputs/p1_clockspeed_0p2_m5n2_20case_20260715_m5n2_candidate_soft_prediction_trend_coast_seed006	6854	0.000	1	0	0.000	0		0	0	复核后删除候选	日期较早且未识别到原始观测；可能主要是可重算派生文件
+AirSim时钟倍率评估	2026-07-15	目录名	research_modules/airsim_runtime/outputs/p1_clockspeed_0p2_m5n2_20case_20260715_m5n2_candidate_soft_prediction_trend_coast_seed007	6854	0.000	1	0	0.000	0		0	0	复核后删除候选	日期较早且未识别到原始观测；可能主要是可重算派生文件
+AirSim时钟倍率评估	2026-07-15	目录名	research_modules/airsim_runtime/outputs/p1_clockspeed_0p2_m5n2_20case_20260715_m5n2_candidate_soft_prediction_trend_coast_seed008	6854	0.000	1	0	0.000	0		0	0	复核后删除候选	日期较早且未识别到原始观测；可能主要是可重算派生文件
+AirSim时钟倍率评估	2026-07-15	目录名	research_modules/airsim_runtime/outputs/p1_clockspeed_0p2_m5n2_20case_20260715_m5n2_candidate_soft_prediction_trend_coast_seed009	6854	0.000	1	0	0.000	0		0	0	复核后删除候选	日期较早且未识别到原始观测；可能主要是可重算派生文件
+AirSim时钟倍率评估	2026-07-15	目录名	research_modules/airsim_runtime/outputs/p1_clockspeed_0p2_m5n2_20case_20260715_m5n2_candidate_soft_prediction_trend_coast_seed010	6854	0.000	1	0	0.000	0		0	0	复核后删除候选	日期较早且未识别到原始观测；可能主要是可重算派生文件
+AirSim时钟倍率评估	2026-07-15	目录名	research_modules/airsim_runtime/outputs/p1_clockspeed_0p2_m5n2_20case_20260715_v2	13870241	0.013	2	0	0.000	0		0	0	复核后删除候选	日期较早且未识别到原始观测；可能主要是可重算派生文件
+AirSim时钟倍率评估	2026-07-15	目录名	research_modules/airsim_runtime/outputs/p1_clockspeed_0p2_m5n2_20case_20260715_v2_m5n2_baseline_seed001	44402916	0.041	12	36617863	0.034	5	帧级观测流;真值/标签;观测/回放流	0	0	先归档再考虑删除	日期较早但含可回放原始数据
+AirSim时钟倍率评估	2026-07-15	目录名	research_modules/airsim_runtime/outputs/p1_clockspeed_0p2_m5n2_20case_20260715_v2_m5n2_baseline_seed002	139204937	0.130	12	112450947	0.105	5	帧级观测流;真值/标签;观测/回放流	0	0	先归档再考虑删除	日期较早但含可回放原始数据
+AirSim时钟倍率评估	2026-07-15	目录名	research_modules/airsim_runtime/outputs/p1_clockspeed_0p2_m5n2_20case_20260715_v2_m5n2_baseline_seed003	138938354	0.129	12	112280656	0.105	5	帧级观测流;真值/标签;观测/回放流	0	0	先归档再考虑删除	日期较早但含可回放原始数据
+AirSim时钟倍率评估	2026-07-15	目录名	research_modules/airsim_runtime/outputs/p1_clockspeed_0p2_m5n2_20case_20260715_v2_m5n2_baseline_seed004	130487664	0.122	12	107781523	0.100	5	帧级观测流;真值/标签;观测/回放流	0	0	先归档再考虑删除	日期较早但含可回放原始数据
+AirSim时钟倍率评估	2026-07-15	目录名	research_modules/airsim_runtime/outputs/p1_clockspeed_0p2_m5n2_20case_20260715_v2_m5n2_baseline_seed005	130480212	0.122	12	108181696	0.101	5	帧级观测流;真值/标签;观测/回放流	0	0	先归档再考虑删除	日期较早但含可回放原始数据
+AirSim时钟倍率评估	2026-07-15	目录名	research_modules/airsim_runtime/outputs/p1_clockspeed_0p2_m5n2_20case_20260715_v2_m5n2_baseline_seed006	130725704	0.122	12	108317259	0.101	5	帧级观测流;真值/标签;观测/回放流	0	0	先归档再考虑删除	日期较早但含可回放原始数据
+AirSim时钟倍率评估	2026-07-15	目录名	research_modules/airsim_runtime/outputs/p1_clockspeed_0p2_m5n2_20case_20260715_v2_m5n2_baseline_seed007	129877128	0.121	12	107904923	0.100	5	帧级观测流;真值/标签;观测/回放流	0	0	先归档再考虑删除	日期较早但含可回放原始数据
+AirSim时钟倍率评估	2026-07-15	目录名	research_modules/airsim_runtime/outputs/p1_clockspeed_0p2_m5n2_20case_20260715_v2_m5n2_baseline_seed008	130331183	0.121	12	107911365	0.101	5	帧级观测流;真值/标签;观测/回放流	0	0	先归档再考虑删除	日期较早但含可回放原始数据
+AirSim时钟倍率评估	2026-07-15	目录名	research_modules/airsim_runtime/outputs/p1_clockspeed_0p2_m5n2_20case_20260715_v2_m5n2_baseline_seed009	135194218	0.126	12	110421533	0.103	5	帧级观测流;真值/标签;观测/回放流	0	0	先归档再考虑删除	日期较早但含可回放原始数据
+AirSim时钟倍率评估	2026-07-15	目录名	research_modules/airsim_runtime/outputs/p1_clockspeed_0p2_m5n2_20case_20260715_v2_m5n2_baseline_seed010	130541289	0.122	12	108113347	0.101	5	帧级观测流;真值/标签;观测/回放流	0	0	先归档再考虑删除	日期较早但含可回放原始数据
+AirSim时钟倍率评估	2026-07-15	目录名	research_modules/airsim_runtime/outputs/p1_clockspeed_0p2_m5n2_20case_20260715_v2_m5n2_candidate_soft_prediction_trend_coast_seed001	132996656	0.124	12	110455271	0.103	5	帧级观测流;真值/标签;观测/回放流	0	0	先归档再考虑删除	日期较早但含可回放原始数据
+AirSim时钟倍率评估	2026-07-15	目录名	research_modules/airsim_runtime/outputs/p1_clockspeed_0p2_m5n2_20case_20260715_v2_m5n2_candidate_soft_prediction_trend_coast_seed002	136145766	0.127	12	111010513	0.103	5	帧级观测流;真值/标签;观测/回放流	0	0	先归档再考虑删除	日期较早但含可回放原始数据
+AirSim时钟倍率评估	2026-07-15	目录名	research_modules/airsim_runtime/outputs/p1_clockspeed_0p2_m5n2_20case_20260715_v2_m5n2_candidate_soft_prediction_trend_coast_seed003	130225737	0.121	12	108109436	0.101	5	帧级观测流;真值/标签;观测/回放流	0	0	先归档再考虑删除	日期较早但含可回放原始数据
+AirSim时钟倍率评估	2026-07-15	目录名	research_modules/airsim_runtime/outputs/p1_clockspeed_0p2_m5n2_20case_20260715_v2_m5n2_candidate_soft_prediction_trend_coast_seed004	50185427	0.047	12	41251235	0.038	5	帧级观测流;真值/标签;观测/回放流	0	0	先归档再考虑删除	日期较早但含可回放原始数据
+AirSim时钟倍率评估	2026-07-15	目录名	research_modules/airsim_runtime/outputs/p1_clockspeed_0p2_m5n2_20case_20260715_v2_m5n2_candidate_soft_prediction_trend_coast_seed005	129857772	0.121	12	108118050	0.101	5	帧级观测流;真值/标签;观测/回放流	0	0	先归档再考虑删除	日期较早但含可回放原始数据
+AirSim时钟倍率评估	2026-07-15	目录名	research_modules/airsim_runtime/outputs/p1_clockspeed_0p2_m5n2_20case_20260715_v2_m5n2_candidate_soft_prediction_trend_coast_seed006	128838336	0.120	12	103670730	0.097	5	帧级观测流;真值/标签;观测/回放流	0	0	先归档再考虑删除	日期较早但含可回放原始数据
+AirSim时钟倍率评估	2026-07-15	目录名	research_modules/airsim_runtime/outputs/p1_clockspeed_0p2_m5n2_20case_20260715_v2_m5n2_candidate_soft_prediction_trend_coast_seed007	131058464	0.122	12	108597191	0.101	5	帧级观测流;真值/标签;观测/回放流	0	0	先归档再考虑删除	日期较早但含可回放原始数据
+AirSim时钟倍率评估	2026-07-15	目录名	research_modules/airsim_runtime/outputs/p1_clockspeed_0p2_m5n2_20case_20260715_v2_m5n2_candidate_soft_prediction_trend_coast_seed008	131455413	0.122	12	109033009	0.102	5	帧级观测流;真值/标签;观测/回放流	0	0	先归档再考虑删除	日期较早但含可回放原始数据
+AirSim时钟倍率评估	2026-07-15	目录名	research_modules/airsim_runtime/outputs/p1_clockspeed_0p2_m5n2_20case_20260715_v2_m5n2_candidate_soft_prediction_trend_coast_seed009	121988703	0.114	12	98804468	0.092	5	帧级观测流;真值/标签;观测/回放流	0	0	先归档再考虑删除	日期较早但含可回放原始数据
+AirSim时钟倍率评估	2026-07-15	目录名	research_modules/airsim_runtime/outputs/p1_clockspeed_0p2_m5n2_20case_20260715_v2_m5n2_candidate_soft_prediction_trend_coast_seed010	133652268	0.124	12	109818869	0.102	5	帧级观测流;真值/标签;观测/回放流	0	0	先归档再考虑删除	日期较早但含可回放原始数据
+AirSim末端闭合/时序	2026-07-15	目录名	research_modules/airsim_runtime/outputs/p1_terminal_timing_funnel_10seed_20260715_dropout_1f_seed001	3127	0.000	1	0	0.000	0		0	0	复核后删除候选	日期较早且未识别到原始观测；可能主要是可重算派生文件
+AirSim末端闭合/时序	2026-07-15	目录名	research_modules/airsim_runtime/outputs/p1_terminal_timing_funnel_10seed_20260715_dropout_1f_seed002	3127	0.000	1	0	0.000	0		0	0	复核后删除候选	日期较早且未识别到原始观测；可能主要是可重算派生文件
+AirSim末端闭合/时序	2026-07-15	目录名	research_modules/airsim_runtime/outputs/p1_terminal_timing_funnel_10seed_20260715_dropout_1f_seed003	3127	0.000	1	0	0.000	0		0	0	复核后删除候选	日期较早且未识别到原始观测；可能主要是可重算派生文件
+AirSim末端闭合/时序	2026-07-15	目录名	research_modules/airsim_runtime/outputs/p1_terminal_timing_funnel_10seed_20260715_dropout_1f_seed004	3127	0.000	1	0	0.000	0		0	0	复核后删除候选	日期较早且未识别到原始观测；可能主要是可重算派生文件
+AirSim末端闭合/时序	2026-07-15	目录名	research_modules/airsim_runtime/outputs/p1_terminal_timing_funnel_10seed_20260715_dropout_1f_seed005	3127	0.000	1	0	0.000	0		0	0	复核后删除候选	日期较早且未识别到原始观测；可能主要是可重算派生文件
+AirSim末端闭合/时序	2026-07-15	目录名	research_modules/airsim_runtime/outputs/p1_terminal_timing_funnel_10seed_20260715_dropout_1f_seed006	3127	0.000	1	0	0.000	0		0	0	复核后删除候选	日期较早且未识别到原始观测；可能主要是可重算派生文件
+AirSim末端闭合/时序	2026-07-15	目录名	research_modules/airsim_runtime/outputs/p1_terminal_timing_funnel_10seed_20260715_dropout_1f_seed007	3127	0.000	1	0	0.000	0		0	0	复核后删除候选	日期较早且未识别到原始观测；可能主要是可重算派生文件
+AirSim末端闭合/时序	2026-07-15	目录名	research_modules/airsim_runtime/outputs/p1_terminal_timing_funnel_10seed_20260715_dropout_1f_seed008	3127	0.000	1	0	0.000	0		0	0	复核后删除候选	日期较早且未识别到原始观测；可能主要是可重算派生文件
+AirSim末端闭合/时序	2026-07-15	目录名	research_modules/airsim_runtime/outputs/p1_terminal_timing_funnel_10seed_20260715_dropout_1f_seed009	3127	0.000	1	0	0.000	0		0	0	复核后删除候选	日期较早且未识别到原始观测；可能主要是可重算派生文件
+AirSim末端闭合/时序	2026-07-15	目录名	research_modules/airsim_runtime/outputs/p1_terminal_timing_funnel_10seed_20260715_dropout_1f_seed010	3127	0.000	1	0	0.000	0		0	0	复核后删除候选	日期较早且未识别到原始观测；可能主要是可重算派生文件
+AirSim末端闭合/时序	2026-07-15	目录名	research_modules/airsim_runtime/outputs/p1_terminal_timing_funnel_10seed_20260715_dropout_2f_seed001	3127	0.000	1	0	0.000	0		0	0	复核后删除候选	日期较早且未识别到原始观测；可能主要是可重算派生文件
+AirSim末端闭合/时序	2026-07-15	目录名	research_modules/airsim_runtime/outputs/p1_terminal_timing_funnel_10seed_20260715_dropout_2f_seed002	3127	0.000	1	0	0.000	0		0	0	复核后删除候选	日期较早且未识别到原始观测；可能主要是可重算派生文件
+AirSim末端闭合/时序	2026-07-15	目录名	research_modules/airsim_runtime/outputs/p1_terminal_timing_funnel_10seed_20260715_dropout_2f_seed003	3127	0.000	1	0	0.000	0		0	0	复核后删除候选	日期较早且未识别到原始观测；可能主要是可重算派生文件
+AirSim末端闭合/时序	2026-07-15	目录名	research_modules/airsim_runtime/outputs/p1_terminal_timing_funnel_10seed_20260715_dropout_2f_seed004	3127	0.000	1	0	0.000	0		0	0	复核后删除候选	日期较早且未识别到原始观测；可能主要是可重算派生文件
+AirSim末端闭合/时序	2026-07-15	目录名	research_modules/airsim_runtime/outputs/p1_terminal_timing_funnel_10seed_20260715_dropout_2f_seed005	3127	0.000	1	0	0.000	0		0	0	复核后删除候选	日期较早且未识别到原始观测；可能主要是可重算派生文件
+AirSim末端闭合/时序	2026-07-15	目录名	research_modules/airsim_runtime/outputs/p1_terminal_timing_funnel_10seed_20260715_dropout_2f_seed006	3127	0.000	1	0	0.000	0		0	0	复核后删除候选	日期较早且未识别到原始观测；可能主要是可重算派生文件
+AirSim末端闭合/时序	2026-07-15	目录名	research_modules/airsim_runtime/outputs/p1_terminal_timing_funnel_10seed_20260715_dropout_2f_seed007	3127	0.000	1	0	0.000	0		0	0	复核后删除候选	日期较早且未识别到原始观测；可能主要是可重算派生文件
+AirSim末端闭合/时序	2026-07-15	目录名	research_modules/airsim_runtime/outputs/p1_terminal_timing_funnel_10seed_20260715_dropout_2f_seed008	3127	0.000	1	0	0.000	0		0	0	复核后删除候选	日期较早且未识别到原始观测；可能主要是可重算派生文件
+AirSim末端闭合/时序	2026-07-15	目录名	research_modules/airsim_runtime/outputs/p1_terminal_timing_funnel_10seed_20260715_dropout_2f_seed009	3127	0.000	1	0	0.000	0		0	0	复核后删除候选	日期较早且未识别到原始观测；可能主要是可重算派生文件
+AirSim末端闭合/时序	2026-07-15	目录名	research_modules/airsim_runtime/outputs/p1_terminal_timing_funnel_10seed_20260715_dropout_2f_seed010	3127	0.000	1	0	0.000	0		0	0	复核后删除候选	日期较早且未识别到原始观测；可能主要是可重算派生文件
+AirSim末端闭合/时序	2026-07-15	目录名	research_modules/airsim_runtime/outputs/p1_terminal_timing_funnel_10seed_20260715_dropout_3f_seed001	3127	0.000	1	0	0.000	0		0	0	复核后删除候选	日期较早且未识别到原始观测；可能主要是可重算派生文件
+AirSim末端闭合/时序	2026-07-15	目录名	research_modules/airsim_runtime/outputs/p1_terminal_timing_funnel_10seed_20260715_dropout_3f_seed002	3127	0.000	1	0	0.000	0		0	0	复核后删除候选	日期较早且未识别到原始观测；可能主要是可重算派生文件
+AirSim末端闭合/时序	2026-07-15	目录名	research_modules/airsim_runtime/outputs/p1_terminal_timing_funnel_10seed_20260715_dropout_3f_seed003	3127	0.000	1	0	0.000	0		0	0	复核后删除候选	日期较早且未识别到原始观测；可能主要是可重算派生文件
+AirSim末端闭合/时序	2026-07-15	目录名	research_modules/airsim_runtime/outputs/p1_terminal_timing_funnel_10seed_20260715_dropout_3f_seed004	3127	0.000	1	0	0.000	0		0	0	复核后删除候选	日期较早且未识别到原始观测；可能主要是可重算派生文件
+AirSim末端闭合/时序	2026-07-15	目录名	research_modules/airsim_runtime/outputs/p1_terminal_timing_funnel_10seed_20260715_dropout_3f_seed005	3127	0.000	1	0	0.000	0		0	0	复核后删除候选	日期较早且未识别到原始观测；可能主要是可重算派生文件
+AirSim末端闭合/时序	2026-07-15	目录名	research_modules/airsim_runtime/outputs/p1_terminal_timing_funnel_10seed_20260715_dropout_3f_seed006	3127	0.000	1	0	0.000	0		0	0	复核后删除候选	日期较早且未识别到原始观测；可能主要是可重算派生文件
+AirSim末端闭合/时序	2026-07-15	目录名	research_modules/airsim_runtime/outputs/p1_terminal_timing_funnel_10seed_20260715_dropout_3f_seed007	3127	0.000	1	0	0.000	0		0	0	复核后删除候选	日期较早且未识别到原始观测；可能主要是可重算派生文件
+AirSim末端闭合/时序	2026-07-15	目录名	research_modules/airsim_runtime/outputs/p1_terminal_timing_funnel_10seed_20260715_dropout_3f_seed008	3127	0.000	1	0	0.000	0		0	0	复核后删除候选	日期较早且未识别到原始观测；可能主要是可重算派生文件
+AirSim末端闭合/时序	2026-07-15	目录名	research_modules/airsim_runtime/outputs/p1_terminal_timing_funnel_10seed_20260715_dropout_3f_seed009	3127	0.000	1	0	0.000	0		0	0	复核后删除候选	日期较早且未识别到原始观测；可能主要是可重算派生文件
+AirSim末端闭合/时序	2026-07-15	目录名	research_modules/airsim_runtime/outputs/p1_terminal_timing_funnel_10seed_20260715_dropout_3f_seed010	3127	0.000	1	0	0.000	0		0	0	复核后删除候选	日期较早且未识别到原始观测；可能主要是可重算派生文件
+AirSim末端闭合/时序	2026-07-15	目录名	research_modules/airsim_runtime/outputs/p1_terminal_timing_funnel_10seed_20260715_dropout_4f_seed001	3127	0.000	1	0	0.000	0		0	0	复核后删除候选	日期较早且未识别到原始观测；可能主要是可重算派生文件
+AirSim末端闭合/时序	2026-07-15	目录名	research_modules/airsim_runtime/outputs/p1_terminal_timing_funnel_10seed_20260715_dropout_4f_seed002	3127	0.000	1	0	0.000	0		0	0	复核后删除候选	日期较早且未识别到原始观测；可能主要是可重算派生文件
+AirSim末端闭合/时序	2026-07-15	目录名	research_modules/airsim_runtime/outputs/p1_terminal_timing_funnel_10seed_20260715_dropout_4f_seed003	3127	0.000	1	0	0.000	0		0	0	复核后删除候选	日期较早且未识别到原始观测；可能主要是可重算派生文件
+AirSim末端闭合/时序	2026-07-15	目录名	research_modules/airsim_runtime/outputs/p1_terminal_timing_funnel_10seed_20260715_dropout_4f_seed004	3127	0.000	1	0	0.000	0		0	0	复核后删除候选	日期较早且未识别到原始观测；可能主要是可重算派生文件
+AirSim末端闭合/时序	2026-07-15	目录名	research_modules/airsim_runtime/outputs/p1_terminal_timing_funnel_10seed_20260715_dropout_4f_seed005	3127	0.000	1	0	0.000	0		0	0	复核后删除候选	日期较早且未识别到原始观测；可能主要是可重算派生文件
+AirSim末端闭合/时序	2026-07-15	目录名	research_modules/airsim_runtime/outputs/p1_terminal_timing_funnel_10seed_20260715_dropout_4f_seed006	3127	0.000	1	0	0.000	0		0	0	复核后删除候选	日期较早且未识别到原始观测；可能主要是可重算派生文件
+AirSim末端闭合/时序	2026-07-15	目录名	research_modules/airsim_runtime/outputs/p1_terminal_timing_funnel_10seed_20260715_dropout_4f_seed007	3127	0.000	1	0	0.000	0		0	0	复核后删除候选	日期较早且未识别到原始观测；可能主要是可重算派生文件
+AirSim末端闭合/时序	2026-07-15	目录名	research_modules/airsim_runtime/outputs/p1_terminal_timing_funnel_10seed_20260715_dropout_4f_seed008	3127	0.000	1	0	0.000	0		0	0	复核后删除候选	日期较早且未识别到原始观测；可能主要是可重算派生文件
+AirSim末端闭合/时序	2026-07-15	目录名	research_modules/airsim_runtime/outputs/p1_terminal_timing_funnel_10seed_20260715_dropout_4f_seed009	3127	0.000	1	0	0.000	0		0	0	复核后删除候选	日期较早且未识别到原始观测；可能主要是可重算派生文件
+AirSim末端闭合/时序	2026-07-15	目录名	research_modules/airsim_runtime/outputs/p1_terminal_timing_funnel_10seed_20260715_dropout_4f_seed010	3127	0.000	1	0	0.000	0		0	0	复核后删除候选	日期较早且未识别到原始观测；可能主要是可重算派生文件
+AirSim末端闭合/时序	2026-07-15	目录名	research_modules/airsim_runtime/outputs/p1_terminal_timing_funnel_10seed_20260715_dropout_5f_seed001	3127	0.000	1	0	0.000	0		0	0	复核后删除候选	日期较早且未识别到原始观测；可能主要是可重算派生文件
+AirSim末端闭合/时序	2026-07-15	目录名	research_modules/airsim_runtime/outputs/p1_terminal_timing_funnel_10seed_20260715_dropout_5f_seed002	3127	0.000	1	0	0.000	0		0	0	复核后删除候选	日期较早且未识别到原始观测；可能主要是可重算派生文件
+AirSim末端闭合/时序	2026-07-15	目录名	research_modules/airsim_runtime/outputs/p1_terminal_timing_funnel_10seed_20260715_dropout_5f_seed003	3127	0.000	1	0	0.000	0		0	0	复核后删除候选	日期较早且未识别到原始观测；可能主要是可重算派生文件
+AirSim末端闭合/时序	2026-07-15	目录名	research_modules/airsim_runtime/outputs/p1_terminal_timing_funnel_10seed_20260715_dropout_5f_seed004	3127	0.000	1	0	0.000	0		0	0	复核后删除候选	日期较早且未识别到原始观测；可能主要是可重算派生文件
+AirSim末端闭合/时序	2026-07-15	目录名	research_modules/airsim_runtime/outputs/p1_terminal_timing_funnel_10seed_20260715_dropout_5f_seed005	3127	0.000	1	0	0.000	0		0	0	复核后删除候选	日期较早且未识别到原始观测；可能主要是可重算派生文件
+AirSim末端闭合/时序	2026-07-15	目录名	research_modules/airsim_runtime/outputs/p1_terminal_timing_funnel_10seed_20260715_dropout_5f_seed006	3127	0.000	1	0	0.000	0		0	0	复核后删除候选	日期较早且未识别到原始观测；可能主要是可重算派生文件
+AirSim末端闭合/时序	2026-07-15	目录名	research_modules/airsim_runtime/outputs/p1_terminal_timing_funnel_10seed_20260715_dropout_5f_seed007	3127	0.000	1	0	0.000	0		0	0	复核后删除候选	日期较早且未识别到原始观测；可能主要是可重算派生文件
+AirSim末端闭合/时序	2026-07-15	目录名	research_modules/airsim_runtime/outputs/p1_terminal_timing_funnel_10seed_20260715_dropout_5f_seed008	3127	0.000	1	0	0.000	0		0	0	复核后删除候选	日期较早且未识别到原始观测；可能主要是可重算派生文件
+AirSim末端闭合/时序	2026-07-15	目录名	research_modules/airsim_runtime/outputs/p1_terminal_timing_funnel_10seed_20260715_dropout_5f_seed009	3127	0.000	1	0	0.000	0		0	0	复核后删除候选	日期较早且未识别到原始观测；可能主要是可重算派生文件
+AirSim末端闭合/时序	2026-07-15	目录名	research_modules/airsim_runtime/outputs/p1_terminal_timing_funnel_10seed_20260715_dropout_5f_seed010	3127	0.000	1	0	0.000	0		0	0	复核后删除候选	日期较早且未识别到原始观测；可能主要是可重算派生文件
+AirSim末端闭合/时序	2026-07-15	目录名	research_modules/airsim_runtime/outputs/p1_terminal_timing_funnel_10seed_20260715_m5n2	8044882	0.007	2	0	0.000	0		0	0	复核后删除候选	日期较早且未识别到原始观测；可能主要是可重算派生文件
+AirSim末端闭合/时序	2026-07-15	目录名	research_modules/airsim_runtime/outputs/p1_terminal_timing_funnel_10seed_20260715_m5n2_baseline_seed001	74707682	0.070	12	62636492	0.058	5	帧级观测流;真值/标签;观测/回放流	0	0	先归档再考虑删除	日期较早但含可回放原始数据
+AirSim末端闭合/时序	2026-07-15	目录名	research_modules/airsim_runtime/outputs/p1_terminal_timing_funnel_10seed_20260715_m5n2_baseline_seed002	71695198	0.067	12	60169385	0.056	5	帧级观测流;真值/标签;观测/回放流	0	0	先归档再考虑删除	日期较早但含可回放原始数据
+AirSim末端闭合/时序	2026-07-15	目录名	research_modules/airsim_runtime/outputs/p1_terminal_timing_funnel_10seed_20260715_m5n2_baseline_seed003	67027081	0.062	12	56182352	0.052	5	帧级观测流;真值/标签;观测/回放流	0	0	先归档再考虑删除	日期较早但含可回放原始数据
+AirSim末端闭合/时序	2026-07-15	目录名	research_modules/airsim_runtime/outputs/p1_terminal_timing_funnel_10seed_20260715_m5n2_baseline_seed004	64458981	0.060	12	54061112	0.050	5	帧级观测流;真值/标签;观测/回放流	0	0	先归档再考虑删除	日期较早但含可回放原始数据
+AirSim末端闭合/时序	2026-07-15	目录名	research_modules/airsim_runtime/outputs/p1_terminal_timing_funnel_10seed_20260715_m5n2_baseline_seed005	65735220	0.061	12	55131601	0.051	5	帧级观测流;真值/标签;观测/回放流	0	0	先归档再考虑删除	日期较早但含可回放原始数据
+AirSim末端闭合/时序	2026-07-15	目录名	research_modules/airsim_runtime/outputs/p1_terminal_timing_funnel_10seed_20260715_m5n2_baseline_seed006	66640355	0.062	12	55870136	0.052	5	帧级观测流;真值/标签;观测/回放流	0	0	先归档再考虑删除	日期较早但含可回放原始数据
+AirSim末端闭合/时序	2026-07-15	目录名	research_modules/airsim_runtime/outputs/p1_terminal_timing_funnel_10seed_20260715_m5n2_baseline_seed007	74105130	0.069	12	62178476	0.058	5	帧级观测流;真值/标签;观测/回放流	0	0	先归档再考虑删除	日期较早但含可回放原始数据
+AirSim末端闭合/时序	2026-07-15	目录名	research_modules/airsim_runtime/outputs/p1_terminal_timing_funnel_10seed_20260715_m5n2_baseline_seed008	65259144	0.061	12	54718871	0.051	5	帧级观测流;真值/标签;观测/回放流	0	0	先归档再考虑删除	日期较早但含可回放原始数据
+AirSim末端闭合/时序	2026-07-15	目录名	research_modules/airsim_runtime/outputs/p1_terminal_timing_funnel_10seed_20260715_m5n2_baseline_seed009	63462202	0.059	12	53208586	0.050	5	帧级观测流;真值/标签;观测/回放流	0	0	先归档再考虑删除	日期较早但含可回放原始数据
+AirSim末端闭合/时序	2026-07-15	目录名	research_modules/airsim_runtime/outputs/p1_terminal_timing_funnel_10seed_20260715_m5n2_baseline_seed010	63697049	0.059	12	53431766	0.050	5	帧级观测流;真值/标签;观测/回放流	0	0	先归档再考虑删除	日期较早但含可回放原始数据
+AirSim末端闭合/时序	2026-07-15	目录名	research_modules/airsim_runtime/outputs/p1_terminal_timing_funnel_10seed_20260715_m5n2_candidate_soft_prediction_trend_coast_seed001	64874354	0.060	12	54388981	0.051	5	帧级观测流;真值/标签;观测/回放流	0	0	先归档再考虑删除	日期较早但含可回放原始数据
+AirSim末端闭合/时序	2026-07-15	目录名	research_modules/airsim_runtime/outputs/p1_terminal_timing_funnel_10seed_20260715_m5n2_candidate_soft_prediction_trend_coast_seed002	79284703	0.074	12	65137723	0.061	5	帧级观测流;真值/标签;观测/回放流	0	0	先归档再考虑删除	日期较早但含可回放原始数据
+AirSim末端闭合/时序	2026-07-15	目录名	research_modules/airsim_runtime/outputs/p1_terminal_timing_funnel_10seed_20260715_m5n2_candidate_soft_prediction_trend_coast_seed003	75200187	0.070	12	62997900	0.059	5	帧级观测流;真值/标签;观测/回放流	0	0	先归档再考虑删除	日期较早但含可回放原始数据
+AirSim末端闭合/时序	2026-07-15	目录名	research_modules/airsim_runtime/outputs/p1_terminal_timing_funnel_10seed_20260715_m5n2_candidate_soft_prediction_trend_coast_seed004	64351653	0.060	12	53959158	0.050	5	帧级观测流;真值/标签;观测/回放流	0	0	先归档再考虑删除	日期较早但含可回放原始数据
+AirSim末端闭合/时序	2026-07-15	目录名	research_modules/airsim_runtime/outputs/p1_terminal_timing_funnel_10seed_20260715_m5n2_candidate_soft_prediction_trend_coast_seed005	65568576	0.061	12	54974314	0.051	5	帧级观测流;真值/标签;观测/回放流	0	0	先归档再考虑删除	日期较早但含可回放原始数据
+AirSim末端闭合/时序	2026-07-15	目录名	research_modules/airsim_runtime/outputs/p1_terminal_timing_funnel_10seed_20260715_m5n2_candidate_soft_prediction_trend_coast_seed006	64898062	0.060	12	54391395	0.051	5	帧级观测流;真值/标签;观测/回放流	0	0	先归档再考虑删除	日期较早但含可回放原始数据
+AirSim末端闭合/时序	2026-07-15	目录名	research_modules/airsim_runtime/outputs/p1_terminal_timing_funnel_10seed_20260715_m5n2_candidate_soft_prediction_trend_coast_seed007	63357283	0.059	12	53147147	0.049	5	帧级观测流;真值/标签;观测/回放流	0	0	先归档再考虑删除	日期较早但含可回放原始数据
+AirSim末端闭合/时序	2026-07-15	目录名	research_modules/airsim_runtime/outputs/p1_terminal_timing_funnel_10seed_20260715_m5n2_candidate_soft_prediction_trend_coast_seed008	64160004	0.060	12	53763152	0.050	5	帧级观测流;真值/标签;观测/回放流	0	0	先归档再考虑删除	日期较早但含可回放原始数据
+AirSim末端闭合/时序	2026-07-15	目录名	research_modules/airsim_runtime/outputs/p1_terminal_timing_funnel_10seed_20260715_m5n2_candidate_soft_prediction_trend_coast_seed009	64248150	0.060	12	53837320	0.050	5	帧级观测流;真值/标签;观测/回放流	0	0	先归档再考虑删除	日期较早但含可回放原始数据
+AirSim末端闭合/时序	2026-07-15	目录名	research_modules/airsim_runtime/outputs/p1_terminal_timing_funnel_10seed_20260715_m5n2_candidate_soft_prediction_trend_coast_seed010	71748730	0.067	12	60151109	0.056	5	帧级观测流;真值/标签;观测/回放流	0	0	先归档再考虑删除	日期较早但含可回放原始数据
+AirSim末端闭合/时序	2026-07-15	目录名	research_modules/airsim_runtime/outputs/p1_terminal_timing_funnel_10seed_20260715_png_ttc_2v2_seed001	6463454	0.006	12	5029885	0.005	5	帧级观测流;真值/标签;观测/回放流	0	0	先归档再考虑删除	日期较早但含可回放原始数据
+AirSim末端闭合/时序	2026-07-15	目录名	research_modules/airsim_runtime/outputs/p1_terminal_timing_funnel_10seed_20260715_png_ttc_2v2_seed002	3127	0.000	1	0	0.000	0		0	0	复核后删除候选	日期较早且未识别到原始观测；可能主要是可重算派生文件
+AirSim末端闭合/时序	2026-07-15	目录名	research_modules/airsim_runtime/outputs/p1_terminal_timing_funnel_10seed_20260715_png_ttc_2v2_seed003	3127	0.000	1	0	0.000	0		0	0	复核后删除候选	日期较早且未识别到原始观测；可能主要是可重算派生文件
+AirSim末端闭合/时序	2026-07-15	目录名	research_modules/airsim_runtime/outputs/p1_terminal_timing_funnel_10seed_20260715_png_ttc_2v2_seed004	3127	0.000	1	0	0.000	0		0	0	复核后删除候选	日期较早且未识别到原始观测；可能主要是可重算派生文件
+AirSim末端闭合/时序	2026-07-15	目录名	research_modules/airsim_runtime/outputs/p1_terminal_timing_funnel_10seed_20260715_png_ttc_2v2_seed005	3127	0.000	1	0	0.000	0		0	0	复核后删除候选	日期较早且未识别到原始观测；可能主要是可重算派生文件
+AirSim末端闭合/时序	2026-07-15	目录名	research_modules/airsim_runtime/outputs/p1_terminal_timing_funnel_10seed_20260715_png_ttc_2v2_seed006	3127	0.000	1	0	0.000	0		0	0	复核后删除候选	日期较早且未识别到原始观测；可能主要是可重算派生文件
+AirSim末端闭合/时序	2026-07-15	目录名	research_modules/airsim_runtime/outputs/p1_terminal_timing_funnel_10seed_20260715_png_ttc_2v2_seed007	3127	0.000	1	0	0.000	0		0	0	复核后删除候选	日期较早且未识别到原始观测；可能主要是可重算派生文件
+AirSim末端闭合/时序	2026-07-15	目录名	research_modules/airsim_runtime/outputs/p1_terminal_timing_funnel_10seed_20260715_png_ttc_2v2_seed008	3127	0.000	1	0	0.000	0		0	0	复核后删除候选	日期较早且未识别到原始观测；可能主要是可重算派生文件
+AirSim末端闭合/时序	2026-07-15	目录名	research_modules/airsim_runtime/outputs/p1_terminal_timing_funnel_10seed_20260715_png_ttc_2v2_seed009	3127	0.000	1	0	0.000	0		0	0	复核后删除候选	日期较早且未识别到原始观测；可能主要是可重算派生文件
+AirSim末端闭合/时序	2026-07-15	目录名	research_modules/airsim_runtime/outputs/p1_terminal_timing_funnel_10seed_20260715_png_ttc_2v2_seed010	3127	0.000	1	0	0.000	0		0	0	复核后删除候选	日期较早且未识别到原始观测；可能主要是可重算派生文件
+D2数据关联	2026-07-15	目录名	research_modules/d2_data_association/outputs/p1_identity_ceiling_aware_v2_20260715	59372033	0.055	1	0	0.000	0		0	0	复核后删除候选	日期较早且未识别到原始观测；可能主要是可重算派生文件
+D5末端目标配准	2026-07-15	最早文件时间	research_modules/d5_terminal_association/outputs/manual_video_tracking	315964	0.000	5	0	0.000	0		0	0	复核后删除候选	日期较早且未识别到原始观测；可能主要是可重算派生文件
+AirSim末端视觉/相机试验	2026-07-16	目录名	research_modules/airsim_runtime/outputs/d5_cv_5v5_multicamera_formal_20260716	262449799	0.244	99	246541601	0.230	94	帧级观测流;相机图像/视频;真值/标签;观测/回放流	0	0	保留或先归档	正式/报告/多种子/训练证据，不能仅按日期删除
+AirSim末端视觉/相机试验	2026-07-16	目录名	research_modules/airsim_runtime/outputs/d5_cv_5v5_multicamera_formal_fast_20260716	196928245	0.183	86	192097154	0.179	83	帧级观测流;相机图像/视频;真值/标签;观测/回放流	0	0	保留或先归档	正式/报告/多种子/训练证据，不能仅按日期删除
+D4分布式降级	2026-07-20	目录名	research_modules/d4_distributed_fallback/outputs/.region_resource_bc_900_20260720.staging-99rqro9t	947	0.000	1	0	0.000	0		947	1	复核后删除候选	开发或诊断运行；检查是否已由正式运行替代
+D4分布式降级	2026-07-20	目录名	research_modules/d4_distributed_fallback/outputs/region_resource_bc_900_20260720	1017155	0.001	4	0	0.000	0		52470	2	暂缓	较新或用途尚未判明
+D5末端目标配准	2026-07-20	目录名	research_modules/d5_terminal_association/outputs/active_vision_bc_formal_20260720	36573	0.000	2	0	0.000	0		36573	2	保留或先归档	正式/报告/多种子/训练证据，不能仅按日期删除
+D5末端目标配准	2026-07-20	目录名	research_modules/d5_terminal_association/outputs/tracklet_graph_readiness_20260720	3602	0.000	2	0	0.000	0		3602	2	暂缓	较新或用途尚未判明
+d3_assignment_planner	2026-07-20	目录名	research_modules/d3_assignment_planner/outputs/formal_bc_development_20260720	46802	0.000	1	0	0.000	0		46802	1	保留或先归档	正式/报告/多种子/训练证据，不能仅按日期删除
+三维质点其他	2026-07-20	最早文件时间	research_modules/scalable_3d_simulation/outputs/episode	35342090	0.033	6	35337469	0.033	3	真值/标签;观测/回放流	4621	2	暂缓	较新或用途尚未判明
+三维质点其他	2026-07-20	目录名	research_modules/scalable_3d_simulation/outputs/multibatch_regression_20260720	6927891	0.006	96	6926985	0.006	95	观测/回放流;训练数据集	415	2	暂缓	较新或用途尚未判明
+三维质点其他	2026-07-20	目录名	research_modules/scalable_3d_simulation/outputs/multibatch_regression_pause_20260720	6927886	0.006	96	6926982	0.006	95	观测/回放流;训练数据集	415	2	暂缓	较新或用途尚未判明
+三维质点学习数据生成	2026-07-20	最早文件时间	research_modules/scalable_3d_simulation/outputs/learning_generation_v1	67038629	0.062	1378	67013051	0.062	1377	观测/回放流;训练数据集	415	2	暂缓	较新或用途尚未判明
+三维质点学习数据生成	2026-07-20	最早文件时间	research_modules/scalable_3d_simulation/outputs/learning_generation_v1_multibatchfix	2255044887	2.100	43966	2025443962	1.886	42163	帧级观测流;观测/回放流;训练数据集	15157033	8	暂缓	较新或用途尚未判明
+三维质点学习数据生成	2026-07-20	最早文件时间	research_modules/scalable_3d_simulation/outputs/learning_generation_v1_oosmfix	486872794	0.453	9628	486686052	0.453	9627	观测/回放流;训练数据集	415	2	暂缓	较新或用途尚未判明
+三维质点容量探测	2026-07-20	最早文件时间	research_modules/scalable_3d_simulation/outputs/capacity_probe_v2	141476363	0.132	1683	141461585	0.132	1677	帧级观测流;观测/回放流;训练数据集	510696	22	复核后删除候选	开发或诊断运行；检查是否已由正式运行替代
+D4分布式降级	2026-07-21	目录名	research_modules/d4_distributed_fallback/outputs/region_action_coverage_curriculum_20260721_clean_9445ed6	2795289	0.003	101	0	0.000	0		112404	1	暂缓	较新或用途尚未判明
+D4分布式降级	2026-07-21	目录名	research_modules/d4_distributed_fallback/outputs/region_action_coverage_curriculum_20260721_dirty	2795114	0.003	101	0	0.000	0		112329	1	暂缓	较新或用途尚未判明
+D5末端目标配准	2026-07-21	目录名	research_modules/d5_terminal_association/outputs/active_vision_supplemental_curriculum_20260721_clean_13e3728	1366279	0.001	303	0	0.000	0		174426	3	暂缓	较新或用途尚未判明
+D5末端目标配准	2026-07-21	最早文件时间	research_modules/d5_terminal_association/outputs/d5_composite_internal_training_clean_6dc471b	3673	0.000	2	0	0.000	0		3673	2	暂缓	较新或用途尚未判明
+D5末端目标配准	2026-07-21	最早文件时间	research_modules/d5_terminal_association/outputs/d5_tracklet_paired_shadow_1000_1019_e39a54d	2711765	0.003	1	0	0.000	0		0	0	暂缓	较新或用途尚未判明
+D5末端目标配准	2026-07-21	最早文件时间	research_modules/d5_terminal_association/outputs/d5_tracklet_paired_shadow_1000_1019_e39a54d_v2	4465177	0.004	1	0	0.000	0		0	0	暂缓	较新或用途尚未判明
+D5末端目标配准	2026-07-21	目录名	research_modules/d5_terminal_association/outputs/tracklet_graph_supplemental_curriculum_20260721_clean_79b2550_r2	61042147	0.057	13504	0	0.000	0		5361456	2	暂缓	较新或用途尚未判明
+D5末端目标配准	2026-07-21	目录名	research_modules/d5_terminal_association/outputs/tracklet_graph_supplemental_curriculum_20260721_dirty_087a568	61042145	0.057	13504	0	0.000	0		5361455	2	暂缓	较新或用途尚未判明
+D5末端配准质点试验	2026-07-21	目录名	research_modules/scalable_3d_simulation/outputs/d5_ack_baseline_seed70_20260721	2992368	0.003	44	1600352	0.001	5	真值/标签;观测/回放流	40725	8	暂缓	较新或用途尚未判明
+D5末端配准质点试验	2026-07-21	目录名	research_modules/scalable_3d_simulation/outputs/d5_wide_stability_seed70_20260721	2992364	0.003	44	1600352	0.001	5	真值/标签;观测/回放流	40724	8	暂缓	较新或用途尚未判明
+D6评估指标	2026-07-21	最早文件时间	research_modules/d6_evaluation_metrics/outputs/d5_paired_shadow_e39a54d	1336	0.000	2	0	0.000	0		1336	2	暂缓	较新或用途尚未判明
+D6评估指标	2026-07-21	目录名	research_modules/d6_evaluation_metrics/outputs/reserved_seed_interventions_nominal_5v5_1000_1019_d6_audit_20260721	3519	0.000	2	0	0.000	0		296	1	暂缓	较新或用途尚未判明
+三维质点其他	2026-07-21	目录名	research_modules/scalable_3d_simulation/outputs/reserved_seed_interventions_nominal_5v5_1000_1019_development_20260721	30778	0.000	3	0	0.000	0		2678	2	复核后删除候选	开发或诊断运行；检查是否已由正式运行替代
+三维质点其他	2026-07-21	目录名	research_modules/scalable_3d_simulation/outputs/reserved_seed_interventions_nominal_5v5_1000_1019_development_v2_20260721	31124	0.000	3	0	0.000	0		3024	2	复核后删除候选	开发或诊断运行；检查是否已由正式运行替代
+三维质点其他	2026-07-21	最早文件时间	research_modules/scalable_3d_simulation/outputs/reserved_seed_interventions_nominal_5v5_1000_1019_formal_6d5bfea	31197	0.000	3	0	0.000	0		3077	2	保留或先归档	正式/报告/多种子/训练证据，不能仅按日期删除
+三维质点其他	2026-07-21	最早文件时间	research_modules/scalable_3d_simulation/outputs/reserved_seed_interventions_nominal_5v5_1000_1019_formal_7891296	32380	0.000	3	0	0.000	0		4260	2	保留或先归档	正式/报告/多种子/训练证据，不能仅按日期删除
+D6评估指标	2026-07-22	目录名	research_modules/d6_evaluation_metrics/outputs/reserved_seed_interventions_nominal_5v5_1000_1019_formal_7891296_d6_audit_20260722	3747	0.000	2	0	0.000	0		296	1	保留或先归档	正式/报告/多种子/训练证据，不能仅按日期删除
+D6评估指标	2026-07-22	目录名	research_modules/d6_evaluation_metrics/outputs/reserved_seed_interventions_nominal_5v5_1000_1019_formal_7891296_d6_profile_bound_v2_audit_20260722	3830	0.000	2	0	0.000	0		296	1	保留或先归档	正式/报告/多种子/训练证据，不能仅按日期删除
+三维质点其他	2026-07-22	目录名	research_modules/scalable_3d_simulation/outputs/active_risk_clean_0fa7c00_20260722	21105957	0.020	324	861620	0.001	80	真值/标签	143812	43	暂缓	较新或用途尚未判明
+三维质点其他	2026-07-22	目录名	research_modules/scalable_3d_simulation/outputs/observation_governance_calibration_20260722_development	434945	0.000	103	0	0.000	0		18940	20	复核后删除候选	开发或诊断运行；检查是否已由正式运行替代
+三维质点其他	2026-07-22	目录名	research_modules/scalable_3d_simulation/outputs/observation_governance_calibration_20260722_formal_e4d66db	434693	0.000	103	0	0.000	0		18860	20	保留或先归档	正式/报告/多种子/训练证据，不能仅按日期删除
+三维质点综合试验	2026-07-22	目录名	research_modules/scalable_3d_simulation/outputs/point_mass_integrated_observation_smoke_20260722_development	180685978	0.168	99	120516794	0.112	20	真值/标签;观测/回放流	471151	32	复核后删除候选	开发或诊断运行；检查是否已由正式运行替代
+三维质点综合试验	2026-07-22	目录名	research_modules/scalable_3d_simulation/outputs/point_mass_integrated_observation_smoke_20260722_development_coalesced	96417903	0.090	24	65039144	0.061	5	真值/标签;观测/回放流	234867	8	复核后删除候选	开发或诊断运行；检查是否已由正式运行替代
+三维质点规则性能标定	2026-07-22	目录名	research_modules/scalable_3d_simulation/outputs/scalable_3d_rule_performance_calibration_20260722_clean_3310165	862145236	0.803	486	582146753	0.542	100	真值/标签;观测/回放流	2830838	160	暂缓	较新或用途尚未判明
+三维质点规则性能标定	2026-07-22	目录名	research_modules/scalable_3d_simulation/outputs/scalable_3d_rule_performance_calibration_20260722_clean_492979e	861540556	0.802	486	581844413	0.542	100	真值/标签;观测/回放流	2830838	160	暂缓	较新或用途尚未判明
+三维质点长时程标定	2026-07-22	目录名	research_modules/scalable_3d_simulation/outputs/scalable_3d_long_duration_calibration_20260722_clean_c0460e0	722793119	0.673	48	438248353	0.408	10	真值/标签;观测/回放流	855419	16	暂缓	较新或用途尚未判明
+三维质点长时程标定	2026-07-22	目录名	research_modules/scalable_3d_simulation/outputs/scalable_3d_long_duration_candidate_20260722_clean_3bac3ff	9820924	0.009	20	9801905	0.009	8	真值/标签	19019	8	暂缓	较新或用途尚未判明
+三维质点长时程标定	2026-07-22	目录名	research_modules/scalable_3d_simulation/outputs/scalable_3d_long_duration_candidate_20260722_clean_8f86192	1376188384	1.282	96	799460405	0.745	20	真值/标签;观测/回放流	2111043	32	暂缓	较新或用途尚未判明
+三维质点长时程标定	2026-07-22	目录名	research_modules/scalable_3d_simulation/outputs/scalable_3d_long_duration_candidate_20260722_clean_f80b5bd	1367587595	1.274	120	795274548	0.741	25	真值/标签;观测/回放流	2346098	40	暂缓	较新或用途尚未判明
+D6评估指标	2026-07-23	目录名	research_modules/d6_evaluation_metrics/outputs/scalable3d_partial_identity_seed1000_20260723	971285	0.001	2	0	0.000	0		0	0	暂缓	较新或用途尚未判明
+D1传感器融合/航迹物化	2026-07-24	目录名	research_modules/scalable_3d_simulation/outputs/d1_structured_jacobian_multiseed_20260724_formal_9d1f54f	3527134183	3.285	638	2121707338	1.976	130	真值/标签;观测/回放流	9898233	208	保留或先归档	正式/报告/多种子/训练证据，不能仅按日期删除
+D6评估指标	2026-07-24	目录名	research_modules/d6_evaluation_metrics/outputs/d1_covariance_limit_clean_pair_20260724	50350	0.000	3	0	0.000	0		0	0	暂缓	较新或用途尚未判明
+D6评估指标	2026-07-24	目录名	research_modules/d6_evaluation_metrics/outputs/d1_cv_motion_model_cache_multiseed_20260724_formal_4422356	773924	0.001	6	0	0.000	0		568	1	保留或先归档	正式/报告/多种子/训练证据，不能仅按日期删除
+D6评估指标	2026-07-24	目录名	research_modules/d6_evaluation_metrics/outputs/d1_publication_metadata_multiseed_20260724_formal_a36f519	627158	0.001	6	0	0.000	0		580	1	保留或先归档	正式/报告/多种子/训练证据，不能仅按日期删除
+D6评估指标	2026-07-24	目录名	research_modules/d6_evaluation_metrics/outputs/d1_publication_metadata_v2_multiseed_20260724_formal_be399e1	774746	0.001	6	0	0.000	0		584	1	保留或先归档	正式/报告/多种子/训练证据，不能仅按日期删除
+D6评估指标	2026-07-24	目录名	research_modules/d6_evaluation_metrics/outputs/d1_scan_input_multiseed_20260724_formal_d14285e	486807	0.000	6	0	0.000	0		530	1	保留或先归档	正式/报告/多种子/训练证据，不能仅按日期删除
+D6评估指标	2026-07-24	目录名	research_modules/d6_evaluation_metrics/outputs/online_truth_guard_multiseed_20260724_formal_8d8bb6e	525343	0.000	5	0	0.000	0		432	1	保留或先归档	正式/报告/多种子/训练证据，不能仅按日期删除
+D1传感器融合/航迹物化	2026-07-25	目录名	research_modules/scalable_3d_simulation/outputs/d1_opaque_source_identity_cache_multiseed_20260725_formal_d8fc76c	3504348510	3.264	634	2124155200	1.978	130	真值/标签;观测/回放流	9599190	208	保留或先归档	正式/报告/多种子/训练证据，不能仅按日期删除
+D5末端目标配准	2026-07-25	目录名	research_modules/d5_terminal_association/outputs/d5_tracklet_paired_shadow_1000_1019_99fa4428_20260725	20985822	0.020	1	0	0.000	0		0	0	暂缓	较新或用途尚未判明
+D5末端目标配准	2026-07-25	目录名	research_modules/d5_terminal_association/outputs/d5_tracklet_paired_shadow_1000_1019_99fa4428_20260725_final	21053116	0.020	1	0	0.000	0		0	0	暂缓	较新或用途尚未判明
+D6评估指标	2026-07-25	目录名	research_modules/d6_evaluation_metrics/outputs/d1_association_sparse_prefilter_multiseed_20260725_formal_9302cce_d6	981109	0.001	6	0	0.000	0		603	1	保留或先归档	正式/报告/多种子/训练证据，不能仅按日期删除
+D6评估指标	2026-07-25	目录名	research_modules/d6_evaluation_metrics/outputs/d1_online_batch_frame_multiseed_20260725_formal_43feaf6_d6	812254	0.001	6	0	0.000	0		553	1	保留或先归档	正式/报告/多种子/训练证据，不能仅按日期删除
+D6评估指标	2026-07-25	目录名	research_modules/d6_evaluation_metrics/outputs/d1_opaque_source_identity_cache_multiseed_20260725_formal_d8fc76c_d6	603	0.000	1	0	0.000	0		603	1	保留或先归档	正式/报告/多种子/训练证据，不能仅按日期删除
+D6评估指标	2026-07-25	目录名	research_modules/d6_evaluation_metrics/outputs/d1_publication_evidence_snapshot_multiseed_20260725_formal_d0219eb_d6	631970	0.001	5	0	0.000	0		488	1	保留或先归档	正式/报告/多种子/训练证据，不能仅按日期删除
+D6评估指标	2026-07-25	目录名	research_modules/d6_evaluation_metrics/outputs/d1_replay_prefix_summary_multiseed_20260725_formal_7d2e987_d6	893752	0.001	6	0	0.000	0		568	1	保留或先归档	正式/报告/多种子/训练证据，不能仅按日期删除
+D6评估指标	2026-07-25	目录名	research_modules/d6_evaluation_metrics/outputs/d1_structured_jacobian_multiseed_20260725_formal_9d1f54f_d6	488	0.000	1	0	0.000	0		488	1	保留或先归档	正式/报告/多种子/训练证据，不能仅按日期删除
+D6评估指标	2026-07-25	目录名	research_modules/d6_evaluation_metrics/outputs/formal_matrix_admission_precheck_20260725_current	321	0.000	1	0	0.000	0		321	1	保留或先归档	正式/报告/多种子/训练证据，不能仅按日期删除
+d1_sensor_fusion	2026-07-25	目录名	research_modules/d1_sensor_fusion/outputs/online_batch_frame_handoff_20260725	12752	0.000	1	0	0.000	0		0	0	暂缓	较新或用途尚未判明
+D4分布式降级	2026-07-26	目录名	research_modules/d4_distributed_fallback/outputs/region_resource_a2_development_calibrated_20260726_v1	38874018	0.036	1005	0	0.000	0		1121230	2	复核后删除候选	开发或诊断运行；检查是否已由正式运行替代
+D5末端目标配准	2026-07-26	目录名	research_modules/d5_terminal_association/outputs/d5_composite_robust_v2_candidate_20260726	4709	0.000	2	0	0.000	0		4709	2	暂缓	较新或用途尚未判明
+D5末端目标配准	2026-07-26	目录名	research_modules/d5_terminal_association/outputs/d5_tracklet_heldout_1000_1019_robust_v2_20260726	12717345	0.012	1803	0	0.000	0		0	0	暂缓	较新或用途尚未判明
+D5末端目标配准	2026-07-26	目录名	research_modules/d5_terminal_association/outputs/d5_tracklet_paired_shadow_1000_1019_7fb5db8b_20260726	20918157	0.019	1	0	0.000	0		0	0	暂缓	较新或用途尚未判明
+D5末端目标配准	2026-07-26	目录名	research_modules/d5_terminal_association/outputs/tracklet_graph_supplemental_curriculum_20260726_robust_v2_hashbound	69070780	0.064	13504	0	0.000	0		5363122	2	暂缓	较新或用途尚未判明
+D6评估指标	2026-07-26	目录名	research_modules/d6_evaluation_metrics/outputs/d3_a1_external_audit_actual_20260726	285	0.000	1	0	0.000	0		285	1	暂缓	较新或用途尚未判明
+D6评估指标	2026-07-26	目录名	research_modules/d6_evaluation_metrics/outputs/d3_a1_external_audit_actual_20260726_final	285	0.000	1	0	0.000	0		285	1	暂缓	较新或用途尚未判明
+D6评估指标	2026-07-26	目录名	research_modules/d6_evaluation_metrics/outputs/d3_a1_external_audit_actual_20260726_strict_v2	285	0.000	1	0	0.000	0		285	1	暂缓	较新或用途尚未判明
+D6评估指标	2026-07-26	目录名	research_modules/d6_evaluation_metrics/outputs/d4_a2_external_audit_actual_20260726	285	0.000	1	0	0.000	0		285	1	暂缓	较新或用途尚未判明
+D6评估指标	2026-07-26	目录名	research_modules/d6_evaluation_metrics/outputs/d4_a2_external_audit_actual_20260726_final	285	0.000	1	0	0.000	0		285	1	暂缓	较新或用途尚未判明
+D6评估指标	2026-07-26	目录名	research_modules/d6_evaluation_metrics/outputs/d4_a2_external_audit_actual_20260726_strict_v2	285	0.000	1	0	0.000	0		285	1	暂缓	较新或用途尚未判明
+D6评估指标	2026-07-26	目录名	research_modules/d6_evaluation_metrics/outputs/d5_g1_external_audit_99fa4428_20260726	285	0.000	1	0	0.000	0		285	1	暂缓	较新或用途尚未判明
+D6评估指标	2026-07-26	目录名	research_modules/d6_evaluation_metrics/outputs/d5_g1_external_audit_99fa4428_post_assembler_20260726	285	0.000	1	0	0.000	0		285	1	暂缓	较新或用途尚未判明
+D6评估指标	2026-07-26	目录名	research_modules/d6_evaluation_metrics/outputs/d5_g1_post_assembly_audit_7fb5db8b_a5a53de7_formal_107cf07_20260726	300	0.000	1	0	0.000	0		300	1	保留或先归档	正式/报告/多种子/训练证据，不能仅按日期删除
+三维质点其他	2026-07-26	目录名	research_modules/scalable_3d_simulation/outputs/checkpoint_paired_physical_20seed_20260726_development_9b6ac1e	11004905	0.010	324	479690	0.000	80	真值/标签	144274	43	复核后删除候选	开发或诊断运行；检查是否已由正式运行替代
+三维质点其他	2026-07-26	目录名	research_modules/scalable_3d_simulation/outputs/isolated_paired_rollout_dense_crossing_seed1000_20260726_development_42c5e2e	8237045	0.008	51	4647032	0.004	10	真值/标签;观测/回放流	179833	18	复核后删除候选	开发或诊断运行；检查是否已由正式运行替代
+三维质点其他	2026-07-26	目录名	research_modules/scalable_3d_simulation/outputs/isolated_paired_rollout_evasive_multilevel_seed1000_20260726_development_42c5e2e	8426124	0.008	53	4702839	0.004	10	真值/标签;观测/回放流	174441	18	复核后删除候选	开发或诊断运行；检查是否已由正式运行替代
+三维质点其他	2026-07-26	目录名	research_modules/scalable_3d_simulation/outputs/isolated_paired_rollout_formation_split_seed1000_20260726_development_42c5e2e	8402048	0.008	53	4684903	0.004	10	真值/标签;观测/回放流	174060	18	复核后删除候选	开发或诊断运行；检查是否已由正式运行替代
+三维质点其他	2026-07-26	目录名	research_modules/scalable_3d_simulation/outputs/isolated_paired_rollout_seed1000_20260726_development_42c5e2e	8375490	0.008	53	4676723	0.004	10	真值/标签;观测/回放流	173376	18	复核后删除候选	开发或诊断运行；检查是否已由正式运行替代
+D6评估指标	2026-07-27	目录名	research_modules/d6_evaluation_metrics/outputs/d5_g1_external_audit_7fb5db8b_8d5e02e_formal_20260727	23299	0.000	4	0	0.000	0		285	1	保留或先归档	正式/报告/多种子/训练证据，不能仅按日期删除
+D6评估指标	2026-07-27	目录名	research_modules/d6_evaluation_metrics/outputs/d5_g1_post_assembly_audit_7fb5db8b_b431d066_8d5e02e_formal_20260727	657423	0.001	4	0	0.000	0		300	1	保留或先归档	正式/报告/多种子/训练证据，不能仅按日期删除
+200对200大规模/GNN	2026-07-28	目录名	research_modules/scalable_3d_simulation/outputs/200v200_learning_gnn_report_seed1000_20260728	658278180	0.613	25	264946441	0.247	5	真值/标签;观测/回放流	643001	8	保留或先归档	正式/报告/多种子/训练证据，不能仅按日期删除
+D4分布式降级	2026-07-28	最早文件时间	research_modules/d4_distributed_fallback/outputs/region_resource_a2_current_lineage_development_v1	121557	0.000	3	0	0.000	0		9153	2	复核后删除候选	开发或诊断运行；检查是否已由正式运行替代
+三维质点其他	2026-07-28	目录名	research_modules/scalable_3d_simulation/outputs/d4_readiness_supplement_20v20_8region_q2_seed0_99_20260728	3951583	0.004	104	3856916	0.004	103	观测/回放流;训练数据集	116159	1	暂缓	较新或用途尚未判明
+D4分布式降级	2026-07-29	目录名	research_modules/d4_distributed_fallback/outputs/d4_v4_candidate_observable_calibrated_20260729	5902897	0.005	174	0	0.000	0		240705	3	暂缓	较新或用途尚未判明
+D4分布式降级	2026-07-29	目录名	research_modules/d4_distributed_fallback/outputs/d4_v5_confidence_calibrated_20260729	232487	0.000	1	0	0.000	0		0	0	暂缓	较新或用途尚未判明
+D4分布式降级	2026-07-29	目录名	research_modules/d4_distributed_fallback/outputs/d4_v5_source_independent_external_evaluation_20260729	98786	0.000	2	0	0.000	0		0	0	暂缓	较新或用途尚未判明
+D6评估指标	2026-07-29	目录名	research_modules/d6_evaluation_metrics/outputs/d4_v3_isolated_final_v2b_full_chain_audit_20260729	205	0.000	1	0	0.000	0		205	1	暂缓	较新或用途尚未判明
+D6评估指标	2026-07-29	目录名	research_modules/d6_evaluation_metrics/outputs/d4_v3_isolated_final_v2b_paired_audit_20260729	199	0.000	1	0	0.000	0		199	1	暂缓	较新或用途尚未判明
+D6评估指标	2026-07-29	目录名	research_modules/d6_evaluation_metrics/outputs/d4_v3_isolated_paired_audit_20260729	199	0.000	1	0	0.000	0		199	1	暂缓	较新或用途尚未判明
+D6评估指标	2026-07-29	目录名	research_modules/d6_evaluation_metrics/outputs/d4_v4_candidate_independent_audit_20260729	83831	0.000	3	0	0.000	0		211	1	暂缓	较新或用途尚未判明
+D6评估指标	2026-07-29	目录名	research_modules/d6_evaluation_metrics/outputs/d4_v5_confidence_candidate_independent_audit_20260729	25806	0.000	3	0	0.000	0		209	1	暂缓	较新或用途尚未判明
+D6评估指标	2026-07-29	目录名	research_modules/d6_evaluation_metrics/outputs/d4_v5_source_independent_external_audit_m16n20_20260729	123343	0.000	4	0	0.000	0		312	1	暂缓	较新或用途尚未判明
+三维质点其他	2026-07-29	目录名	research_modules/scalable_3d_simulation/outputs/d4_v3_isolated_after_d3_20260729_seeds_2003_2012	472273	0.000	3	0	0.000	0		2900	2	暂缓	较新或用途尚未判明
+三维质点其他	2026-07-29	目录名	research_modules/scalable_3d_simulation/outputs/d4_v3_isolated_baseline_20260729_seeds_2003_2012	466550	0.000	3	0	0.000	0		2750	2	暂缓	较新或用途尚未判明
+三维质点其他	2026-07-29	目录名	research_modules/scalable_3d_simulation/outputs/d4_v3_isolated_final_v2_20260729_seeds_2003_2012	475779	0.000	3	0	0.000	0		6398	2	暂缓	较新或用途尚未判明
+三维质点其他	2026-07-29	目录名	research_modules/scalable_3d_simulation/outputs/d4_v3_isolated_final_v2_seed_2007_full_20260729	14697599	0.014	55	8768431	0.008	10	真值/标签;观测/回放流	226956	18	暂缓	较新或用途尚未判明
+三维质点其他	2026-07-29	目录名	research_modules/scalable_3d_simulation/outputs/d4_v3_isolated_final_v2b_20260729_seeds_2003_2012	476399	0.000	3	0	0.000	0		7020	2	暂缓	较新或用途尚未判明
+三维质点其他	2026-07-29	目录名	research_modules/scalable_3d_simulation/outputs/d4_v3_isolated_final_v2b_seed_2007_full_20260729	14698215	0.014	55	8768427	0.008	10	真值/标签;观测/回放流	227578	18	暂缓	较新或用途尚未判明
+三维质点其他	2026-07-29	目录名	research_modules/scalable_3d_simulation/outputs/d4_v3_isolated_seed_2007_full_20260729	14697593	0.014	55	8768427	0.008	10	真值/标签;观测/回放流	226956	18	暂缓	较新或用途尚未判明
+三维质点其他	2026-07-29	目录名	research_modules/scalable_3d_simulation/outputs/d4_v4_external_composite_20v20_8region_curriculum_seed9_20260729	6630062	0.006	202	0	0.000	0		224303	1	暂缓	较新或用途尚未判明
+三维质点其他	2026-07-29	目录名	research_modules/scalable_3d_simulation/outputs/d4_v4_external_composite_observable_20v20_8region_curriculum_seed9_20260729	6641990	0.006	202	0	0.000	0		224303	1	暂缓	较新或用途尚未判明
+三维质点其他	2026-07-29	目录名	research_modules/scalable_3d_simulation/outputs/d4_v4_external_runtime_20v20_8region_seed9_20260729	3784931	0.004	102	0	0.000	0		116153	1	暂缓	较新或用途尚未判明
+D4分布式降级	2026-07-30	目录名	research_modules/d4_distributed_fallback/outputs/d4_v6_edge_transfer_20260730	1859	0.000	2	0	0.000	0		1859	2	暂缓	较新或用途尚未判明
+D4分布式降级	2026-07-30	目录名	research_modules/d4_distributed_fallback/outputs/d4_v6_edge_transfer_precanonical_20260730	1800	0.000	2	0	0.000	0		1800	2	暂缓	较新或用途尚未判明
+D4分布式降级	2026-07-30	目录名	research_modules/d4_distributed_fallback/outputs/d4_v6_edge_transfer_preedgeidentity_20260730	1859	0.000	2	0	0.000	0		1859	2	暂缓	较新或用途尚未判明
+D4分布式降级	2026-07-30	目录名	research_modules/d4_distributed_fallback/outputs/d4_v6_edge_transfer_preterminology_20260730	1859	0.000	2	0	0.000	0		1859	2	暂缓	较新或用途尚未判明
+D4分布式降级	2026-07-30	目录名	research_modules/d4_distributed_fallback/outputs/d4_v6_edge_transfer_repro_20260730	1859	0.000	2	0	0.000	0		1859	2	暂缓	较新或用途尚未判明
+D4分布式降级	2026-07-30	目录名	research_modules/d4_distributed_fallback/outputs/d4_v6_edge_transfer_repro_preedgeidentity_20260730	1859	0.000	2	0	0.000	0		1859	2	暂缓	较新或用途尚未判明
+D4分布式降级	2026-07-30	目录名	research_modules/d4_distributed_fallback/outputs/d4_v6_edge_transfer_repro_preterminology_20260730	1859	0.000	2	0	0.000	0		1859	2	暂缓	较新或用途尚未判明
+D4分布式降级	2026-07-30	目录名	research_modules/d4_distributed_fallback/outputs/d4_v6_source_independent_external_evaluation_20260730	171950	0.000	2	0	0.000	0		0	0	暂缓	较新或用途尚未判明
+D4分布式降级	2026-07-30	目录名	research_modules/d4_distributed_fallback/outputs/d4_v7_rule_node_residual_20260730	1856	0.000	2	0	0.000	0		1856	2	暂缓	较新或用途尚未判明
+D4分布式降级	2026-07-30	目录名	research_modules/d4_distributed_fallback/outputs/d4_v7_rule_node_residual_failclosed_final_20260730	1856	0.000	2	0	0.000	0		1856	2	暂缓	较新或用途尚未判明
+D4分布式降级	2026-07-30	目录名	research_modules/d4_distributed_fallback/outputs/d4_v7_rule_node_residual_failclosed_final_repro_20260730	1856	0.000	2	0	0.000	0		1856	2	暂缓	较新或用途尚未判明
+D4分布式降级	2026-07-30	目录名	research_modules/d4_distributed_fallback/outputs/d4_v7_rule_node_residual_final_20260730	1856	0.000	2	0	0.000	0		1856	2	暂缓	较新或用途尚未判明
+D4分布式降级	2026-07-30	目录名	research_modules/d4_distributed_fallback/outputs/d4_v7_rule_node_residual_final_repro_20260730	1856	0.000	2	0	0.000	0		1856	2	暂缓	较新或用途尚未判明
+D4分布式降级	2026-07-30	目录名	research_modules/d4_distributed_fallback/outputs/d4_v7_rule_node_residual_repro_20260730	1856	0.000	2	0	0.000	0		1856	2	暂缓	较新或用途尚未判明
+D4分布式降级	2026-07-30	目录名	research_modules/d4_distributed_fallback/outputs/d4_v7_source_independent_external_evaluation_20260730	1705312	0.002	2	0	0.000	0		0	0	暂缓	较新或用途尚未判明
+D6评估指标	2026-07-30	目录名	research_modules/d6_evaluation_metrics/outputs/d4_v6_source_independent_external_audit_m16n24_20260730	171325	0.000	2	0	0.000	0		409	1	暂缓	较新或用途尚未判明
+D6评估指标	2026-07-30	目录名	research_modules/d6_evaluation_metrics/outputs/d4_v7_source_independent_external_audit_m16n24_20260730	1704483	0.002	2	0	0.000	0		409	1	暂缓	较新或用途尚未判明
+D6评估指标	2026-07-30	目录名	research_modules/d6_evaluation_metrics/outputs/formal_r0_full_posterior_audit_1e5ed8d_20260730	306	0.000	1	0	0.000	0		306	1	保留或先归档	正式/报告/多种子/训练证据，不能仅按日期删除
+D6评估指标	2026-07-30	目录名	research_modules/d6_evaluation_metrics/outputs/formal_r0_targeted_posterior_audit_1e5ed8d_20260730	318	0.000	1	0	0.000	0		318	1	保留或先归档	正式/报告/多种子/训练证据，不能仅按日期删除
+d3_assignment_planner	2026-07-30	目录名	research_modules/d3_assignment_planner/outputs/a1_assignment_aware_development_v1_20260730	17816	0.000	5	0	0.000	0		17112	4	复核后删除候选	开发或诊断运行；检查是否已由正式运行替代
+D5末端配准质点试验	2026-07-31	目录名	research_modules/scalable_3d_simulation/outputs/d5_a3_source_independent_point_mass_v1_20260731_4a8c117	141662611	0.132	306	141555753	0.132	305	观测/回放流;训练数据集	200631	3	暂缓	较新或用途尚未判明
+AirSim末端闭合/时序	2026-08-01	目录名	research_modules/airsim_runtime/outputs/p1_terminal_controlled_ttc_seed001_20260801	102817	0.000	2	0	0.000	0		0	0	暂缓	较新或用途尚未判明
+AirSim末端闭合/时序	2026-08-01	目录名	research_modules/airsim_runtime/outputs/p1_terminal_controlled_ttc_seed001_20260801_png_ttc_bbox_area_jump_2v2_seed001	5324407	0.005	12	4170218	0.004	5	帧级观测流;真值/标签;观测/回放流	0	0	暂缓	较新或用途尚未判明
+AirSim末端闭合/时序	2026-08-01	目录名	research_modules/airsim_runtime/outputs/p1_terminal_controlled_ttc_seed001_20260801_png_ttc_bbox_clipping_2v2_seed001	5575721	0.005	12	4371038	0.004	5	帧级观测流;真值/标签;观测/回放流	0	0	暂缓	较新或用途尚未判明
+D1传感器融合/航迹物化	2026-08-01	最早文件时间	research_modules/scalable_3d_simulation/outputs/d1_global_track_materialization_ab_dev_4166fe8	1768701572	1.647	526	769701772	0.717	100	真值/标签;观测/回放流	5988220	160	暂缓	较新或用途尚未判明
+D1传感器融合/航迹物化	2026-08-01	最早文件时间	research_modules/scalable_3d_simulation/outputs/d1_global_track_materialization_ab_dev_hash0_4166fe8	1768701572	1.647	526	769701772	0.717	100	真值/标签;观测/回放流	5988220	160	暂缓	较新或用途尚未判明
+D5末端目标配准	2026-08-01	目录名	research_modules/d5_terminal_association/outputs/a3_v2_active_vision_bc_development_20260801_d7bf890	167155158	0.156	36	0	0.000	0		224592	3	复核后删除候选	开发或诊断运行；检查是否已由正式运行替代
+D5末端配准质点试验	2026-08-01	目录名	research_modules/scalable_3d_simulation/outputs/d5_a3_source_independent_point_mass_v2_20260801_d7bf890	139173919	0.130	306	139067059	0.130	305	观测/回放流;训练数据集	200655	3	暂缓	较新或用途尚未判明
+D5末端配准质点试验	2026-08-01	最早文件时间	research_modules/scalable_3d_simulation/outputs/d5_a3_source_independent_point_mass_v2_REJECTED_assignment_removed_d39dbd7	17454339	0.016	45	17439540	0.016	44	观测/回放流;训练数据集	261	1	暂缓	较新或用途尚未判明
+D6评估指标	2026-08-01	最早文件时间	research_modules/d6_evaluation_metrics/outputs/d1_global_track_materialization_ab_dev_hash0_4166fe8	137449	0.000	2	0	0.000	0		0	0	暂缓	较新或用途尚未判明
+三维质点其他	2026-08-02	最早文件时间	research_modules/scalable_3d_simulation/outputs/learning_source_generation_909e7be	72621	0.000	3	0	0.000	0		0	0	暂缓	较新或用途尚未判明
+AirSim末端视觉/相机试验	2026-08-10	目录名	research_modules/airsim_runtime/outputs/d5_cv_long_range_20target_20260810	686346	0.001	8	95651	0.000	2	真值/标签	13554	2	暂缓	较新或用途尚未判明
+AirSim末端视觉/相机试验	2026-08-10	目录名	research_modules/airsim_runtime/outputs/d5_cv_long_range_20target_50mps_2d_20260810	86618393	0.081	47	420228	0.000	2	真值/标签	24766	5	暂缓	较新或用途尚未判明
+AirSim末端视觉/相机试验	2026-08-10	目录名	research_modules/airsim_runtime/outputs/d5_cv_long_range_20target_50mps_2d_worldray_v2_20260810	87129649	0.081	47	430802	0.000	2	真值/标签	24860	5	暂缓	较新或用途尚未判明
+AirSim末端视觉/相机试验	2026-08-10	目录名	research_modules/airsim_runtime/outputs/d5_cv_long_range_20target_scale2_visual_diagnostic_20260810	239494019	0.223	110	444242	0.000	1	真值/标签	22769	4	复核后删除候选	开发或诊断运行；检查是否已由正式运行替代
+AirSim末端视觉/相机试验	2026-08-10	目录名	research_modules/airsim_runtime/outputs/d5_cv_long_range_20target_visual_evidence_20260810	240904068	0.224	109	358134	0.000	1	真值/标签	22723	4	暂缓	较新或用途尚未判明
+D5末端目标配准	2026-08-10	目录名	research_modules/d5_terminal_association/outputs/ideal_20_target_irregular_crossing_20260810	982191	0.001	4	1817	0.000	1	真值/标签	2334	1	暂缓	较新或用途尚未判明
+D5末端目标配准	2026-08-10	目录名	research_modules/d5_terminal_association/outputs/ideal_20_target_two_stage_registration_20260810	914323	0.001	5	1897	0.000	1	真值/标签	1951	1	暂缓	较新或用途尚未判明
+dual_optical_40target	2026-08-10	目录名	research_modules/independent_experiments/dual_optical_40target/outputs/airsim_seed_20260810	16085	0.000	2	0	0.000	0		16085	2	暂缓	较新或用途尚未判明
+dual_optical_40target	2026-08-10	目录名	research_modules/independent_experiments/dual_optical_40target/outputs/airsim_seed_20260810_run10	16085	0.000	2	0	0.000	0		16085	2	暂缓	较新或用途尚未判明
+dual_optical_40target	2026-08-10	目录名	research_modules/independent_experiments/dual_optical_40target/outputs/airsim_seed_20260810_run11	33299989	0.031	52	8941036	0.008	6	局部航迹/轨迹;检测记录;真值/标签;观测/回放流	26087	4	暂缓	较新或用途尚未判明
+dual_optical_40target	2026-08-10	目录名	research_modules/independent_experiments/dual_optical_40target/outputs/airsim_seed_20260810_run2	16085	0.000	2	0	0.000	0		16085	2	暂缓	较新或用途尚未判明
+dual_optical_40target	2026-08-10	目录名	research_modules/independent_experiments/dual_optical_40target/outputs/airsim_seed_20260810_run3	16085	0.000	2	0	0.000	0		16085	2	暂缓	较新或用途尚未判明
+dual_optical_40target	2026-08-10	目录名	research_modules/independent_experiments/dual_optical_40target/outputs/airsim_seed_20260810_run4	16085	0.000	2	0	0.000	0		16085	2	暂缓	较新或用途尚未判明
+dual_optical_40target	2026-08-10	目录名	research_modules/independent_experiments/dual_optical_40target/outputs/airsim_seed_20260810_run5	16085	0.000	2	0	0.000	0		16085	2	暂缓	较新或用途尚未判明
+dual_optical_40target	2026-08-10	目录名	research_modules/independent_experiments/dual_optical_40target/outputs/airsim_seed_20260810_run6	16085	0.000	2	0	0.000	0		16085	2	暂缓	较新或用途尚未判明
+dual_optical_40target	2026-08-10	目录名	research_modules/independent_experiments/dual_optical_40target/outputs/airsim_seed_20260810_run7	16085	0.000	2	0	0.000	0		16085	2	暂缓	较新或用途尚未判明
+dual_optical_40target	2026-08-10	目录名	research_modules/independent_experiments/dual_optical_40target/outputs/airsim_seed_20260810_run8	16085	0.000	2	0	0.000	0		16085	2	暂缓	较新或用途尚未判明
+dual_optical_40target	2026-08-10	目录名	research_modules/independent_experiments/dual_optical_40target/outputs/airsim_seed_20260810_run9	16085	0.000	2	0	0.000	0		16085	2	暂缓	较新或用途尚未判明
+dual_optical_100target_gnn	2026-08-11	最早文件时间	research_modules/independent_experiments/dual_optical_100target_gnn/outputs/raw_airsim	615600075	0.573	551	276859291	0.258	72	局部航迹/轨迹;检测记录;真值/标签;观测/回放流	471694	48	暂缓	较新或用途尚未判明
+dual_optical_40target	2026-08-11	目录名	research_modules/independent_experiments/dual_optical_40target/outputs/airsim_seed_20260811_epipolar_mht_run01	8971534	0.008	13	8938260	0.008	6	局部航迹/轨迹;检测记录;真值/标签;观测/回放流	18936	4	暂缓	较新或用途尚未判明
+dual_optical_100target_guide_case	2026-08-12	目录名	research_modules/independent_experiments/dual_optical_100target_guide_case/outputs/airsim_seed_20260812_guide_run01	5972013	0.006	11	5928104	0.006	5	局部航迹/轨迹;检测记录;真值/标签;观测/回放流	4765	3	暂缓	较新或用途尚未判明
+双光电早期正式基线	2026-08-12	最早文件时间	research_modules/independent_experiments/dual_optical_online_benchmark/outputs/formal_24_6_20	1303460878	1.214	3317	990817831	0.923	306	局部航迹/轨迹;检测记录;真值/标签;观测/回放流	2900531	261	保留或先归档	正式/报告/多种子/训练证据，不能仅按日期删除
+双光电早期正式基线	2026-08-12	最早文件时间	research_modules/independent_experiments/dual_optical_online_benchmark/outputs/formal_v2_24_6_20	2056946469	1.916	3407	1461275053	1.361	354	局部航迹/轨迹;检测记录;真值/标签;观测/回放流	3565013	297	保留或先归档	正式/报告/多种子/训练证据，不能仅按日期删除
+dual_optical_40target	2026-08-13	目录名	research_modules/independent_experiments/dual_optical_40target/outputs/airsim_seed_20260813_dense100_run01	22199747	0.021	13	22125886	0.021	6	局部航迹/轨迹;检测记录;真值/标签;观测/回放流	38531	4	暂缓	较新或用途尚未判明
+双光电V3关联	2026-08-13	最早文件时间	research_modules/independent_experiments/dual_optical_online_benchmark/outputs/scale_funnel_v3	2197345560	2.046	4922	1760528229	1.640	666	局部航迹/轨迹;检测记录;真值/标签;观测/回放流	4516913	548	暂缓	较新或用途尚未判明
+双光电V4关联	2026-08-14	最早文件时间	research_modules/independent_experiments/dual_optical_online_benchmark/outputs/scale_funnel_v4	454069176	0.423	1940	338234002	0.315	258	局部航迹/轨迹;检测记录;真值/标签;观测/回放流	1147410	211	暂缓	较新或用途尚未判明
+双光电V5相位/目标航迹	2026-08-14	最早文件时间	research_modules/independent_experiments/dual_optical_online_benchmark/outputs/scale_funnel_v5_phase180_targettrack	3317843762	3.090	6109	2152893012	2.005	654	局部航迹/轨迹;检测记录;真值/标签;观测/回放流	4146346	455	暂缓	较新或用途尚未判明
+双光电关联其他	2026-08-14	最早文件时间	research_modules/independent_experiments/dual_optical_online_benchmark/outputs/offline_superglue_scale_v1	769019	0.001	600	0	0.000	0		0	0	暂缓	较新或用途尚未判明
+双光电关联其他	2026-08-14	最早文件时间	research_modules/independent_experiments/dual_optical_online_benchmark/outputs/offline_three_route_scale_v1	501098	0.000	11	0	0.000	0		0	0	暂缓	较新或用途尚未判明
+双光电V4关联	2026-08-15	最早文件时间	research_modules/independent_experiments/dual_optical_online_benchmark/outputs/scale_funnel_v4_1_deterministic_handover	105884	0.000	1	0	0.000	0		0	0	暂缓	较新或用途尚未判明
+中心航迹与拦截无人机配准	2026-08-16	目录名	research_modules/independent_experiments/center_terminal_cv_campaign/exp_center_handover/outputs/offline_n20_seed20260816_geometry	925343	0.001	7	62040	0.000	3	局部航迹/轨迹;真值/标签;观测/回放流	306	1	暂缓	较新或用途尚未判明
+中心航迹与拦截无人机配准	2026-08-16	目录名	research_modules/independent_experiments/center_terminal_cv_campaign/exp_crossview/outputs/airsim_n20_cluster_consensus_replay_20260816	5154098	0.005	2	0	0.000	0		0	0	暂缓	较新或用途尚未判明
+中心航迹与拦截无人机配准	2026-08-16	目录名	research_modules/independent_experiments/center_terminal_cv_campaign/exp_crossview/outputs/partial_3cam_5target_geometry_seed_20260816	319740	0.000	2	0	0.000	0		0	0	暂缓	较新或用途尚未判明
+中心航迹与拦截无人机配准	2026-08-16	目录名	research_modules/independent_experiments/center_terminal_cv_campaign/outputs/airsim_m30_n20_scale_20260816	5690472	0.005	35	989815	0.001	15	局部航迹/轨迹;检测记录;真值/标签;观测/回放流	35524	5	暂缓	较新或用途尚未判明
+中心航迹与拦截无人机配准	2026-08-16	目录名	research_modules/independent_experiments/center_terminal_cv_campaign/outputs/airsim_m50_n40_scale_v2_20260816	33714660	0.031	35	3394092	0.003	15	局部航迹/轨迹;检测记录;真值/标签;观测/回放流	35527	5	暂缓	较新或用途尚未判明
+中心航迹与拦截无人机配准	2026-08-16	目录名	research_modules/independent_experiments/center_terminal_cv_campaign/outputs/airsim_n20_formal_20260816	3053507	0.003	35	476379	0.000	15	局部航迹/轨迹;检测记录;真值/标签;观测/回放流	29226	5	保留或先归档	正式/报告/多种子/训练证据，不能仅按日期删除
+中心航迹与拦截无人机配准	2026-08-16	目录名	research_modules/independent_experiments/center_terminal_cv_campaign/outputs/airsim_n20_formal_v2_20260816	3079988	0.003	35	558044	0.001	15	局部航迹/轨迹;检测记录;真值/标签;观测/回放流	29229	5	保留或先归档	正式/报告/多种子/训练证据，不能仅按日期删除
+中心航迹与拦截无人机配准	2026-08-16	目录名	research_modules/independent_experiments/center_terminal_cv_campaign/outputs/airsim_n20_formal_v3_20260816	4569647	0.004	35	653703	0.001	15	局部航迹/轨迹;检测记录;真值/标签;观测/回放流	29229	5	保留或先归档	正式/报告/多种子/训练证据，不能仅按日期删除
+中心航迹与拦截无人机配准	2026-08-16	目录名	research_modules/independent_experiments/center_terminal_cv_campaign/outputs/airsim_n5_smoke_v3_20260816	264083	0.000	35	88143	0.000	15	局部航迹/轨迹;检测记录;真值/标签;观测/回放流	29223	5	复核后删除候选	开发或诊断运行；检查是否已由正式运行替代
+中心航迹与拦截无人机配准	2026-08-16	目录名	research_modules/independent_experiments/center_terminal_cv_campaign/outputs/gnn_offline_benchmark_20260816	84636785	0.079	118	2596800	0.002	24	局部航迹/轨迹;真值/标签;观测/回放流	11393	9	暂缓	较新或用途尚未判明
+中心航迹与拦截无人机配准	2026-08-16	目录名	research_modules/independent_experiments/center_terminal_cv_campaign/outputs/integration_baseline_before_fix_20260816	75477	0.000	14	30254	0.000	6	检测记录;真值/标签;观测/回放流	28746	4	暂缓	较新或用途尚未判明
+中心航迹与拦截无人机配准	2026-08-16	目录名	research_modules/independent_experiments/center_terminal_cv_campaign/outputs/offline_n20_integrated_20260816	1435711	0.001	28	439283	0.000	11	局部航迹/轨迹;检测记录;真值/标签;观测/回放流	29477	6	暂缓	较新或用途尚未判明
+中心航迹与拦截无人机配准	2026-08-16	目录名	research_modules/independent_experiments/center_terminal_cv_campaign/outputs/offline_n5_integrated_20260816	170584	0.000	24	46876	0.000	10	局部航迹/轨迹;检测记录;真值/标签;观测/回放流	29227	5	暂缓	较新或用途尚未判明
+中心航迹与拦截无人机配准	2026-08-16	目录名	research_modules/independent_experiments/center_terminal_cv_campaign/outputs/offline_n5_integrated_v2_20260816	226856	0.000	28	96285	0.000	11	局部航迹/轨迹;检测记录;真值/标签;观测/回放流	29477	6	暂缓	较新或用途尚未判明
+中心航迹与拦截无人机配准	2026-08-16	最早文件时间	research_modules/independent_experiments/center_terminal_cv_campaign/outputs/three_scale_report_figures	901684	0.001	8	0	0.000	0		0	0	保留或先归档	正式/报告/多种子/训练证据，不能仅按日期删除
+双光电180度扫描	2026-08-17	最早文件时间	research_modules/independent_experiments/dual_optical_online_benchmark/outputs/s180_1s_sector_v1	1310280884	1.220	4394	821158507	0.765	432	局部航迹/轨迹;检测记录;真值/标签;观测/回放流	2740835	366	暂缓	较新或用途尚未判明
+双光电门限/确认消融	2026-08-17	目录名	research_modules/independent_experiments/dual_optical_online_benchmark/outputs/gate_confirmation_ablation_20260817	152247918	0.142	4044	0	0.000	0		978957	8	暂缓	较新或用途尚未判明
+双光电180度扫描	2026-08-18	目录名	research_modules/independent_experiments/dual_optical_online_benchmark/outputs/s180_oracle_local_geometry_offline_20260818_v1	26805	0.000	1	0	0.000	0		0	0	暂缓	较新或用途尚未判明
+中心航迹与拦截无人机配准	2026-08-19	目录名	research_modules/independent_experiments/center_terminal_cv_campaign/outputs/offline_search_100pct_cues_20260819	23994796	0.022	361	21466238	0.020	270	检测记录;真值/标签;观测/回放流	28485	45	暂缓	较新或用途尚未判明
+中心航迹与拦截无人机配准	2026-08-19	目录名	research_modules/independent_experiments/center_terminal_cv_campaign/outputs/terminal_gnn_diagnostic_selection_20260819	1544645	0.001	12	0	0.000	0		0	0	复核后删除候选	开发或诊断运行；检查是否已由正式运行替代
+中心航迹与拦截无人机配准	2026-08-19	目录名	research_modules/independent_experiments/center_terminal_cv_campaign/outputs/terminal_gnn_diagnostic_selection_20260819_v2	1544645	0.001	12	0	0.000	0		0	0	复核后删除候选	开发或诊断运行；检查是否已由正式运行替代
+双光电报告回放	2026-08-19	目录名	research_modules/independent_experiments/dual_optical_online_benchmark/outputs/report_replay_20260819_v2	268282717	0.250	1445	0	0.000	0		402418	3	保留或先归档	正式/报告/多种子/训练证据，不能仅按日期删除
+dual_optical_100target_gnn	2026-08-20	目录名	research_modules/independent_experiments/dual_optical_100target_gnn/outputs/formal_airsim_20260820_20260831_run01	1561965	0.001	75	0	0.000	0		1996	2	保留或先归档	正式/报告/多种子/训练证据，不能仅按日期删除
+dual_optical_100target_gnn	2026-08-20	目录名	research_modules/independent_experiments/dual_optical_100target_gnn/outputs/formal_expanded_20260820_20260920_run01	3891417	0.004	183	0	0.000	0		2796	2	保留或先归档	正式/报告/多种子/训练证据，不能仅按日期删除
+dual_optical_100target_lightweight	2026-08-20	目录名	research_modules/independent_experiments/dual_optical_100target_lightweight/outputs/formal_expanded_20260820_20260920_run01	3282	0.000	1	0	0.000	0		3282	1	保留或先归档	正式/报告/多种子/训练证据，不能仅按日期删除
+中心航迹与拦截无人机配准	2026-08-20	目录名	research_modules/independent_experiments/center_terminal_cv_campaign/outputs/center_handover_sensor_error_20260820	57750476	0.054	39	1938777	0.002	16	局部航迹/轨迹;真值/标签;观测/回放流	12926	5	暂缓	较新或用途尚未判明
+中心航迹与拦截无人机配准	2026-08-20	目录名	research_modules/independent_experiments/center_terminal_cv_campaign/outputs/center_handover_sensor_error_airsim_20260820	39405	0.000	1	0	0.000	0		39405	1	暂缓	较新或用途尚未判明
+中心航迹与拦截无人机配准	2026-08-20	目录名	research_modules/independent_experiments/center_terminal_cv_campaign/outputs/center_handover_sensor_error_airsim_20260820_n20	14325	0.000	1	0	0.000	0		14325	1	暂缓	较新或用途尚未判明
+中心航迹与拦截无人机配准	2026-08-20	目录名	research_modules/independent_experiments/center_terminal_cv_campaign/outputs/center_handover_sensor_error_airsim_20260820_n20_retry01	9795660	0.009	36	788453	0.001	16	局部航迹/轨迹;真值/标签;观测/回放流	15535	5	暂缓	较新或用途尚未判明
+中心航迹与拦截无人机配准	2026-08-20	目录名	research_modules/independent_experiments/center_terminal_cv_campaign/outputs/center_handover_sensor_error_airsim_20260820_n40	36828802	0.034	36	1576627	0.001	16	局部航迹/轨迹;真值/标签;观测/回放流	28075	5	暂缓	较新或用途尚未判明
+中心航迹与拦截无人机配准	2026-08-20	目录名	research_modules/independent_experiments/center_terminal_cv_campaign/outputs/center_handover_sensor_error_airsim_20260820_n60	80936954	0.075	36	2364761	0.002	16	局部航迹/轨迹;真值/标签;观测/回放流	40615	5	暂缓	较新或用途尚未判明
+dual_optical_100target_gnn	2026-09-01	目录名	research_modules/independent_experiments/dual_optical_100target_gnn/outputs/raw_airsim_expanded_20260901_20260920	1036714993	0.966	901	467858367	0.436	120	局部航迹/轨迹;检测记录;真值/标签;观测/回放流	791778	80	暂缓	较新或用途尚未判明

@@ -1,0 +1,1027 @@
+{
+  "started_at_utc": "2026-09-26T15:24:36.010202+00:00",
+  "finished_at_utc": "2026-09-26T15:24:36.053593+00:00",
+  "scope": "Three named output roots, prior static registers, and 45 search metadata manifests; no broad disk/Git search.",
+  "source_register_rows": 71,
+  "historically_hashed_source_rows": 16,
+  "unbound_static_candidate_rows": 55,
+  "source_gaps_by_batch": {
+    "dual": 41,
+    "center": 3,
+    "search": 11
+  },
+  "source_checks": [
+    {
+      "batch": "dual",
+      "path": "research_modules/independent_experiments/dual_optical_100target_gnn/__init__.py",
+      "matches_previous_audit": true
+    },
+    {
+      "batch": "dual",
+      "path": "research_modules/independent_experiments/dual_optical_100target_gnn/assignment.py",
+      "matches_previous_audit": true
+    },
+    {
+      "batch": "dual",
+      "path": "research_modules/independent_experiments/dual_optical_100target_gnn/corruption.py",
+      "matches_previous_audit": true
+    },
+    {
+      "batch": "dual",
+      "path": "research_modules/independent_experiments/dual_optical_100target_gnn/dataset.py",
+      "matches_previous_audit": true
+    },
+    {
+      "batch": "dual",
+      "path": "research_modules/independent_experiments/dual_optical_100target_gnn/graph.py",
+      "matches_previous_audit": true
+    },
+    {
+      "batch": "dual",
+      "path": "research_modules/independent_experiments/dual_optical_100target_gnn/loader.py",
+      "matches_previous_audit": true
+    },
+    {
+      "batch": "dual",
+      "path": "research_modules/independent_experiments/dual_optical_100target_gnn/metrics.py",
+      "matches_previous_audit": true
+    },
+    {
+      "batch": "dual",
+      "path": "research_modules/independent_experiments/dual_optical_100target_gnn/model.py",
+      "matches_previous_audit": true
+    },
+    {
+      "batch": "dual",
+      "path": "research_modules/independent_experiments/dual_optical_100target_gnn/online.py",
+      "matches_previous_audit": true
+    },
+    {
+      "batch": "dual",
+      "path": "research_modules/independent_experiments/dual_optical_100target_gnn/online_benchmark.py",
+      "matches_previous_audit": true
+    },
+    {
+      "batch": "dual",
+      "path": "research_modules/independent_experiments/dual_optical_100target_gnn/schema.py",
+      "matches_previous_audit": true
+    },
+    {
+      "batch": "dual",
+      "path": "research_modules/independent_experiments/dual_optical_100target_gnn/training.py",
+      "matches_previous_audit": true
+    },
+    {
+      "batch": "dual",
+      "path": "research_modules/independent_experiments/dual_optical_100target_lightweight/__init__.py",
+      "matches_previous_audit": true
+    },
+    {
+      "batch": "dual",
+      "path": "research_modules/independent_experiments/dual_optical_100target_lightweight/ablation.py",
+      "matches_previous_audit": true
+    },
+    {
+      "batch": "dual",
+      "path": "research_modules/independent_experiments/dual_optical_100target_lightweight/assignment.py",
+      "matches_previous_audit": true
+    },
+    {
+      "batch": "dual",
+      "path": "research_modules/independent_experiments/dual_optical_100target_lightweight/benchmark_adapter.py",
+      "matches_previous_audit": true
+    },
+    {
+      "batch": "dual",
+      "path": "research_modules/independent_experiments/dual_optical_100target_lightweight/models.py",
+      "matches_previous_audit": true
+    },
+    {
+      "batch": "dual",
+      "path": "research_modules/independent_experiments/dual_optical_100target_lightweight/online.py",
+      "matches_previous_audit": true
+    },
+    {
+      "batch": "dual",
+      "path": "research_modules/independent_experiments/dual_optical_100target_lightweight/online_benchmark.py",
+      "matches_previous_audit": true
+    },
+    {
+      "batch": "dual",
+      "path": "research_modules/independent_experiments/dual_optical_100target_lightweight/pipeline.py",
+      "matches_previous_audit": true
+    },
+    {
+      "batch": "dual",
+      "path": "research_modules/independent_experiments/dual_optical_40target/__init__.py",
+      "matches_previous_audit": true
+    },
+    {
+      "batch": "dual",
+      "path": "research_modules/independent_experiments/dual_optical_40target/core.py",
+      "matches_previous_audit": true
+    },
+    {
+      "batch": "dual",
+      "path": "research_modules/independent_experiments/dual_optical_40target/online.py",
+      "matches_previous_audit": true
+    },
+    {
+      "batch": "dual",
+      "path": "research_modules/independent_experiments/dual_optical_40target/online_benchmark.py",
+      "matches_previous_audit": true
+    },
+    {
+      "batch": "dual",
+      "path": "research_modules/independent_experiments/dual_optical_online_benchmark/__init__.py",
+      "matches_previous_audit": true
+    },
+    {
+      "batch": "dual",
+      "path": "research_modules/independent_experiments/dual_optical_online_benchmark/analysis.py",
+      "matches_previous_audit": true
+    },
+    {
+      "batch": "dual",
+      "path": "research_modules/independent_experiments/dual_optical_online_benchmark/contracts.py",
+      "matches_previous_audit": true
+    },
+    {
+      "batch": "dual",
+      "path": "research_modules/independent_experiments/dual_optical_online_benchmark/dataset.py",
+      "matches_previous_audit": true
+    },
+    {
+      "batch": "dual",
+      "path": "research_modules/independent_experiments/dual_optical_online_benchmark/offline_scale_replay.py",
+      "matches_previous_audit": true
+    },
+    {
+      "batch": "dual",
+      "path": "research_modules/independent_experiments/dual_optical_online_benchmark/orchestrator.py",
+      "matches_previous_audit": true
+    },
+    {
+      "batch": "dual",
+      "path": "research_modules/independent_experiments/dual_optical_online_benchmark/report_matrix_replay.py",
+      "matches_previous_audit": true
+    },
+    {
+      "batch": "dual",
+      "path": "research_modules/independent_experiments/dual_optical_online_benchmark/reporting.py",
+      "matches_previous_audit": true
+    },
+    {
+      "batch": "dual",
+      "path": "research_modules/independent_experiments/dual_optical_online_benchmark/s180_oracle_geometry_offline.py",
+      "matches_previous_audit": true
+    },
+    {
+      "batch": "dual",
+      "path": "research_modules/independent_experiments/dual_optical_online_benchmark/scoring.py",
+      "matches_previous_audit": true
+    },
+    {
+      "batch": "dual",
+      "path": "research_modules/independent_experiments/dual_optical_online_benchmark/tracking.py",
+      "matches_previous_audit": true
+    },
+    {
+      "batch": "dual",
+      "path": "research_modules/independent_experiments/dual_optical_track_superglue/__init__.py",
+      "matches_previous_audit": true
+    },
+    {
+      "batch": "dual",
+      "path": "research_modules/independent_experiments/dual_optical_track_superglue/adapter.py",
+      "matches_previous_audit": true
+    },
+    {
+      "batch": "dual",
+      "path": "research_modules/independent_experiments/dual_optical_track_superglue/artifacts.py",
+      "matches_previous_audit": true
+    },
+    {
+      "batch": "dual",
+      "path": "research_modules/independent_experiments/dual_optical_track_superglue/config.py",
+      "matches_previous_audit": true
+    },
+    {
+      "batch": "dual",
+      "path": "research_modules/independent_experiments/dual_optical_track_superglue/matching.py",
+      "matches_previous_audit": true
+    },
+    {
+      "batch": "dual",
+      "path": "research_modules/independent_experiments/dual_optical_track_superglue/model.py",
+      "matches_previous_audit": true
+    },
+    {
+      "batch": "dual",
+      "path": "research_modules/independent_experiments/dual_optical_track_superglue/normalization.py",
+      "matches_previous_audit": true
+    },
+    {
+      "batch": "dual",
+      "path": "research_modules/independent_experiments/dual_optical_track_superglue/online_benchmark.py",
+      "matches_previous_audit": true
+    },
+    {
+      "batch": "dual",
+      "path": "research_modules/independent_experiments/dual_optical_track_superglue/schema.py",
+      "matches_previous_audit": true
+    },
+    {
+      "batch": "dual",
+      "path": "research_modules/independent_experiments/dual_optical_track_superglue/tensors.py",
+      "matches_previous_audit": true
+    },
+    {
+      "batch": "dual",
+      "path": "research_modules/independent_experiments/dual_optical_track_superglue/training.py",
+      "matches_previous_audit": true
+    },
+    {
+      "batch": "center",
+      "path": "research_modules/independent_experiments/center_terminal_cv_campaign/__init__.py",
+      "matches_previous_audit": true
+    },
+    {
+      "batch": "center",
+      "path": "research_modules/independent_experiments/center_terminal_cv_campaign/common/__init__.py",
+      "matches_previous_audit": true
+    },
+    {
+      "batch": "center",
+      "path": "research_modules/independent_experiments/center_terminal_cv_campaign/common/contracts.py",
+      "matches_previous_audit": true
+    },
+    {
+      "batch": "center",
+      "path": "research_modules/independent_experiments/center_terminal_cv_campaign/common/io.py",
+      "matches_previous_audit": true
+    },
+    {
+      "batch": "center",
+      "path": "research_modules/independent_experiments/center_terminal_cv_campaign/common/recognition.py",
+      "matches_previous_audit": true
+    },
+    {
+      "batch": "center",
+      "path": "research_modules/independent_experiments/center_terminal_cv_campaign/common/scenario.py",
+      "matches_previous_audit": true
+    },
+    {
+      "batch": "center",
+      "path": "research_modules/independent_experiments/center_terminal_cv_campaign/exp_center_handover/__init__.py",
+      "matches_previous_audit": true
+    },
+    {
+      "batch": "center",
+      "path": "research_modules/independent_experiments/center_terminal_cv_campaign/exp_center_handover/association.py",
+      "matches_previous_audit": true
+    },
+    {
+      "batch": "center",
+      "path": "research_modules/independent_experiments/center_terminal_cv_campaign/exp_center_handover/error_campaign.py",
+      "matches_previous_audit": true
+    },
+    {
+      "batch": "center",
+      "path": "research_modules/independent_experiments/center_terminal_cv_campaign/exp_center_handover/fixture.py",
+      "matches_previous_audit": true
+    },
+    {
+      "batch": "center",
+      "path": "research_modules/independent_experiments/center_terminal_cv_campaign/exp_center_handover/geometry.py",
+      "matches_previous_audit": true
+    },
+    {
+      "batch": "center",
+      "path": "research_modules/independent_experiments/center_terminal_cv_campaign/exp_center_handover/gnn.py",
+      "matches_previous_audit": true
+    },
+    {
+      "batch": "center",
+      "path": "research_modules/independent_experiments/center_terminal_cv_campaign/exp_center_handover/reporting.py",
+      "matches_previous_audit": true
+    },
+    {
+      "batch": "center",
+      "path": "research_modules/independent_experiments/center_terminal_cv_campaign/exp_center_handover/run_error_matrix.py",
+      "matches_previous_audit": true
+    },
+    {
+      "batch": "search",
+      "path": "research_modules/independent_experiments/center_terminal_cv_campaign/__init__.py",
+      "matches_previous_audit": true
+    },
+    {
+      "batch": "search",
+      "path": "research_modules/independent_experiments/center_terminal_cv_campaign/common/__init__.py",
+      "matches_previous_audit": true
+    },
+    {
+      "batch": "search",
+      "path": "research_modules/independent_experiments/center_terminal_cv_campaign/common/contracts.py",
+      "matches_previous_audit": true
+    },
+    {
+      "batch": "search",
+      "path": "research_modules/independent_experiments/center_terminal_cv_campaign/common/recognition.py",
+      "matches_previous_audit": true
+    },
+    {
+      "batch": "search",
+      "path": "research_modules/independent_experiments/center_terminal_cv_campaign/common/scenario.py",
+      "matches_previous_audit": true
+    },
+    {
+      "batch": "search",
+      "path": "research_modules/independent_experiments/center_terminal_cv_campaign/exp_search/__init__.py",
+      "matches_previous_audit": true
+    },
+    {
+      "batch": "search",
+      "path": "research_modules/independent_experiments/center_terminal_cv_campaign/exp_search/models.py",
+      "matches_previous_audit": true
+    },
+    {
+      "batch": "search",
+      "path": "research_modules/independent_experiments/center_terminal_cv_campaign/exp_search/offline_replay.py",
+      "matches_previous_audit": true
+    },
+    {
+      "batch": "search",
+      "path": "research_modules/independent_experiments/center_terminal_cv_campaign/exp_search/planner.py",
+      "matches_previous_audit": true
+    },
+    {
+      "batch": "search",
+      "path": "research_modules/independent_experiments/center_terminal_cv_campaign/exp_search/run_offline_matrix.py",
+      "matches_previous_audit": true
+    },
+    {
+      "batch": "search",
+      "path": "research_modules/independent_experiments/center_terminal_cv_campaign/exp_search/runtime.py",
+      "matches_previous_audit": true
+    }
+  ],
+  "dependency_records": [
+    {
+      "batch": "center",
+      "module": "matplotlib",
+      "distribution": "matplotlib",
+      "recorded_version": "3.10.9",
+      "status": "version_declared",
+      "actual_runtime_import_proven": false,
+      "static_witnesses": [
+        {
+          "source": "research_modules/independent_experiments/center_terminal_cv_campaign/exp_center_handover/run_error_matrix.py",
+          "line": 22,
+          "import": "matplotlib"
+        },
+        {
+          "source": "research_modules/independent_experiments/center_terminal_cv_campaign/exp_center_handover/run_error_matrix.py",
+          "line": 25,
+          "import": "matplotlib.pyplot"
+        },
+        {
+          "source": "research_modules/independent_experiments/center_terminal_cv_campaign/exp_center_handover/run_error_matrix.py",
+          "line": 26,
+          "import": "matplotlib"
+        },
+        {
+          "source": "research_modules/independent_experiments/center_terminal_cv_campaign/exp_center_handover/reporting.py",
+          "line": 13,
+          "import": "matplotlib"
+        },
+        {
+          "source": "research_modules/independent_experiments/center_terminal_cv_campaign/exp_center_handover/reporting.py",
+          "line": 16,
+          "import": "matplotlib.pyplot"
+        },
+        {
+          "source": "research_modules/independent_experiments/center_terminal_cv_campaign/exp_center_handover/reporting.py",
+          "line": 17,
+          "import": "matplotlib.patches"
+        }
+      ]
+    },
+    {
+      "batch": "center",
+      "module": "numpy",
+      "distribution": "numpy",
+      "recorded_version": "2.5.0",
+      "status": "version_declared",
+      "actual_runtime_import_proven": false,
+      "static_witnesses": [
+        {
+          "source": "research_modules/independent_experiments/center_terminal_cv_campaign/exp_center_handover/run_error_matrix.py",
+          "line": 27,
+          "import": "numpy"
+        },
+        {
+          "source": "research_modules/independent_experiments/center_terminal_cv_campaign/exp_center_handover/geometry.py",
+          "line": 9,
+          "import": "numpy"
+        },
+        {
+          "source": "research_modules/independent_experiments/center_terminal_cv_campaign/common/scenario.py",
+          "line": 9,
+          "import": "numpy"
+        },
+        {
+          "source": "research_modules/independent_experiments/center_terminal_cv_campaign/exp_center_handover/association.py",
+          "line": 10,
+          "import": "numpy"
+        },
+        {
+          "source": "research_modules/independent_experiments/center_terminal_cv_campaign/exp_center_handover/reporting.py",
+          "line": 18,
+          "import": "numpy"
+        },
+        {
+          "source": "research_modules/independent_experiments/center_terminal_cv_campaign/exp_center_handover/fixture.py",
+          "line": 11,
+          "import": "numpy"
+        },
+        {
+          "source": "research_modules/independent_experiments/center_terminal_cv_campaign/exp_center_handover/gnn.py",
+          "line": 12,
+          "import": "numpy"
+        },
+        {
+          "source": "research_modules/independent_experiments/center_terminal_cv_campaign/exp_center_handover/error_campaign.py",
+          "line": 9,
+          "import": "numpy"
+        }
+      ]
+    },
+    {
+      "batch": "center",
+      "module": "scipy",
+      "distribution": "scipy",
+      "recorded_version": "1.17.1",
+      "status": "version_declared",
+      "actual_runtime_import_proven": false,
+      "static_witnesses": [
+        {
+          "source": "research_modules/independent_experiments/center_terminal_cv_campaign/exp_center_handover/association.py",
+          "line": 11,
+          "import": "scipy.optimize"
+        }
+      ]
+    },
+    {
+      "batch": "center",
+      "module": "torch",
+      "distribution": "torch",
+      "recorded_version": "2.11.0+cu128",
+      "status": "version_declared",
+      "actual_runtime_import_proven": false,
+      "static_witnesses": [
+        {
+          "source": "research_modules/independent_experiments/center_terminal_cv_campaign/exp_center_handover/gnn.py",
+          "line": 13,
+          "import": "torch"
+        },
+        {
+          "source": "research_modules/independent_experiments/center_terminal_cv_campaign/exp_center_handover/gnn.py",
+          "line": 14,
+          "import": "torch"
+        }
+      ]
+    },
+    {
+      "batch": "dual",
+      "module": "matplotlib",
+      "distribution": "matplotlib",
+      "recorded_version": null,
+      "status": "version_not_found_in_checked_metadata",
+      "actual_runtime_import_proven": false,
+      "static_witnesses": [
+        {
+          "source": "research_modules/independent_experiments/dual_optical_online_benchmark/analysis.py",
+          "line": 10,
+          "import": "matplotlib"
+        },
+        {
+          "source": "research_modules/independent_experiments/dual_optical_online_benchmark/analysis.py",
+          "line": 13,
+          "import": "matplotlib.pyplot"
+        }
+      ]
+    },
+    {
+      "batch": "dual",
+      "module": "numpy",
+      "distribution": "numpy",
+      "recorded_version": "2.5.0",
+      "status": "version_declared",
+      "actual_runtime_import_proven": false,
+      "static_witnesses": [
+        {
+          "source": "research_modules/independent_experiments/dual_optical_online_benchmark/report_matrix_replay.py",
+          "line": 35,
+          "import": "numpy"
+        },
+        {
+          "source": "research_modules/independent_experiments/dual_optical_100target_gnn/online.py",
+          "line": 10,
+          "import": "numpy"
+        },
+        {
+          "source": "research_modules/independent_experiments/dual_optical_100target_gnn/online_benchmark.py",
+          "line": 10,
+          "import": "numpy"
+        },
+        {
+          "source": "research_modules/independent_experiments/dual_optical_100target_gnn/training.py",
+          "line": 14,
+          "import": "numpy"
+        },
+        {
+          "source": "research_modules/independent_experiments/dual_optical_100target_gnn/schema.py",
+          "line": 8,
+          "import": "numpy"
+        },
+        {
+          "source": "research_modules/independent_experiments/dual_optical_100target_gnn/model.py",
+          "line": 10,
+          "import": "numpy"
+        },
+        {
+          "source": "research_modules/independent_experiments/dual_optical_100target_gnn/metrics.py",
+          "line": 8,
+          "import": "numpy"
+        },
+        {
+          "source": "research_modules/independent_experiments/dual_optical_100target_gnn/assignment.py",
+          "line": 9,
+          "import": "numpy"
+        },
+        {
+          "source": "research_modules/independent_experiments/dual_optical_100target_gnn/loader.py",
+          "line": 12,
+          "import": "numpy"
+        },
+        {
+          "source": "research_modules/independent_experiments/dual_optical_100target_gnn/dataset.py",
+          "line": 11,
+          "import": "numpy"
+        },
+        {
+          "source": "research_modules/independent_experiments/dual_optical_100target_gnn/graph.py",
+          "line": 8,
+          "import": "numpy"
+        },
+        {
+          "source": "research_modules/independent_experiments/dual_optical_100target_gnn/corruption.py",
+          "line": 8,
+          "import": "numpy"
+        },
+        {
+          "source": "research_modules/independent_experiments/dual_optical_online_benchmark/dataset.py",
+          "line": 15,
+          "import": "numpy"
+        },
+        {
+          "source": "research_modules/independent_experiments/dual_optical_online_benchmark/tracking.py",
+          "line": 17,
+          "import": "numpy"
+        },
+        {
+          "source": "research_modules/independent_experiments/dual_optical_40target/core.py",
+          "line": 11,
+          "import": "numpy"
+        },
+        {
+          "source": "research_modules/independent_experiments/dual_optical_40target/online_benchmark.py",
+          "line": 14,
+          "import": "numpy"
+        },
+        {
+          "source": "research_modules/independent_experiments/dual_optical_40target/online.py",
+          "line": 13,
+          "import": "numpy"
+        },
+        {
+          "source": "research_modules/independent_experiments/dual_optical_100target_lightweight/online_benchmark.py",
+          "line": 11,
+          "import": "numpy"
+        },
+        {
+          "source": "research_modules/independent_experiments/dual_optical_100target_lightweight/online.py",
+          "line": 12,
+          "import": "numpy"
+        },
+        {
+          "source": "research_modules/independent_experiments/dual_optical_100target_lightweight/models.py",
+          "line": 8,
+          "import": "numpy"
+        },
+        {
+          "source": "research_modules/independent_experiments/dual_optical_100target_lightweight/assignment.py",
+          "line": 7,
+          "import": "numpy"
+        },
+        {
+          "source": "research_modules/independent_experiments/dual_optical_100target_lightweight/benchmark_adapter.py",
+          "line": 12,
+          "import": "numpy"
+        },
+        {
+          "source": "research_modules/independent_experiments/dual_optical_100target_lightweight/ablation.py",
+          "line": 11,
+          "import": "numpy"
+        },
+        {
+          "source": "research_modules/independent_experiments/dual_optical_100target_lightweight/pipeline.py",
+          "line": 11,
+          "import": "numpy"
+        },
+        {
+          "source": "research_modules/independent_experiments/dual_optical_online_benchmark/scoring.py",
+          "line": 10,
+          "import": "numpy"
+        },
+        {
+          "source": "research_modules/independent_experiments/dual_optical_track_superglue/online_benchmark.py",
+          "line": 12,
+          "import": "numpy"
+        },
+        {
+          "source": "research_modules/independent_experiments/dual_optical_track_superglue/schema.py",
+          "line": 8,
+          "import": "numpy"
+        },
+        {
+          "source": "research_modules/independent_experiments/dual_optical_track_superglue/matching.py",
+          "line": 8,
+          "import": "numpy"
+        },
+        {
+          "source": "research_modules/independent_experiments/dual_optical_track_superglue/training.py",
+          "line": 10,
+          "import": "numpy"
+        },
+        {
+          "source": "research_modules/independent_experiments/dual_optical_track_superglue/normalization.py",
+          "line": 10,
+          "import": "numpy"
+        },
+        {
+          "source": "research_modules/independent_experiments/dual_optical_track_superglue/adapter.py",
+          "line": 8,
+          "import": "numpy"
+        },
+        {
+          "source": "research_modules/independent_experiments/dual_optical_online_benchmark/analysis.py",
+          "line": 14,
+          "import": "numpy"
+        },
+        {
+          "source": "research_modules/independent_experiments/dual_optical_online_benchmark/reporting.py",
+          "line": 10,
+          "import": "numpy"
+        }
+      ]
+    },
+    {
+      "batch": "dual",
+      "module": "scipy",
+      "distribution": "scipy",
+      "recorded_version": "1.17.1",
+      "status": "version_declared",
+      "actual_runtime_import_proven": false,
+      "static_witnesses": [
+        {
+          "source": "research_modules/independent_experiments/dual_optical_100target_gnn/assignment.py",
+          "line": 10,
+          "import": "scipy.optimize"
+        },
+        {
+          "source": "research_modules/independent_experiments/dual_optical_online_benchmark/tracking.py",
+          "line": 18,
+          "import": "scipy.optimize"
+        },
+        {
+          "source": "research_modules/independent_experiments/dual_optical_40target/core.py",
+          "line": 12,
+          "import": "scipy.optimize"
+        },
+        {
+          "source": "research_modules/independent_experiments/dual_optical_40target/core.py",
+          "line": 13,
+          "import": "scipy.stats"
+        },
+        {
+          "source": "research_modules/independent_experiments/dual_optical_40target/online.py",
+          "line": 14,
+          "import": "scipy.stats"
+        },
+        {
+          "source": "research_modules/independent_experiments/dual_optical_100target_lightweight/models.py",
+          "line": 9,
+          "import": "scipy.optimize"
+        }
+      ]
+    },
+    {
+      "batch": "dual",
+      "module": "sklearn",
+      "distribution": "scikit-learn",
+      "recorded_version": null,
+      "status": "version_not_found_in_checked_metadata",
+      "actual_runtime_import_proven": false,
+      "static_witnesses": [
+        {
+          "source": "research_modules/independent_experiments/dual_optical_100target_lightweight/models.py",
+          "line": 10,
+          "import": "sklearn.isotonic"
+        },
+        {
+          "source": "research_modules/independent_experiments/dual_optical_100target_lightweight/models.py",
+          "line": 11,
+          "import": "sklearn.linear_model"
+        },
+        {
+          "source": "research_modules/independent_experiments/dual_optical_100target_lightweight/models.py",
+          "line": 12,
+          "import": "sklearn.preprocessing"
+        }
+      ]
+    },
+    {
+      "batch": "dual",
+      "module": "torch",
+      "distribution": "torch",
+      "recorded_version": "2.11.0+cu128",
+      "status": "version_declared",
+      "actual_runtime_import_proven": false,
+      "static_witnesses": [
+        {
+          "source": "research_modules/independent_experiments/dual_optical_100target_gnn/online.py",
+          "line": 11,
+          "import": "torch"
+        },
+        {
+          "source": "research_modules/independent_experiments/dual_optical_100target_gnn/training.py",
+          "line": 15,
+          "import": "torch"
+        },
+        {
+          "source": "research_modules/independent_experiments/dual_optical_100target_gnn/training.py",
+          "line": 16,
+          "import": "torch"
+        },
+        {
+          "source": "research_modules/independent_experiments/dual_optical_100target_gnn/model.py",
+          "line": 11,
+          "import": "torch"
+        },
+        {
+          "source": "research_modules/independent_experiments/dual_optical_100target_gnn/model.py",
+          "line": 12,
+          "import": "torch"
+        },
+        {
+          "source": "research_modules/independent_experiments/dual_optical_track_superglue/online_benchmark.py",
+          "line": 13,
+          "import": "torch"
+        },
+        {
+          "source": "research_modules/independent_experiments/dual_optical_track_superglue/model.py",
+          "line": 8,
+          "import": "torch"
+        },
+        {
+          "source": "research_modules/independent_experiments/dual_optical_track_superglue/model.py",
+          "line": 9,
+          "import": "torch"
+        },
+        {
+          "source": "research_modules/independent_experiments/dual_optical_track_superglue/model.py",
+          "line": 10,
+          "import": "torch.nn.utils.rnn"
+        },
+        {
+          "source": "research_modules/independent_experiments/dual_optical_track_superglue/matching.py",
+          "line": 9,
+          "import": "torch"
+        },
+        {
+          "source": "research_modules/independent_experiments/dual_optical_track_superglue/training.py",
+          "line": 11,
+          "import": "torch"
+        },
+        {
+          "source": "research_modules/independent_experiments/dual_optical_track_superglue/tensors.py",
+          "line": 7,
+          "import": "torch"
+        },
+        {
+          "source": "research_modules/independent_experiments/dual_optical_track_superglue/artifacts.py",
+          "line": 10,
+          "import": "torch"
+        }
+      ]
+    },
+    {
+      "batch": "search",
+      "module": "airsim",
+      "distribution": "airsim",
+      "recorded_version": null,
+      "status": "version_not_found_in_checked_metadata",
+      "actual_runtime_import_proven": false,
+      "static_witnesses": [
+        {
+          "source": "research_modules/independent_experiments/center_terminal_cv_campaign/exp_search/runtime.py",
+          "line": 83,
+          "import": "airsim"
+        }
+      ]
+    },
+    {
+      "batch": "search",
+      "module": "matplotlib",
+      "distribution": "matplotlib",
+      "recorded_version": null,
+      "status": "version_not_found_in_checked_metadata",
+      "actual_runtime_import_proven": false,
+      "static_witnesses": [
+        {
+          "source": "research_modules/independent_experiments/center_terminal_cv_campaign/exp_search/run_offline_matrix.py",
+          "line": 16,
+          "import": "matplotlib"
+        },
+        {
+          "source": "research_modules/independent_experiments/center_terminal_cv_campaign/exp_search/run_offline_matrix.py",
+          "line": 19,
+          "import": "matplotlib.pyplot"
+        },
+        {
+          "source": "research_modules/independent_experiments/center_terminal_cv_campaign/exp_search/run_offline_matrix.py",
+          "line": 20,
+          "import": "matplotlib"
+        }
+      ]
+    },
+    {
+      "batch": "search",
+      "module": "numpy",
+      "distribution": "numpy",
+      "recorded_version": null,
+      "status": "version_not_found_in_checked_metadata",
+      "actual_runtime_import_proven": false,
+      "static_witnesses": [
+        {
+          "source": "research_modules/independent_experiments/center_terminal_cv_campaign/exp_search/run_offline_matrix.py",
+          "line": 21,
+          "import": "numpy"
+        },
+        {
+          "source": "research_modules/independent_experiments/center_terminal_cv_campaign/exp_search/runtime.py",
+          "line": 12,
+          "import": "numpy"
+        },
+        {
+          "source": "research_modules/independent_experiments/center_terminal_cv_campaign/exp_search/planner.py",
+          "line": 10,
+          "import": "numpy"
+        },
+        {
+          "source": "research_modules/independent_experiments/center_terminal_cv_campaign/common/scenario.py",
+          "line": 9,
+          "import": "numpy"
+        },
+        {
+          "source": "research_modules/independent_experiments/center_terminal_cv_campaign/exp_search/offline_replay.py",
+          "line": 20,
+          "import": "numpy"
+        }
+      ]
+    },
+    {
+      "batch": "search",
+      "module": "scipy",
+      "distribution": "scipy",
+      "recorded_version": null,
+      "status": "version_not_found_in_checked_metadata",
+      "actual_runtime_import_proven": false,
+      "static_witnesses": [
+        {
+          "source": "research_modules/independent_experiments/center_terminal_cv_campaign/exp_search/runtime.py",
+          "line": 13,
+          "import": "scipy.optimize"
+        },
+        {
+          "source": "research_modules/independent_experiments/center_terminal_cv_campaign/exp_search/planner.py",
+          "line": 11,
+          "import": "scipy.optimize"
+        },
+        {
+          "source": "research_modules/independent_experiments/center_terminal_cv_campaign/exp_search/offline_replay.py",
+          "line": 21,
+          "import": "scipy.optimize"
+        }
+      ]
+    }
+  ],
+  "search_manifest_count": 45,
+  "search_manifests_with_provenance_fields": 0,
+  "metadata_candidate_patterns": [
+    "*requirements*.txt",
+    "*environment*.json",
+    "*environment*.yml",
+    "*environment*.yaml",
+    "*freeze*.txt",
+    "*.lock",
+    "conda-lock.*",
+    "source_files.json",
+    "tracked_worktree.patch",
+    "reproduction_manifest.json"
+  ],
+  "metadata_candidate_files": [
+    {
+      "batch": "dual",
+      "path": "research_modules/independent_experiments/dual_optical_online_benchmark/outputs/report_replay_20260819_v2/reproduction_manifest.json",
+      "bytes": 46138,
+      "sha256": "021ab1d2fe22d81014c5ee81e72f9d9d97137b07a4abff6ff7f6d161071c2915"
+    },
+    {
+      "batch": "center",
+      "path": "research_modules/independent_experiments/center_terminal_cv_campaign/outputs/center_handover_sensor_error_20260820/environment.json",
+      "bytes": 439,
+      "sha256": "7f6789b218fb487f2539ca7885a22e47072d4ad98de8184140aa165d13f170da"
+    },
+    {
+      "batch": "center",
+      "path": "research_modules/independent_experiments/center_terminal_cv_campaign/outputs/center_handover_sensor_error_20260820/reproduction_manifest.json",
+      "bytes": 8442,
+      "sha256": "94b02450a16839a7e41ee45fa9f32326c236e38c8240649f98cbbfb53d40bfa0"
+    },
+    {
+      "batch": "center",
+      "path": "research_modules/independent_experiments/center_terminal_cv_campaign/outputs/center_handover_sensor_error_20260820/source_snapshot/source_files.json",
+      "bytes": 3857,
+      "sha256": "3900e260f954acd20b08e3a44a47576b2be550161b9a40dde18dc750da0f11cb"
+    },
+    {
+      "batch": "center",
+      "path": "research_modules/independent_experiments/center_terminal_cv_campaign/outputs/center_handover_sensor_error_20260820/source_snapshot/tracked_worktree.patch",
+      "bytes": 44287,
+      "sha256": "4460af7fb567d434eb7febea9249618626719115167a1de46c0690fd8aedfa96"
+    },
+    {
+      "batch": "search",
+      "path": "research_modules/independent_experiments/center_terminal_cv_campaign/outputs/offline_search_100pct_cues_20260819/reproduction_manifest.json",
+      "bytes": 1830,
+      "sha256": "cbc2d0d14dae3535c7357f29db056fae53fcf2277009d67955f917ed1e49ad9a"
+    }
+  ],
+  "environments": {
+    "dual": {
+      "source": "research_modules/independent_experiments/dual_optical_online_benchmark/outputs/report_replay_20260819_v2/reproduction_manifest.json",
+      "python_version": "3.12.3 (main, Jun 19 2026, 12:46:00) [GCC 13.3.0]",
+      "dependencies": {
+        "numpy": "2.5.0",
+        "scipy": "1.17.1",
+        "torch": "2.11.0+cu128"
+      },
+      "complete_environment_lock_established": false,
+      "record_kind": "three_direct_package_versions_in_manifest"
+    },
+    "center": {
+      "source": "research_modules/independent_experiments/center_terminal_cv_campaign/outputs/center_handover_sensor_error_20260820/environment.json",
+      "sha256_matches_manifest": true,
+      "python_version": "3.12.3",
+      "dependencies": {
+        "numpy": "2.5.0",
+        "scipy": "1.17.1",
+        "torch": "2.11.0+cu128",
+        "matplotlib": "3.10.9"
+      },
+      "recorded_gnn_device": "cpu",
+      "recorded_gpu": "NVIDIA GeForce RTX 4050 Laptop GPU, 6141 MiB, 595.84",
+      "recorded_airsim_used": false,
+      "complete_environment_lock_established": false,
+      "record_kind": "hashed_four_package_version_summary_not_installer_lock"
+    },
+    "search": {
+      "source": "research_modules/independent_experiments/center_terminal_cv_campaign/outputs/offline_search_100pct_cues_20260819/reproduction_manifest.json",
+      "python_version": null,
+      "dependencies": {},
+      "complete_environment_lock_established": false,
+      "record_kind": "no_environment_version_fields_in_checked_manifests"
+    }
+  },
+  "passed": true,
+  "pass_meaning": "Bounded metadata inspection completed; not reproducibility or environment completeness.",
+  "package_installation_performed": false,
+  "research_code_imported": false,
+  "current_environment_used_as_historical_evidence": false,
+  "original_goal_status_changed": false,
+  "archive_450_recovered": false
+}

@@ -1,5 +1,11 @@
 # D6 AirSim 离线集成计划
 
+<!-- evidence-status-sync:20260926:begin -->
+2026-09-26 仅做资料同步，不是新的实验日期；原 Goal 状态不变。
+当前边界统一见[D6 当前证据状态](docs/CURRENT_EVIDENCE_STATUS_CN.md)；下文旧章节仅按原日期和范围作为历史阶段记录阅读。
+本页是实际 AirSim 计划入口；不存在的 docs 同名路径不另建替代文件。
+<!-- evidence-status-sync:20260926:end -->
+
 ## 2026-08-10 D5长距离视觉配准接入
 
 D6 已实现 AirSim episode 的专项离线消费者。main 将 episode 目录作为显式输入，D6 读取

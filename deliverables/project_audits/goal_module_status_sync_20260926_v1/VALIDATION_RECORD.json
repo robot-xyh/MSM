@@ -1,0 +1,905 @@
+{
+  "created_at": "2026-09-26T14:33:15.437458+00:00",
+  "passed": true,
+  "tracked_file_count": 1180,
+  "module_owner_checks": [
+    {
+      "module": "D3",
+      "changed_files": 12,
+      "owner_manifest": "deliverables/project_audits/goal_module_status_sync_20260926_v1/owners/D3_sync.json"
+    },
+    {
+      "module": "D4",
+      "changed_files": 11,
+      "owner_manifest": "deliverables/project_audits/goal_module_status_sync_20260926_v1/owners/D4_sync.json"
+    },
+    {
+      "module": "D5",
+      "changed_files": 11,
+      "owner_manifest": "deliverables/project_audits/goal_module_status_sync_20260926_v1/owners/D5_sync.json"
+    },
+    {
+      "module": "D6",
+      "changed_files": 12,
+      "owner_manifest": "deliverables/project_audits/goal_module_status_sync_20260926_v1/owners/D6_sync.json"
+    }
+  ],
+  "changed_tracked_documents": [
+    {
+      "path": "research_modules/d3_assignment_planner/PLAN.md",
+      "before_sha256": "726b97a8dd03bc55e0e83e3cc5e0e238b301c6f01665ba86f78a1ec4fb5c7947",
+      "after_sha256": "e2f053700eb333eb4ac961ca7f540bc48eb8628c4d3d8de29c2d0bbad766b33b",
+      "historical_body_preserved": true
+    },
+    {
+      "path": "research_modules/d3_assignment_planner/README.md",
+      "before_sha256": "e4ba492b64104579d4e41afd800684eefe2dfc5744f982c6e3ff525c43c29012",
+      "after_sha256": "031ae81a8e805cb798a80e03458b21ed6ae38a0400ba93d55b3fa2da4e611b04",
+      "historical_body_preserved": true
+    },
+    {
+      "path": "research_modules/d3_assignment_planner/docs/AIRSIM_INTEGRATION_PLAN.md",
+      "before_sha256": "0103b7f35495b5e08522d407b381e049c2e74d495eb61b0ea1f9bf13ccb55931",
+      "after_sha256": "61471420d2d7fef5b22f67af2087438aee1ff702f1a96b53060e15dc6bbb90ef",
+      "historical_body_preserved": true
+    },
+    {
+      "path": "research_modules/d3_assignment_planner/docs/ALGORITHM_AND_IMPLEMENTATION.md",
+      "before_sha256": "f8888a6fbe3e9daed80374b502fa0fab069f5e5d32939cd0ddb0756ce4c00ef1",
+      "after_sha256": "67f085762104a391c2f0326002577dad77ffc82942bd7ca5ebad13b3544648f8",
+      "historical_body_preserved": true
+    },
+    {
+      "path": "research_modules/d3_assignment_planner/docs/EXPERIMENT_REPORT.md",
+      "before_sha256": "619e4a364913bbcc2c6cee7a4653a008622f2e36512014c7a7535b71738ee179",
+      "after_sha256": "4feadfc3f709431596b5ef043d6b7be49e2d5fb38fdf0e0e66b291ab93a165c2",
+      "historical_body_preserved": true
+    },
+    {
+      "path": "research_modules/d3_assignment_planner/docs/MODULE_PRINCIPLES_CN.md",
+      "before_sha256": "d242723f470d0b66430ab664af92798087f4ddf10e2935bc8cddee716d72d24f",
+      "after_sha256": "434c82b246a5e877c11b8c061e721f1cb60481405419762654e571555fda9b01",
+      "historical_body_preserved": true
+    },
+    {
+      "path": "research_modules/d3_assignment_planner/docs/README.md",
+      "before_sha256": "6b255882b97ee181f11cfb4f3e43e43e21406909bbab1cfb943ea094b9de5a14",
+      "after_sha256": "4b88ef495f27a16386346ed3d40aaa9f7156a4a5e39c61cafa9b5d8115ebe4bb",
+      "historical_body_preserved": true
+    },
+    {
+      "path": "research_modules/d3_assignment_planner/reports/D3_MAIN_INTERFACE_REQUIREMENTS_A1_V3_CN.md",
+      "before_sha256": "4f6a30e3f7e32da4da54a352432789bd58a3029b0a3e1a5ffe524c915a7dbcc4",
+      "after_sha256": "b230907c936d1c182d561cec75a4826df8be91c621e44e59df659609d93d83d6",
+      "historical_body_preserved": true
+    },
+    {
+      "path": "research_modules/d4_distributed_fallback/PLAN.md",
+      "before_sha256": "abe90773f5bfbd504a5d9e6b39456a0901fe48f7ae61c053735c9e1e7ad3553b",
+      "after_sha256": "471b0e05913639b872ab11ec7d03d19fd32fb76fe29667c88e48dd5d38e06ded",
+      "historical_body_preserved": true
+    },
+    {
+      "path": "research_modules/d4_distributed_fallback/README.md",
+      "before_sha256": "2b6028849e0cc3504fe7238631bd7259dfeb6ba04d626c285e3e69f36e263481",
+      "after_sha256": "224152169d74a7ae56b708dbff78f5cbbe339c04aef6b8fcdc61fd0c95e4167a",
+      "historical_body_preserved": true
+    },
+    {
+      "path": "research_modules/d4_distributed_fallback/docs/ALGORITHM_AND_IMPLEMENTATION.md",
+      "before_sha256": "db894a28facb157bd346c6d8221524f82722cc7cd85025b67af0f605deb9c8d6",
+      "after_sha256": "14ac95d01d2b28b4768dc2f0561f6fe3253e3c949352afde5b452ee749317de1",
+      "historical_body_preserved": true
+    },
+    {
+      "path": "research_modules/d4_distributed_fallback/docs/MODULE_PRINCIPLES_CN.md",
+      "before_sha256": "bf26510fe754a58c33de9f3f03ba83eb481f75239f327339f2b6fb6a8e2fbbe5",
+      "after_sha256": "4117f78df17cc96b28c9f9b5b693801bcf890dee326c82e64d1aa7a3d549f0bb",
+      "historical_body_preserved": true
+    },
+    {
+      "path": "research_modules/d4_distributed_fallback/docs/README.md",
+      "before_sha256": "abb354ea0b852b4b24795ef48b9e5e0d41f06b783e9dd9196dcd43643719b8f8",
+      "after_sha256": "67cd3b3ee9338520aba9a11a8a48af4f6338ea04919e20d352903f115737d02b",
+      "historical_body_preserved": true
+    },
+    {
+      "path": "research_modules/d4_distributed_fallback/reports/AIRSIM_INTEGRATION_PLAN.md",
+      "before_sha256": "bd62858e669bfb1f6bdd84a48c0f12b11634f33fa6b1ff053ff16b0a22423d16",
+      "after_sha256": "f9cea961aba877009b1717b04d8b119906e61a54a238a05432f3324367c660e7",
+      "historical_body_preserved": true
+    },
+    {
+      "path": "research_modules/d4_distributed_fallback/reports/EXPERIMENT_REPORT.md",
+      "before_sha256": "96f4a7bbe1ed01016c673f87a6a1aa5865aff99ba6208cb1fb0eccb6902d7493",
+      "after_sha256": "ca1f48a6f4aa9f3d9f6d982dd8f95b26ab924f57aaf0964fb46be888e8844012",
+      "historical_body_preserved": true
+    },
+    {
+      "path": "research_modules/d5_terminal_association/PLAN.md",
+      "before_sha256": "160a832654c155194bf197d1c32eb33d0e0973dc47977995630c5c25c22003d7",
+      "after_sha256": "5379a7528960fc0d02b65d800c553269aa636526733dd078e1a1c054d3115feb",
+      "historical_body_preserved": true
+    },
+    {
+      "path": "research_modules/d5_terminal_association/README.md",
+      "before_sha256": "b08ef9e70ff442625be36032993f8fbd5da43e0ef376fee5bdca82a13b74af5f",
+      "after_sha256": "dc36731f227c7fab95e38162712a16bea4cbd831904030ca466b0c61da4174f4",
+      "historical_body_preserved": true
+    },
+    {
+      "path": "research_modules/d5_terminal_association/docs/AIRSIM_INTEGRATION_PLAN.md",
+      "before_sha256": "48ca45cd5918510ea548f6c132f8edabb295e4c3dd0126fdbeebd64a7ee58444",
+      "after_sha256": "7a0dfaaa6fb3d5ae6dea4b7d29d9ec8b1d12385193b8050788e45cb572cf33bb",
+      "historical_body_preserved": true
+    },
+    {
+      "path": "research_modules/d5_terminal_association/docs/ALGORITHM_AND_IMPLEMENTATION.md",
+      "before_sha256": "1609b671c5324c4232c99c20b0ff8192f50417862277f0b0af83c1ccbfb406e4",
+      "after_sha256": "5f66ac844a4acd22ee3a4ba4324769b518779ea3ab44ae91157e6f1f4f95a0ef",
+      "historical_body_preserved": true
+    },
+    {
+      "path": "research_modules/d5_terminal_association/docs/EXPERIMENT_REPORT.md",
+      "before_sha256": "a1f9150b9ac215247b8c2e43413fe4da7a3c0c1aea8c636519c7c12595ae9da6",
+      "after_sha256": "41f82196a78c42db0cbcfc7d8789c16000ce6c58a6539421fc205533c103ac8d",
+      "historical_body_preserved": true
+    },
+    {
+      "path": "research_modules/d5_terminal_association/docs/MODULE_PRINCIPLES_CN.md",
+      "before_sha256": "3101e9bfef02d200601c6bdae628234f4ece8fadea9166cf1a29f9bde00110a3",
+      "after_sha256": "790f97e673b003396bacea7e7b86bc021b8c493b55d228639a344a0aa99bd262",
+      "historical_body_preserved": true
+    },
+    {
+      "path": "research_modules/d5_terminal_association/docs/README.md",
+      "before_sha256": "33ba6e055879a02e5d0593c60191d74570bf13e268eef87ecb1dedf39f709384",
+      "after_sha256": "3438692246417e4959d9b0ae5a6902148fa5b4f658201dce195052cbbc621979",
+      "historical_body_preserved": true
+    },
+    {
+      "path": "research_modules/d6_evaluation_metrics/AIRSIM_INTEGRATION_PLAN.md",
+      "before_sha256": "82296cf5ad7637040f519742cd5c7244303070cbe16b89b1f886d767e215cccc",
+      "after_sha256": "c2bbc661b7211f40a136061c886c8ad083e9504754ad2dab4e277a80f8dbdf0c",
+      "historical_body_preserved": true
+    },
+    {
+      "path": "research_modules/d6_evaluation_metrics/EXPERIMENT_REPORT.md",
+      "before_sha256": "dc5d0ae65345213790a376c21ed7990338ceafd490b4cd0cdc8b15400afe1001",
+      "after_sha256": "f2b6d9cb2f3761804eae6cd0e166f4ca2eb30e9a2725bd24ef9014a1a3ac9a06",
+      "historical_body_preserved": true
+    },
+    {
+      "path": "research_modules/d6_evaluation_metrics/PLAN.md",
+      "before_sha256": "98cb3656f1ff3da0cfbde06bf3b7b6dc317df005f148d5a67131e911713f50ce",
+      "after_sha256": "95ac341cf826eb4baf30130758d9a98fbb38bd95054a937aa5ca08db338cea95",
+      "historical_body_preserved": true
+    },
+    {
+      "path": "research_modules/d6_evaluation_metrics/README.md",
+      "before_sha256": "45c41435b72bbfef60dea22b98419a9e0991fe8bfcb0047a22cf8c72fae7354b",
+      "after_sha256": "bda0dccb85bfdf91a25b3636a96c115caac2aa5c6f6e88351fff723451578e3c",
+      "historical_body_preserved": true
+    },
+    {
+      "path": "research_modules/d6_evaluation_metrics/docs/ALGORITHM_AND_IMPLEMENTATION.md",
+      "before_sha256": "a96e5621ed6916aef8104897f1cac6d44e7b527191527190b24e953fa075ed77",
+      "after_sha256": "c9211b2509cb59e38b1a6ee9b39baa7a94910fd7ddb8ca65ab62a7ea798d40ae",
+      "historical_body_preserved": true
+    },
+    {
+      "path": "research_modules/d6_evaluation_metrics/docs/EXPERIMENT_REPORT.md",
+      "before_sha256": "81c3a7da5fccb67f9a57b62c654a5b95822b353688d8c3e8664403c3ac6286af",
+      "after_sha256": "5837f5b31e149175cd31c1c353af128a9a26e37a326d4c5f4b1165ad62f44ac9",
+      "historical_body_preserved": true
+    },
+    {
+      "path": "research_modules/d6_evaluation_metrics/docs/MODULE_PRINCIPLES_CN.md",
+      "before_sha256": "962dbf908f08669793c8a6476eaab82383ffed84bece0b04134b44ef6b110080",
+      "after_sha256": "0046870533b77bae7bcb3ae7239e90f239869cb94bb95863c46adbcd90770c22",
+      "historical_body_preserved": true
+    },
+    {
+      "path": "research_modules/d6_evaluation_metrics/docs/README.md",
+      "before_sha256": "384bdca2d61c368233d83347620b450a46ce6e2902023ec6b5fd03783022daed",
+      "after_sha256": "d821101c4f5f7047cab5024a18be84268426580d3611773a97fde73a69bb0903",
+      "historical_body_preserved": true
+    },
+    {
+      "path": "research_modules/scalable_3d_simulation/README.md",
+      "before_sha256": "d428d1fe3459c8fc64cd2a8866b7752a1aad4f3ccb53fe29bed9a8c7c437a3e6",
+      "after_sha256": "bc4904ea717b80f27deaa77258c4de847157ff303792173f16380574b9475776",
+      "historical_body_preserved": true
+    },
+    {
+      "path": "subagent_reviews/D3_ASSIGNMENT_PLANNER_REVIEW_AND_PLAN.md",
+      "before_sha256": "bc12720640e16da9a8000435a70937bcdbc563527301166e447ccbab1d4396a1",
+      "after_sha256": "1170eb4e315805dbca77be1eafcf01bac7fe16a62445cb5f0f89ee3d94e3f98e",
+      "historical_body_preserved": true
+    },
+    {
+      "path": "subagent_reviews/D3_IMPLEMENTATION_GAP_AUDIT.md",
+      "before_sha256": "d215fd294fec44126f895f8865651acbbf008aca16e123b537966b27da3776dc",
+      "after_sha256": "9e8ee154a5d21327821794337a4691af1bd1b7b32327b3fe3c2e78152d2a6af6",
+      "historical_body_preserved": true
+    },
+    {
+      "path": "subagent_reviews/D3_M_TO_N_ASSIGNMENT_AND_SCHEDULING_REVIEW.md",
+      "before_sha256": "b78480572b72dea1baa4407f0271120c4f7c0d46f3e54046451b956113376f4f",
+      "after_sha256": "c8d790fd61fd10daf7ee98d37d1dac2bf8e561b70dabc786e14aa0659b7dcc8e",
+      "historical_body_preserved": true
+    },
+    {
+      "path": "subagent_reviews/D4_DISTRIBUTED_FALLBACK_REVIEW_AND_PLAN.md",
+      "before_sha256": "6d9e6999371bc1161e47f4ac24316ca63c633f49dafe74ca605da6ac2f849962",
+      "after_sha256": "06d62d2ce692ee07831b1e12ac868dc4ca86699e3fcaf27ebeec6181bf73e34f",
+      "historical_body_preserved": true
+    },
+    {
+      "path": "subagent_reviews/D4_IMPLEMENTATION_GAP_AUDIT.md",
+      "before_sha256": "c754a444db04a8761ff1a76167613b60b382595cdf3f51f52cbae8576cca76da",
+      "after_sha256": "8cd923c45d9cfa37ffad440c60b9deeb20144d33a0ab1432f80ca28f00a6b782",
+      "historical_body_preserved": true
+    },
+    {
+      "path": "subagent_reviews/D4_M_TO_N_DISTRIBUTED_COALITION_REVIEW.md",
+      "before_sha256": "33dc6e26344f466e9c5486b7fb340bd3d36e2d6707b579f90437ce42203ffc24",
+      "after_sha256": "43e24df3b502fe8b578e3b024992e8afb5a03a70c81cd5f2f980774c64515e19",
+      "historical_body_preserved": true
+    },
+    {
+      "path": "subagent_reviews/D5_IMPLEMENTATION_GAP_AUDIT.md",
+      "before_sha256": "2b880a315edb799b9c119e3bd0abfbe5b81d45cfda5a488bfb5696460d45377b",
+      "after_sha256": "991272420265d76d55542c8d94fe1f3e4fc3bac574ce8ffdd9236b0d3475b044",
+      "historical_body_preserved": true
+    },
+    {
+      "path": "subagent_reviews/D5_M_TO_N_TERMINAL_MULTIVIEW_REVIEW.md",
+      "before_sha256": "7ae4152a3bcaa2900fae6f4701fc93f69595493a073a20b26e727e2261178b72",
+      "after_sha256": "5a48fde12570ab5a612ba37a108d4ff520902b83ee3d6a4c57839d0522b99b61",
+      "historical_body_preserved": true
+    },
+    {
+      "path": "subagent_reviews/D5_TERMINAL_ASSOCIATION_REVIEW_AND_PLAN.md",
+      "before_sha256": "66fe39d6ef17dd546968db6c6c827dc6681b29bba6eba7f999efd4a932d09197",
+      "after_sha256": "b5b165f3df566b64d4ead145fc6ed6bd30b7d886569ee85c5deb0c9ffdfe1f56",
+      "historical_body_preserved": true
+    },
+    {
+      "path": "subagent_reviews/D6_EVALUATION_METRICS_REVIEW_AND_PLAN.md",
+      "before_sha256": "101bc5e9476d82306ad80249b22a28d62e7905f316d911f9c8ff3d1661a10495",
+      "after_sha256": "2d2334f7496dd86fe7f4e2f1910d380b0abf65fcde7c1f16c321c5e633522d9f",
+      "historical_body_preserved": true
+    },
+    {
+      "path": "subagent_reviews/D6_IMPLEMENTATION_GAP_AUDIT.md",
+      "before_sha256": "8366c4ef58eab8fde925d3f0949a7e9abfc0d934fe05e3574cb1ba43c65c1a08",
+      "after_sha256": "fceb0021b92433927c6b0259108847400ab3fa81a94802f2c39d7cdf53c38831",
+      "historical_body_preserved": true
+    },
+    {
+      "path": "subagent_reviews/D6_M_TO_N_EVALUATION_FRAMEWORK_REVIEW.md",
+      "before_sha256": "03efd1fb4b45bd6d3f857f6f700b167ad342f2882611d2cc5e32d3295400da58",
+      "after_sha256": "b312ca016aecd8b2a6141cac1b39ae7246f49a5f1a1271c72065ab9a8992db8c",
+      "historical_body_preserved": true
+    },
+    {
+      "path": "subagent_reviews/MAIN_IMPLEMENTATION_GAP_AUDIT.md",
+      "before_sha256": "29ad3c22c53caa2fa13faaa02c068f8ad606ff566d6500b42ba16ec3a00790c5",
+      "after_sha256": "1a4809e1f28228b475b3e4701f33ad2e923fa24fcc7ba84a1b7a15bd87b1b587",
+      "historical_body_preserved": true
+    }
+  ],
+  "new_module_documents": [
+    "research_modules/d3_assignment_planner/docs/CURRENT_EVIDENCE_STATUS_CN.md",
+    "research_modules/d4_distributed_fallback/docs/CURRENT_EVIDENCE_STATUS_CN.md",
+    "research_modules/d5_terminal_association/docs/CURRENT_EVIDENCE_STATUS_CN.md",
+    "research_modules/d6_evaluation_metrics/docs/CURRENT_EVIDENCE_STATUS_CN.md"
+  ],
+  "new_links": [
+    {
+      "source": "research_modules/d3_assignment_planner/PLAN.md",
+      "target": "docs/CURRENT_EVIDENCE_STATUS_CN.md",
+      "exists": true
+    },
+    {
+      "source": "research_modules/d3_assignment_planner/README.md",
+      "target": "docs/CURRENT_EVIDENCE_STATUS_CN.md",
+      "exists": true
+    },
+    {
+      "source": "research_modules/d3_assignment_planner/docs/AIRSIM_INTEGRATION_PLAN.md",
+      "target": "CURRENT_EVIDENCE_STATUS_CN.md",
+      "exists": true
+    },
+    {
+      "source": "research_modules/d3_assignment_planner/docs/ALGORITHM_AND_IMPLEMENTATION.md",
+      "target": "CURRENT_EVIDENCE_STATUS_CN.md",
+      "exists": true
+    },
+    {
+      "source": "research_modules/d3_assignment_planner/docs/EXPERIMENT_REPORT.md",
+      "target": "CURRENT_EVIDENCE_STATUS_CN.md",
+      "exists": true
+    },
+    {
+      "source": "research_modules/d3_assignment_planner/docs/MODULE_PRINCIPLES_CN.md",
+      "target": "CURRENT_EVIDENCE_STATUS_CN.md",
+      "exists": true
+    },
+    {
+      "source": "research_modules/d3_assignment_planner/docs/README.md",
+      "target": "CURRENT_EVIDENCE_STATUS_CN.md",
+      "exists": true
+    },
+    {
+      "source": "research_modules/d3_assignment_planner/reports/D3_MAIN_INTERFACE_REQUIREMENTS_A1_V3_CN.md",
+      "target": "../docs/CURRENT_EVIDENCE_STATUS_CN.md",
+      "exists": true
+    },
+    {
+      "source": "research_modules/d4_distributed_fallback/PLAN.md",
+      "target": "docs/CURRENT_EVIDENCE_STATUS_CN.md",
+      "exists": true
+    },
+    {
+      "source": "research_modules/d4_distributed_fallback/README.md",
+      "target": "docs/CURRENT_EVIDENCE_STATUS_CN.md",
+      "exists": true
+    },
+    {
+      "source": "research_modules/d4_distributed_fallback/docs/ALGORITHM_AND_IMPLEMENTATION.md",
+      "target": "CURRENT_EVIDENCE_STATUS_CN.md",
+      "exists": true
+    },
+    {
+      "source": "research_modules/d4_distributed_fallback/docs/MODULE_PRINCIPLES_CN.md",
+      "target": "CURRENT_EVIDENCE_STATUS_CN.md",
+      "exists": true
+    },
+    {
+      "source": "research_modules/d4_distributed_fallback/docs/README.md",
+      "target": "CURRENT_EVIDENCE_STATUS_CN.md",
+      "exists": true
+    },
+    {
+      "source": "research_modules/d4_distributed_fallback/reports/AIRSIM_INTEGRATION_PLAN.md",
+      "target": "../docs/CURRENT_EVIDENCE_STATUS_CN.md",
+      "exists": true
+    },
+    {
+      "source": "research_modules/d4_distributed_fallback/reports/EXPERIMENT_REPORT.md",
+      "target": "../docs/CURRENT_EVIDENCE_STATUS_CN.md",
+      "exists": true
+    },
+    {
+      "source": "research_modules/d5_terminal_association/PLAN.md",
+      "target": "docs/CURRENT_EVIDENCE_STATUS_CN.md",
+      "exists": true
+    },
+    {
+      "source": "research_modules/d5_terminal_association/README.md",
+      "target": "docs/CURRENT_EVIDENCE_STATUS_CN.md",
+      "exists": true
+    },
+    {
+      "source": "research_modules/d5_terminal_association/docs/AIRSIM_INTEGRATION_PLAN.md",
+      "target": "CURRENT_EVIDENCE_STATUS_CN.md",
+      "exists": true
+    },
+    {
+      "source": "research_modules/d5_terminal_association/docs/ALGORITHM_AND_IMPLEMENTATION.md",
+      "target": "CURRENT_EVIDENCE_STATUS_CN.md",
+      "exists": true
+    },
+    {
+      "source": "research_modules/d5_terminal_association/docs/EXPERIMENT_REPORT.md",
+      "target": "CURRENT_EVIDENCE_STATUS_CN.md",
+      "exists": true
+    },
+    {
+      "source": "research_modules/d5_terminal_association/docs/MODULE_PRINCIPLES_CN.md",
+      "target": "CURRENT_EVIDENCE_STATUS_CN.md",
+      "exists": true
+    },
+    {
+      "source": "research_modules/d5_terminal_association/docs/README.md",
+      "target": "CURRENT_EVIDENCE_STATUS_CN.md",
+      "exists": true
+    },
+    {
+      "source": "research_modules/d6_evaluation_metrics/AIRSIM_INTEGRATION_PLAN.md",
+      "target": "docs/CURRENT_EVIDENCE_STATUS_CN.md",
+      "exists": true
+    },
+    {
+      "source": "research_modules/d6_evaluation_metrics/EXPERIMENT_REPORT.md",
+      "target": "docs/CURRENT_EVIDENCE_STATUS_CN.md",
+      "exists": true
+    },
+    {
+      "source": "research_modules/d6_evaluation_metrics/EXPERIMENT_REPORT.md",
+      "target": "docs/EXPERIMENT_REPORT.md",
+      "exists": true
+    },
+    {
+      "source": "research_modules/d6_evaluation_metrics/PLAN.md",
+      "target": "docs/CURRENT_EVIDENCE_STATUS_CN.md",
+      "exists": true
+    },
+    {
+      "source": "research_modules/d6_evaluation_metrics/README.md",
+      "target": "docs/CURRENT_EVIDENCE_STATUS_CN.md",
+      "exists": true
+    },
+    {
+      "source": "research_modules/d6_evaluation_metrics/docs/ALGORITHM_AND_IMPLEMENTATION.md",
+      "target": "CURRENT_EVIDENCE_STATUS_CN.md",
+      "exists": true
+    },
+    {
+      "source": "research_modules/d6_evaluation_metrics/docs/EXPERIMENT_REPORT.md",
+      "target": "CURRENT_EVIDENCE_STATUS_CN.md",
+      "exists": true
+    },
+    {
+      "source": "research_modules/d6_evaluation_metrics/docs/EXPERIMENT_REPORT.md",
+      "target": "../EXPERIMENT_REPORT.md",
+      "exists": true
+    },
+    {
+      "source": "research_modules/d6_evaluation_metrics/docs/MODULE_PRINCIPLES_CN.md",
+      "target": "CURRENT_EVIDENCE_STATUS_CN.md",
+      "exists": true
+    },
+    {
+      "source": "research_modules/d6_evaluation_metrics/docs/README.md",
+      "target": "CURRENT_EVIDENCE_STATUS_CN.md",
+      "exists": true
+    },
+    {
+      "source": "research_modules/scalable_3d_simulation/README.md",
+      "target": "../../deliverables/project_audits/goal_owner_review_sync_20260926_v1/GOAL_REQUIREMENT_EVIDENCE_REVIEWED.csv",
+      "exists": true
+    },
+    {
+      "source": "research_modules/scalable_3d_simulation/README.md",
+      "target": "../../deliverables/project_audits/goal_module_status_sync_20260926_v1/README.md",
+      "exists": true
+    },
+    {
+      "source": "subagent_reviews/D3_ASSIGNMENT_PLANNER_REVIEW_AND_PLAN.md",
+      "target": "../research_modules/d3_assignment_planner/docs/CURRENT_EVIDENCE_STATUS_CN.md",
+      "exists": true
+    },
+    {
+      "source": "subagent_reviews/D3_IMPLEMENTATION_GAP_AUDIT.md",
+      "target": "../research_modules/d3_assignment_planner/docs/CURRENT_EVIDENCE_STATUS_CN.md",
+      "exists": true
+    },
+    {
+      "source": "subagent_reviews/D3_M_TO_N_ASSIGNMENT_AND_SCHEDULING_REVIEW.md",
+      "target": "../research_modules/d3_assignment_planner/docs/CURRENT_EVIDENCE_STATUS_CN.md",
+      "exists": true
+    },
+    {
+      "source": "subagent_reviews/D4_DISTRIBUTED_FALLBACK_REVIEW_AND_PLAN.md",
+      "target": "../research_modules/d4_distributed_fallback/docs/CURRENT_EVIDENCE_STATUS_CN.md",
+      "exists": true
+    },
+    {
+      "source": "subagent_reviews/D4_IMPLEMENTATION_GAP_AUDIT.md",
+      "target": "../research_modules/d4_distributed_fallback/docs/CURRENT_EVIDENCE_STATUS_CN.md",
+      "exists": true
+    },
+    {
+      "source": "subagent_reviews/D4_M_TO_N_DISTRIBUTED_COALITION_REVIEW.md",
+      "target": "../research_modules/d4_distributed_fallback/docs/CURRENT_EVIDENCE_STATUS_CN.md",
+      "exists": true
+    },
+    {
+      "source": "subagent_reviews/D5_IMPLEMENTATION_GAP_AUDIT.md",
+      "target": "../research_modules/d5_terminal_association/docs/CURRENT_EVIDENCE_STATUS_CN.md",
+      "exists": true
+    },
+    {
+      "source": "subagent_reviews/D5_M_TO_N_TERMINAL_MULTIVIEW_REVIEW.md",
+      "target": "../research_modules/d5_terminal_association/docs/CURRENT_EVIDENCE_STATUS_CN.md",
+      "exists": true
+    },
+    {
+      "source": "subagent_reviews/D5_TERMINAL_ASSOCIATION_REVIEW_AND_PLAN.md",
+      "target": "../research_modules/d5_terminal_association/docs/CURRENT_EVIDENCE_STATUS_CN.md",
+      "exists": true
+    },
+    {
+      "source": "subagent_reviews/D6_EVALUATION_METRICS_REVIEW_AND_PLAN.md",
+      "target": "../research_modules/d6_evaluation_metrics/docs/CURRENT_EVIDENCE_STATUS_CN.md",
+      "exists": true
+    },
+    {
+      "source": "subagent_reviews/D6_IMPLEMENTATION_GAP_AUDIT.md",
+      "target": "../research_modules/d6_evaluation_metrics/docs/CURRENT_EVIDENCE_STATUS_CN.md",
+      "exists": true
+    },
+    {
+      "source": "subagent_reviews/D6_M_TO_N_EVALUATION_FRAMEWORK_REVIEW.md",
+      "target": "../research_modules/d6_evaluation_metrics/docs/CURRENT_EVIDENCE_STATUS_CN.md",
+      "exists": true
+    },
+    {
+      "source": "subagent_reviews/MAIN_IMPLEMENTATION_GAP_AUDIT.md",
+      "target": "../deliverables/project_audits/goal_owner_review_sync_20260926_v1/GOAL_REQUIREMENT_EVIDENCE_REVIEWED.csv",
+      "exists": true
+    },
+    {
+      "source": "subagent_reviews/MAIN_IMPLEMENTATION_GAP_AUDIT.md",
+      "target": "../deliverables/project_audits/goal_module_status_sync_20260926_v1/README.md",
+      "exists": true
+    },
+    {
+      "source": "research_modules/d3_assignment_planner/docs/CURRENT_EVIDENCE_STATUS_CN.md",
+      "target": "../README.md",
+      "exists": true
+    },
+    {
+      "source": "research_modules/d3_assignment_planner/docs/CURRENT_EVIDENCE_STATUS_CN.md",
+      "target": "../PLAN.md",
+      "exists": true
+    },
+    {
+      "source": "research_modules/d3_assignment_planner/docs/CURRENT_EVIDENCE_STATUS_CN.md",
+      "target": "../../../subagent_reviews/D3_IMPLEMENTATION_GAP_AUDIT.md",
+      "exists": true
+    },
+    {
+      "source": "research_modules/d3_assignment_planner/docs/CURRENT_EVIDENCE_STATUS_CN.md",
+      "target": "../../../subagent_reviews/D3_ASSIGNMENT_PLANNER_REVIEW_AND_PLAN.md",
+      "exists": true
+    },
+    {
+      "source": "research_modules/d3_assignment_planner/docs/CURRENT_EVIDENCE_STATUS_CN.md",
+      "target": "../../../subagent_reviews/D3_M_TO_N_ASSIGNMENT_AND_SCHEDULING_REVIEW.md",
+      "exists": true
+    },
+    {
+      "source": "research_modules/d3_assignment_planner/docs/CURRENT_EVIDENCE_STATUS_CN.md",
+      "target": "MODULE_PRINCIPLES_CN.md",
+      "exists": true
+    },
+    {
+      "source": "research_modules/d3_assignment_planner/docs/CURRENT_EVIDENCE_STATUS_CN.md",
+      "target": "ALGORITHM_AND_IMPLEMENTATION.md",
+      "exists": true
+    },
+    {
+      "source": "research_modules/d3_assignment_planner/docs/CURRENT_EVIDENCE_STATUS_CN.md",
+      "target": "README.md",
+      "exists": true
+    },
+    {
+      "source": "research_modules/d3_assignment_planner/docs/CURRENT_EVIDENCE_STATUS_CN.md",
+      "target": "../reports/D3_MAIN_INTERFACE_REQUIREMENTS_A1_V3_CN.md",
+      "exists": true
+    },
+    {
+      "source": "research_modules/d3_assignment_planner/docs/CURRENT_EVIDENCE_STATUS_CN.md",
+      "target": "EXPERIMENT_REPORT.md",
+      "exists": true
+    },
+    {
+      "source": "research_modules/d3_assignment_planner/docs/CURRENT_EVIDENCE_STATUS_CN.md",
+      "target": "AIRSIM_INTEGRATION_PLAN.md",
+      "exists": true
+    },
+    {
+      "source": "research_modules/d3_assignment_planner/docs/CURRENT_EVIDENCE_STATUS_CN.md",
+      "target": "../../scalable_3d_simulation/docs/SCALABLE_3D_GOAL_COMPLETION_AUDIT_20260803_CN.md",
+      "exists": true
+    },
+    {
+      "source": "research_modules/d3_assignment_planner/docs/CURRENT_EVIDENCE_STATUS_CN.md",
+      "target": "../../scalable_3d_simulation/docs/SCALABLE_3D_GOAL_PROGRESS_AND_NEXT_PLAN_20260807_CN.md",
+      "exists": true
+    },
+    {
+      "source": "research_modules/d3_assignment_planner/docs/CURRENT_EVIDENCE_STATUS_CN.md",
+      "target": "../../../deliverables/project_audits/goal_resume_audit_20260926_v1/SOURCE_DIRECTORY_STATUS.json",
+      "exists": true
+    },
+    {
+      "source": "research_modules/d3_assignment_planner/docs/CURRENT_EVIDENCE_STATUS_CN.md",
+      "target": "../../../deliverables/project_audits/goal_resume_audit_20260926_v1/SUPPLEMENTAL_CHECKS.json",
+      "exists": true
+    },
+    {
+      "source": "research_modules/d3_assignment_planner/docs/CURRENT_EVIDENCE_STATUS_CN.md",
+      "target": "../../../deliverables/project_audits/goal_resume_audit_20260926_v1/历史结果定位与完整性核对_CN.md",
+      "exists": true
+    },
+    {
+      "source": "research_modules/d3_assignment_planner/docs/CURRENT_EVIDENCE_STATUS_CN.md",
+      "target": "../../../deliverables/project_audits/goal_owner_review_sync_20260926_v1/owners/D3_review.json",
+      "exists": true
+    },
+    {
+      "source": "research_modules/d4_distributed_fallback/docs/CURRENT_EVIDENCE_STATUS_CN.md",
+      "target": "../README.md",
+      "exists": true
+    },
+    {
+      "source": "research_modules/d4_distributed_fallback/docs/CURRENT_EVIDENCE_STATUS_CN.md",
+      "target": "../PLAN.md",
+      "exists": true
+    },
+    {
+      "source": "research_modules/d4_distributed_fallback/docs/CURRENT_EVIDENCE_STATUS_CN.md",
+      "target": "README.md",
+      "exists": true
+    },
+    {
+      "source": "research_modules/d4_distributed_fallback/docs/CURRENT_EVIDENCE_STATUS_CN.md",
+      "target": "MODULE_PRINCIPLES_CN.md",
+      "exists": true
+    },
+    {
+      "source": "research_modules/d4_distributed_fallback/docs/CURRENT_EVIDENCE_STATUS_CN.md",
+      "target": "ALGORITHM_AND_IMPLEMENTATION.md",
+      "exists": true
+    },
+    {
+      "source": "research_modules/d4_distributed_fallback/docs/CURRENT_EVIDENCE_STATUS_CN.md",
+      "target": "../reports/AIRSIM_INTEGRATION_PLAN.md",
+      "exists": true
+    },
+    {
+      "source": "research_modules/d4_distributed_fallback/docs/CURRENT_EVIDENCE_STATUS_CN.md",
+      "target": "../reports/EXPERIMENT_REPORT.md",
+      "exists": true
+    },
+    {
+      "source": "research_modules/d4_distributed_fallback/docs/CURRENT_EVIDENCE_STATUS_CN.md",
+      "target": "../../../subagent_reviews/D4_IMPLEMENTATION_GAP_AUDIT.md",
+      "exists": true
+    },
+    {
+      "source": "research_modules/d4_distributed_fallback/docs/CURRENT_EVIDENCE_STATUS_CN.md",
+      "target": "../../../subagent_reviews/D4_DISTRIBUTED_FALLBACK_REVIEW_AND_PLAN.md",
+      "exists": true
+    },
+    {
+      "source": "research_modules/d4_distributed_fallback/docs/CURRENT_EVIDENCE_STATUS_CN.md",
+      "target": "../../../subagent_reviews/D4_M_TO_N_DISTRIBUTED_COALITION_REVIEW.md",
+      "exists": true
+    },
+    {
+      "source": "research_modules/d4_distributed_fallback/docs/CURRENT_EVIDENCE_STATUS_CN.md",
+      "target": "../../scalable_3d_simulation/docs/SCALABLE_3D_GOAL_COMPLETION_AUDIT_20260803_CN.md",
+      "exists": true
+    },
+    {
+      "source": "research_modules/d4_distributed_fallback/docs/CURRENT_EVIDENCE_STATUS_CN.md",
+      "target": "../../scalable_3d_simulation/docs/SCALABLE_3D_GOAL_PROGRESS_AND_NEXT_PLAN_20260807_CN.md",
+      "exists": true
+    },
+    {
+      "source": "research_modules/d4_distributed_fallback/docs/CURRENT_EVIDENCE_STATUS_CN.md",
+      "target": "../../../deliverables/project_audits/goal_resume_audit_20260926_v1/SOURCE_DIRECTORY_STATUS.json",
+      "exists": true
+    },
+    {
+      "source": "research_modules/d4_distributed_fallback/docs/CURRENT_EVIDENCE_STATUS_CN.md",
+      "target": "../../../deliverables/project_audits/goal_resume_audit_20260926_v1/SUPPLEMENTAL_CHECKS.json",
+      "exists": true
+    },
+    {
+      "source": "research_modules/d4_distributed_fallback/docs/CURRENT_EVIDENCE_STATUS_CN.md",
+      "target": "../../../deliverables/project_audits/goal_resume_audit_20260926_v1/历史结果定位与完整性核对_CN.md",
+      "exists": true
+    },
+    {
+      "source": "research_modules/d4_distributed_fallback/docs/CURRENT_EVIDENCE_STATUS_CN.md",
+      "target": "../../../deliverables/project_audits/goal_owner_review_sync_20260926_v1/owners/D4_review.json",
+      "exists": true
+    },
+    {
+      "source": "research_modules/d5_terminal_association/docs/CURRENT_EVIDENCE_STATUS_CN.md",
+      "target": "../../../deliverables/project_audits/goal_owner_review_sync_20260926_v1/owners/D5_review.json",
+      "exists": true
+    },
+    {
+      "source": "research_modules/d5_terminal_association/docs/CURRENT_EVIDENCE_STATUS_CN.md",
+      "target": "../../scalable_3d_simulation/docs/SCALABLE_3D_GOAL_COMPLETION_AUDIT_20260803_CN.md",
+      "exists": true
+    },
+    {
+      "source": "research_modules/d5_terminal_association/docs/CURRENT_EVIDENCE_STATUS_CN.md",
+      "target": "../../scalable_3d_simulation/docs/SCALABLE_3D_GOAL_PROGRESS_AND_NEXT_PLAN_20260807_CN.md",
+      "exists": true
+    },
+    {
+      "source": "research_modules/d5_terminal_association/docs/CURRENT_EVIDENCE_STATUS_CN.md",
+      "target": "../../../deliverables/project_audits/goal_resume_audit_20260926_v1/SOURCE_INTEGRITY_CHECKS.csv",
+      "exists": true
+    },
+    {
+      "source": "research_modules/d5_terminal_association/docs/CURRENT_EVIDENCE_STATUS_CN.md",
+      "target": "EXPERIMENT_REPORT.md",
+      "exists": true
+    },
+    {
+      "source": "research_modules/d5_terminal_association/docs/CURRENT_EVIDENCE_STATUS_CN.md",
+      "target": "ALGORITHM_AND_IMPLEMENTATION.md",
+      "exists": true
+    },
+    {
+      "source": "research_modules/d5_terminal_association/docs/CURRENT_EVIDENCE_STATUS_CN.md",
+      "target": "../../airsim_runtime/baselines/d5_long_range_20target_20260810/baseline_manifest.json",
+      "exists": true
+    },
+    {
+      "source": "research_modules/d5_terminal_association/docs/CURRENT_EVIDENCE_STATUS_CN.md",
+      "target": "AIRSIM_INTEGRATION_PLAN.md",
+      "exists": true
+    },
+    {
+      "source": "research_modules/d5_terminal_association/docs/CURRENT_EVIDENCE_STATUS_CN.md",
+      "target": "../README.md",
+      "exists": true
+    },
+    {
+      "source": "research_modules/d5_terminal_association/docs/CURRENT_EVIDENCE_STATUS_CN.md",
+      "target": "../PLAN.md",
+      "exists": true
+    },
+    {
+      "source": "research_modules/d5_terminal_association/docs/CURRENT_EVIDENCE_STATUS_CN.md",
+      "target": "MODULE_PRINCIPLES_CN.md",
+      "exists": true
+    },
+    {
+      "source": "research_modules/d5_terminal_association/docs/CURRENT_EVIDENCE_STATUS_CN.md",
+      "target": "ALGORITHM_AND_IMPLEMENTATION.md",
+      "exists": true
+    },
+    {
+      "source": "research_modules/d5_terminal_association/docs/CURRENT_EVIDENCE_STATUS_CN.md",
+      "target": "EXPERIMENT_REPORT.md",
+      "exists": true
+    },
+    {
+      "source": "research_modules/d5_terminal_association/docs/CURRENT_EVIDENCE_STATUS_CN.md",
+      "target": "../../../subagent_reviews/D5_IMPLEMENTATION_GAP_AUDIT.md",
+      "exists": true
+    },
+    {
+      "source": "research_modules/d5_terminal_association/docs/CURRENT_EVIDENCE_STATUS_CN.md",
+      "target": "../../../subagent_reviews/D5_TERMINAL_ASSOCIATION_REVIEW_AND_PLAN.md",
+      "exists": true
+    },
+    {
+      "source": "research_modules/d5_terminal_association/docs/CURRENT_EVIDENCE_STATUS_CN.md",
+      "target": "../../../subagent_reviews/D5_M_TO_N_TERMINAL_MULTIVIEW_REVIEW.md",
+      "exists": true
+    },
+    {
+      "source": "research_modules/d5_terminal_association/docs/CURRENT_EVIDENCE_STATUS_CN.md",
+      "target": "AIRSIM_INTEGRATION_PLAN.md",
+      "exists": true
+    },
+    {
+      "source": "research_modules/d5_terminal_association/docs/CURRENT_EVIDENCE_STATUS_CN.md",
+      "target": "../../../deliverables/project_audits/goal_resume_audit_20260926_v1/历史结果定位与完整性核对_CN.md",
+      "exists": true
+    },
+    {
+      "source": "research_modules/d6_evaluation_metrics/docs/CURRENT_EVIDENCE_STATUS_CN.md",
+      "target": "../../../deliverables/project_audits/goal_owner_review_sync_20260926_v1/owners/D6_review.json",
+      "exists": true
+    },
+    {
+      "source": "research_modules/d6_evaluation_metrics/docs/CURRENT_EVIDENCE_STATUS_CN.md",
+      "target": "../../scalable_3d_simulation/docs/SCALABLE_3D_GOAL_COMPLETION_AUDIT_20260803_CN.md",
+      "exists": true
+    },
+    {
+      "source": "research_modules/d6_evaluation_metrics/docs/CURRENT_EVIDENCE_STATUS_CN.md",
+      "target": "../../scalable_3d_simulation/docs/SCALABLE_3D_GOAL_PROGRESS_AND_NEXT_PLAN_20260807_CN.md",
+      "exists": true
+    },
+    {
+      "source": "research_modules/d6_evaluation_metrics/docs/CURRENT_EVIDENCE_STATUS_CN.md",
+      "target": "../../scalable_3d_simulation/docs/SCALABLE_3D_FORMAL_R0_80E55EB_SHARDS0_9_20260731_CN.md",
+      "exists": true
+    },
+    {
+      "source": "research_modules/d6_evaluation_metrics/docs/CURRENT_EVIDENCE_STATUS_CN.md",
+      "target": "../../../deliverables/project_audits/goal_resume_audit_20260926_v1/历史结果定位与完整性核对_CN.md",
+      "exists": true
+    },
+    {
+      "source": "research_modules/d6_evaluation_metrics/docs/CURRENT_EVIDENCE_STATUS_CN.md",
+      "target": "../../../deliverables/project_audits/goal_resume_audit_20260926_v1/SUPPLEMENTAL_CHECKS.json",
+      "exists": true
+    },
+    {
+      "source": "research_modules/d6_evaluation_metrics/docs/CURRENT_EVIDENCE_STATUS_CN.md",
+      "target": "../../airsim_runtime/baselines/d5_long_range_20target_20260810/baseline_manifest.json",
+      "exists": true
+    },
+    {
+      "source": "research_modules/d6_evaluation_metrics/docs/CURRENT_EVIDENCE_STATUS_CN.md",
+      "target": "EXPERIMENT_REPORT.md",
+      "exists": true
+    },
+    {
+      "source": "research_modules/d6_evaluation_metrics/docs/CURRENT_EVIDENCE_STATUS_CN.md",
+      "target": "../../../deliverables/project_audits/goal_owner_review_sync_20260926_v1/MAIN_REVIEW.json",
+      "exists": true
+    },
+    {
+      "source": "research_modules/d6_evaluation_metrics/docs/CURRENT_EVIDENCE_STATUS_CN.md",
+      "target": "../README.md",
+      "exists": true
+    },
+    {
+      "source": "research_modules/d6_evaluation_metrics/docs/CURRENT_EVIDENCE_STATUS_CN.md",
+      "target": "../PLAN.md",
+      "exists": true
+    },
+    {
+      "source": "research_modules/d6_evaluation_metrics/docs/CURRENT_EVIDENCE_STATUS_CN.md",
+      "target": "README.md",
+      "exists": true
+    },
+    {
+      "source": "research_modules/d6_evaluation_metrics/docs/CURRENT_EVIDENCE_STATUS_CN.md",
+      "target": "../EXPERIMENT_REPORT.md",
+      "exists": true
+    },
+    {
+      "source": "research_modules/d6_evaluation_metrics/docs/CURRENT_EVIDENCE_STATUS_CN.md",
+      "target": "EXPERIMENT_REPORT.md",
+      "exists": true
+    },
+    {
+      "source": "research_modules/d6_evaluation_metrics/docs/CURRENT_EVIDENCE_STATUS_CN.md",
+      "target": "../AIRSIM_INTEGRATION_PLAN.md",
+      "exists": true
+    },
+    {
+      "source": "research_modules/d6_evaluation_metrics/docs/CURRENT_EVIDENCE_STATUS_CN.md",
+      "target": "MODULE_PRINCIPLES_CN.md",
+      "exists": true
+    },
+    {
+      "source": "research_modules/d6_evaluation_metrics/docs/CURRENT_EVIDENCE_STATUS_CN.md",
+      "target": "ALGORITHM_AND_IMPLEMENTATION.md",
+      "exists": true
+    },
+    {
+      "source": "research_modules/d6_evaluation_metrics/docs/CURRENT_EVIDENCE_STATUS_CN.md",
+      "target": "../../../subagent_reviews/D6_IMPLEMENTATION_GAP_AUDIT.md",
+      "exists": true
+    },
+    {
+      "source": "research_modules/d6_evaluation_metrics/docs/CURRENT_EVIDENCE_STATUS_CN.md",
+      "target": "../../../subagent_reviews/D6_EVALUATION_METRICS_REVIEW_AND_PLAN.md",
+      "exists": true
+    },
+    {
+      "source": "research_modules/d6_evaluation_metrics/docs/CURRENT_EVIDENCE_STATUS_CN.md",
+      "target": "../../../subagent_reviews/D6_M_TO_N_EVALUATION_FRAMEWORK_REVIEW.md",
+      "exists": true
+    },
+    {
+      "source": "research_modules/d6_evaluation_metrics/docs/CURRENT_EVIDENCE_STATUS_CN.md",
+      "target": "README.md",
+      "exists": true
+    }
+  ],
+  "previous_reports_unchanged": true,
+  "failures": [],
+  "algorithm_tests_run": false,
+  "experiments_run": false
+}

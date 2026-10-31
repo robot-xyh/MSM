@@ -1,5 +1,10 @@
 # D3 集中式资源-目标分配实验报告
 
+<!-- evidence-status-sync:20260926:begin -->
+> 2026-09-26 仅同步资料，不是新实验日期。当前证据统一见[当前证据状态](CURRENT_EVIDENCE_STATUS_CN.md)。
+> 下文旧日期、状态及待办仅作带日期历史阶段阅读；原Goal状态、能力、GAP及权限不因本次同步改变。
+<!-- evidence-status-sync:20260926:end -->
+
 ## A1 v3 300 条最终 dirty 开发探针（2026-08-02）
 
 main 最终探针覆盖冻结 schedule 的 15 个 cell 和 300 个 episode，结果为

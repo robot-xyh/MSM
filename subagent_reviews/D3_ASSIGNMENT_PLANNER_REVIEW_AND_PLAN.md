@@ -1,5 +1,10 @@
 # D3 中心化资源-目标分配综述及子方案
 
+<!-- evidence-status-sync:20260926:begin -->
+> 2026-09-26 仅同步资料，不是新实验日期。当前证据统一见[当前证据状态](../research_modules/d3_assignment_planner/docs/CURRENT_EVIDENCE_STATUS_CN.md)。
+> 下文旧日期、状态及待办仅作带日期历史阶段阅读；原Goal状态、能力、GAP及权限不因本次同步改变。
+<!-- evidence-status-sync:20260926:end -->
+
 ## 2026-08-02 当前 A1 v3 复核状态
 
 最终 dirty 开发探针已覆盖 15 个 cell、300 个 episode，结果为

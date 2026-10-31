@@ -1,0 +1,564 @@
+{
+  "module": "main",
+  "reviewed_at": "2026-09-26T14:20:07.306958+00:00",
+  "scope": "主级既有材料和版本证据复核，不重新执行模块算法，不代替模块所有者技术认证。",
+  "requirements": [
+    {
+      "requirement_id": "G01",
+      "original_status": "已完成",
+      "review_result": "限定认可",
+      "suggested_status": "已完成",
+      "evidence": [
+        "research_modules/scalable_3d_simulation/docs/SCALABLE_3D_GOAL_COMPLETION_AUDIT_20260803_CN.md",
+        "research_modules/scalable_3d_simulation/docs/SCALABLE_3D_GOAL_PROGRESS_AND_NEXT_PLAN_20260807_CN.md",
+        "deliverables/project_audits/goal_resume_audit_20260926_v1/原Goal逐项状态对照_CN.md",
+        "deliverables/project_audits/goal_resume_audit_20260926_v1/STATIC_IMPORT_EVIDENCE.json"
+      ],
+      "reason": "原专项分支仍为当前提交祖先，主控目录存在；完成只指分支和目录建立。",
+      "remaining_evidence": "仅指分支及目录建立不等于总体验收"
+    },
+    {
+      "requirement_id": "G02",
+      "original_status": "已完成",
+      "review_result": "限定认可",
+      "suggested_status": "已完成",
+      "evidence": [
+        "research_modules/scalable_3d_simulation/docs/SCALABLE_3D_GOAL_COMPLETION_AUDIT_20260803_CN.md",
+        "research_modules/scalable_3d_simulation/docs/SCALABLE_3D_GOAL_PROGRESS_AND_NEXT_PLAN_20260807_CN.md",
+        "deliverables/project_audits/goal_resume_audit_20260926_v1/原Goal逐项状态对照_CN.md",
+        "deliverables/project_audits/goal_resume_audit_20260926_v1/STATIC_IMPORT_EVIDENCE.json"
+      ],
+      "reason": "模块目录分工及原规则框架保留；不据目录结构认证全部历史分工过程。",
+      "remaining_evidence": "未重新审查全部历史提交的分工执行"
+    },
+    {
+      "requirement_id": "G03",
+      "original_status": "已完成",
+      "review_result": "限定认可",
+      "suggested_status": "已完成",
+      "evidence": [
+        "research_modules/scalable_3d_simulation/docs/SCALABLE_3D_GOAL_COMPLETION_AUDIT_20260803_CN.md",
+        "research_modules/scalable_3d_simulation/docs/SCALABLE_3D_GOAL_PROGRESS_AND_NEXT_PLAN_20260807_CN.md",
+        "deliverables/project_audits/goal_resume_audit_20260926_v1/原Goal逐项状态对照_CN.md",
+        "deliverables/project_audits/goal_resume_audit_20260926_v1/STATIC_IMPORT_EVIDENCE.json"
+      ],
+      "reason": "原Goal文档明确为质点科研仿真；与后续独立AirSim接口或实机用途分别登记。",
+      "remaining_evidence": "此结论只适用于原Goal主模块边界"
+    },
+    {
+      "requirement_id": "G04",
+      "original_status": "部分完成",
+      "review_result": "限定认可",
+      "suggested_status": "部分完成",
+      "evidence": [
+        "research_modules/scalable_3d_simulation/docs/SCALABLE_3D_GOAL_COMPLETION_AUDIT_20260803_CN.md",
+        "research_modules/scalable_3d_simulation/docs/SCALABLE_3D_GOAL_PROGRESS_AND_NEXT_PLAN_20260807_CN.md",
+        "deliverables/project_audits/goal_resume_audit_20260926_v1/原Goal逐项状态对照_CN.md",
+        "deliverables/project_audits/goal_resume_audit_20260926_v1/STATIC_IMPORT_EVIDENCE.json"
+      ],
+      "reason": "对照原审计、8月7日进展及本轮版本核对，保留主级登记；450组原载荷未定位且完整体系最终验证未完成。本轮不替模块所有者认证算法。",
+      "remaining_evidence": "450组原载荷未定位且完整体系最终验证未完成"
+    },
+    {
+      "requirement_id": "G06",
+      "original_status": "部分完成",
+      "review_result": "限定认可",
+      "suggested_status": "部分完成",
+      "evidence": [
+        "research_modules/scalable_3d_simulation/docs/SCALABLE_3D_GOAL_COMPLETION_AUDIT_20260803_CN.md",
+        "research_modules/scalable_3d_simulation/docs/SCALABLE_3D_GOAL_PROGRESS_AND_NEXT_PLAN_20260807_CN.md",
+        "deliverables/project_audits/goal_resume_audit_20260926_v1/原Goal逐项状态对照_CN.md",
+        "deliverables/project_audits/goal_resume_audit_20260926_v1/STATIC_IMPORT_EVIDENCE.json"
+      ],
+      "reason": "对照原审计、8月7日进展及本轮版本核对，保留主级登记；完整场景结果及需求满足质量未验收。本轮不替模块所有者认证算法。",
+      "remaining_evidence": "完整场景结果及需求满足质量未验收"
+    },
+    {
+      "requirement_id": "G08",
+      "original_status": "部分完成",
+      "review_result": "限定认可",
+      "suggested_status": "部分完成",
+      "evidence": [
+        "research_modules/scalable_3d_simulation/docs/SCALABLE_3D_GOAL_COMPLETION_AUDIT_20260803_CN.md",
+        "research_modules/scalable_3d_simulation/docs/SCALABLE_3D_GOAL_PROGRESS_AND_NEXT_PLAN_20260807_CN.md",
+        "deliverables/project_audits/goal_resume_audit_20260926_v1/原Goal逐项状态对照_CN.md",
+        "deliverables/project_audits/goal_resume_audit_20260926_v1/STATIC_IMPORT_EVIDENCE.json"
+      ],
+      "reason": "对照原审计、8月7日进展及本轮版本核对，保留主级登记；独立运行未绑定原Goal完整体系的同版本验收。本轮不替模块所有者认证算法。",
+      "remaining_evidence": "独立运行未绑定原Goal完整体系的同版本验收"
+    },
+    {
+      "requirement_id": "G09",
+      "original_status": "已完成",
+      "review_result": "限定认可",
+      "suggested_status": "已完成",
+      "evidence": [
+        "research_modules/scalable_3d_simulation/docs/SCALABLE_3D_GOAL_COMPLETION_AUDIT_20260803_CN.md",
+        "research_modules/scalable_3d_simulation/docs/SCALABLE_3D_GOAL_PROGRESS_AND_NEXT_PLAN_20260807_CN.md",
+        "deliverables/project_audits/goal_resume_audit_20260926_v1/原Goal逐项状态对照_CN.md",
+        "deliverables/project_audits/goal_resume_audit_20260926_v1/STATIC_IMPORT_EVIDENCE.json"
+      ],
+      "reason": "保持历史软件合同范围内已完成判断。原主模块未变，本轮没有重跑坐标或动力学测试。",
+      "remaining_evidence": "已完成限于历史软件合同;本轮未重跑测试"
+    },
+    {
+      "requirement_id": "G10",
+      "original_status": "部分完成",
+      "review_result": "限定认可",
+      "suggested_status": "部分完成",
+      "evidence": [
+        "research_modules/scalable_3d_simulation/docs/SCALABLE_3D_GOAL_COMPLETION_AUDIT_20260803_CN.md",
+        "research_modules/scalable_3d_simulation/docs/SCALABLE_3D_GOAL_PROGRESS_AND_NEXT_PLAN_20260807_CN.md",
+        "deliverables/project_audits/goal_resume_audit_20260926_v1/原Goal逐项状态对照_CN.md",
+        "deliverables/project_audits/goal_resume_audit_20260926_v1/STATIC_IMPORT_EVIDENCE.json"
+      ],
+      "reason": "对照原审计、8月7日进展及本轮版本核对，保留主级登记；最终全时长的各约束统计未完成。本轮不替模块所有者认证算法。",
+      "remaining_evidence": "最终全时长的各约束统计未完成"
+    },
+    {
+      "requirement_id": "G11",
+      "original_status": "部分完成",
+      "review_result": "限定认可",
+      "suggested_status": "部分完成",
+      "evidence": [
+        "research_modules/scalable_3d_simulation/docs/SCALABLE_3D_GOAL_COMPLETION_AUDIT_20260803_CN.md",
+        "research_modules/scalable_3d_simulation/docs/SCALABLE_3D_GOAL_PROGRESS_AND_NEXT_PLAN_20260807_CN.md",
+        "deliverables/project_audits/goal_resume_audit_20260926_v1/原Goal逐项状态对照_CN.md",
+        "deliverables/project_audits/goal_resume_audit_20260926_v1/STATIC_IMPORT_EVIDENCE.json"
+      ],
+      "reason": "对照原审计、8月7日进展及本轮版本核对，保留主级登记；全场景与完整物理结果未完成。本轮不替模块所有者认证算法。",
+      "remaining_evidence": "全场景与完整物理结果未完成"
+    },
+    {
+      "requirement_id": "G12",
+      "original_status": "部分完成",
+      "review_result": "限定认可",
+      "suggested_status": "部分完成",
+      "evidence": [
+        "research_modules/scalable_3d_simulation/docs/SCALABLE_3D_GOAL_COMPLETION_AUDIT_20260803_CN.md",
+        "research_modules/scalable_3d_simulation/docs/SCALABLE_3D_GOAL_PROGRESS_AND_NEXT_PLAN_20260807_CN.md",
+        "deliverables/project_audits/goal_resume_audit_20260926_v1/原Goal逐项状态对照_CN.md",
+        "deliverables/project_audits/goal_resume_audit_20260926_v1/STATIC_IMPORT_EVIDENCE.json"
+      ],
+      "reason": "对照原审计、8月7日进展及本轮版本核对，保留主级登记；200路资源相机完整运行未验收。本轮不替模块所有者认证算法。",
+      "remaining_evidence": "200路资源相机完整运行未验收"
+    },
+    {
+      "requirement_id": "G13",
+      "original_status": "部分完成",
+      "review_result": "限定认可",
+      "suggested_status": "部分完成",
+      "evidence": [
+        "research_modules/scalable_3d_simulation/docs/SCALABLE_3D_GOAL_COMPLETION_AUDIT_20260803_CN.md",
+        "research_modules/scalable_3d_simulation/docs/SCALABLE_3D_GOAL_PROGRESS_AND_NEXT_PLAN_20260807_CN.md",
+        "deliverables/project_audits/goal_resume_audit_20260926_v1/原Goal逐项状态对照_CN.md",
+        "deliverables/project_audits/goal_resume_audit_20260926_v1/STATIC_IMPORT_EVIDENCE.json"
+      ],
+      "reason": "对照原审计、8月7日进展及本轮版本核对，保留主级登记；日志代码存在不等于原始数据完整保留。本轮不替模块所有者认证算法。",
+      "remaining_evidence": "日志代码存在不等于原始数据完整保留"
+    },
+    {
+      "requirement_id": "G14",
+      "original_status": "部分完成",
+      "review_result": "限定认可",
+      "suggested_status": "部分完成",
+      "evidence": [
+        "research_modules/scalable_3d_simulation/docs/SCALABLE_3D_GOAL_COMPLETION_AUDIT_20260803_CN.md",
+        "research_modules/scalable_3d_simulation/docs/SCALABLE_3D_GOAL_PROGRESS_AND_NEXT_PLAN_20260807_CN.md",
+        "deliverables/project_audits/goal_resume_audit_20260926_v1/原Goal逐项状态对照_CN.md",
+        "deliverables/project_audits/goal_resume_audit_20260926_v1/STATIC_IMPORT_EVIDENCE.json"
+      ],
+      "reason": "对照原审计、8月7日进展及本轮版本核对，保留主级登记；代表相机域及200资源相机验收缺失。本轮不替模块所有者认证算法。",
+      "remaining_evidence": "代表相机域及200资源相机验收缺失"
+    },
+    {
+      "requirement_id": "G15",
+      "original_status": "部分完成",
+      "review_result": "限定认可",
+      "suggested_status": "部分完成",
+      "evidence": [
+        "research_modules/scalable_3d_simulation/docs/SCALABLE_3D_GOAL_COMPLETION_AUDIT_20260803_CN.md",
+        "research_modules/scalable_3d_simulation/docs/SCALABLE_3D_GOAL_PROGRESS_AND_NEXT_PLAN_20260807_CN.md",
+        "deliverables/project_audits/goal_resume_audit_20260926_v1/原Goal逐项状态对照_CN.md",
+        "deliverables/project_audits/goal_resume_audit_20260926_v1/STATIC_IMPORT_EVIDENCE.json"
+      ],
+      "reason": "对照原审计、8月7日进展及本轮版本核对，保留主级登记；原Goal整套误差场景统一评价未完成。本轮不替模块所有者认证算法。",
+      "remaining_evidence": "原Goal整套误差场景统一评价未完成"
+    },
+    {
+      "requirement_id": "G16",
+      "original_status": "部分完成",
+      "review_result": "限定认可",
+      "suggested_status": "部分完成",
+      "evidence": [
+        "research_modules/scalable_3d_simulation/docs/SCALABLE_3D_GOAL_COMPLETION_AUDIT_20260803_CN.md",
+        "research_modules/scalable_3d_simulation/docs/SCALABLE_3D_GOAL_PROGRESS_AND_NEXT_PLAN_20260807_CN.md",
+        "deliverables/project_audits/goal_resume_audit_20260926_v1/原Goal逐项状态对照_CN.md",
+        "deliverables/project_audits/goal_resume_audit_20260926_v1/STATIC_IMPORT_EVIDENCE.json"
+      ],
+      "reason": "对照原审计、8月7日进展及本轮版本核对，保留主级登记；统一消息完整性与订阅消费仍缺证据。本轮不替模块所有者认证算法。",
+      "remaining_evidence": "统一消息完整性与订阅消费仍缺证据"
+    },
+    {
+      "requirement_id": "G32",
+      "original_status": "部分完成",
+      "review_result": "限定认可",
+      "suggested_status": "部分完成",
+      "evidence": [
+        "research_modules/scalable_3d_simulation/docs/SCALABLE_3D_GOAL_COMPLETION_AUDIT_20260803_CN.md",
+        "research_modules/scalable_3d_simulation/docs/SCALABLE_3D_GOAL_PROGRESS_AND_NEXT_PLAN_20260807_CN.md",
+        "deliverables/project_audits/goal_resume_audit_20260926_v1/原Goal逐项状态对照_CN.md",
+        "deliverables/project_audits/goal_resume_audit_20260926_v1/STATIC_IMPORT_EVIDENCE.json"
+      ],
+      "reason": "对照原审计、8月7日进展及本轮版本核对，保留主级登记；无当前代际全变体非退化验证。本轮不替模块所有者认证算法。",
+      "remaining_evidence": "无当前代际全变体非退化验证"
+    },
+    {
+      "requirement_id": "G33",
+      "original_status": "部分完成",
+      "review_result": "限定认可",
+      "suggested_status": "部分完成",
+      "evidence": [
+        "research_modules/scalable_3d_simulation/docs/SCALABLE_3D_GOAL_COMPLETION_AUDIT_20260803_CN.md",
+        "research_modules/scalable_3d_simulation/docs/SCALABLE_3D_GOAL_PROGRESS_AND_NEXT_PLAN_20260807_CN.md",
+        "deliverables/project_audits/goal_resume_audit_20260926_v1/原Goal逐项状态对照_CN.md",
+        "deliverables/project_audits/goal_resume_audit_20260926_v1/STATIC_IMPORT_EVIDENCE.json"
+      ],
+      "reason": "对照原审计、8月7日进展及本轮版本核对，保留主级登记；原正式完整矩阵缺结果。本轮不替模块所有者认证算法。",
+      "remaining_evidence": "原正式完整矩阵缺结果"
+    },
+    {
+      "requirement_id": "G34",
+      "original_status": "部分完成",
+      "review_result": "限定认可",
+      "suggested_status": "部分完成",
+      "evidence": [
+        "research_modules/scalable_3d_simulation/docs/SCALABLE_3D_GOAL_COMPLETION_AUDIT_20260803_CN.md",
+        "research_modules/scalable_3d_simulation/docs/SCALABLE_3D_GOAL_PROGRESS_AND_NEXT_PLAN_20260807_CN.md",
+        "deliverables/project_audits/goal_resume_audit_20260926_v1/原Goal逐项状态对照_CN.md",
+        "deliverables/project_audits/goal_resume_audit_20260926_v1/STATIC_IMPORT_EVIDENCE.json"
+      ],
+      "reason": "十个正式分片的摘要与预期哈希可查，完整载荷仍未定位；后半450组无完成证据。",
+      "remaining_evidence": "摘要可查、完整记录未定位;后半450无完成证据"
+    },
+    {
+      "requirement_id": "G37",
+      "original_status": "未完成",
+      "review_result": "限定认可",
+      "suggested_status": "未完成",
+      "evidence": [
+        "research_modules/scalable_3d_simulation/docs/SCALABLE_3D_GOAL_COMPLETION_AUDIT_20260803_CN.md",
+        "research_modules/scalable_3d_simulation/docs/SCALABLE_3D_GOAL_PROGRESS_AND_NEXT_PLAN_20260807_CN.md",
+        "deliverables/project_audits/goal_resume_audit_20260926_v1/原Goal逐项状态对照_CN.md",
+        "deliverables/project_audits/goal_resume_audit_20260926_v1/STATIC_IMPORT_EVIDENCE.json"
+      ],
+      "reason": "对照原审计、8月7日进展及本轮版本核对，保留主级登记；缺组合正式结果且不能由单项演示代替。本轮不替模块所有者认证算法。",
+      "remaining_evidence": "缺组合正式结果且不能由单项演示代替"
+    },
+    {
+      "requirement_id": "G38",
+      "original_status": "未完成",
+      "review_result": "限定认可",
+      "suggested_status": "未完成",
+      "evidence": [
+        "research_modules/scalable_3d_simulation/docs/SCALABLE_3D_GOAL_COMPLETION_AUDIT_20260803_CN.md",
+        "research_modules/scalable_3d_simulation/docs/SCALABLE_3D_GOAL_PROGRESS_AND_NEXT_PLAN_20260807_CN.md",
+        "deliverables/project_audits/goal_resume_audit_20260926_v1/原Goal逐项状态对照_CN.md",
+        "deliverables/project_audits/goal_resume_audit_20260926_v1/STATIC_IMPORT_EVIDENCE.json"
+      ],
+      "reason": "对照原审计、8月7日进展及本轮版本核对，保留主级登记；缺最终故障矩阵和统一完整结果。本轮不替模块所有者认证算法。",
+      "remaining_evidence": "缺最终故障矩阵和统一完整结果"
+    },
+    {
+      "requirement_id": "G39",
+      "original_status": "部分完成",
+      "review_result": "限定认可",
+      "suggested_status": "部分完成",
+      "evidence": [
+        "research_modules/scalable_3d_simulation/docs/SCALABLE_3D_GOAL_COMPLETION_AUDIT_20260803_CN.md",
+        "research_modules/scalable_3d_simulation/docs/SCALABLE_3D_GOAL_PROGRESS_AND_NEXT_PLAN_20260807_CN.md",
+        "deliverables/project_audits/goal_resume_audit_20260926_v1/原Goal逐项状态对照_CN.md",
+        "deliverables/project_audits/goal_resume_audit_20260926_v1/STATIC_IMPORT_EVIDENCE.json"
+      ],
+      "reason": "对照原审计、8月7日进展及本轮版本核对，保留主级登记；完整验收范围未完成且450原载荷缺失。本轮不替模块所有者认证算法。",
+      "remaining_evidence": "完整验收范围未完成且450原载荷缺失"
+    },
+    {
+      "requirement_id": "G45",
+      "original_status": "部分完成",
+      "review_result": "限定认可",
+      "suggested_status": "部分完成",
+      "evidence": [
+        "research_modules/scalable_3d_simulation/docs/SCALABLE_3D_GOAL_COMPLETION_AUDIT_20260803_CN.md",
+        "research_modules/scalable_3d_simulation/docs/SCALABLE_3D_GOAL_PROGRESS_AND_NEXT_PLAN_20260807_CN.md",
+        "deliverables/project_audits/goal_resume_audit_20260926_v1/原Goal逐项状态对照_CN.md",
+        "deliverables/project_audits/goal_resume_audit_20260926_v1/STATIC_IMPORT_EVIDENCE.json"
+      ],
+      "reason": "对照原审计、8月7日进展及本轮版本核对，保留主级登记；最终完整时长物理结果未完成。本轮不替模块所有者认证算法。",
+      "remaining_evidence": "最终完整时长物理结果未完成"
+    },
+    {
+      "requirement_id": "G46",
+      "original_status": "未完成",
+      "review_result": "限定认可",
+      "suggested_status": "未完成",
+      "evidence": [
+        "research_modules/scalable_3d_simulation/docs/SCALABLE_3D_GOAL_COMPLETION_AUDIT_20260803_CN.md",
+        "research_modules/scalable_3d_simulation/docs/SCALABLE_3D_GOAL_PROGRESS_AND_NEXT_PLAN_20260807_CN.md",
+        "deliverables/project_audits/goal_resume_audit_20260926_v1/原Goal逐项状态对照_CN.md",
+        "deliverables/project_audits/goal_resume_audit_20260926_v1/STATIC_IMPORT_EVIDENCE.json"
+      ],
+      "reason": "对照原审计、8月7日进展及本轮版本核对，保留主级登记；完整体系20个未见种子统一结果缺失。本轮不替模块所有者认证算法。",
+      "remaining_evidence": "完整体系20个未见种子统一结果缺失"
+    },
+    {
+      "requirement_id": "G48",
+      "original_status": "部分完成",
+      "review_result": "限定认可",
+      "suggested_status": "部分完成",
+      "evidence": [
+        "research_modules/scalable_3d_simulation/docs/SCALABLE_3D_GOAL_COMPLETION_AUDIT_20260803_CN.md",
+        "research_modules/scalable_3d_simulation/docs/SCALABLE_3D_GOAL_PROGRESS_AND_NEXT_PLAN_20260807_CN.md",
+        "deliverables/project_audits/goal_resume_audit_20260926_v1/原Goal逐项状态对照_CN.md",
+        "deliverables/project_audits/goal_resume_audit_20260926_v1/STATIC_IMPORT_EVIDENCE.json"
+      ],
+      "reason": "对照原审计、8月7日进展及本轮版本核对，保留主级登记；缺最终长时CPU及GPU及内存归因。本轮不替模块所有者认证算法。",
+      "remaining_evidence": "缺最终长时CPU及GPU及内存归因"
+    },
+    {
+      "requirement_id": "G49",
+      "original_status": "部分完成",
+      "review_result": "限定认可",
+      "suggested_status": "部分完成",
+      "evidence": [
+        "research_modules/scalable_3d_simulation/docs/SCALABLE_3D_GOAL_COMPLETION_AUDIT_20260803_CN.md",
+        "research_modules/scalable_3d_simulation/docs/SCALABLE_3D_GOAL_PROGRESS_AND_NEXT_PLAN_20260807_CN.md",
+        "deliverables/project_audits/goal_resume_audit_20260926_v1/原Goal逐项状态对照_CN.md",
+        "deliverables/project_audits/goal_resume_audit_20260926_v1/STATIC_IMPORT_EVIDENCE.json"
+      ],
+      "reason": "522项是原日期的历史测试摘要，本轮没有执行新的接口回归或主线测试。",
+      "remaining_evidence": "本轮不重跑;最终同版本回归交付未完成"
+    },
+    {
+      "requirement_id": "G52",
+      "original_status": "未完成",
+      "review_result": "限定认可",
+      "suggested_status": "未完成",
+      "evidence": [
+        "research_modules/scalable_3d_simulation/docs/SCALABLE_3D_GOAL_COMPLETION_AUDIT_20260803_CN.md",
+        "research_modules/scalable_3d_simulation/docs/SCALABLE_3D_GOAL_PROGRESS_AND_NEXT_PLAN_20260807_CN.md",
+        "deliverables/project_audits/goal_resume_audit_20260926_v1/原Goal逐项状态对照_CN.md",
+        "deliverables/project_audits/goal_resume_audit_20260926_v1/STATIC_IMPORT_EVIDENCE.json"
+      ],
+      "reason": "对照原审计、8月7日进展及本轮版本核对，保留主级登记；缺统一最终比较及可定位逐组结果。本轮不替模块所有者认证算法。",
+      "remaining_evidence": "缺统一最终比较及可定位逐组结果"
+    },
+    {
+      "requirement_id": "G53",
+      "original_status": "部分完成",
+      "review_result": "限定认可",
+      "suggested_status": "部分完成",
+      "evidence": [
+        "research_modules/scalable_3d_simulation/docs/SCALABLE_3D_GOAL_COMPLETION_AUDIT_20260803_CN.md",
+        "research_modules/scalable_3d_simulation/docs/SCALABLE_3D_GOAL_PROGRESS_AND_NEXT_PLAN_20260807_CN.md",
+        "deliverables/project_audits/goal_resume_audit_20260926_v1/原Goal逐项状态对照_CN.md",
+        "deliverables/project_audits/goal_resume_audit_20260926_v1/STATIC_IMPORT_EVIDENCE.json"
+      ],
+      "reason": "对照原审计、8月7日进展及本轮版本核对，保留主级登记；最终完整体系动画及绑定结果未交付。本轮不替模块所有者认证算法。",
+      "remaining_evidence": "最终完整体系动画及绑定结果未交付"
+    },
+    {
+      "requirement_id": "G54",
+      "original_status": "部分完成",
+      "review_result": "限定认可",
+      "suggested_status": "部分完成",
+      "evidence": [
+        "research_modules/scalable_3d_simulation/docs/SCALABLE_3D_GOAL_COMPLETION_AUDIT_20260803_CN.md",
+        "research_modules/scalable_3d_simulation/docs/SCALABLE_3D_GOAL_PROGRESS_AND_NEXT_PLAN_20260807_CN.md",
+        "deliverables/project_audits/goal_resume_audit_20260926_v1/原Goal逐项状态对照_CN.md",
+        "deliverables/project_audits/goal_resume_audit_20260926_v1/STATIC_IMPORT_EVIDENCE.json"
+      ],
+      "reason": "对照原审计、8月7日进展及本轮版本核对，保留主级登记；原最终Word及可用原始结果未交付。本轮不替模块所有者认证算法。",
+      "remaining_evidence": "原最终Word及可用原始结果未交付"
+    },
+    {
+      "requirement_id": "G55",
+      "original_status": "部分完成",
+      "review_result": "限定认可",
+      "suggested_status": "部分完成",
+      "evidence": [
+        "research_modules/scalable_3d_simulation/docs/SCALABLE_3D_GOAL_COMPLETION_AUDIT_20260803_CN.md",
+        "research_modules/scalable_3d_simulation/docs/SCALABLE_3D_GOAL_PROGRESS_AND_NEXT_PLAN_20260807_CN.md",
+        "deliverables/project_audits/goal_resume_audit_20260926_v1/原Goal逐项状态对照_CN.md",
+        "deliverables/project_audits/goal_resume_audit_20260926_v1/STATIC_IMPORT_EVIDENCE.json"
+      ],
+      "reason": "原进展汇总已保存，但模块旧章节有历史时点未衔接，不能泛称所有文档已经一致。",
+      "remaining_evidence": "不得把当前分支继承旧提交视为main验收合并"
+    },
+    {
+      "requirement_id": "G56",
+      "original_status": "部分完成",
+      "review_result": "限定认可",
+      "suggested_status": "部分完成",
+      "evidence": [
+        "research_modules/scalable_3d_simulation/docs/SCALABLE_3D_GOAL_COMPLETION_AUDIT_20260803_CN.md",
+        "research_modules/scalable_3d_simulation/docs/SCALABLE_3D_GOAL_PROGRESS_AND_NEXT_PLAN_20260807_CN.md",
+        "deliverables/project_audits/goal_resume_audit_20260926_v1/原Goal逐项状态对照_CN.md",
+        "deliverables/project_audits/goal_resume_audit_20260926_v1/STATIC_IMPORT_EVIDENCE.json"
+      ],
+      "reason": "只确认已有按模块提交及文档记录；本轮没有逐条审查过去所有会话的分工纪律。",
+      "remaining_evidence": "未逐条审计全部历史会话分工纪律"
+    },
+    {
+      "requirement_id": "G57",
+      "original_status": "部分完成",
+      "review_result": "限定认可",
+      "suggested_status": "部分完成",
+      "evidence": [
+        "research_modules/scalable_3d_simulation/docs/SCALABLE_3D_GOAL_COMPLETION_AUDIT_20260803_CN.md",
+        "research_modules/scalable_3d_simulation/docs/SCALABLE_3D_GOAL_PROGRESS_AND_NEXT_PLAN_20260807_CN.md",
+        "deliverables/project_audits/goal_resume_audit_20260926_v1/原Goal逐项状态对照_CN.md",
+        "deliverables/project_audits/goal_resume_audit_20260926_v1/STATIC_IMPORT_EVIDENCE.json"
+      ],
+      "reason": "版本合同存在。D2指出的哈希对象标签错配已由main重新计算小文件哈希确认；不恢复缺失载荷。",
+      "remaining_evidence": "450组原manifest缺失;最终模型版本未冻结"
+    },
+    {
+      "requirement_id": "G58",
+      "original_status": "未完成",
+      "review_result": "限定认可",
+      "suggested_status": "未完成",
+      "evidence": [
+        "research_modules/scalable_3d_simulation/docs/SCALABLE_3D_GOAL_COMPLETION_AUDIT_20260803_CN.md",
+        "research_modules/scalable_3d_simulation/docs/SCALABLE_3D_GOAL_PROGRESS_AND_NEXT_PLAN_20260807_CN.md",
+        "deliverables/project_audits/goal_resume_audit_20260926_v1/原Goal逐项状态对照_CN.md",
+        "deliverables/project_audits/goal_resume_audit_20260926_v1/STATIC_IMPORT_EVIDENCE.json"
+      ],
+      "reason": "本轮git tag --list仍为空；没有补建验收标签。",
+      "remaining_evidence": "没有对应阶段验收标签;本轮不补建"
+    },
+    {
+      "requirement_id": "G59",
+      "original_status": "证据不足",
+      "review_result": "限定认可",
+      "suggested_status": "证据不足",
+      "evidence": [
+        "research_modules/scalable_3d_simulation/docs/SCALABLE_3D_GOAL_COMPLETION_AUDIT_20260803_CN.md",
+        "research_modules/scalable_3d_simulation/docs/SCALABLE_3D_GOAL_PROGRESS_AND_NEXT_PLAN_20260807_CN.md",
+        "deliverables/project_audits/goal_resume_audit_20260926_v1/原Goal逐项状态对照_CN.md",
+        "deliverables/project_audits/goal_resume_audit_20260926_v1/STATIC_IMPORT_EVIDENCE.json"
+      ],
+      "reason": "历史权重指纹不等于当前长期制品可定位或远端LFS可用；未开展远端查证。",
+      "remaining_evidence": "根目录未定位.gitattributes;未逐个核验原模型LFS对象及远端可达性"
+    },
+    {
+      "requirement_id": "G60",
+      "original_status": "未完成",
+      "review_result": "限定认可",
+      "suggested_status": "未完成",
+      "evidence": [
+        "research_modules/scalable_3d_simulation/docs/SCALABLE_3D_GOAL_COMPLETION_AUDIT_20260803_CN.md",
+        "research_modules/scalable_3d_simulation/docs/SCALABLE_3D_GOAL_PROGRESS_AND_NEXT_PLAN_20260807_CN.md",
+        "deliverables/project_audits/goal_resume_audit_20260926_v1/原Goal逐项状态对照_CN.md",
+        "deliverables/project_audits/goal_resume_audit_20260926_v1/STATIC_IMPORT_EVIDENCE.json"
+      ],
+      "reason": "现存进展文档明确总体未完成，独立报告和本次文字勘误不构成统一验收证据。",
+      "remaining_evidence": "部分实现和独立试验不能替代总体要求"
+    }
+  ],
+  "source_hashes": {
+    "research_modules/scalable_3d_simulation/docs/SCALABLE_3D_GOAL_COMPLETION_AUDIT_20260803_CN.md": "643844f6b98910bb98f5cf7a97ff44ca7af38a9b65b607b73147c460bcb72cbd",
+    "research_modules/scalable_3d_simulation/docs/SCALABLE_3D_GOAL_PROGRESS_AND_NEXT_PLAN_20260807_CN.md": "3517ee4aace3710ca9c8b48ed05ef0fab83916fb130a0e54d1f31694c51e3f7a",
+    "deliverables/project_audits/goal_resume_audit_20260926_v1/原Goal逐项状态对照_CN.md": "a44596187ec62a88a246732a0ba920fd5f6251c8eec5e72a7570ac8d5b78c28b",
+    "deliverables/project_audits/goal_resume_audit_20260926_v1/STATIC_IMPORT_EVIDENCE.json": "7e49335a5df345f33d3789151ad125263d36a2027a47c2b4d0b9bf2580c73fe2",
+    "deliverables/project_audits/goal_resume_audit_20260926_v1/GOAL_REQUIREMENT_EVIDENCE.csv": "87eab22ebd8bd0afc1cabf88e727881e01d2e95cd5c41dd24d50993f6cb0475e"
+  },
+  "git_checks": {
+    "head": {
+      "args": [
+        "git",
+        "rev-parse",
+        "HEAD"
+      ],
+      "returncode": 0,
+      "stdout": "a0d3d8ad2cd037c71845119840dfd5cae426c2e6\n",
+      "stderr": ""
+    },
+    "original_ancestor": {
+      "args": [
+        "git",
+        "merge-base",
+        "--is-ancestor",
+        "98fd3978a6a6e9a0d1bc5ab341c5db8a77624214",
+        "HEAD"
+      ],
+      "returncode": 0,
+      "stdout": "",
+      "stderr": ""
+    },
+    "unchanged_original_scopes": {
+      "args": [
+        "git",
+        "diff",
+        "--name-only",
+        "98fd3978a6a6e9a0d1bc5ab341c5db8a77624214",
+        "HEAD",
+        "--",
+        "research_modules/scalable_3d_simulation",
+        "research_modules/d1_sensor_fusion",
+        "research_modules/d2_data_association",
+        "research_modules/d3_assignment_planner",
+        "research_modules/d4_distributed_fallback",
+        "research_modules/d7_proportional_guidance"
+      ],
+      "returncode": 0,
+      "stdout": "",
+      "stderr": ""
+    },
+    "tags": {
+      "args": [
+        "git",
+        "tag",
+        "--list"
+      ],
+      "returncode": 0,
+      "stdout": "",
+      "stderr": ""
+    },
+    "module_worktree_changes": {
+      "args": [
+        "git",
+        "diff",
+        "--name-only",
+        "--",
+        "research_modules",
+        "subagent_reviews"
+      ],
+      "returncode": 0,
+      "stdout": "",
+      "stderr": ""
+    }
+  },
+  "d2_hash_objects": {
+    "ARTIFACT_SHA256SUMS": "c9bf5e479526cded07aa3d170540aa389b8083af3ec801496f41d620d4ffb68f",
+    "artifact_inventory.json": "590514ca516f6ae5d8a05a0f28a5409822240abe390903689b32bb79e9556885"
+  },
+  "documentation_checked": [
+    {
+      "path": "research_modules/scalable_3d_simulation/docs/SCALABLE_3D_GOAL_COMPLETION_AUDIT_20260803_CN.md",
+      "reason": "引用历史结论，不修改历史报告。"
+    },
+    {
+      "path": "research_modules/scalable_3d_simulation/docs/SCALABLE_3D_GOAL_PROGRESS_AND_NEXT_PLAN_20260807_CN.md",
+      "reason": "引用历史结论，不修改历史报告。"
+    },
+    {
+      "path": "deliverables/project_audits/goal_resume_audit_20260926_v1/原Goal逐项状态对照_CN.md",
+      "reason": "引用历史结论，不修改历史报告。"
+    },
+    {
+      "path": "deliverables/project_audits/goal_resume_audit_20260926_v1/STATIC_IMPORT_EVIDENCE.json",
+      "reason": "引用历史结论，不修改历史报告。"
+    }
+  ]
+}

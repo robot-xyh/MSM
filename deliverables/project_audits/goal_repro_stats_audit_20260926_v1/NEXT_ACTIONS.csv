@@ -1,0 +1,13 @@
+id,category,priority,issue,status,evidence,owner,prerequisite,completion_criterion
+A01,缺失证据,优先,正式450组十片载荷和D6逐组记录未定位,待外部备份线索,../goal_resume_audit_20260926_v1/ARCHIVE_LOCATION_REGISTER.csv,main及资料保管人,提供备份盘或其他主机归档位置,逐片身份哈希匹配并建立新旧路径;找不到保持未定位
+A02,版本问题,优先,双光电回放入口不在记录提交内,待补齐源码归档,SOURCE_VERSION_REGISTER.csv,main及独立试验维护人,保留当前匹配历史哈希的文件并核查间接依赖,形成已存源码与依赖清单;不冒充原提交已有文件
+A03,版本问题,优先,搜索入口缺历史源码指纹和完整快照,待历史版本证据,PROVENANCE_EVIDENCE.json;SUPPLEMENTAL_CHECKS.json,搜索独立试验维护人,查原修改补丁或可验证的源码副本,能证明历史入口及默认参数;无法证明继续标为部分复现条件
+A04,统计记录,优先,零输出精度空值与零计分混用,待统一说明,AUDIT_RESULTS.json,main及各报告维护人,区分不可计算精度和约定计分并保留输出数,报告明确零输出政策;历史数据不被静默改写
+A05,统计记录,优先,耗时字段使整CSV字节一致声明不成立,待明确比较协议,PROVENANCE_EVIDENCE.json;SUPPLEMENTAL_CHECKS.json,中心误差试验维护人,将计数质量耗时各自的比较要求分开,形成版本化比较说明且不回填旧耗时
+A06,统计记录,优先,冷热缓存及超时口径不完整,待说明计时条件,AUDIT_RESULTS.json;统计口径与记录问题清单_CN.md,对应独立试验维护人,明确时限和计时范围及缓存状态,不再将不等条件耗时作为直接速度对比
+A07,通用统计软件,后续,重复键及全缺失记录处理保护不足,潜在风险已复现,STATISTICS_BOUNDARY_TESTS.json,对应统计工具维护人,保持算法和原始结果不变另建普通记录回归,重复冲突可识别;缺失值可表示;有人工数据测试
+A08,历史记录,后续,D2索引引用哈希差异原因不明,未解决,SUPPLEMENTAL_CHECKS.json,D2所有者及main,查到旧完整索引或可解释的历史版本,说明两个哈希分别对应什么文件;不得覆盖历史记录消除差异
+A09,证据范围,优先,独立试验不等于原Goal主流程完成,保持分开登记,../goal_resume_audit_20260926_v1/原Goal逐项状态对照_CN.md,main及模块所有者,如有既存接入记录则提供调用配置结果和版本,只有证据齐备才调整接入状态;不以文档引用替代
+A10,原研究未完成,待范围决定,原Goal当前代际模型及整体验收缺完成证据,继续保留未完成,../goal_resume_audit_20260926_v1/GOAL_REQUIREMENT_EVIDENCE.csv,main及D1至D7所有者,先复核原要求与已有证据不自动启动运行,逐项形成有依据的状态确认;本轮不制定或执行算法增强
+A11,状态复核,优先,60项原Goal登记尚未由模块所有者复核,待安排,../goal_resume_audit_20260926_v1/GOAL_REQUIREMENT_EVIDENCE.csv,main及D1至D7所有者,按模块边界下发只读复核范围,有逐项认可或异议及证据;需要变更的模块文档由所有者同步
+A12,运行条件,后续,主要依赖版本相同但未锁定完整执行环境,尚不能承诺精确复现,SUPPLEMENTAL_CHECKS.json;REPRODUCIBILITY_REGISTER.csv,main及环境维护人,明确需保留的依赖场景资产系统差异和比较容差,形成可检查环境登记;不以版本摘要代替完整环境

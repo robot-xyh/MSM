@@ -1,5 +1,10 @@
 # AirSim Integration Plan For D3 Assignment Planner
 
+<!-- evidence-status-sync:20260926:begin -->
+> 2026-09-26 仅同步资料，不是新实验日期。当前证据统一见[当前证据状态](CURRENT_EVIDENCE_STATUS_CN.md)。
+> 下文旧日期、状态及待办仅作带日期历史阶段阅读；原Goal状态、能力、GAP及权限不因本次同步改变。未新增AirSim验证。
+<!-- evidence-status-sync:20260926:end -->
+
 ## Rolling Demand Changes
 
 Main must rebuild each current `TargetTrack.demand` before a rolling D3 call.

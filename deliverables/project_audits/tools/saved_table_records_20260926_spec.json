@@ -1,0 +1,103 @@
+{
+  "schema": "saved-table-record-audit-v1",
+  "scope": "Read-only administrative checks on six previously indexed CSV tables. No metric aggregation or scoring.",
+  "basis": [
+    "deliverables/project_audits/goal_repro_stats_audit_20260926_v1/AUDIT_RESULTS.json",
+    "deliverables/project_audits/goal_repro_stats_audit_20260926_v1/SUPPLEMENTAL_CHECKS.json",
+    "deliverables/project_audits/goal_owner_review_sync_20260926_v1/METADATA_ERRATA.json"
+  ],
+  "sources": {
+    "dual_final": {
+      "kind": "csv",
+      "path": "research_modules/independent_experiments/dual_optical_online_benchmark/outputs/report_replay_20260819_v2/combined_final_case_metrics.csv",
+      "expected": {"rows": 270, "groups": 54, "seeds_per_group": 5},
+      "record_contract": {
+        "unique_key": ["profile", "target_count", "condition", "route_name", "seed"],
+        "group_by": ["profile", "target_count", "condition", "route_name"],
+        "seed_field": "seed",
+        "numeric_fields": [
+          "target_count", "seed", "round_index", "output_match_count", "correct_match_count",
+          "false_match_count", "association_precision", "correct_unique_target_count", "fixed_target_coverage",
+          "latency_ms", "deadline_ms", "on_time_correct_unique_target_count", "on_time_fixed_target_coverage",
+          "dual_station_residual_loss_count", "single_station_correct_identity_count", "single_station_identity_opportunity_count",
+          "single_station_coverage", "single_station_dominant_observation_count", "single_station_labeled_observation_count",
+          "single_station_precision", "single_station_duplicate_track_count", "single_station_mixed_track_count",
+          "single_station_false_only_track_count", "single_station_labeled_track_count", "shared_correct_truth_count"
+        ],
+        "nullable_fields": ["association_precision"]
+      },
+      "notes": "One saved final row per configuration and seed. No round selection is performed. Nullable precision preserves the existing unavailable-value convention."
+    },
+    "dual_rounds": {
+      "kind": "csv",
+      "paths": [
+        "research_modules/independent_experiments/dual_optical_online_benchmark/outputs/report_replay_20260819_v2/oracle_360/round_metrics.csv",
+        "research_modules/independent_experiments/dual_optical_online_benchmark/outputs/report_replay_20260819_v2/continuous_360/round_metrics.csv",
+        "research_modules/independent_experiments/dual_optical_online_benchmark/outputs/report_replay_20260819_v2/s180_derived/round_metrics.csv"
+      ],
+      "expected": {"rows": 2340, "groups": 54, "seeds_per_group": 5},
+      "record_contract": {
+        "unique_key": ["profile", "target_count", "condition", "route_name", "seed", "round_index"],
+        "group_by": ["profile", "target_count", "condition", "route_name"],
+        "seed_field": "seed",
+        "numeric_fields": [
+          "target_count", "seed", "round_index", "output_match_count", "correct_match_count",
+          "false_match_count", "association_precision", "correct_unique_target_count", "fixed_target_coverage",
+          "latency_ms", "deadline_ms", "on_time_correct_unique_target_count", "on_time_fixed_target_coverage",
+          "dual_station_residual_loss_count", "single_station_correct_identity_count", "single_station_identity_opportunity_count",
+          "single_station_coverage", "single_station_dominant_observation_count", "single_station_labeled_observation_count",
+          "single_station_precision", "single_station_duplicate_track_count", "single_station_mixed_track_count",
+          "single_station_false_only_track_count", "single_station_labeled_track_count", "shared_correct_truth_count"
+        ],
+        "nullable_fields": ["association_precision"]
+      },
+      "notes": "The round index is part of the key. Repeated seeds across rounds are allowed and not counted as new seeds. Final rows overlap this representation and are audited separately."
+    },
+    "search_rows": {
+      "kind": "csv",
+      "path": "research_modules/independent_experiments/center_terminal_cv_campaign/outputs/offline_search_100pct_cues_20260819/matrix.csv",
+      "expected": {"rows": 45, "groups": 9, "seeds_per_group": 5},
+      "record_contract": {
+        "unique_key": ["scenario_id", "position_sigma_m", "seed"],
+        "group_by": ["scenario_id", "position_sigma_m"],
+        "seed_field": "seed",
+        "numeric_fields": [
+          "target_count", "resource_count", "position_sigma_m", "seed", "source_cue_count",
+          "source_fixture_precision", "source_fixture_recall", "source_ghost_count", "source_duplicate_count",
+          "source_missed_target_count", "search_cell_count", "executed_observation_task_count",
+          "true_frustum_covered_cell_count", "true_frustum_cell_coverage_rate", "true_frustum_probability_mass_coverage_rate",
+          "unexecuted_task_count", "closed_after_confirmation_cell_count", "detected_target_count", "target_discovery_rate",
+          "continuously_confirmed_target_count", "continuous_confirmation_rate", "first_discovery_mean_s", "first_discovery_p95_s",
+          "first_confirmation_mean_s", "repeated_confirmed_observation_count", "repeated_confirmed_observation_rate",
+          "closed_cue_count", "correctly_closed_cue_count", "identity_misclosed_cue_count", "deadline_candidate_rejection_count",
+          "planner_call_count", "planner_compute_mean_ms", "planner_compute_p95_ms", "planner_compute_max_ms",
+          "online_truth_leakage_count", "camera_vertical_fov_deg", "camera_horizontal_footprint_m", "camera_vertical_footprint_m",
+          "trajectory_recorded_end_s", "trajectory_extrapolated_after_s"
+        ],
+        "nullable_fields": []
+      },
+      "notes": "Applies to this saved 45-row batch only. A future missing discovery time requires a new explicitly reviewed record contract, not automatic zero imputation."
+    },
+    "center_rows": {
+      "kind": "csv",
+      "path": "research_modules/independent_experiments/center_terminal_cv_campaign/outputs/center_handover_sensor_error_20260820/per_run_metrics.csv",
+      "expected": {"rows": 960, "groups": 96, "seeds_per_group": 10},
+      "record_contract": {
+        "unique_key": ["target_count", "handover_mode", "attitude_mode", "navigation_mode", "detection_mode", "backend", "seed"],
+        "group_by": ["target_count", "handover_mode", "attitude_mode", "navigation_mode", "detection_mode", "backend"],
+        "seed_field": "seed",
+        "numeric_fields": [
+          "target_count", "resource_count", "seed", "binding_precision", "binding_recall", "true_binding_count",
+          "false_binding_count", "confirmed_pair_count", "final_frame_local_track_count", "final_frame_recognized_local_track_count",
+          "unregistered_local_track_candidate_count", "realized_distinct_true_track_count", "realized_true_detection_miss_count",
+          "realized_false_alarm_count", "eligible_candidate_count_all_frames", "projected_mean_outside_but_support_retained_count",
+          "final_hint_count", "final_validated_hint_count", "final_hint_fallback_count", "final_hint_validation_rate",
+          "realized_navigation_error_mean_m", "realized_navigation_error_max_m", "realized_body_yaw_error_mean_abs_deg",
+          "realized_body_yaw_error_max_abs_deg", "runtime_s"
+        ],
+        "nullable_fields": ["final_hint_validation_rate"]
+      },
+      "notes": "Existing zero precision values are not converted to null. Optional hint validation rate is checked for declared missingness, not interpreted as a performance result."
+    }
+  }
+}

@@ -1,0 +1,443 @@
+{
+  "created_at": "2026-09-26T14:23:29.975789+00:00",
+  "requirement_count": 60,
+  "owner_results": [
+    {
+      "module": "main",
+      "review_count": 33,
+      "evidence_path_count": 4,
+      "coverage_complete": true,
+      "opinions": {
+        "限定认可": 33
+      },
+      "documentation_checked_count": 4
+    },
+    {
+      "module": "D1",
+      "review_count": 8,
+      "evidence_path_count": 19,
+      "coverage_complete": true,
+      "opinions": {
+        "限定认可": 5,
+        "需修订": 2,
+        "认可": 1
+      },
+      "documentation_checked_count": 11
+    },
+    {
+      "module": "D2",
+      "review_count": 8,
+      "evidence_path_count": 21,
+      "coverage_complete": true,
+      "opinions": {
+        "限定认可": 6,
+        "认可": 1,
+        "需修订": 1
+      },
+      "documentation_checked_count": 10
+    },
+    {
+      "module": "D3",
+      "review_count": 17,
+      "evidence_path_count": 21,
+      "coverage_complete": true,
+      "opinions": {
+        "限定认可": 9,
+        "需修订": 2,
+        "认可": 4,
+        "证据不足": 2
+      },
+      "documentation_checked_count": 9
+    },
+    {
+      "module": "D4",
+      "review_count": 15,
+      "evidence_path_count": 19,
+      "coverage_complete": true,
+      "opinions": {
+        "限定认可": 9,
+        "认可": 4,
+        "需修订": 1,
+        "证据不足": 1
+      },
+      "documentation_checked_count": 11
+    },
+    {
+      "module": "D5",
+      "review_count": 25,
+      "evidence_path_count": 15,
+      "coverage_complete": true,
+      "opinions": {
+        "限定认可": 14,
+        "认可": 6,
+        "需修订": 4,
+        "证据不足": 1
+      },
+      "documentation_checked_count": 9
+    },
+    {
+      "module": "D6",
+      "review_count": 24,
+      "evidence_path_count": 15,
+      "coverage_complete": true,
+      "opinions": {
+        "限定认可": 12,
+        "需修订": 3,
+        "认可": 8,
+        "证据不足": 1
+      },
+      "documentation_checked_count": 11
+    },
+    {
+      "module": "D7",
+      "review_count": 10,
+      "evidence_path_count": 14,
+      "coverage_complete": true,
+      "opinions": {
+        "限定认可": 8,
+        "认可": 2
+      },
+      "documentation_checked_count": 11
+    }
+  ],
+  "review_total": 140,
+  "unique_revision_ids": [
+    "G17",
+    "G19",
+    "G21",
+    "G22",
+    "G28",
+    "G40",
+    "G41",
+    "G50",
+    "G55",
+    "G57"
+  ],
+  "revision_opinions": [
+    {
+      "module": "D1",
+      "requirement_id": "G17",
+      "original_status": "部分完成",
+      "review_result": "需修订",
+      "suggested_status": "部分完成",
+      "evidence": [
+        "research_modules/d1_sensor_fusion/README.md",
+        "research_modules/d1_sensor_fusion/PLAN.md",
+        "research_modules/d1_sensor_fusion/docs/ALGORITHM_AND_IMPLEMENTATION.md",
+        "research_modules/d1_sensor_fusion/docs/EXPERIMENT_REPORT.md",
+        "subagent_reviews/D1_IMPLEMENTATION_GAP_AUDIT.md",
+        "subagent_reviews/D1_SENSOR_FUSION_REVIEW_AND_PLAN.md",
+        "research_modules/scalable_3d_simulation/docs/SCALABLE_3D_GOAL_COMPLETION_AUDIT_20260803_CN.md"
+      ],
+      "reason": "认可已有批量、六维、异步与协方差的软件实现及部分完成状态；建议修订历史结果说明，明确0.8183来自2026-07-25 D1独立匿名雷达质量基准的200目标、seed 1000、0.61秒开发冒烟，3个发布帧、532条唯一接受观测，非原Goal名义多传感器正式矩阵。5目标seeds 2000-2019的20/20快速夹具只证明批量入口，不能写成200目标20-seed质量验收。主级略写召回值容易混淆证据等级。",
+      "remaining_evidence": [
+        "该短时基准的逐seed机器结果及冻结配置/代码指纹，本次在所读材料中未定位直接绑定入口",
+        "原Goal同协议200目标多传感器、独立多种子质量统计及置信区间",
+        "统一消息消费证据"
+      ],
+      "historical_date": "2026-07-25",
+      "suggested_wording": "已有软件合同；独立雷达质量基准200目标单seed、0.61秒开发冒烟暖机召回0.8183，不能替代原Goal多传感器正式质量验收。"
+    },
+    {
+      "module": "D1",
+      "requirement_id": "G41",
+      "original_status": "未完成",
+      "review_result": "需修订",
+      "suggested_status": "未完成",
+      "evidence": [
+        "research_modules/d1_sensor_fusion/README.md",
+        "research_modules/d1_sensor_fusion/PLAN.md",
+        "research_modules/d1_sensor_fusion/docs/MODULE_PRINCIPLES_CN.md",
+        "research_modules/d1_sensor_fusion/docs/EXPERIMENT_REPORT.md",
+        "subagent_reviews/D1_IMPLEMENTATION_GAP_AUDIT.md",
+        "research_modules/scalable_3d_simulation/docs/SCALABLE_3D_GOAL_COMPLETION_AUDIT_20260803_CN.md",
+        "research_modules/scalable_3d_simulation/docs/SCALABLE_3D_GOAL_PROGRESS_AND_NEXT_PLAN_20260807_CN.md"
+      ],
+      "reason": "未完成结论成立，但建议同时修订结果出处与阈值措辞。0.8183是独立雷达开发冒烟，不是名义多传感器正式结果，不能据此作同协议差值或泛化判断。0.95在原完成审计中是建议目标，D1原则文档仍写正式长时多seed门限待冻结，PLAN也保留门限冻结事项；主表outstanding的“缺达到冻结阈值”可能误示阈值已冻结。缺少原协议的冻结文件与达到建议目标的独立证据，应分别登记。",
+      "remaining_evidence": [
+        "名义多传感器正式协议与召回统计窗口、分母、验收阈值的冻结记录",
+        "该协议下至少20个未见seed的逐组结果、均值与置信区间",
+        "0.8183短时历史值对应的机器结果和配置绑定"
+      ],
+      "historical_date": "2026-07-25 / 2026-08-03 / 2026-08-07",
+      "suggested_wording": "历史独立雷达单seed短时召回0.8183；原建议目标0.95的正式协议与阈值冻结证据未定位，原Goal同协议独立多种子达标证据缺失。"
+    },
+    {
+      "module": "D2",
+      "requirement_id": "G57",
+      "original_status": "部分完成",
+      "review_result": "需修订",
+      "suggested_status": "部分完成",
+      "evidence": [
+        "research_modules/scalable_3d_simulation/VERSIONING.md",
+        "research_modules/scalable_3d_simulation/docs/SCALABLE_3D_FORMAL_R0_80E55EB_SHARDS0_9_20260731_CN.md",
+        "research_modules/d2_data_association/README.md",
+        "research_modules/d2_data_association/docs/EXPERIMENT_REPORT.md",
+        "research_modules/d2_data_association/docs/formal_r0_identity_causal_pack_summary_20260731/artifact_inventory.json",
+        "research_modules/d2_data_association/docs/formal_r0_identity_causal_pack_summary_20260731/ARTIFACT_SHA256SUMS",
+        "deliverables/project_audits/goal_resume_audit_20260926_v1/FORMAL_450_EXPECTED_SCOPE.json",
+        "deliverables/project_audits/goal_resume_audit_20260926_v1/历史结果定位与完整性核对_CN.md"
+      ],
+      "reason": "建议只补充主级证据说明，状态仍部分完成。正式R0 producer 80e55eb、execution-plan逻辑哈希b922ff5f及文件哈希644b1c12需分开；摘要中的verified=true是历史字段。现有主级定位报告把inventory哈希差异保留为原因未确认，本轮小文件SHA-256检查及D2 README给出更具体对象对应：c9bf5e47是ARTIFACT_SHA256SUMS文件，590514ca是artifact_inventory.json。原正式报告把前者写成制品索引文件哈希，存在对象标签错配证据，不能仅描述为现存inventory来源不明或损坏。不能据此推断所有历史副本一致，亦不能恢复缺失载荷。",
+      "remaining_evidence": [
+        "原正式450组完整manifest、载荷及D6派生表仍未定位。",
+        "若要判定历史文字差异形成原因，仍缺报告编写时对应索引副本或修订记录。",
+        "最终模型版本及统一交付配置绑定尚未冻结。"
+      ],
+      "historical_dates": [
+        "2026-07-31",
+        "2026-08-01"
+      ]
+    },
+    {
+      "module": "D3",
+      "requirement_id": "G19",
+      "original_status": "部分完成",
+      "review_result": "需修订",
+      "suggested_status": "部分完成",
+      "evidence": [
+        "research_modules/scalable_3d_simulation/docs/SCALABLE_3D_GOAL_COMPLETION_AUDIT_20260803_CN.md",
+        "research_modules/scalable_3d_simulation/docs/SCALABLE_3D_GOAL_PROGRESS_AND_NEXT_PLAN_20260807_CN.md",
+        "deliverables/project_audits/goal_resume_audit_20260926_v1/SOURCE_DIRECTORY_STATUS.json",
+        "deliverables/project_audits/goal_resume_audit_20260926_v1/SUPPLEMENTAL_CHECKS.json",
+        "research_modules/d3_assignment_planner/README.md"
+      ],
+      "reason": "状态认可，但主级逐项理由应补足来源输入边界：三维规则实现存在，不代表学习来源显式带六维状态和协方差。主级8月3日、7日保存记录支持A1 v3来源300组/3086帧及完整性审计通过；模块README顶部仍是8月2日dirty探针、非正式数据集阶段，不能用该探针单独证明正式生成。建议并列标明正式来源完成、来源字段受限、模型未训练三个事实。",
+      "remaining_evidence": [
+        "当前A1 v3冻结模型、选模、来源独立评价和准入制品缺失。",
+        "将模块阶段文档与后续正式来源保存记录明确对应的owner状态说明尚未出现在原模块文档中。"
+      ]
+    },
+    {
+      "module": "D3",
+      "requirement_id": "G55",
+      "original_status": "部分完成",
+      "review_result": "需修订",
+      "suggested_status": "部分完成",
+      "evidence": [
+        "research_modules/d3_assignment_planner/README.md",
+        "research_modules/d3_assignment_planner/PLAN.md",
+        "subagent_reviews/D3_IMPLEMENTATION_GAP_AUDIT.md",
+        "subagent_reviews/D3_ASSIGNMENT_PLANNER_REVIEW_AND_PLAN.md",
+        "subagent_reviews/D3_M_TO_N_ASSIGNMENT_AND_SCHEDULING_REVIEW.md",
+        "research_modules/scalable_3d_simulation/docs/SCALABLE_3D_GOAL_PROGRESS_AND_NEXT_PLAN_20260807_CN.md",
+        "research_modules/scalable_3d_simulation/VERSIONING.md"
+      ],
+      "reason": "原表的主级进展已保存可以保留，但须明确不等于D3全部文档已与最后断点同步。README/PLAN/GAP/review等顶部仍为8月2日dirty probe、正式生成未授权；M-to-N review及VERSIONING的8月1日快照仍记无seed/数据，后续主级已有正式生成及来源审计。这是时间层级和现状摘要未衔接，不是推翻历史阶段。还须保留未完成总体验收及合并条件的限制。本次只登记差异，按授权不修改原文或关闭GAP。",
+      "remaining_evidence": [
+        "原模块各文档对8月3日正式来源审计及8月7日断点的统一现状说明。",
+        "满足原Goal验收条件后的主级合并/验收记录；分支继承不能替代。"
+      ]
+    },
+    {
+      "module": "D4",
+      "requirement_id": "G55",
+      "original_status": "部分完成",
+      "review_result": "需修订",
+      "suggested_status": "部分完成",
+      "evidence": [
+        "research_modules/d4_distributed_fallback/README.md",
+        "research_modules/d4_distributed_fallback/PLAN.md",
+        "research_modules/d4_distributed_fallback/docs/MODULE_PRINCIPLES_CN.md",
+        "research_modules/d4_distributed_fallback/docs/ALGORITHM_AND_IMPLEMENTATION.md",
+        "subagent_reviews/D4_IMPLEMENTATION_GAP_AUDIT.md",
+        "subagent_reviews/D4_DISTRIBUTED_FALLBACK_REVIEW_AND_PLAN.md",
+        "subagent_reviews/D4_M_TO_N_DISTRIBUTED_COALITION_REVIEW.md",
+        "research_modules/d4_distributed_fallback/reports/EXPERIMENT_REPORT.md",
+        "research_modules/scalable_3d_simulation/docs/SCALABLE_3D_GOAL_PROGRESS_AND_NEXT_PLAN_20260807_CN.md",
+        "deliverables/project_audits/goal_resume_audit_20260926_v1/SOURCE_DIRECTORY_STATUS.json"
+      ],
+      "reason": "建议保留部分完成，但修订主级理由中笼统的“原断点进展文档已同步保存”：D4 README、PLAN、原理、算法、GAP、两份 review 和实验报告的最新相关段落仍停在 fcf8525 preflight、来源 0/324 或生成待办；保存 session/checkpoint 与主级后续审计已到 6737b44、324/324、921 条来源记录。应明确这是阶段快照未衔接的现成文档不一致，而非来源未完成。临时中心机方案与现有实现仍需分别登记，分支继承也不是 main 验收合并。",
+      "remaining_evidence": [
+        "缺 D4 模块文档对后续来源完成及审计断点的同步说明。",
+        "缺原 Goal 最终验收、满足条件后合并与交付完成记录。"
+      ],
+      "historical_dates": [
+        "2026-08-03",
+        "2026-08-07"
+      ]
+    },
+    {
+      "module": "D5",
+      "requirement_id": "G21",
+      "original_status": "部分完成",
+      "review_result": "需修订",
+      "suggested_status": "部分完成",
+      "evidence": [
+        "research_modules/scalable_3d_simulation/docs/SCALABLE_3D_GOAL_COMPLETION_AUDIT_20260803_CN.md",
+        "research_modules/d5_terminal_association/README.md",
+        "research_modules/d5_terminal_association/PLAN.md",
+        "research_modules/airsim_runtime/baselines/d5_long_range_20target_20260810/baseline_manifest.json",
+        "deliverables/project_audits/goal_resume_audit_20260926_v1/SOURCE_INTEGRITY_CHECKS.csv"
+      ],
+      "reason": "软件链、200目标4相机800节点历史测试及A3 v3的104组来源均可认可。主级后续变化应明确：新TemporalGeometricAssociator已接线的证据是接口/测试记录；1934条关系的已保存AirSim实测属于接线前旧v2，仍fail_closed，不能证明新v3实测。A3 v3仍未训练。",
+      "remaining_evidence": [
+        "缺200资源相机完整运行、A3 v3模型及校准/准入制品、新时序v3真实运行结果；本次不要求补跑。"
+      ],
+      "historical_dates": [
+        "2026-08-03",
+        "2026-08-10"
+      ]
+    },
+    {
+      "module": "D5",
+      "requirement_id": "G28",
+      "original_status": "部分完成",
+      "review_result": "需修订",
+      "suggested_status": "部分完成",
+      "evidence": [
+        "research_modules/d5_terminal_association/docs/EXPERIMENT_REPORT.md",
+        "research_modules/d5_terminal_association/docs/ALGORITHM_AND_IMPLEMENTATION.md",
+        "subagent_reviews/D5_IMPLEMENTATION_GAP_AUDIT.md"
+      ],
+      "reason": "应补记2026-07-27 G1 v5已有20未见seed、900合成episode、45单元的历史评价及两级D6审计、strict/shadow加载通过。把缺口写为笼统可复载模型未闭合容易抹去历史已验证事实；准确缺口是代表相机域和最终统一交付复载证据。旧/tmp证据根本轮定点检查不存在，不能反向宣称当前制品已复载。",
+      "remaining_evidence": [
+        "缺历史v5完整制品的现存可定位副本、原Goal代表域最终独立评价；保留拓扑固定合成评价限制。"
+      ],
+      "historical_dates": [
+        "2026-07-27",
+        "2026-08-03"
+      ]
+    },
+    {
+      "module": "D5",
+      "requirement_id": "G50",
+      "original_status": "部分完成",
+      "review_result": "需修订",
+      "suggested_status": "部分完成",
+      "evidence": [
+        "research_modules/d5_terminal_association/docs/EXPERIMENT_REPORT.md",
+        "research_modules/d5_terminal_association/docs/ALGORITHM_AND_IMPLEMENTATION.md",
+        "subagent_reviews/D5_IMPLEMENTATION_GAP_AUDIT.md"
+      ],
+      "reason": "制品登记应补记历史G1 v5装配、manifest哈希、7fb5db8b权重谱系、两级D6审计及strict/shadow loader通过，并区分旧99fa4428候选。不能把原Goal最终模型未交付写成没有过图模型制品。已定点确认旧/tmp根不存在，现存副本和长期保存完整性仍未确认。",
+      "remaining_evidence": [
+        "缺历史v5完整包的当前可定位副本、最终代表域模型与评价绑定；未检查权重字节、未加载模型。"
+      ],
+      "historical_dates": [
+        "2026-07-27",
+        "2026-08-03"
+      ]
+    },
+    {
+      "module": "D5",
+      "requirement_id": "G55",
+      "original_status": "部分完成",
+      "review_result": "需修订",
+      "suggested_status": "部分完成",
+      "evidence": [
+        "research_modules/scalable_3d_simulation/docs/SCALABLE_3D_GOAL_PROGRESS_AND_NEXT_PLAN_20260807_CN.md",
+        "research_modules/d5_terminal_association/README.md",
+        "research_modules/d5_terminal_association/PLAN.md",
+        "subagent_reviews/D5_IMPLEMENTATION_GAP_AUDIT.md",
+        "subagent_reviews/D5_TERMINAL_ASSOCIATION_REVIEW_AND_PLAN.md",
+        "subagent_reviews/D5_M_TO_N_TERMINAL_MULTIVIEW_REVIEW.md",
+        "research_modules/d5_terminal_association/docs/MODULE_PRINCIPLES_CN.md",
+        "research_modules/d5_terminal_association/docs/ALGORITHM_AND_IMPLEMENTATION.md",
+        "research_modules/d5_terminal_association/docs/EXPERIMENT_REPORT.md",
+        "deliverables/project_audits/goal_resume_audit_20260926_v1/SOURCE_INTEGRITY_CHECKS.csv"
+      ],
+      "reason": "主级原断点文档已同步保存不能概括为D5模块文档也已一致。README/PLAN/GAP及review等仍写D6独立来源审计未授权未执行；主级8月3日完成审计、8月7日进展和现存D6 v3审计已记录通过。应登记历史阶段未衔接，而非把audit-only读取混成模型消费。",
+      "remaining_evidence": [
+        "缺对该现存文档差异的统一历史时点说明；本批只登记，不改模块文档、不关闭GAP，分支继承亦非main验收。"
+      ],
+      "historical_dates": [
+        "2026-08-03",
+        "2026-08-07"
+      ]
+    },
+    {
+      "module": "D6",
+      "requirement_id": "G22",
+      "original_status": "部分完成",
+      "review_result": "需修订",
+      "suggested_status": "部分完成",
+      "evidence": [
+        "research_modules/scalable_3d_simulation/docs/SCALABLE_3D_GOAL_COMPLETION_AUDIT_20260803_CN.md",
+        "research_modules/d6_evaluation_metrics/README.md",
+        "research_modules/d6_evaluation_metrics/docs/EXPERIMENT_REPORT.md",
+        "research_modules/airsim_runtime/baselines/d5_long_range_20target_20260810/baseline_manifest.json"
+      ],
+      "reason": "状态保留部分完成，建议主级说明补入独立评价的失败边界。D6统计、区间与报告代码及来源审计存在；8月10日独立AirSim仅20目标、2相机、seed 20260810，1930/1934正确不等于专项验收通过：短缺口3，绑定振荡不可用，实际交叉3/31低于至少10及0.30门限。真实v3通过证据和专项至少10 seeds仍缺，不能替代原Goal至少20未见seed及七变体最终交付。",
+      "remaining_evidence": [
+        "原Goal当前模型独立评价及七变体最终报告",
+        "原Goal验收Word及绑定结果",
+        "独立专项真实v3与多seed的历史完成记录"
+      ],
+      "historical_evidence_dates": [
+        "2026-08-03",
+        "2026-08-10"
+      ]
+    },
+    {
+      "module": "D6",
+      "requirement_id": "G40",
+      "original_status": "部分完成",
+      "review_result": "需修订",
+      "suggested_status": "部分完成",
+      "evidence": [
+        "research_modules/scalable_3d_simulation/docs/SCALABLE_3D_GOAL_COMPLETION_AUDIT_20260803_CN.md",
+        "subagent_reviews/D6_IMPLEMENTATION_GAP_AUDIT.md",
+        "research_modules/d6_evaluation_metrics/EXPERIMENT_REPORT.md",
+        "subagent_reviews/D6_M_TO_N_EVALUATION_FRAMEWORK_REVIEW.md"
+      ],
+      "reason": "状态保留部分完成，建议主级补充指标可用性，而非仅写局部门控未外推。D6 7月30日旧900-cell审计中四项D4/D5安全计数仅700项可用且为0，另200项未发布，跨场景总计为null；7月31日6-cell smoke和8月1日2个受控case各有局部范围。不同代际和不可用项均不能推导最终统一矩阵所有违规为0。",
+      "remaining_evidence": [
+        "最终同版本逐组旧计划/重复授权/硬约束计数与availability",
+        "所有场景的完整分母及零违规证据"
+      ],
+      "historical_evidence_dates": [
+        "2026-07-30",
+        "2026-07-31",
+        "2026-08-01"
+      ]
+    },
+    {
+      "module": "D6",
+      "requirement_id": "G55",
+      "original_status": "部分完成",
+      "review_result": "需修订",
+      "suggested_status": "部分完成",
+      "evidence": [
+        "research_modules/scalable_3d_simulation/docs/SCALABLE_3D_GOAL_PROGRESS_AND_NEXT_PLAN_20260807_CN.md",
+        "research_modules/d6_evaluation_metrics/README.md",
+        "research_modules/d6_evaluation_metrics/PLAN.md",
+        "subagent_reviews/D6_IMPLEMENTATION_GAP_AUDIT.md",
+        "research_modules/d6_evaluation_metrics/EXPERIMENT_REPORT.md",
+        "research_modules/d6_evaluation_metrics/docs/EXPERIMENT_REPORT.md",
+        "research_modules/d6_evaluation_metrics/AIRSIM_INTEGRATION_PLAN.md"
+      ],
+      "reason": "建议补充D6文档路径和时间层次限定，状态仍为部分完成。README/PLAN/GAP/review及docs原则/算法/实验报告保留8月3日来源和8月10日独立专项；模块根EXPERIMENT_REPORT与docs同名报告不是同一更新范围，根报告未检出两项新增审计/专项章节。docs/AIRSIM_INTEGRATION_PLAN.md缺失，实际在模块根。历史同步存在不证明原Goal统一验收或main合并；本轮仅登记差异，不同步原模块。",
+      "remaining_evidence": [
+        "最终冻结交付的文档/代码/结果版本对应及验收合并记录",
+        "主级文档清单中对D6实际路径与两份实验报告范围的明确说明"
+      ],
+      "historical_evidence_dates": [
+        "2026-08-03",
+        "2026-08-07",
+        "2026-08-10"
+      ]
+    }
+  ],
+  "retained_status_counts": {
+    "已完成": 4,
+    "部分完成": 44,
+    "未完成": 10,
+    "证据不足": 2
+  },
+  "classification_differences": [],
+  "evidence_text_amended_ids": [
+    "G17",
+    "G18",
+    "G19",
+    "G21",
+    "G22",
+    "G28",
+    "G40",
+    "G41",
+    "G50",
+    "G55",
+    "G57"
+  ],
+  "meaning": "Owner read-only evidence review; no new experiment, capability certification or GAP closure."
+}

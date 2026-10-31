@@ -1,0 +1,46 @@
+{
+  "audit_date": "2026-09-26",
+  "scope": "Historical evidence, file integrity and audit-document validation only",
+  "requirement_rows": 60,
+  "requirement_status_counts": {
+    "已完成": 4,
+    "部分完成": 44,
+    "未完成": 10,
+    "证据不足": 2
+  },
+  "completion_percentage_calculated": false,
+  "json_and_csv_parse": "passed",
+  "audit_python_ast_syntax": "passed",
+  "markdown_local_links_checked": 120,
+  "markdown_missing_links": 0,
+  "formal_shards_registered": 10,
+  "historical_formal_cells": 450,
+  "matching_formal_payloads_located": 0,
+  "expected_formal_payload_bytes": 1419786552,
+  "source_inventory_files_hashed": 1278,
+  "source_inventory_file_matches": 1278,
+  "source_audit_files_checksum_matches": 2,
+  "independent_airsim_fixture_matches": 2,
+  "independent_airsim_original_artifact_matches": 6,
+  "reachable_git_object_name_search": {
+    "command": "git rev-list --objects --all | rg 'shard_payload\\.tar\\.zst|shard_archive_manifest\\.json|d6_strict_partial_450|80e55eb|identity_blocker_mapping_events\\.csv|formal_r0_identity_causal_pack_summary_20260731/artifact_inventory\\.json'",
+    "output": [
+      "80e55eb43bc4a5feeac9c9af0d718d461a46401f",
+      "2bd1670b38871e1dfabc61786f499de1985c88c2 research_modules/d2_data_association/docs/formal_r0_identity_causal_pack_summary_20260731/artifact_inventory.json"
+    ],
+    "limitation": "Reachable object names only; not remote, dangling-object or arbitrary renamed-payload recovery"
+  },
+  "tracked_audit_diff_whitespace_check": "passed",
+  "tracked_research_modules_diff": "empty",
+  "simulation_run": false,
+  "model_loaded": false,
+  "module_tests_rerun": false,
+  "semantic_source_audit_rerun": false,
+  "commit_or_push_performed": false,
+  "remaining": [
+    "Formal 450 payload recovery",
+    "Historical artifact inventory hash discrepancy explanation",
+    "Module-owner review of the main-level requirement register",
+    "Planned stages 3 and 4"
+  ]
+}

@@ -1,5 +1,11 @@
 # D6 Evaluation Metrics Plan
 
+<!-- evidence-status-sync:20260926:begin -->
+2026-09-26 仅做资料同步，不是新的实验日期；原 Goal 状态不变。
+当前边界统一见[D6 当前证据状态](docs/CURRENT_EVIDENCE_STATUS_CN.md)；下文旧章节仅按原日期和范围作为历史阶段记录阅读。
+历史勾选项与未完成项保持原样，本次不新增实施计划。
+<!-- evidence-status-sync:20260926:end -->
+
 ## 2026-08-10 D5长距离视觉配准专项
 
 ### 已完成

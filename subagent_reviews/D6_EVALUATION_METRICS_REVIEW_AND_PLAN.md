@@ -1,5 +1,10 @@
 # D6 系统评估指标综述及子方案
 
+<!-- evidence-status-sync:20260926:begin -->
+2026-09-26 仅做资料同步，不是新的实验日期；原 Goal 状态不变。
+当前边界统一见[D6 当前证据状态](../research_modules/d6_evaluation_metrics/docs/CURRENT_EVIDENCE_STATUS_CN.md)；下文旧章节仅按原日期和范围作为历史阶段记录阅读。
+<!-- evidence-status-sync:20260926:end -->
+
 ## 2026-08-10 D5长距离视觉配准专项评审
 
 评审接受 D6 的离线消费者边界。新入口只读取 main 的 episode 文件，按相机和全局层输出指标，

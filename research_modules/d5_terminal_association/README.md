@@ -1,5 +1,10 @@
 # D5 Terminal Association
 
+<!-- evidence-status-sync:20260926:begin -->
+> 2026-09-26 仅作资料同步，不是新的实验日期。当前口径统一见 [D5 当前证据状态](docs/CURRENT_EVIDENCE_STATUS_CN.md)。
+> 下列旧章节按其日期作历史阶段阅读；本轮不改旧正文、任务勾选或 GAP，不升级能力，原 Goal 状态不变。
+<!-- evidence-status-sync:20260926:end -->
+
 科研模块，用于把末端相机视场中的本地视觉轨迹保守关联到中心分配的 `global_track_id`。模块可在统一三维 episode 中在线运行；训练标签和真值评分仍保持离线。D5 只输出视觉关联与相机观察意图，不修改、重写或重新分配任何全局轨迹 ID。
 
 ## 2026-08-10 有状态时序几何关联接口

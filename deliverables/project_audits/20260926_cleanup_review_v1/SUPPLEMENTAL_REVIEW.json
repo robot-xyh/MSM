@@ -1,0 +1,102 @@
+{
+  "schema": "msm.cleanup.manual-review.v1",
+  "audit_started_at_utc": "2026-09-26T13:06:30.189269+00:00",
+  "source_commit_at_audit": "a0d3d8ad2cd037c71845119840dfd5cae426c2e6",
+  "deletion_performed": false,
+  "base_audit": "CLEANUP_AUDIT.json",
+  "archive_review": {
+    "path": "/home/linux/Documents/MSM/paper/ego-planner/ego-planner.zip",
+    "base_status": "review_required",
+    "reviewed_status": "priority_candidate_keep_extracted_payloads",
+    "regular_file_matches": 560,
+    "symlink_member": "src/CMakeLists.txt",
+    "archive_and_local_link_target": "/opt/ros/kinetic/share/catkin/cmake/toplevel.cmake",
+    "local_is_symlink": true,
+    "link_target_bytes_equal": true,
+    "resolved_target_exists": false,
+    "note": "链接本身完整保留；链接指向的ROS文件当前不存在。未核验包内权限和时间戳等元数据的等价保留。"
+  },
+  "derived_texts": [
+    {
+      "path": "/home/linux/Documents/MSM/paper/other-paper/paper20.txt",
+      "logical_bytes": 73858,
+      "sha256": "7b182763156a2949aaa5575b0fd8fb1b8e4cf36963af32debc4d2118ea328398",
+      "source_pdf": "/home/linux/Documents/MSM/paper/other-paper/Hierarchically Depicting Vehicle Trajectory with Stability in Complex Environments.pdf",
+      "method": "pdftotext <source_pdf> - | sha256sum",
+      "extraction_matches_saved_sha256": true
+    },
+    {
+      "path": "/home/linux/Documents/MSM/paper/other-paper/paper21.txt",
+      "logical_bytes": 92130,
+      "sha256": "367e338c77eb30fb40dc5360e25b5409b34b5b1a167f0e07fc0995dbe31cf9de",
+      "source_pdf": "/home/linux/Documents/MSM/paper/other-paper/Impact-Aware Planning and Control for Aerial Robots With Suspended Payloads.pdf",
+      "method": "pdftotext <source_pdf> - | sha256sum",
+      "extraction_matches_saved_sha256": true
+    },
+    {
+      "path": "/home/linux/Documents/MSM/paper/other-paper/skywalker.txt",
+      "logical_bytes": 35358,
+      "sha256": "1d7ab1ce2e100f564ece7c6d1123848d3983fb0dcad03526e37906d042b3e3ee",
+      "source_pdf": "/home/linux/Documents/MSM/paper/other-paper/Skywalker A Compact and Agile Air-Ground Omnidirectional Vehicle.pdf",
+      "method": "pdftotext <source_pdf> - | sha256sum",
+      "extraction_matches_saved_sha256": true
+    }
+  ],
+  "archive_payload_cleanup_dependency": {
+    "priority_archive_members_pointing_to_another_priority_candidate": 0,
+    "priority_archive_members_pointing_to_selected_caches": 0,
+    "retained_nested_archive": "/home/linux/Documents/MSM/paper/ego-planner-swarm/src/uav_simulator/Utils/multi_map_server.zip",
+    "nested_archive_tracked": true
+  },
+  "current_experiment_sizes": [
+    {
+      "path": "/home/linux/Documents/MSM/research_modules/independent_experiments/dual_optical_online_benchmark/outputs/report_replay_20260819_v1",
+      "logical_bytes": 268236644,
+      "note": "当前报告采用v2；未证明v1全部载荷被覆盖"
+    },
+    {
+      "path": "/home/linux/Documents/MSM/research_modules/airsim_runtime/outputs/d5_cv_5v5_multicamera_formal_fast_20260716",
+      "logical_bytes": 336046707,
+      "note": "有限扫描未见外部引用；未证明可替代"
+    },
+    {
+      "path": "/home/linux/Documents/MSM/research_modules/scalable_3d_simulation/outputs/point_mass_integrated_observation_smoke_20260722_development",
+      "logical_bytes": 212650229,
+      "note": "有限扫描未见外部引用；未证明可替代"
+    },
+    {
+      "path": "/home/linux/Documents/MSM/research_modules/airsim_runtime/outputs/d5_cv_5v5_multicamera_preflight_20260716",
+      "logical_bytes": 206274833,
+      "note": "有限扫描未见外部引用；未证明可替代"
+    },
+    {
+      "path": "/home/linux/Documents/MSM/research_modules/airsim_runtime/outputs/d5_cv_5v5_multicamera_preflight_alt50_20260716",
+      "logical_bytes": 137218475,
+      "note": "有限扫描未见外部引用；未证明可替代"
+    },
+    {
+      "path": "/home/linux/Documents/MSM/research_modules/scalable_3d_simulation/outputs/point_mass_integrated_observation_smoke_20260722_development_optimized",
+      "logical_bytes": 117434585,
+      "note": "有限扫描未见外部引用；未证明可替代"
+    }
+  ],
+  "totals": {
+    "priority_archives": 7,
+    "priority_archive_logical_bytes": 473443478,
+    "main_cache_directories": 84,
+    "main_cache_logical_bytes": 58061489,
+    "main_cache_allocated_bytes": 61706240,
+    "derived_text_files": 3,
+    "derived_text_logical_bytes": 201346,
+    "main_priority_logical_bytes": 531706313,
+    "sibling_cache_directories": 12,
+    "sibling_cache_logical_bytes": 16128848,
+    "sibling_cache_allocated_bytes": 16797696
+  },
+  "notes": [
+    "未发现字节完全相同的PDF重复组；只对本次paper范围内162个PDF查重。",
+    "基础候选CSV包括应保留和待复查条目，不是删除命令清单。",
+    "相关任务运行状态和文件指纹应在实际删除前重新检查。",
+    "文本引用扫描不覆盖全部动态路径和仓库外用途。"
+  ]
+}

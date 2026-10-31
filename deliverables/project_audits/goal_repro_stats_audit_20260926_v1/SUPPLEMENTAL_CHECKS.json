@@ -1,0 +1,162 @@
+{
+  "current_environment": {
+    "python": "3.12.3",
+    "executable": "/usr/bin/python3",
+    "platform": "Linux-7.0.0-34-generic-x86_64-with-glibc2.39",
+    "packages": {
+      "numpy": "2.5.0",
+      "scipy": "1.17.1",
+      "torch": "2.11.0+cu128",
+      "matplotlib": "3.10.9",
+      "airsim": "1.8.1"
+    },
+    "packages_imported_for_version_check": false
+  },
+  "search_recorded_commit_source": {
+    "commit": "ad59ff3f48e180248f1168bf72a0e152bd80264a",
+    "path": "research_modules/independent_experiments/center_terminal_cv_campaign/exp_search/run_offline_matrix.py",
+    "returncode": 128,
+    "stderr": "fatal: path 'research_modules/independent_experiments/center_terminal_cv_campaign/exp_search/run_offline_matrix.py' exists on disk, but not in 'ad59ff3f48e180248f1168bf72a0e152bd80264a'"
+  },
+  "historical_d2_inventory_discrepancy": {
+    "expected_cited": "c9bf5e479526cded07aa3d170540aa389b8083af3ec801496f41d620d4ffb68f",
+    "format_variant_hashes": [
+      {
+        "sort_keys": false,
+        "indent": null,
+        "newline": false,
+        "sha256": "d302888defba281647c2f4d1dc6460eb094d4eb344a9b285fbab66a90c08a5f1"
+      },
+      {
+        "sort_keys": false,
+        "indent": null,
+        "newline": true,
+        "sha256": "ebc9db023de425df85cd0c66c7d4998defc88780c628f2ac9826c44ae1d5af8d"
+      },
+      {
+        "sort_keys": false,
+        "indent": 2,
+        "newline": false,
+        "sha256": "a39c3060088a220f2b94e5fdfd65bdbe940347c5532bc95aa66b5288fd0fa96f"
+      },
+      {
+        "sort_keys": false,
+        "indent": 2,
+        "newline": true,
+        "sha256": "590514ca516f6ae5d8a05a0f28a5409822240abe390903689b32bb79e9556885"
+      },
+      {
+        "sort_keys": true,
+        "indent": null,
+        "newline": false,
+        "sha256": "d302888defba281647c2f4d1dc6460eb094d4eb344a9b285fbab66a90c08a5f1"
+      },
+      {
+        "sort_keys": true,
+        "indent": null,
+        "newline": true,
+        "sha256": "ebc9db023de425df85cd0c66c7d4998defc88780c628f2ac9826c44ae1d5af8d"
+      },
+      {
+        "sort_keys": true,
+        "indent": 2,
+        "newline": false,
+        "sha256": "a39c3060088a220f2b94e5fdfd65bdbe940347c5532bc95aa66b5288fd0fa96f"
+      },
+      {
+        "sort_keys": true,
+        "indent": 2,
+        "newline": true,
+        "sha256": "590514ca516f6ae5d8a05a0f28a5409822240abe390903689b32bb79e9556885"
+      }
+    ],
+    "compact_sorted_sha256": "8f5cf6250dcf41eefe08932d43b679019de1d55dd1d99b261e808a8c78e14bef",
+    "resolved": false
+  },
+  "center_expected_result_hash": {
+    "path": "/home/linux/Documents/MSM/research_modules/independent_experiments/center_terminal_cv_campaign/outputs/center_handover_sensor_error_20260820/per_run_metrics.csv",
+    "expected": "80f6267a22da2b25a570af6f0640d132df33e0a6371bb85ca731964a5f65c29d",
+    "actual": "80f6267a22da2b25a570af6f0640d132df33e0a6371bb85ca731964a5f65c29d",
+    "match": true
+  },
+  "zero_center_output_by_mode": {
+    "anonymous": 126,
+    "coarse_hint": 120
+  },
+  "center_scale_tags": [
+    {
+      "target_count": "20",
+      "tags": [
+        "trained_scale"
+      ]
+    },
+    {
+      "target_count": "40",
+      "tags": [
+        "trained_scale"
+      ]
+    },
+    {
+      "target_count": "60",
+      "tags": [
+        "unseen_scale"
+      ]
+    }
+  ],
+  "dual_timeout_by_route": {
+    "epipolar_mht": 135
+  },
+  "dual_round_records": [
+    {
+      "path": "/home/linux/Documents/MSM/research_modules/independent_experiments/dual_optical_online_benchmark/outputs/report_replay_20260819_v2/oracle_360/round_metrics.csv",
+      "rows": 180,
+      "duplicate_full_keys": 0
+    },
+    {
+      "path": "/home/linux/Documents/MSM/research_modules/independent_experiments/dual_optical_online_benchmark/outputs/report_replay_20260819_v2/continuous_360/round_metrics.csv",
+      "rows": 720,
+      "duplicate_full_keys": 0
+    },
+    {
+      "path": "/home/linux/Documents/MSM/research_modules/independent_experiments/dual_optical_online_benchmark/outputs/report_replay_20260819_v2/s180_derived/round_metrics.csv",
+      "rows": 1440,
+      "duplicate_full_keys": 0
+    }
+  ],
+  "dual_final_rows_equal_latest_saved_round": {
+    "matched": 270,
+    "checked": 270,
+    "sequence_count": 270
+  },
+  "strict_json_checks": [
+    {
+      "path": "/home/linux/Documents/MSM/research_modules/independent_experiments/center_terminal_cv_campaign/outputs/center_handover_sensor_error_20260820/aggregate_metrics.json",
+      "result": "passed"
+    },
+    {
+      "path": "/home/linux/Documents/MSM/research_modules/independent_experiments/center_terminal_cv_campaign/outputs/center_handover_sensor_error_20260820/metrics_contract.json",
+      "result": "passed"
+    },
+    {
+      "path": "/home/linux/Documents/MSM/research_modules/independent_experiments/center_terminal_cv_campaign/outputs/center_handover_sensor_error_20260820/reproduction_manifest.json",
+      "result": "passed"
+    },
+    {
+      "path": "/home/linux/Documents/MSM/research_modules/independent_experiments/center_terminal_cv_campaign/outputs/offline_search_100pct_cues_20260819/matrix_summary.json",
+      "result": "passed"
+    },
+    {
+      "path": "/home/linux/Documents/MSM/research_modules/independent_experiments/center_terminal_cv_campaign/outputs/gnn_offline_benchmark_20260816/benchmark_summary.json",
+      "result": "passed"
+    },
+    {
+      "path": "/home/linux/Documents/MSM/research_modules/independent_experiments/center_terminal_cv_campaign/outputs/terminal_gnn_diagnostic_selection_20260819_v2/selection_summary.json",
+      "result": "passed"
+    },
+    {
+      "path": "/home/linux/Documents/MSM/research_modules/independent_experiments/dual_optical_online_benchmark/outputs/report_replay_20260819_v2/combined_summary.json",
+      "result": "passed"
+    }
+  ],
+  "boundaries": "No model loading, no simulator, no raw labels interpreted, no original data changed"
+}

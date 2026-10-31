@@ -1,0 +1,12 @@
+{
+  "schema_version": 1,
+  "completed_utc": "2026-10-31T06:48:36.620125+00:00",
+  "minimum_source_size_bytes": 65536,
+  "compression": "zstd-9",
+  "planned_file_count": 15593,
+  "verified_file_count": 15593,
+  "original_size_bytes": 35122467945,
+  "compressed_size_bytes": 3871468938,
+  "saved_bytes": 31250999007,
+  "saved_ratio": 0.8897722977763828
+}

@@ -1,0 +1,13 @@
+id,category,status,current_evidence,remaining_action,closure_criterion,owner
+A01,缺失证据,450组完整记录仍未定位,../goal_resume_audit_20260926_v1/ARCHIVE_LOCATION_REGISTER.csv,获得其他主机或外部备份位置线索后定向核对;没有新线索不重复全盘扫描,十个分片批次与校验值匹配;否则维持摘要可查完整记录未定位,main及资料保管人
+A02,版本问题,16份来源源码已保存静态依赖已登记,../goal_evidence_followup_20260926_v1/STATIC_SOURCE_REGISTER.csv,核对尚缺的历史依赖副本与执行版本,不能以基线提交相同代替历史执行源码齐全,main及独立试验资料维护人
+A03,版本问题,45组搜索配置可查原执行源码仍不足,../goal_evidence_followup_20260926_v1/PROVENANCE_FOLLOWUP.json,取得8月源码副本或原始指纹后定向核验,历史入口及核心回放文件可对应;不使用当前代码补写历史,独立试验资料维护人
+A04,统计记录,四份报告说明已同步且本批保持不变,../goal_owner_review_sync_20260926_v1/REPORT_VALIDATION.json,已完成本项说明同步;保留旧表格图片和修订依据,零输出与平均方式明确且原值未改,main及报告维护人
+A05,统计记录,比较范围与计时字段勘误已登记,../goal_owner_review_sync_20260926_v1/METADATA_ERRATA.json,后续另有比较任务时单独规定字段和容差,历史哈希用于原文件核验;不声称实测耗时字节一致,统计资料维护人
+A06,统计记录,缓存与时限的解释已登记,../goal_owner_review_sync_20260926_v1/METADATA_ERRATA.json,原时限无法恢复时保留不可确认;不重复猜测,不从孤立布尔字段推定按时能力,统计资料维护人
+A07,通用统计软件,重复键等边界风险已记录尚未修复,../goal_repro_stats_audit_20260926_v1/STATISTICS_BOUNDARY_TESTS.json,可单独维护普通记录检查并使用人工样例验证;不运行研究算法,重复键缺失值重复种子有明确处理和回归样例且不改旧数据,统计工具维护人
+A08,历史记录,两个哈希对象对应已查明,../goal_owner_review_sync_20260926_v1/MAIN_REVIEW.json,说明事项已完成;保留旧标签与勘误的对应关系,c9bf对应校验清单;590514对应索引;不得据此声称载荷恢复,D2所有者及main
+A09,证据范围,旧v2实测与新v3接线已分开登记,../goal_owner_review_sync_20260926_v1/GOAL_REQUIREMENT_EVIDENCE_REVIEWED.csv,说明事项已完成;只有新增同版本记录才更新实际接入判断,独立试验和旧结果不替代新版本或原Goal验收,main及模块所有者
+A10,原研究状态,60项完成分类维持不变,../goal_owner_review_sync_20260926_v1/GOAL_REVIEW_CONSOLIDATED.csv,未完成研究继续单独登记;本资料批次不自动启动研究任务,资料核查完成与原Goal验收分别记录,main及D1至D7所有者
+A11,文档状态,四模块及主级入口同步完成且校验通过,VALIDATION_RECORD.json;owners/D3_sync.json;owners/D4_sync.json;owners/D5_sync.json;owners/D6_sync.json,本项已完成;以后仅依据新增证据更新,44份旧正文完整保留;4份集中状态页;120处链接有效;8份领导报告未变,D3至D6所有者及main
+A12,运行条件,历史完整环境尚未锁定,../goal_evidence_followup_20260926_v1/DYNAMIC_IMPORT_NOTES.json,取得原环境导出或依赖版本记录后核对,静态源码清单和真实执行环境分别有证据,main及环境资料维护人

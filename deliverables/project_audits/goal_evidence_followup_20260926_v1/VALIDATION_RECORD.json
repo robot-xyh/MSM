@@ -1,0 +1,101 @@
+{
+  "created_at": "2026-09-26T14:12:51.689646+00:00",
+  "passed": true,
+  "checks": [
+    {
+      "name": "original_files_unchanged",
+      "passed": true,
+      "details": {
+        "file_count": 141,
+        "changed": []
+      }
+    },
+    {
+      "name": "archive_members",
+      "passed": true,
+      "details": {
+        "count": 71,
+        "crc_error": null,
+        "hash_differences": []
+      }
+    },
+    {
+      "name": "archive_identity",
+      "passed": true,
+      "details": "ade5d80bb07902ac16870eb7b1a727b1061abab902c43e9dc51bf4b529b2e024"
+    },
+    {
+      "name": "sixteen_attested_sources",
+      "passed": true,
+      "details": 16
+    },
+    {
+      "name": "dynamic_notes_reparsed",
+      "passed": true,
+      "details": {
+        "count": 4,
+        "method_eval_is_not_dynamic_import": true
+      }
+    },
+    {
+      "name": "static_register_counts",
+      "passed": true,
+      "details": 71
+    },
+    {
+      "name": "saved_search_configurations",
+      "passed": true,
+      "details": 45
+    },
+    {
+      "name": "document_links",
+      "passed": true,
+      "details": {
+        "checked": 16,
+        "broken": []
+      }
+    },
+    {
+      "name": "twelve_actions_preserved",
+      "passed": true,
+      "details": 12
+    },
+    {
+      "name": "artificial_file_unit_tests",
+      "passed": true,
+      "details": {
+        "returncode": 0,
+        "output": "test_absolute_package_child (test_audit_provenance.ProvenanceTests.test_absolute_package_child) ... ok\ntest_dynamic_call_not_executed (test_audit_provenance.ProvenanceTests.test_dynamic_call_not_executed) ... ok\ntest_mismatch_rejected (test_audit_provenance.ProvenanceTests.test_mismatch_rejected) ... ok\ntest_model_eval_is_not_dynamic_import (test_audit_provenance.ProvenanceTests.test_model_eval_is_not_dynamic_import) ... ok\ntest_relative_module (test_audit_provenance.ProvenanceTests.test_relative_module) ... ok\ntest_relative_package_child (test_audit_provenance.ProvenanceTests.test_relative_package_child) ... ok\ntest_stdlib_and_external (test_audit_provenance.ProvenanceTests.test_stdlib_and_external) ... ok\ntest_unexecuted_branch_included (test_audit_provenance.ProvenanceTests.test_unexecuted_branch_included) ... ok\ntest_unknown_relative (test_audit_provenance.ProvenanceTests.test_unknown_relative) ... ok\n\n----------------------------------------------------------------------\nRan 9 tests in 0.003s\n\nOK\n"
+      }
+    },
+    {
+      "name": "existing_batch_refused",
+      "passed": true,
+      "details": {
+        "returncode": 1,
+        "output": "Existing audit artifacts: use a new batch; nothing overwritten.\n"
+      }
+    },
+    {
+      "name": "no_tracked_research_changes",
+      "passed": true,
+      "details": ""
+    },
+    {
+      "name": "tracked_audit_diff_whitespace",
+      "passed": true,
+      "details": ""
+    },
+    {
+      "name": "new_batch_trailing_whitespace",
+      "passed": true,
+      "details": "new Markdown and Python files"
+    }
+  ],
+  "scripts_sha256": {
+    "audit_provenance.py": "ce8e7dab057cef7ace8e6f1a3cb557906094afe030cc43352300d54eeee74f41",
+    "verify_followup.py": "02a862ae70d148817c3a14ad6bffce032ab3cf03aab0447000fe3b392bf9cb76",
+    "test_audit_provenance.py": "a387c7d6ff76e58f98443e81c0bf9b7add34dbf94de51e776e755b1e0f18145e"
+  },
+  "scope": "Audit artifact validation only; no algorithm execution or rescoring."
+}

@@ -1,0 +1,861 @@
+{
+  "dual": {
+    "manifest_path": "/home/linux/Documents/MSM/research_modules/independent_experiments/dual_optical_online_benchmark/outputs/report_replay_20260819_v2/reproduction_manifest.json",
+    "source": {
+      "command": [
+        "python3",
+        "-m",
+        "dual_optical_online_benchmark.report_matrix_replay",
+        "--output-dir",
+        "/home/linux/Documents/MSM/research_modules/independent_experiments/dual_optical_online_benchmark/outputs/report_replay_20260819_v2",
+        "--workers",
+        "6"
+      ],
+      "cwd": "/home/linux/Documents/MSM",
+      "entry_point": "dual_optical_online_benchmark.report_matrix_replay",
+      "environment": {
+        "OMP_NUM_THREADS": "1",
+        "OPENBLAS_NUM_THREADS": "1",
+        "PYTHONPATH": "research_modules/independent_experiments"
+      },
+      "git_commit": "ad59ff3f48e180248f1168bf72a0e152bd80264a",
+      "git_status_short_sha256": "f92efab631b4d2bdf3e776bfb2eb65289c66b35fa6a4f8f34e4842be328aba7b",
+      "worktree_dirty": true
+    },
+    "git_revision": "ad59ff3f48e180248f1168bf72a0e152bd80264a",
+    "git_object": {
+      "args": [
+        "rev-parse",
+        "--verify",
+        "ad59ff3f48e180248f1168bf72a0e152bd80264a^{commit}"
+      ],
+      "returncode": 0,
+      "stdout": "ad59ff3f48e180248f1168bf72a0e152bd80264a",
+      "stderr": ""
+    },
+    "working_tree_dirty": true,
+    "runtime": {
+      "dependencies": {
+        "numpy": "2.5.0",
+        "scipy": "1.17.1",
+        "torch": "2.11.0+cu128"
+      },
+      "platform": "Linux-7.0.0-28-generic-x86_64-with-glibc2.39",
+      "python_version": "3.12.3 (main, Jun 19 2026, 12:46:00) [GCC 13.3.0]",
+      "simulator": "deterministic offline replay of preserved AirSim records",
+      "simulator_version": "source records produced by AirSim 1.8.1",
+      "worker_count": 6
+    },
+    "scenario": {
+      "corruption_levels": [
+        "clean",
+        "light",
+        "medium",
+        "heavy"
+      ],
+      "deadline_ms": 1000.0,
+      "final_window_only_in_summary": true,
+      "matrix": {
+        "complete": true,
+        "continuous_360_group_count": 24,
+        "oracle_360_group_count": 6,
+        "s180_group_count": 24,
+        "seed_count_per_group": 5,
+        "total_group_count": 54
+      },
+      "routes": [
+        "epipolar_mht",
+        "gnn"
+      ],
+      "target_counts": [
+        20,
+        40,
+        60
+      ]
+    },
+    "metrics_contract": {
+      "coverage": "unique correctly confirmed targets / fixed target count",
+      "local_track_purity_threshold": 0.85,
+      "precision": "correct confirmed relations / all confirmed relations",
+      "single_station_coverage": "unique identity-correct local tracks / (2 * fixed target count)",
+      "single_station_precision": "dominant real observations / all labeled observations at both stations",
+      "timeout_policy": "quality retained after 1000 ms; late result contributes zero to on-time coverage"
+    },
+    "reproduction": {
+      "full_airsim_rerun_command": null,
+      "known_limits": [
+        "360-degree 40/60-target geometry uses a pre-existing cross-scale diagnostic freeze",
+        "S180 medium/heavy cases are deterministic offline corruption replays, not AirSim reruns",
+        "legacy 360-degree oracle construction adds current default fields to the preserved tracker config"
+      ],
+      "latency_nondeterministic": true,
+      "offline_replay_command": "python3 -m dual_optical_online_benchmark.report_matrix_replay --output-dir /home/linux/Documents/MSM/research_modules/independent_experiments/dual_optical_online_benchmark/outputs/report_replay_20260819_v2 --workers 6",
+      "quality_metrics_deterministic": true
+    },
+    "command": null,
+    "input_evidence": null
+  },
+  "search": {
+    "manifest_path": "/home/linux/Documents/MSM/research_modules/independent_experiments/center_terminal_cv_campaign/outputs/offline_search_100pct_cues_20260819/reproduction_manifest.json",
+    "source": {},
+    "git_revision": "ad59ff3f48e180248f1168bf72a0e152bd80264a",
+    "git_object": {
+      "args": [
+        "rev-parse",
+        "--verify",
+        "ad59ff3f48e180248f1168bf72a0e152bd80264a^{commit}"
+      ],
+      "returncode": 0,
+      "stdout": "ad59ff3f48e180248f1168bf72a0e152bd80264a",
+      "stderr": ""
+    },
+    "working_tree_dirty": true,
+    "runtime": null,
+    "scenario": null,
+    "metrics_contract": null,
+    "reproduction": null,
+    "command": "PYTHONPATH=research_modules/independent_experiments python3 -m center_terminal_cv_campaign.exp_search.run_offline_matrix",
+    "input_evidence": {
+      "n20_m8": {
+        "path": "/home/linux/Documents/MSM/research_modules/independent_experiments/center_terminal_cv_campaign/outputs/airsim_n20_formal_v3_20260816/search/truth/actor_motion.jsonl",
+        "sha256": "3220ccdbb39726d8815b796188571ebd045b9e2766d4a6ae89c0473888f6f25e",
+        "row_count": 180,
+        "recorded_start_s": 0.0,
+        "recorded_end_s": 0.8,
+        "extrapolated_after_s": 17.2
+      },
+      "n20_m30": {
+        "path": "/home/linux/Documents/MSM/research_modules/independent_experiments/center_terminal_cv_campaign/outputs/airsim_m30_n20_scale_20260816/search/truth/actor_motion.jsonl",
+        "sha256": "3220ccdbb39726d8815b796188571ebd045b9e2766d4a6ae89c0473888f6f25e",
+        "row_count": 180,
+        "recorded_start_s": 0.0,
+        "recorded_end_s": 0.8,
+        "extrapolated_after_s": 17.2
+      },
+      "n40_m50": {
+        "path": "/home/linux/Documents/MSM/research_modules/independent_experiments/center_terminal_cv_campaign/outputs/airsim_m50_n40_scale_v2_20260816/search/truth/actor_motion.jsonl",
+        "sha256": "054aff46df86cb967f552a6c46063b4d7025d8dc4bf8c563a5b4b245402ae475",
+        "row_count": 360,
+        "recorded_start_s": 0.0,
+        "recorded_end_s": 0.8,
+        "extrapolated_after_s": 17.2
+      }
+    }
+  },
+  "center": {
+    "manifest_path": "/home/linux/Documents/MSM/research_modules/independent_experiments/center_terminal_cv_campaign/outputs/center_handover_sensor_error_20260820/reproduction_manifest.json",
+    "source": {
+      "git_commit": "ad59ff3f48e180248f1168bf72a0e152bd80264a",
+      "worktree_dirty": true,
+      "entry_point": "research_modules.independent_experiments.center_terminal_cv_campaign.exp_center_handover.run_error_matrix",
+      "cwd": "/home/linux/Documents/MSM",
+      "command": [
+        "python3",
+        "-m",
+        "research_modules.independent_experiments.center_terminal_cv_campaign.exp_center_handover.run_error_matrix",
+        "--output-dir",
+        "<NEW_OUTPUT_DIR>",
+        "--model-path",
+        "/home/linux/Documents/MSM/research_modules/independent_experiments/center_terminal_cv_campaign/outputs/center_handover_sensor_error_20260820/inputs/center_handover_sparse_gnn.pt",
+        "--seeds",
+        "20260820",
+        "20260821",
+        "20260822",
+        "20260823",
+        "20260824",
+        "20260825",
+        "20260826",
+        "20260827",
+        "20260828",
+        "20260829",
+        "--target-counts",
+        "20",
+        "40",
+        "60"
+      ],
+      "environment": {},
+      "snapshot_root": "source_snapshot/"
+    },
+    "git_revision": "ad59ff3f48e180248f1168bf72a0e152bd80264a",
+    "git_object": {
+      "args": [
+        "rev-parse",
+        "--verify",
+        "ad59ff3f48e180248f1168bf72a0e152bd80264a^{commit}"
+      ],
+      "returncode": 0,
+      "stdout": "ad59ff3f48e180248f1168bf72a0e152bd80264a",
+      "stderr": ""
+    },
+    "working_tree_dirty": true,
+    "runtime": {
+      "python_version": "3.12.3",
+      "dependency_lock": {
+        "path": "environment.json",
+        "sha256": "7f6789b218fb487f2539ca7885a22e47072d4ad98de8184140aa165d13f170da"
+      },
+      "simulator": "deterministic offline synthetic fixture",
+      "simulator_version": "not applicable",
+      "hardware_summary": "NVIDIA GeForce RTX 4050 Laptop GPU, 6141 MiB, 595.84"
+    },
+    "scenario": {
+      "config_path": "protocol.json",
+      "config_sha256": "babc83435395ab6f8b81163dcf1c3a64fb469b2e994ec9d0f74c01192ad30a02",
+      "settings_path": null,
+      "settings_sha256": null,
+      "seeds": [
+        20260820,
+        20260821,
+        20260822,
+        20260823,
+        20260824,
+        20260825,
+        20260826,
+        20260827,
+        20260828,
+        20260829
+      ],
+      "target_count": [
+        20,
+        40,
+        60
+      ],
+      "resource_count": [
+        20,
+        40,
+        60
+      ],
+      "duration_s": 0.4,
+      "clock_speed": null
+    },
+    "metrics_contract": {
+      "definitions_path": "metrics_contract.json",
+      "denominators": {
+        "binding_precision": "confirmed bindings",
+        "binding_recall": "all center source cues in final frame"
+      },
+      "acceptance": {
+        "precision": 0.8,
+        "recall": 0.8
+      },
+      "availability_policy": "all configured rows retained; no timeout exclusions"
+    },
+    "reproduction": {
+      "offline_replay_command": [
+        "python3",
+        "-m",
+        "research_modules.independent_experiments.center_terminal_cv_campaign.exp_center_handover.run_error_matrix",
+        "--output-dir",
+        "<NEW_OUTPUT_DIR>",
+        "--model-path",
+        "/home/linux/Documents/MSM/research_modules/independent_experiments/center_terminal_cv_campaign/outputs/center_handover_sensor_error_20260820/inputs/center_handover_sparse_gnn.pt",
+        "--seeds",
+        "20260820",
+        "20260821",
+        "20260822",
+        "20260823",
+        "20260824",
+        "20260825",
+        "20260826",
+        "20260827",
+        "20260828",
+        "20260829",
+        "--target-counts",
+        "20",
+        "40",
+        "60"
+      ],
+      "full_rerun_command": [
+        "python3",
+        "-m",
+        "research_modules.independent_experiments.center_terminal_cv_campaign.exp_center_handover.run_error_matrix",
+        "--output-dir",
+        "<NEW_OUTPUT_DIR>",
+        "--model-path",
+        "/home/linux/Documents/MSM/research_modules/independent_experiments/center_terminal_cv_campaign/outputs/center_handover_sensor_error_20260820/inputs/center_handover_sparse_gnn.pt",
+        "--seeds",
+        "20260820",
+        "20260821",
+        "20260822",
+        "20260823",
+        "20260824",
+        "20260825",
+        "20260826",
+        "20260827",
+        "20260828",
+        "20260829",
+        "--target-counts",
+        "20",
+        "40",
+        "60"
+      ],
+      "expected_metrics_sha256": "80f6267a22da2b25a570af6f0640d132df33e0a6371bb85ca731964a5f65c29d",
+      "comparison_tolerance": "deterministic CSV equality on the recorded software stack",
+      "known_nondeterminism": []
+    },
+    "command": null,
+    "input_evidence": null
+  },
+  "D3": {
+    "source_root": "/home/linux/Documents/MSM-source-generation-output-e7c438c-20260802/D3",
+    "session": {
+      "authorization_id": "main-source-generation-e7c438c-20260802-v1",
+      "authorization_sha256": "ae8bcafd1c673c4e991e0837ae594e320b21b3bfab8faa1ec016eaee65bdbdd9",
+      "base_config_path": "research_modules/scalable_3d_simulation/configs/nominal_200v200.json",
+      "base_config_sha256": "2279fa380ce2d79d98690b148653b0409a2471bb35d8aab77f9ed5d0f7b97072",
+      "control": false,
+      "dataset_generation": true,
+      "future_held_out_model_consumption": false,
+      "global_track_id_create": false,
+      "global_track_id_write": false,
+      "module": "D3",
+      "module_request_sha256": "b5685b61acff9f0f1bde504ecc27d17621e0161c8adad95d1789e4d46b74c42f",
+      "planned_episode_count": 300,
+      "preflight_sha256": "f49e01d4a20df295cbe2cc17f8340216856307e9e5036b3c0bedcd541b30067d",
+      "registry_file_sha256": "98caa683ceae61b89580afc44545875c4345fa1b92bfc05cdc91e232c9f7f988",
+      "runtime": false,
+      "schedule_path": "research_modules/d3_assignment_planner/configs/a1_source_independent_v3_generation_schedule_v1.json",
+      "schedule_sha256": "a9b494de5eb2f349bc6370a1252ea5f5481211dc16da17b002a90972f3b0bdfa",
+      "schema_version": "scalable3d-learning-source-generation-session-v1",
+      "source_git_commit": "e7c438ca0e480f9f56dc426dc20a3f8f83d7d6a6",
+      "training": false
+    },
+    "source_git_object": {
+      "args": [
+        "rev-parse",
+        "--verify",
+        "e7c438ca0e480f9f56dc426dc20a3f8f83d7d6a6^{commit}"
+      ],
+      "returncode": 0,
+      "stdout": "e7c438ca0e480f9f56dc426dc20a3f8f83d7d6a6",
+      "stderr": ""
+    },
+    "previous_integrity_audit": "/home/linux/Documents/MSM/deliverables/project_audits/goal_resume_audit_20260926_v1/SOURCE_PAYLOAD_HASH_CHECKS.csv",
+    "training_checkpoint_claimed": false
+  },
+  "D4": {
+    "source_root": "/home/linux/Documents/MSM-source-generation-output-6737b44-20260803/D4",
+    "session": {
+      "authorization_id": "main-source-generation-6737b44-20260803-v2",
+      "authorization_sha256": "49a2873699dc3024f5b9a63435c69538f46282eb667e4ca60b8fd082708c97fe",
+      "base_config_path": "research_modules/scalable_3d_simulation/configs/nominal_200v200.json",
+      "base_config_sha256": "2279fa380ce2d79d98690b148653b0409a2471bb35d8aab77f9ed5d0f7b97072",
+      "control": false,
+      "dataset_generation": true,
+      "future_held_out_model_consumption": false,
+      "global_track_id_create": false,
+      "global_track_id_write": false,
+      "module": "D4",
+      "module_request_sha256": "c4f74fb499547cfa9808039d9c2c9f4cd4ff11c1dbe1493b47436c22e80cb019",
+      "planned_episode_count": 324,
+      "preflight_sha256": "dce34ae491297b5bf59941b9445c51e81a9d01f283286146aecb5cceb3d890ad",
+      "registry_file_sha256": "98caa683ceae61b89580afc44545875c4345fa1b92bfc05cdc91e232c9f7f988",
+      "runtime": false,
+      "schedule_path": "research_modules/d4_distributed_fallback/reports/D4_V7_FAILURE_ATTRIBUTION_V8_DATA_REQUEST_20260801/v8_development_seed_registry.json",
+      "schedule_sha256": "cd40390994a6216ebb6ab3415fd467762d6900c45ad7f6ebd7ee783a9bf77015",
+      "schema_version": "scalable3d-learning-source-generation-session-v1",
+      "source_git_commit": "6737b44515526b5269ae98faad39e1f92716f423",
+      "training": false
+    },
+    "source_git_object": {
+      "args": [
+        "rev-parse",
+        "--verify",
+        "6737b44515526b5269ae98faad39e1f92716f423^{commit}"
+      ],
+      "returncode": 0,
+      "stdout": "6737b44515526b5269ae98faad39e1f92716f423",
+      "stderr": ""
+    },
+    "previous_integrity_audit": "/home/linux/Documents/MSM/deliverables/project_audits/goal_resume_audit_20260926_v1/SOURCE_PAYLOAD_HASH_CHECKS.csv",
+    "training_checkpoint_claimed": false
+  },
+  "D5": {
+    "source_root": "/home/linux/Documents/MSM-source-generation-output-64dfc08-20260803/D5",
+    "session": {
+      "authorization_id": "main-source-generation-64dfc08-20260803-v1",
+      "authorization_sha256": "a803116b5e8b4758b1e2dfd8c55b43dfc5cb93241d7f242cb2c2f0bcf622225a",
+      "base_config_path": "research_modules/scalable_3d_simulation/configs/nominal_200v200.json",
+      "base_config_sha256": "2279fa380ce2d79d98690b148653b0409a2471bb35d8aab77f9ed5d0f7b97072",
+      "control": false,
+      "dataset_generation": true,
+      "future_held_out_model_consumption": false,
+      "global_track_id_create": false,
+      "global_track_id_write": false,
+      "module": "D5",
+      "module_request_sha256": "9d16ef30180584b3df8a5af82b082d9427172f118c6e438e602d4cd291508dcc",
+      "planned_episode_count": 104,
+      "preflight_sha256": "0c6cfe2473fa8ea541bed9ca5365682ebc4bac1ee3ca47b2a38d16b2c14d2fac",
+      "registry_file_sha256": "98caa683ceae61b89580afc44545875c4345fa1b92bfc05cdc91e232c9f7f988",
+      "runtime": false,
+      "schedule_path": "research_modules/d5_terminal_association/configs/a3_v3_source_collection_schedule_20260801.json",
+      "schedule_sha256": "4b4805773540087fccd65a1352ea8dc6a263f4387afe6157c70084edf4aefa1c",
+      "schema_version": "scalable3d-learning-source-generation-session-v1",
+      "source_git_commit": "64dfc088cf4990304a95b2a362b905136092c70a",
+      "training": false
+    },
+    "source_git_object": {
+      "args": [
+        "rev-parse",
+        "--verify",
+        "64dfc088cf4990304a95b2a362b905136092c70a^{commit}"
+      ],
+      "returncode": 0,
+      "stdout": "64dfc088cf4990304a95b2a362b905136092c70a",
+      "stderr": ""
+    },
+    "previous_integrity_audit": "/home/linux/Documents/MSM/deliverables/project_audits/goal_resume_audit_20260926_v1/SOURCE_PAYLOAD_HASH_CHECKS.csv",
+    "training_checkpoint_claimed": false
+  },
+  "old_handover": {
+    "root": "/home/linux/Documents/MSM/research_modules/independent_experiments/center_terminal_cv_campaign/outputs/gnn_offline_benchmark_20260816",
+    "manifests": [
+      {
+        "manifest": "/home/linux/Documents/MSM/research_modules/independent_experiments/center_terminal_cv_campaign/outputs/gnn_offline_benchmark_20260816/manifests/n20_m30.json",
+        "seed": 20260816,
+        "paths": [
+          {
+            "role": "scenario",
+            "path": "/home/linux/Documents/MSM/research_modules/independent_experiments/center_terminal_cv_campaign/outputs/airsim_m30_n20_scale_20260816/fixtures/fixture_n20_seed20260816/scenario.json",
+            "exists": true,
+            "expected_sha256": "91629eefc7fa0ff534da99de36338a3dcbaaba2761ec259a911b93e341973fa6"
+          },
+          {
+            "role": "source_cues",
+            "path": "/home/linux/Documents/MSM/research_modules/independent_experiments/center_terminal_cv_campaign/outputs/airsim_m30_n20_scale_20260816/center_handover/online/source_cues.jsonl",
+            "exists": true,
+            "expected_sha256": "986ed166ad0ed5af2186f3abae53aef94f479a00b849cc37db22aef36587c58d"
+          },
+          {
+            "role": "center_local_tracks",
+            "path": "/home/linux/Documents/MSM/research_modules/independent_experiments/center_terminal_cv_campaign/outputs/airsim_m30_n20_scale_20260816/center_handover/online/local_tracks.jsonl",
+            "exists": true,
+            "expected_sha256": "4c12b3ecbdedb681fc0c079ec8911daaae482cc29ce8e79d7bd91c841765dc83"
+          },
+          {
+            "role": "center_source_truth",
+            "path": "/home/linux/Documents/MSM/research_modules/independent_experiments/center_terminal_cv_campaign/outputs/airsim_m30_n20_scale_20260816/center_handover/truth/source_cue_labels.jsonl",
+            "exists": true,
+            "expected_sha256": "35040ecb6e871a35f32ca38233209c7cd27a6fadf59d98f93e711b21cffa5326"
+          },
+          {
+            "role": "center_local_truth",
+            "path": "/home/linux/Documents/MSM/research_modules/independent_experiments/center_terminal_cv_campaign/outputs/airsim_m30_n20_scale_20260816/center_handover/truth/local_track_labels.jsonl",
+            "exists": true,
+            "expected_sha256": "df6540440961998e51d7b046e317b32c90b4f3cea5195e09d121e0ce7f34dff0"
+          },
+          {
+            "role": "crossview_local_tracks",
+            "path": "/home/linux/Documents/MSM/research_modules/independent_experiments/center_terminal_cv_campaign/outputs/airsim_m30_n20_scale_20260816/crossview/captured_local_tracks.jsonl",
+            "exists": true,
+            "expected_sha256": "1cfde14ccf5f2fe73335087b0be699bffe14f2e5ab643a588d39c986529149bb"
+          },
+          {
+            "role": "crossview_calibrations",
+            "path": "/home/linux/Documents/MSM/research_modules/independent_experiments/center_terminal_cv_campaign/outputs/airsim_m30_n20_scale_20260816/fixtures/fixture_n20_seed20260816/crossview/calibrations.json",
+            "exists": true,
+            "expected_sha256": "8f1afdc50f755e5c3b0f361abd2d2cd96fbb40bfe2b1f869484042c45325efd4"
+          },
+          {
+            "role": "crossview_capture_plan",
+            "path": "/home/linux/Documents/MSM/research_modules/independent_experiments/center_terminal_cv_campaign/outputs/airsim_m30_n20_scale_20260816/fixtures/fixture_n20_seed20260816/crossview/capture_plan.json",
+            "exists": true,
+            "expected_sha256": "9f41d0ab504241dba5abd55798d843d645abe93d2cfd95e0416831037f61d92a"
+          },
+          {
+            "role": "crossview_truth",
+            "path": "/home/linux/Documents/MSM/research_modules/independent_experiments/center_terminal_cv_campaign/outputs/airsim_m30_n20_scale_20260816/crossview/truth/local_track_truth_map.json",
+            "exists": true,
+            "expected_sha256": "d04570cf7092b870d70f6e62a1be7478a977a3fefcd8f268cab9d918b63aa00f"
+          }
+        ]
+      },
+      {
+        "manifest": "/home/linux/Documents/MSM/research_modules/independent_experiments/center_terminal_cv_campaign/outputs/gnn_offline_benchmark_20260816/manifests/n20_m8.json",
+        "seed": 20260816,
+        "paths": [
+          {
+            "role": "scenario",
+            "path": "/home/linux/Documents/MSM/research_modules/independent_experiments/center_terminal_cv_campaign/outputs/airsim_n20_formal_v3_20260816/fixtures/fixture_n20_seed20260816/scenario.json",
+            "exists": true,
+            "expected_sha256": "91629eefc7fa0ff534da99de36338a3dcbaaba2761ec259a911b93e341973fa6"
+          },
+          {
+            "role": "source_cues",
+            "path": "/home/linux/Documents/MSM/research_modules/independent_experiments/center_terminal_cv_campaign/outputs/airsim_n20_formal_v3_20260816/center_handover/online/source_cues.jsonl",
+            "exists": true,
+            "expected_sha256": "986ed166ad0ed5af2186f3abae53aef94f479a00b849cc37db22aef36587c58d"
+          },
+          {
+            "role": "center_local_tracks",
+            "path": "/home/linux/Documents/MSM/research_modules/independent_experiments/center_terminal_cv_campaign/outputs/airsim_n20_formal_v3_20260816/center_handover/online/local_tracks.jsonl",
+            "exists": true,
+            "expected_sha256": "fa6fd39a9a802d1b0dff12baf169bd297873b86404490da35b8e74a714dd46fd"
+          },
+          {
+            "role": "center_source_truth",
+            "path": "/home/linux/Documents/MSM/research_modules/independent_experiments/center_terminal_cv_campaign/outputs/airsim_n20_formal_v3_20260816/center_handover/truth/source_cue_labels.jsonl",
+            "exists": true,
+            "expected_sha256": "35040ecb6e871a35f32ca38233209c7cd27a6fadf59d98f93e711b21cffa5326"
+          },
+          {
+            "role": "center_local_truth",
+            "path": "/home/linux/Documents/MSM/research_modules/independent_experiments/center_terminal_cv_campaign/outputs/airsim_n20_formal_v3_20260816/center_handover/truth/local_track_labels.jsonl",
+            "exists": true,
+            "expected_sha256": "011a2fa1310ef515ba812d341862ccc6c171eaea608f5d7e96f5ef2572d3198d"
+          },
+          {
+            "role": "crossview_local_tracks",
+            "path": "/home/linux/Documents/MSM/research_modules/independent_experiments/center_terminal_cv_campaign/outputs/airsim_n20_formal_v3_20260816/crossview/captured_local_tracks.jsonl",
+            "exists": true,
+            "expected_sha256": "59f8eddfeb1c9baef4c94c99dabb115e08918e8b5eccc72d52547b55287543b3"
+          },
+          {
+            "role": "crossview_calibrations",
+            "path": "/home/linux/Documents/MSM/research_modules/independent_experiments/center_terminal_cv_campaign/outputs/airsim_n20_formal_v3_20260816/fixtures/fixture_n20_seed20260816/crossview/calibrations.json",
+            "exists": true,
+            "expected_sha256": "03fa2d2fbde30a0f0eb351ca4ba798364d0511a9d261e31259cd2beb610a4607"
+          },
+          {
+            "role": "crossview_capture_plan",
+            "path": "/home/linux/Documents/MSM/research_modules/independent_experiments/center_terminal_cv_campaign/outputs/airsim_n20_formal_v3_20260816/fixtures/fixture_n20_seed20260816/crossview/capture_plan.json",
+            "exists": true,
+            "expected_sha256": "9a372719b966a3b494c2140f6a09df0e777591a0ed081011a3d4c73da749833f"
+          },
+          {
+            "role": "crossview_truth",
+            "path": "/home/linux/Documents/MSM/research_modules/independent_experiments/center_terminal_cv_campaign/outputs/airsim_n20_formal_v3_20260816/crossview/truth/local_track_truth_map.json",
+            "exists": true,
+            "expected_sha256": "28a94533f17e96ef9ba419101207e70065bf62d2058534199f950dacab560add"
+          }
+        ]
+      },
+      {
+        "manifest": "/home/linux/Documents/MSM/research_modules/independent_experiments/center_terminal_cv_campaign/outputs/gnn_offline_benchmark_20260816/manifests/n40_m50.json",
+        "seed": 20260816,
+        "paths": [
+          {
+            "role": "scenario",
+            "path": "/home/linux/Documents/MSM/research_modules/independent_experiments/center_terminal_cv_campaign/outputs/airsim_m50_n40_scale_v2_20260816/fixtures/fixture_n40_seed20260816/scenario.json",
+            "exists": true,
+            "expected_sha256": "7d42fde74d7849bd5ffcc55c004d96c37a0f2146dd59e7c2591bc39ef46c9c44"
+          },
+          {
+            "role": "source_cues",
+            "path": "/home/linux/Documents/MSM/research_modules/independent_experiments/center_terminal_cv_campaign/outputs/airsim_m50_n40_scale_v2_20260816/center_handover/online/source_cues.jsonl",
+            "exists": true,
+            "expected_sha256": "d08e6a3a26b34929a1483d5decb68bc1eda8ccdaa6a4e7097ac9cccd4c70549b"
+          },
+          {
+            "role": "center_local_tracks",
+            "path": "/home/linux/Documents/MSM/research_modules/independent_experiments/center_terminal_cv_campaign/outputs/airsim_m50_n40_scale_v2_20260816/center_handover/online/local_tracks.jsonl",
+            "exists": true,
+            "expected_sha256": "95615d7681a34d66ed9d6146183c212b6a446fbc3f7d1f03b652e58222fa67c2"
+          },
+          {
+            "role": "center_source_truth",
+            "path": "/home/linux/Documents/MSM/research_modules/independent_experiments/center_terminal_cv_campaign/outputs/airsim_m50_n40_scale_v2_20260816/center_handover/truth/source_cue_labels.jsonl",
+            "exists": true,
+            "expected_sha256": "fef337ca8b3c18c867a4854d8de833b661638db676b2171fa74e694c3916164c"
+          },
+          {
+            "role": "center_local_truth",
+            "path": "/home/linux/Documents/MSM/research_modules/independent_experiments/center_terminal_cv_campaign/outputs/airsim_m50_n40_scale_v2_20260816/center_handover/truth/local_track_labels.jsonl",
+            "exists": true,
+            "expected_sha256": "c9376bcc85cb9e71c146ed8f06b82d2a87e68c93f42174d00499b4f539caeb85"
+          },
+          {
+            "role": "crossview_local_tracks",
+            "path": "/home/linux/Documents/MSM/research_modules/independent_experiments/center_terminal_cv_campaign/outputs/airsim_m50_n40_scale_v2_20260816/crossview/captured_local_tracks.jsonl",
+            "exists": true,
+            "expected_sha256": "e6b3509c8b22159cd221599d627aa0b8bccf697602474f17ce5f4c423b5c4ddd"
+          },
+          {
+            "role": "crossview_calibrations",
+            "path": "/home/linux/Documents/MSM/research_modules/independent_experiments/center_terminal_cv_campaign/outputs/airsim_m50_n40_scale_v2_20260816/fixtures/fixture_n40_seed20260816/crossview/calibrations.json",
+            "exists": true,
+            "expected_sha256": "dd4c50d5e2fbf97cd260e6bdfb62e3a0cd04ad426c914abfcab5956ca662c5dd"
+          },
+          {
+            "role": "crossview_capture_plan",
+            "path": "/home/linux/Documents/MSM/research_modules/independent_experiments/center_terminal_cv_campaign/outputs/airsim_m50_n40_scale_v2_20260816/fixtures/fixture_n40_seed20260816/crossview/capture_plan.json",
+            "exists": true,
+            "expected_sha256": "c729a83eae5a956e7f05ecbc47ccfae6edc16d46050fea8dfa8e81fb5ab9517b"
+          },
+          {
+            "role": "crossview_truth",
+            "path": "/home/linux/Documents/MSM/research_modules/independent_experiments/center_terminal_cv_campaign/outputs/airsim_m50_n40_scale_v2_20260816/crossview/truth/local_track_truth_map.json",
+            "exists": true,
+            "expected_sha256": "e4414f884d05512297cba0ac4256938a69ba08238114bedcd0575be186443bb4"
+          }
+        ]
+      }
+    ],
+    "readme_reproduction_exists": false
+  },
+  "crossview": {
+    "root": "/home/linux/Documents/MSM/research_modules/independent_experiments/center_terminal_cv_campaign/outputs/terminal_gnn_diagnostic_selection_20260819_v2",
+    "manifests": [
+      {
+        "manifest": "/home/linux/Documents/MSM/research_modules/independent_experiments/center_terminal_cv_campaign/outputs/terminal_gnn_diagnostic_selection_20260819_v2/manifests/n20_m30.json",
+        "seed": 20260816,
+        "paths": [
+          {
+            "role": "scenario",
+            "path": "/home/linux/Documents/MSM/research_modules/independent_experiments/center_terminal_cv_campaign/outputs/airsim_m30_n20_scale_20260816/fixtures/fixture_n20_seed20260816/scenario.json",
+            "exists": true,
+            "expected_sha256": "91629eefc7fa0ff534da99de36338a3dcbaaba2761ec259a911b93e341973fa6"
+          },
+          {
+            "role": "source_cues",
+            "path": "/home/linux/Documents/MSM/research_modules/independent_experiments/center_terminal_cv_campaign/outputs/airsim_m30_n20_scale_20260816/center_handover/online/source_cues.jsonl",
+            "exists": true,
+            "expected_sha256": "986ed166ad0ed5af2186f3abae53aef94f479a00b849cc37db22aef36587c58d"
+          },
+          {
+            "role": "center_local_tracks",
+            "path": "/home/linux/Documents/MSM/research_modules/independent_experiments/center_terminal_cv_campaign/outputs/airsim_m30_n20_scale_20260816/center_handover/online/local_tracks.jsonl",
+            "exists": true,
+            "expected_sha256": "4c12b3ecbdedb681fc0c079ec8911daaae482cc29ce8e79d7bd91c841765dc83"
+          },
+          {
+            "role": "center_source_truth",
+            "path": "/home/linux/Documents/MSM/research_modules/independent_experiments/center_terminal_cv_campaign/outputs/airsim_m30_n20_scale_20260816/center_handover/truth/source_cue_labels.jsonl",
+            "exists": true,
+            "expected_sha256": "35040ecb6e871a35f32ca38233209c7cd27a6fadf59d98f93e711b21cffa5326"
+          },
+          {
+            "role": "center_local_truth",
+            "path": "/home/linux/Documents/MSM/research_modules/independent_experiments/center_terminal_cv_campaign/outputs/airsim_m30_n20_scale_20260816/center_handover/truth/local_track_labels.jsonl",
+            "exists": true,
+            "expected_sha256": "df6540440961998e51d7b046e317b32c90b4f3cea5195e09d121e0ce7f34dff0"
+          },
+          {
+            "role": "crossview_local_tracks",
+            "path": "/home/linux/Documents/MSM/research_modules/independent_experiments/center_terminal_cv_campaign/outputs/airsim_m30_n20_scale_20260816/crossview/captured_local_tracks.jsonl",
+            "exists": true,
+            "expected_sha256": "1cfde14ccf5f2fe73335087b0be699bffe14f2e5ab643a588d39c986529149bb"
+          },
+          {
+            "role": "crossview_calibrations",
+            "path": "/home/linux/Documents/MSM/research_modules/independent_experiments/center_terminal_cv_campaign/outputs/airsim_m30_n20_scale_20260816/fixtures/fixture_n20_seed20260816/crossview/calibrations.json",
+            "exists": true,
+            "expected_sha256": "8f1afdc50f755e5c3b0f361abd2d2cd96fbb40bfe2b1f869484042c45325efd4"
+          },
+          {
+            "role": "crossview_capture_plan",
+            "path": "/home/linux/Documents/MSM/research_modules/independent_experiments/center_terminal_cv_campaign/outputs/airsim_m30_n20_scale_20260816/fixtures/fixture_n20_seed20260816/crossview/capture_plan.json",
+            "exists": true,
+            "expected_sha256": "9f41d0ab504241dba5abd55798d843d645abe93d2cfd95e0416831037f61d92a"
+          },
+          {
+            "role": "crossview_truth",
+            "path": "/home/linux/Documents/MSM/research_modules/independent_experiments/center_terminal_cv_campaign/outputs/airsim_m30_n20_scale_20260816/crossview/truth/local_track_truth_map.json",
+            "exists": true,
+            "expected_sha256": "d04570cf7092b870d70f6e62a1be7478a977a3fefcd8f268cab9d918b63aa00f"
+          }
+        ]
+      },
+      {
+        "manifest": "/home/linux/Documents/MSM/research_modules/independent_experiments/center_terminal_cv_campaign/outputs/terminal_gnn_diagnostic_selection_20260819_v2/manifests/n20_m8.json",
+        "seed": 20260816,
+        "paths": [
+          {
+            "role": "scenario",
+            "path": "/home/linux/Documents/MSM/research_modules/independent_experiments/center_terminal_cv_campaign/outputs/airsim_n20_formal_v3_20260816/fixtures/fixture_n20_seed20260816/scenario.json",
+            "exists": true,
+            "expected_sha256": "91629eefc7fa0ff534da99de36338a3dcbaaba2761ec259a911b93e341973fa6"
+          },
+          {
+            "role": "source_cues",
+            "path": "/home/linux/Documents/MSM/research_modules/independent_experiments/center_terminal_cv_campaign/outputs/airsim_n20_formal_v3_20260816/center_handover/online/source_cues.jsonl",
+            "exists": true,
+            "expected_sha256": "986ed166ad0ed5af2186f3abae53aef94f479a00b849cc37db22aef36587c58d"
+          },
+          {
+            "role": "center_local_tracks",
+            "path": "/home/linux/Documents/MSM/research_modules/independent_experiments/center_terminal_cv_campaign/outputs/airsim_n20_formal_v3_20260816/center_handover/online/local_tracks.jsonl",
+            "exists": true,
+            "expected_sha256": "fa6fd39a9a802d1b0dff12baf169bd297873b86404490da35b8e74a714dd46fd"
+          },
+          {
+            "role": "center_source_truth",
+            "path": "/home/linux/Documents/MSM/research_modules/independent_experiments/center_terminal_cv_campaign/outputs/airsim_n20_formal_v3_20260816/center_handover/truth/source_cue_labels.jsonl",
+            "exists": true,
+            "expected_sha256": "35040ecb6e871a35f32ca38233209c7cd27a6fadf59d98f93e711b21cffa5326"
+          },
+          {
+            "role": "center_local_truth",
+            "path": "/home/linux/Documents/MSM/research_modules/independent_experiments/center_terminal_cv_campaign/outputs/airsim_n20_formal_v3_20260816/center_handover/truth/local_track_labels.jsonl",
+            "exists": true,
+            "expected_sha256": "011a2fa1310ef515ba812d341862ccc6c171eaea608f5d7e96f5ef2572d3198d"
+          },
+          {
+            "role": "crossview_local_tracks",
+            "path": "/home/linux/Documents/MSM/research_modules/independent_experiments/center_terminal_cv_campaign/outputs/airsim_n20_formal_v3_20260816/crossview/captured_local_tracks.jsonl",
+            "exists": true,
+            "expected_sha256": "59f8eddfeb1c9baef4c94c99dabb115e08918e8b5eccc72d52547b55287543b3"
+          },
+          {
+            "role": "crossview_calibrations",
+            "path": "/home/linux/Documents/MSM/research_modules/independent_experiments/center_terminal_cv_campaign/outputs/airsim_n20_formal_v3_20260816/fixtures/fixture_n20_seed20260816/crossview/calibrations.json",
+            "exists": true,
+            "expected_sha256": "03fa2d2fbde30a0f0eb351ca4ba798364d0511a9d261e31259cd2beb610a4607"
+          },
+          {
+            "role": "crossview_capture_plan",
+            "path": "/home/linux/Documents/MSM/research_modules/independent_experiments/center_terminal_cv_campaign/outputs/airsim_n20_formal_v3_20260816/fixtures/fixture_n20_seed20260816/crossview/capture_plan.json",
+            "exists": true,
+            "expected_sha256": "9a372719b966a3b494c2140f6a09df0e777591a0ed081011a3d4c73da749833f"
+          },
+          {
+            "role": "crossview_truth",
+            "path": "/home/linux/Documents/MSM/research_modules/independent_experiments/center_terminal_cv_campaign/outputs/airsim_n20_formal_v3_20260816/crossview/truth/local_track_truth_map.json",
+            "exists": true,
+            "expected_sha256": "28a94533f17e96ef9ba419101207e70065bf62d2058534199f950dacab560add"
+          }
+        ]
+      },
+      {
+        "manifest": "/home/linux/Documents/MSM/research_modules/independent_experiments/center_terminal_cv_campaign/outputs/terminal_gnn_diagnostic_selection_20260819_v2/manifests/n40_m50.json",
+        "seed": 20260816,
+        "paths": [
+          {
+            "role": "scenario",
+            "path": "/home/linux/Documents/MSM/research_modules/independent_experiments/center_terminal_cv_campaign/outputs/airsim_m50_n40_scale_v2_20260816/fixtures/fixture_n40_seed20260816/scenario.json",
+            "exists": true,
+            "expected_sha256": "7d42fde74d7849bd5ffcc55c004d96c37a0f2146dd59e7c2591bc39ef46c9c44"
+          },
+          {
+            "role": "source_cues",
+            "path": "/home/linux/Documents/MSM/research_modules/independent_experiments/center_terminal_cv_campaign/outputs/airsim_m50_n40_scale_v2_20260816/center_handover/online/source_cues.jsonl",
+            "exists": true,
+            "expected_sha256": "d08e6a3a26b34929a1483d5decb68bc1eda8ccdaa6a4e7097ac9cccd4c70549b"
+          },
+          {
+            "role": "center_local_tracks",
+            "path": "/home/linux/Documents/MSM/research_modules/independent_experiments/center_terminal_cv_campaign/outputs/airsim_m50_n40_scale_v2_20260816/center_handover/online/local_tracks.jsonl",
+            "exists": true,
+            "expected_sha256": "95615d7681a34d66ed9d6146183c212b6a446fbc3f7d1f03b652e58222fa67c2"
+          },
+          {
+            "role": "center_source_truth",
+            "path": "/home/linux/Documents/MSM/research_modules/independent_experiments/center_terminal_cv_campaign/outputs/airsim_m50_n40_scale_v2_20260816/center_handover/truth/source_cue_labels.jsonl",
+            "exists": true,
+            "expected_sha256": "fef337ca8b3c18c867a4854d8de833b661638db676b2171fa74e694c3916164c"
+          },
+          {
+            "role": "center_local_truth",
+            "path": "/home/linux/Documents/MSM/research_modules/independent_experiments/center_terminal_cv_campaign/outputs/airsim_m50_n40_scale_v2_20260816/center_handover/truth/local_track_labels.jsonl",
+            "exists": true,
+            "expected_sha256": "c9376bcc85cb9e71c146ed8f06b82d2a87e68c93f42174d00499b4f539caeb85"
+          },
+          {
+            "role": "crossview_local_tracks",
+            "path": "/home/linux/Documents/MSM/research_modules/independent_experiments/center_terminal_cv_campaign/outputs/airsim_m50_n40_scale_v2_20260816/crossview/captured_local_tracks.jsonl",
+            "exists": true,
+            "expected_sha256": "e6b3509c8b22159cd221599d627aa0b8bccf697602474f17ce5f4c423b5c4ddd"
+          },
+          {
+            "role": "crossview_calibrations",
+            "path": "/home/linux/Documents/MSM/research_modules/independent_experiments/center_terminal_cv_campaign/outputs/airsim_m50_n40_scale_v2_20260816/fixtures/fixture_n40_seed20260816/crossview/calibrations.json",
+            "exists": true,
+            "expected_sha256": "dd4c50d5e2fbf97cd260e6bdfb62e3a0cd04ad426c914abfcab5956ca662c5dd"
+          },
+          {
+            "role": "crossview_capture_plan",
+            "path": "/home/linux/Documents/MSM/research_modules/independent_experiments/center_terminal_cv_campaign/outputs/airsim_m50_n40_scale_v2_20260816/fixtures/fixture_n40_seed20260816/crossview/capture_plan.json",
+            "exists": true,
+            "expected_sha256": "c729a83eae5a956e7f05ecbc47ccfae6edc16d46050fea8dfa8e81fb5ab9517b"
+          },
+          {
+            "role": "crossview_truth",
+            "path": "/home/linux/Documents/MSM/research_modules/independent_experiments/center_terminal_cv_campaign/outputs/airsim_m50_n40_scale_v2_20260816/crossview/truth/local_track_truth_map.json",
+            "exists": true,
+            "expected_sha256": "e4414f884d05512297cba0ac4256938a69ba08238114bedcd0575be186443bb4"
+          }
+        ]
+      }
+    ],
+    "readme_reproduction_exists": true
+  },
+  "airsim_longrange": {
+    "manifest": "/home/linux/Documents/MSM/research_modules/airsim_runtime/baselines/d5_long_range_20target_20260810/baseline_manifest.json",
+    "source_directory": "/home/linux/Documents/MSM/research_modules/airsim_runtime/outputs/d5_cv_long_range_20target_visual_evidence_20260810/coverage_safe",
+    "integrity_record": "/home/linux/Documents/MSM/deliverables/project_audits/goal_resume_audit_20260926_v1/SUPPLEMENTAL_CHECKS.json"
+  },
+  "interface": [
+    {
+      "root": "/home/linux/Documents/MSM/research_modules/independent_experiments/center_terminal_cv_campaign/outputs/center_handover_sensor_error_airsim_20260820_n20_retry01",
+      "seed": 20260820,
+      "summary_keys": [
+        "schema_version",
+        "status",
+        "created_at",
+        "mode",
+        "target_counts",
+        "resource_counts",
+        "seed",
+        "frame_timestamps_s",
+        "screenshots_saved",
+        "truth_policy",
+        "results"
+      ],
+      "result_rows": 4,
+      "top_level_files": [
+        "AIRSIM_REPRESENTATIVE_REPORT_CN.md",
+        "settings.json",
+        "summary.json",
+        "summary_metrics.csv"
+      ]
+    },
+    {
+      "root": "/home/linux/Documents/MSM/research_modules/independent_experiments/center_terminal_cv_campaign/outputs/center_handover_sensor_error_airsim_20260820_n40",
+      "seed": 20260820,
+      "summary_keys": [
+        "schema_version",
+        "status",
+        "created_at",
+        "mode",
+        "target_counts",
+        "resource_counts",
+        "seed",
+        "frame_timestamps_s",
+        "screenshots_saved",
+        "truth_policy",
+        "results"
+      ],
+      "result_rows": 4,
+      "top_level_files": [
+        "AIRSIM_REPRESENTATIVE_REPORT_CN.md",
+        "settings.json",
+        "summary.json",
+        "summary_metrics.csv"
+      ]
+    },
+    {
+      "root": "/home/linux/Documents/MSM/research_modules/independent_experiments/center_terminal_cv_campaign/outputs/center_handover_sensor_error_airsim_20260820_n60",
+      "seed": 20260820,
+      "summary_keys": [
+        "schema_version",
+        "status",
+        "created_at",
+        "mode",
+        "target_counts",
+        "resource_counts",
+        "seed",
+        "frame_timestamps_s",
+        "screenshots_saved",
+        "truth_policy",
+        "results"
+      ],
+      "result_rows": 4,
+      "top_level_files": [
+        "AIRSIM_REPRESENTATIVE_REPORT_CN.md",
+        "settings.json",
+        "summary.json",
+        "summary_metrics.csv"
+      ]
+    }
+  ]
+}

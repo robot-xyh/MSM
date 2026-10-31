@@ -1,5 +1,15 @@
 # Scalable 3D Simulation
 
+<!-- evidence-status-sync:20260926:begin -->
+## 2026-09-26 当前证据入口
+
+下文为按日期保存的历史记录。原Goal的[60项复核登记](../../deliverables/project_audits/goal_owner_review_sync_20260926_v1/GOAL_REQUIREMENT_EVIDENCE_REVIEWED.csv)仍为4项已完成、44项部分完成、10项未完成、2项证据不足；本次文档同步不改变实现、验收状态或GAP分类。
+
+最后可确认的来源阶段是`source_integrity_audit_passed_not_training_authorized`：D3、D4、D5分别生成300、324、104组，共728组，通过独立来源完整性审计；当前代际训练和原Goal最终验收仍未完成。历史450组正式试验与728组来源是不同批次，前者十个分片仍为“摘要可查、完整记录未定位”。后续独立试验不等于已接入原200对200验收；D5旧v2保存结果与新v3接口证据分别登记。
+
+已有复核与本轮入口同步见[审计说明](../../deliverables/project_audits/goal_module_status_sync_20260926_v1/README.md)。本轮不启动仿真、不加载模型、不运行模块测试，下文历史回归数量与结果保持原样。
+<!-- evidence-status-sync:20260926:end -->
+
 ## 2026-08-03 全目标完成度复核
 
 D1-D7 owner 已按终极 200 对 200 目标完成只读证据复核。可扩展三维主模块在当前提交

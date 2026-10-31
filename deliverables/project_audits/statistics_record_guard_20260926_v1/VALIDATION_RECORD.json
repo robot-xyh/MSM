@@ -1,0 +1,192 @@
+{
+  "created_at_utc": "2026-09-26T15:10:27.886019+00:00",
+  "scope": "Administrative audit utilities; fabricated records only; no research imports or rescoring.",
+  "test_command": "python3 -B -m unittest discover -s deliverables/project_audits/tools -p 'test_*.py' -v",
+  "tests_run": 87,
+  "new_guard_tests": 31,
+  "failures": 0,
+  "errors": 0,
+  "skipped": 0,
+  "test_names": [
+    "test_audit_cleanup_candidates.CleanupTests.test_archive_requires_every_payload",
+    "test_audit_cleanup_candidates.CleanupTests.test_bytecode_requires_source",
+    "test_audit_cleanup_candidates.CleanupTests.test_duplicates_are_content_not_name",
+    "test_audit_cleanup_candidates.CleanupTests.test_nested_archive_can_match_existing_zip_file",
+    "test_audit_cleanup_candidates.CleanupTests.test_pytest_bytecode_requires_matching_test_source",
+    "test_audit_cleanup_candidates.CleanupTests.test_renamed_archive_payload_is_not_original_layout",
+    "test_audit_cleanup_candidates.CleanupTests.test_self_reference_does_not_count_as_external",
+    "test_audit_cleanup_candidates.CleanupTests.test_tracked_archive_is_preserved",
+    "test_audit_cleanup_candidates.CleanupTests.test_unsafe_archive_members_are_rejected",
+    "test_audit_record_validation.RecordValidationTests.test_absent_field_is_not_treated_as_explicit_null",
+    "test_audit_record_validation.RecordValidationTests.test_all_missing_is_explicit_and_strict_json_serializable",
+    "test_audit_record_validation.RecordValidationTests.test_bad_contracts_do_not_silently_skip_checks",
+    "test_audit_record_validation.RecordValidationTests.test_csv_bom_and_quoted_newline",
+    "test_audit_record_validation.RecordValidationTests.test_csv_duplicate_or_blank_headers_rejected",
+    "test_audit_record_validation.RecordValidationTests.test_csv_header_only_is_empty_not_one_missing_record",
+    "test_audit_record_validation.RecordValidationTests.test_csv_malformed_rows_rejected",
+    "test_audit_record_validation.RecordValidationTests.test_csv_nested_json_does_not_emit_nan",
+    "test_audit_record_validation.RecordValidationTests.test_empty_dataset_is_not_all_missing",
+    "test_audit_record_validation.RecordValidationTests.test_empty_or_malformed_source_list_is_explicit_error",
+    "test_audit_record_validation.RecordValidationTests.test_explicit_missing_kept_separate_from_zero",
+    "test_audit_record_validation.RecordValidationTests.test_identical_and_conflicting_duplicates_both_rejected",
+    "test_audit_record_validation.RecordValidationTests.test_json_bom_null_and_zero_preserved",
+    "test_audit_record_validation.RecordValidationTests.test_json_rejects_duplicate_members_at_any_depth",
+    "test_audit_record_validation.RecordValidationTests.test_json_rejects_nonfinite_and_overflow",
+    "test_audit_record_validation.RecordValidationTests.test_key_fields_reject_missing_blank_and_non_identifiers",
+    "test_audit_record_validation.RecordValidationTests.test_missing_display_preserves_source_null",
+    "test_audit_record_validation.RecordValidationTests.test_missing_display_requires_explicit_rule",
+    "test_audit_record_validation.RecordValidationTests.test_mixed_key_types_rejected_without_coercion",
+    "test_audit_record_validation.RecordValidationTests.test_nested_fields",
+    "test_audit_record_validation.RecordValidationTests.test_nonobject_record_rejected",
+    "test_audit_record_validation.RecordValidationTests.test_null_requires_explicit_permission",
+    "test_audit_record_validation.RecordValidationTests.test_numeric_values_reject_booleans_nonfinite_and_objects",
+    "test_audit_record_validation.RecordValidationTests.test_partial_missing_template_and_zero_display",
+    "test_audit_record_validation.RecordValidationTests.test_repeated_selector_cannot_double_count",
+    "test_audit_record_validation.RecordValidationTests.test_round_records_are_not_distinct_seeds",
+    "test_audit_record_validation.RecordValidationTests.test_same_seed_in_distinct_groups_is_allowed",
+    "test_audit_record_validation.RecordValidationTests.test_source_contract_checks_union_of_input_files",
+    "test_audit_record_validation.RecordValidationTests.test_source_contract_preserves_values_and_locations",
+    "test_audit_record_validation.RecordValidationTests.test_source_without_contract_does_not_claim_key_validation",
+    "test_audit_record_validation.RecordValidationTests.test_unknown_source_kind_is_rejected",
+    "test_audit_report_evidence.EvidenceAuditTests.test_csv_bom_and_multiple_sources",
+    "test_audit_report_evidence.EvidenceAuditTests.test_csv_output_uses_lf",
+    "test_audit_report_evidence.EvidenceAuditTests.test_display_format_and_fields_preserved",
+    "test_audit_report_evidence.EvidenceAuditTests.test_document_comparison_counts_duplicate_tables",
+    "test_audit_report_evidence.EvidenceAuditTests.test_duplicate_keys_are_ambiguous",
+    "test_audit_report_evidence.EvidenceAuditTests.test_existing_output_is_never_overwritten",
+    "test_audit_report_evidence.EvidenceAuditTests.test_hash_check_does_not_load_model",
+    "test_audit_report_evidence.EvidenceAuditTests.test_image_reference_and_space_path",
+    "test_audit_report_evidence.EvidenceAuditTests.test_json_selector_union_preserves_original_locations",
+    "test_audit_report_evidence.EvidenceAuditTests.test_markdown_tables_use_parser_not_pipe_split",
+    "test_audit_report_evidence.EvidenceAuditTests.test_matching_cell_keeps_json_location",
+    "test_audit_report_evidence.EvidenceAuditTests.test_metadata_distinguishes_rows_from_seeds",
+    "test_audit_report_evidence.EvidenceAuditTests.test_mismatch_not_silently_tolerated",
+    "test_audit_report_evidence.EvidenceAuditTests.test_missing_hash_file_is_reported",
+    "test_audit_report_evidence.EvidenceAuditTests.test_missing_source_row_is_not_zero",
+    "test_audit_report_evidence.EvidenceAuditTests.test_output_cannot_enter_experiment_tree",
+    "test_audit_report_evidence.EvidenceAuditTests.test_template_and_format_boundaries",
+    "test_audit_report_evidence.EvidenceAuditTests.test_transposed_metric_table",
+    "test_audit_report_evidence.EvidenceAuditTests.test_word_table_and_embedded_media",
+    "test_audit_workspace_metadata.MetadataTests.test_ambiguous_base_is_not_silently_chosen",
+    "test_audit_workspace_metadata.MetadataTests.test_named_hashes_and_mismatch",
+    "test_audit_workspace_metadata.MetadataTests.test_repository_and_manifest_relative_hashes",
+    "test_audit_workspace_metadata.MetadataTests.test_word_relationship_and_markdown_heading",
+    "test_prepare_backup_preflight.BackupPreflightTests.test_absent_destination_never_claims_ready",
+    "test_prepare_backup_preflight.BackupPreflightTests.test_existing_output_preserved",
+    "test_prepare_backup_preflight.BackupPreflightTests.test_minimal_preflight_is_metadata_only",
+    "test_prepare_backup_preflight.BackupPreflightTests.test_missing_destination_does_not_create_directory",
+    "test_prepare_backup_preflight.BackupPreflightTests.test_missing_source_reported",
+    "test_prepare_backup_preflight.BackupPreflightTests.test_output_outside_audit_rejected",
+    "test_prepare_backup_preflight.BackupPreflightTests.test_output_tree_excluded",
+    "test_prepare_backup_preflight.BackupPreflightTests.test_overlapping_sources_rejected_before_output",
+    "test_prepare_backup_preflight.BackupPreflightTests.test_reserve_uses_integer_round_up",
+    "test_prepare_backup_preflight.BackupPreflightTests.test_same_filesystem_is_not_an_independent_backup",
+    "test_prepare_backup_preflight.BackupPreflightTests.test_scan_includes_git_cache_empty_directories_and_hardlinks",
+    "test_prepare_backup_preflight.BackupPreflightTests.test_source_destination_overlap_rejected",
+    "test_prepare_backup_preflight.BackupPreflightTests.test_special_file_is_not_opened",
+    "test_prepare_backup_preflight.BackupPreflightTests.test_symlink_and_broken_symlink_are_not_followed",
+    "test_prepare_preservation_register.PreservationTests.test_changed_file_has_no_stable_hash",
+    "test_prepare_preservation_register.PreservationTests.test_empty_inventory_writes_headers_and_no_backup_claim",
+    "test_prepare_preservation_register.PreservationTests.test_existing_destination_is_not_overwritten",
+    "test_prepare_preservation_register.PreservationTests.test_experiment_cannot_be_inventory_destination",
+    "test_prepare_preservation_register.PreservationTests.test_group_does_not_flatten_distinct_runs",
+    "test_prepare_preservation_register.PreservationTests.test_hash_and_original_content_unchanged",
+    "test_prepare_preservation_register.PreservationTests.test_metadata_only_and_missing_file",
+    "test_prepare_preservation_register.PreservationTests.test_output_discovery_and_cache_preservation",
+    "test_prepare_preservation_register.PreservationTests.test_symlink_not_followed",
+    "test_prepare_preservation_register.PreservationTests.test_wrong_expected_hash_is_visible"
+  ],
+  "test_output": "test_archive_requires_every_payload (test_audit_cleanup_candidates.CleanupTests.test_archive_requires_every_payload) ... ok\ntest_bytecode_requires_source (test_audit_cleanup_candidates.CleanupTests.test_bytecode_requires_source) ... ok\ntest_duplicates_are_content_not_name (test_audit_cleanup_candidates.CleanupTests.test_duplicates_are_content_not_name) ... ok\ntest_nested_archive_can_match_existing_zip_file (test_audit_cleanup_candidates.CleanupTests.test_nested_archive_can_match_existing_zip_file) ... ok\ntest_pytest_bytecode_requires_matching_test_source (test_audit_cleanup_candidates.CleanupTests.test_pytest_bytecode_requires_matching_test_source) ... ok\ntest_renamed_archive_payload_is_not_original_layout (test_audit_cleanup_candidates.CleanupTests.test_renamed_archive_payload_is_not_original_layout) ... ok\ntest_self_reference_does_not_count_as_external (test_audit_cleanup_candidates.CleanupTests.test_self_reference_does_not_count_as_external) ... ok\ntest_tracked_archive_is_preserved (test_audit_cleanup_candidates.CleanupTests.test_tracked_archive_is_preserved) ... ok\ntest_unsafe_archive_members_are_rejected (test_audit_cleanup_candidates.CleanupTests.test_unsafe_archive_members_are_rejected) ... ok\ntest_absent_field_is_not_treated_as_explicit_null (test_audit_record_validation.RecordValidationTests.test_absent_field_is_not_treated_as_explicit_null) ... ok\ntest_all_missing_is_explicit_and_strict_json_serializable (test_audit_record_validation.RecordValidationTests.test_all_missing_is_explicit_and_strict_json_serializable) ... ok\ntest_bad_contracts_do_not_silently_skip_checks (test_audit_record_validation.RecordValidationTests.test_bad_contracts_do_not_silently_skip_checks) ... ok\ntest_csv_bom_and_quoted_newline (test_audit_record_validation.RecordValidationTests.test_csv_bom_and_quoted_newline) ... ok\ntest_csv_duplicate_or_blank_headers_rejected (test_audit_record_validation.RecordValidationTests.test_csv_duplicate_or_blank_headers_rejected) ... ok\ntest_csv_header_only_is_empty_not_one_missing_record (test_audit_record_validation.RecordValidationTests.test_csv_header_only_is_empty_not_one_missing_record) ... ok\ntest_csv_malformed_rows_rejected (test_audit_record_validation.RecordValidationTests.test_csv_malformed_rows_rejected) ... ok\ntest_csv_nested_json_does_not_emit_nan (test_audit_record_validation.RecordValidationTests.test_csv_nested_json_does_not_emit_nan) ... ok\ntest_empty_dataset_is_not_all_missing (test_audit_record_validation.RecordValidationTests.test_empty_dataset_is_not_all_missing) ... ok\ntest_empty_or_malformed_source_list_is_explicit_error (test_audit_record_validation.RecordValidationTests.test_empty_or_malformed_source_list_is_explicit_error) ... ok\ntest_explicit_missing_kept_separate_from_zero (test_audit_record_validation.RecordValidationTests.test_explicit_missing_kept_separate_from_zero) ... ok\ntest_identical_and_conflicting_duplicates_both_rejected (test_audit_record_validation.RecordValidationTests.test_identical_and_conflicting_duplicates_both_rejected) ... ok\ntest_json_bom_null_and_zero_preserved (test_audit_record_validation.RecordValidationTests.test_json_bom_null_and_zero_preserved) ... ok\ntest_json_rejects_duplicate_members_at_any_depth (test_audit_record_validation.RecordValidationTests.test_json_rejects_duplicate_members_at_any_depth) ... ok\ntest_json_rejects_nonfinite_and_overflow (test_audit_record_validation.RecordValidationTests.test_json_rejects_nonfinite_and_overflow) ... ok\ntest_key_fields_reject_missing_blank_and_non_identifiers (test_audit_record_validation.RecordValidationTests.test_key_fields_reject_missing_blank_and_non_identifiers) ... ok\ntest_missing_display_preserves_source_null (test_audit_record_validation.RecordValidationTests.test_missing_display_preserves_source_null) ... ok\ntest_missing_display_requires_explicit_rule (test_audit_record_validation.RecordValidationTests.test_missing_display_requires_explicit_rule) ... ok\ntest_mixed_key_types_rejected_without_coercion (test_audit_record_validation.RecordValidationTests.test_mixed_key_types_rejected_without_coercion) ... ok\ntest_nested_fields (test_audit_record_validation.RecordValidationTests.test_nested_fields) ... ok\ntest_nonobject_record_rejected (test_audit_record_validation.RecordValidationTests.test_nonobject_record_rejected) ... ok\ntest_null_requires_explicit_permission (test_audit_record_validation.RecordValidationTests.test_null_requires_explicit_permission) ... ok\ntest_numeric_values_reject_booleans_nonfinite_and_objects (test_audit_record_validation.RecordValidationTests.test_numeric_values_reject_booleans_nonfinite_and_objects) ... ok\ntest_partial_missing_template_and_zero_display (test_audit_record_validation.RecordValidationTests.test_partial_missing_template_and_zero_display) ... ok\ntest_repeated_selector_cannot_double_count (test_audit_record_validation.RecordValidationTests.test_repeated_selector_cannot_double_count) ... ok\ntest_round_records_are_not_distinct_seeds (test_audit_record_validation.RecordValidationTests.test_round_records_are_not_distinct_seeds) ... ok\ntest_same_seed_in_distinct_groups_is_allowed (test_audit_record_validation.RecordValidationTests.test_same_seed_in_distinct_groups_is_allowed) ... ok\ntest_source_contract_checks_union_of_input_files (test_audit_record_validation.RecordValidationTests.test_source_contract_checks_union_of_input_files) ... ok\ntest_source_contract_preserves_values_and_locations (test_audit_record_validation.RecordValidationTests.test_source_contract_preserves_values_and_locations) ... ok\ntest_source_without_contract_does_not_claim_key_validation (test_audit_record_validation.RecordValidationTests.test_source_without_contract_does_not_claim_key_validation) ... ok\ntest_unknown_source_kind_is_rejected (test_audit_record_validation.RecordValidationTests.test_unknown_source_kind_is_rejected) ... ok\ntest_csv_bom_and_multiple_sources (test_audit_report_evidence.EvidenceAuditTests.test_csv_bom_and_multiple_sources) ... ok\ntest_csv_output_uses_lf (test_audit_report_evidence.EvidenceAuditTests.test_csv_output_uses_lf) ... ok\ntest_display_format_and_fields_preserved (test_audit_report_evidence.EvidenceAuditTests.test_display_format_and_fields_preserved) ... ok\ntest_document_comparison_counts_duplicate_tables (test_audit_report_evidence.EvidenceAuditTests.test_document_comparison_counts_duplicate_tables) ... ok\ntest_duplicate_keys_are_ambiguous (test_audit_report_evidence.EvidenceAuditTests.test_duplicate_keys_are_ambiguous) ... ok\ntest_existing_output_is_never_overwritten (test_audit_report_evidence.EvidenceAuditTests.test_existing_output_is_never_overwritten) ... ok\ntest_hash_check_does_not_load_model (test_audit_report_evidence.EvidenceAuditTests.test_hash_check_does_not_load_model) ... ok\ntest_image_reference_and_space_path (test_audit_report_evidence.EvidenceAuditTests.test_image_reference_and_space_path) ... ok\ntest_json_selector_union_preserves_original_locations (test_audit_report_evidence.EvidenceAuditTests.test_json_selector_union_preserves_original_locations) ... ok\ntest_markdown_tables_use_parser_not_pipe_split (test_audit_report_evidence.EvidenceAuditTests.test_markdown_tables_use_parser_not_pipe_split) ... ok\ntest_matching_cell_keeps_json_location (test_audit_report_evidence.EvidenceAuditTests.test_matching_cell_keeps_json_location) ... ok\ntest_metadata_distinguishes_rows_from_seeds (test_audit_report_evidence.EvidenceAuditTests.test_metadata_distinguishes_rows_from_seeds) ... ok\ntest_mismatch_not_silently_tolerated (test_audit_report_evidence.EvidenceAuditTests.test_mismatch_not_silently_tolerated) ... ok\ntest_missing_hash_file_is_reported (test_audit_report_evidence.EvidenceAuditTests.test_missing_hash_file_is_reported) ... ok\ntest_missing_source_row_is_not_zero (test_audit_report_evidence.EvidenceAuditTests.test_missing_source_row_is_not_zero) ... ok\ntest_output_cannot_enter_experiment_tree (test_audit_report_evidence.EvidenceAuditTests.test_output_cannot_enter_experiment_tree) ... ok\ntest_template_and_format_boundaries (test_audit_report_evidence.EvidenceAuditTests.test_template_and_format_boundaries) ... ok\ntest_transposed_metric_table (test_audit_report_evidence.EvidenceAuditTests.test_transposed_metric_table) ... ok\ntest_word_table_and_embedded_media (test_audit_report_evidence.EvidenceAuditTests.test_word_table_and_embedded_media) ... ok\ntest_ambiguous_base_is_not_silently_chosen (test_audit_workspace_metadata.MetadataTests.test_ambiguous_base_is_not_silently_chosen) ... ok\ntest_named_hashes_and_mismatch (test_audit_workspace_metadata.MetadataTests.test_named_hashes_and_mismatch) ... ok\ntest_repository_and_manifest_relative_hashes (test_audit_workspace_metadata.MetadataTests.test_repository_and_manifest_relative_hashes) ... ok\ntest_word_relationship_and_markdown_heading (test_audit_workspace_metadata.MetadataTests.test_word_relationship_and_markdown_heading) ... ok\ntest_absent_destination_never_claims_ready (test_prepare_backup_preflight.BackupPreflightTests.test_absent_destination_never_claims_ready) ... ok\ntest_existing_output_preserved (test_prepare_backup_preflight.BackupPreflightTests.test_existing_output_preserved) ... ok\ntest_minimal_preflight_is_metadata_only (test_prepare_backup_preflight.BackupPreflightTests.test_minimal_preflight_is_metadata_only) ... {\"path\": \"/tmp/tmp0n3fp5uk\", \"exists\": true, \"destination_relative_path\": \"tmp0n3fp5uk\", \"file_count\": 1, \"logical_bytes\": 8, \"allocated_bytes\": 4096, \"directory_count\": 3, \"symlink_count\": 0, \"special_count\": 0, \"error_count\": 0}\nok\ntest_missing_destination_does_not_create_directory (test_prepare_backup_preflight.BackupPreflightTests.test_missing_destination_does_not_create_directory) ... ok\ntest_missing_source_reported (test_prepare_backup_preflight.BackupPreflightTests.test_missing_source_reported) ... ok\ntest_output_outside_audit_rejected (test_prepare_backup_preflight.BackupPreflightTests.test_output_outside_audit_rejected) ... ok\ntest_output_tree_excluded (test_prepare_backup_preflight.BackupPreflightTests.test_output_tree_excluded) ... ok\ntest_overlapping_sources_rejected_before_output (test_prepare_backup_preflight.BackupPreflightTests.test_overlapping_sources_rejected_before_output) ... ok\ntest_reserve_uses_integer_round_up (test_prepare_backup_preflight.BackupPreflightTests.test_reserve_uses_integer_round_up) ... ok\ntest_same_filesystem_is_not_an_independent_backup (test_prepare_backup_preflight.BackupPreflightTests.test_same_filesystem_is_not_an_independent_backup) ... ok\ntest_scan_includes_git_cache_empty_directories_and_hardlinks (test_prepare_backup_preflight.BackupPreflightTests.test_scan_includes_git_cache_empty_directories_and_hardlinks) ... ok\ntest_source_destination_overlap_rejected (test_prepare_backup_preflight.BackupPreflightTests.test_source_destination_overlap_rejected) ... ok\ntest_special_file_is_not_opened (test_prepare_backup_preflight.BackupPreflightTests.test_special_file_is_not_opened) ... ok\ntest_symlink_and_broken_symlink_are_not_followed (test_prepare_backup_preflight.BackupPreflightTests.test_symlink_and_broken_symlink_are_not_followed) ... ok\ntest_changed_file_has_no_stable_hash (test_prepare_preservation_register.PreservationTests.test_changed_file_has_no_stable_hash) ... ok\ntest_empty_inventory_writes_headers_and_no_backup_claim (test_prepare_preservation_register.PreservationTests.test_empty_inventory_writes_headers_and_no_backup_claim) ... {\"output\": \"/tmp/tmpxwo4475i/register\", \"totals\": {}, \"groups\": 0, \"errors\": 0, \"documents\": 0, \"backup_created\": false}\nok\ntest_existing_destination_is_not_overwritten (test_prepare_preservation_register.PreservationTests.test_existing_destination_is_not_overwritten) ... ok\ntest_experiment_cannot_be_inventory_destination (test_prepare_preservation_register.PreservationTests.test_experiment_cannot_be_inventory_destination) ... ok\ntest_group_does_not_flatten_distinct_runs (test_prepare_preservation_register.PreservationTests.test_group_does_not_flatten_distinct_runs) ... ok\ntest_hash_and_original_content_unchanged (test_prepare_preservation_register.PreservationTests.test_hash_and_original_content_unchanged) ... ok\ntest_metadata_only_and_missing_file (test_prepare_preservation_register.PreservationTests.test_metadata_only_and_missing_file) ... ok\ntest_output_discovery_and_cache_preservation (test_prepare_preservation_register.PreservationTests.test_output_discovery_and_cache_preservation) ... ok\ntest_symlink_not_followed (test_prepare_preservation_register.PreservationTests.test_symlink_not_followed) ... ok\ntest_wrong_expected_hash_is_visible (test_prepare_preservation_register.PreservationTests.test_wrong_expected_hash_is_visible) ... ok\n\n----------------------------------------------------------------------\nRan 87 tests in 0.022s\n\nOK\n",
+  "syntax_checks": [
+    {
+      "path": "deliverables/project_audits/tools/audit_record_validation.py",
+      "sha256": "1c88acc0ca65d8fb211f7a4c34156cd2dbc8d86a20fae74e3118c5a49b20fb75",
+      "passed": true
+    },
+    {
+      "path": "deliverables/project_audits/tools/audit_report_evidence.py",
+      "sha256": "9fe484e032e5ae6e8e50fd5b49e6acf14305f64240b12ca2acd86d5ac918b649",
+      "passed": true
+    },
+    {
+      "path": "deliverables/project_audits/tools/test_audit_record_validation.py",
+      "sha256": "c12b5f5922cb90a5667f41b74bd3e5621fc53f485d8fd2c07a64ff5ff8a07f53",
+      "passed": true
+    }
+  ],
+  "protected_files": [
+    {
+      "path": "research_modules/independent_experiments/dual_optical_online_benchmark/report_matrix_replay.py",
+      "expected_sha256": "d6e209f8396c27ba4d192d361d3967c9eb433a419768b46a97d9b364cea28371",
+      "actual_sha256": "d6e209f8396c27ba4d192d361d3967c9eb433a419768b46a97d9b364cea28371",
+      "unchanged": true
+    },
+    {
+      "path": "research_modules/independent_experiments/center_terminal_cv_campaign/exp_center_handover/run_error_matrix.py",
+      "expected_sha256": "d80528a706e73c61a22198160d187b3d45a8422e2a69d387aad7f2fe4bbf4d82",
+      "actual_sha256": "d80528a706e73c61a22198160d187b3d45a8422e2a69d387aad7f2fe4bbf4d82",
+      "unchanged": true
+    },
+    {
+      "path": "research_modules/independent_experiments/center_terminal_cv_campaign/exp_search/run_offline_matrix.py",
+      "expected_sha256": "986110b7dac47eef15fb1be1cd7c02a1bf18b90cb280cc2168273f343f5825f4",
+      "actual_sha256": "986110b7dac47eef15fb1be1cd7c02a1bf18b90cb280cc2168273f343f5825f4",
+      "unchanged": true
+    },
+    {
+      "path": "deliverables/leadership_report/双光电多目标轨迹配准与交汇定位试验报告_CN.md",
+      "expected_sha256": "19d531714874acecb692b75c03059091e222cbe6d7b58724351ba937ee391d06",
+      "actual_sha256": "19d531714874acecb692b75c03059091e222cbe6d7b58724351ba937ee391d06",
+      "unchanged": true
+    },
+    {
+      "path": "deliverables/leadership_report/双光电多目标轨迹配准与交汇定位试验报告_CN.docx",
+      "expected_sha256": "b7ea538761a53fffc0d44fb658b1f45350ff144c61346ab4b8d4999aee7e19fb",
+      "actual_sha256": "b7ea538761a53fffc0d44fb658b1f45350ff144c61346ab4b8d4999aee7e19fb",
+      "unchanged": true
+    },
+    {
+      "path": "deliverables/leadership_report/协同搜索试验报告_CN.md",
+      "expected_sha256": "1b86ed674e79b265de933e3b4ad7516aa7cee2e378ecd3d0a49a0d999a11d9ba",
+      "actual_sha256": "1b86ed674e79b265de933e3b4ad7516aa7cee2e378ecd3d0a49a0d999a11d9ba",
+      "unchanged": true
+    },
+    {
+      "path": "deliverables/leadership_report/协同搜索试验报告_CN.docx",
+      "expected_sha256": "71dd55cb7eb76d3f0491227ac212c1ced2523c88996355ec98b759a1a0e4acb4",
+      "actual_sha256": "71dd55cb7eb76d3f0491227ac212c1ced2523c88996355ec98b759a1a0e4acb4",
+      "unchanged": true
+    },
+    {
+      "path": "deliverables/leadership_report/末端目标配准试验报告_CN.md",
+      "expected_sha256": "6ad38947ed6745bc3ec8cd2e0f69905a4257009587ea06f270251790112fb216",
+      "actual_sha256": "6ad38947ed6745bc3ec8cd2e0f69905a4257009587ea06f270251790112fb216",
+      "unchanged": true
+    },
+    {
+      "path": "deliverables/leadership_report/末端目标配准试验报告_CN.docx",
+      "expected_sha256": "6a3efa97807b2ebe6bc29c6b8dab8144f7b0932b0e42bcec407ff2a5542e1ceb",
+      "actual_sha256": "6a3efa97807b2ebe6bc29c6b8dab8144f7b0932b0e42bcec407ff2a5542e1ceb",
+      "unchanged": true
+    },
+    {
+      "path": "deliverables/leadership_report/中心航迹与拦截无人机目标配准试验报告_CN.md",
+      "expected_sha256": "463267ad8f52df196f8c778b38b99ede781ab6dfaa71b775de8af5bb176d412c",
+      "actual_sha256": "463267ad8f52df196f8c778b38b99ede781ab6dfaa71b775de8af5bb176d412c",
+      "unchanged": true
+    },
+    {
+      "path": "deliverables/leadership_report/中心航迹与拦截无人机目标配准试验报告_CN.docx",
+      "expected_sha256": "ba43ffcac9f16d1cddc74684461195a4b2516638405b94e7e583ddf789b59a42",
+      "actual_sha256": "ba43ffcac9f16d1cddc74684461195a4b2516638405b94e7e583ddf789b59a42",
+      "unchanged": true
+    }
+  ],
+  "diff_check_exit_code": 0,
+  "diff_check_output": "",
+  "passed": true,
+  "research_tests_run": false,
+  "experiments_run": false,
+  "historical_statistics_functions_modified": false,
+  "real_experiment_records_validated_with_new_contract": false
+}

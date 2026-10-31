@@ -1,5 +1,10 @@
 # D3 文档索引
 
+<!-- evidence-status-sync:20260926:begin -->
+> 2026-09-26 仅同步资料，不是新实验日期。当前证据统一见[当前证据状态](CURRENT_EVIDENCE_STATUS_CN.md)。
+> 下文旧日期、状态及待办仅作带日期历史阶段阅读；原Goal状态、能力、GAP及权限不因本次同步改变。
+<!-- evidence-status-sync:20260926:end -->
+
 2026-08-02 最新状态：A1 v3 全量 dirty 开发探针为 15 cells、`300/300`，逐 episode
 `9/3/3/2` 全部满足，truth、ID 创建/改写、重复帧和禁用来源读取均为 0。当前仅
 `source_generation_request_ready=true`；formal generation、training、runtime、assignment 和

@@ -1,0 +1,97 @@
+{
+  "created_at_utc": "2026-09-26T15:28:07.962033+00:00",
+  "tests_run": 6,
+  "failures": 0,
+  "errors": 0,
+  "test_output": "test_alias_maps_import_to_distribution (test_material_gaps.MaterialGapTests.test_alias_maps_import_to_distribution) ... ok\ntest_missing_version_stays_missing (test_material_gaps.MaterialGapTests.test_missing_version_stays_missing) ... ok\ntest_nested_metadata_fields_detected (test_material_gaps.MaterialGapTests.test_nested_metadata_fields_detected) ... ok\ntest_parameter_schema_and_trajectory_hash_are_not_code_provenance (test_material_gaps.MaterialGapTests.test_parameter_schema_and_trajectory_hash_are_not_code_provenance) ... ok\ntest_repeated_submodules_keep_witnesses_not_extra_packages (test_material_gaps.MaterialGapTests.test_repeated_submodules_keep_witnesses_not_extra_packages) ... ok\ntest_stdlib_and_local_imports_excluded (test_material_gaps.MaterialGapTests.test_stdlib_and_local_imports_excluded) ... ok\n\n----------------------------------------------------------------------\nRan 6 tests in 0.000s\n\nOK\n",
+  "test_command": "python3 -B -m unittest discover -s deliverables/project_audits/source_environment_gaps_20260926_v1 -p 'test_material_gaps.py' -v",
+  "syntax_checks": [
+    {
+      "path": "deliverables/project_audits/source_environment_gaps_20260926_v1/audit_material_gaps.py",
+      "sha256": "379f18370b0f4942e368069d7f68edf229bf10206a64fb1f016b6bd45367b347",
+      "passed": true
+    },
+    {
+      "path": "deliverables/project_audits/source_environment_gaps_20260926_v1/test_material_gaps.py",
+      "sha256": "a66389230c8c5c8752f8299c84be340378100e11e914881e9dd9764d5ab3f6f5",
+      "passed": true
+    }
+  ],
+  "watched_input_count": 119,
+  "watched_inputs_still_unchanged": true,
+  "protected_files": [
+    {
+      "path": "research_modules/independent_experiments/dual_optical_online_benchmark/report_matrix_replay.py",
+      "expected_sha256": "d6e209f8396c27ba4d192d361d3967c9eb433a419768b46a97d9b364cea28371",
+      "actual_sha256": "d6e209f8396c27ba4d192d361d3967c9eb433a419768b46a97d9b364cea28371",
+      "unchanged": true
+    },
+    {
+      "path": "research_modules/independent_experiments/center_terminal_cv_campaign/exp_center_handover/run_error_matrix.py",
+      "expected_sha256": "d80528a706e73c61a22198160d187b3d45a8422e2a69d387aad7f2fe4bbf4d82",
+      "actual_sha256": "d80528a706e73c61a22198160d187b3d45a8422e2a69d387aad7f2fe4bbf4d82",
+      "unchanged": true
+    },
+    {
+      "path": "research_modules/independent_experiments/center_terminal_cv_campaign/exp_search/run_offline_matrix.py",
+      "expected_sha256": "986110b7dac47eef15fb1be1cd7c02a1bf18b90cb280cc2168273f343f5825f4",
+      "actual_sha256": "986110b7dac47eef15fb1be1cd7c02a1bf18b90cb280cc2168273f343f5825f4",
+      "unchanged": true
+    },
+    {
+      "path": "deliverables/leadership_report/双光电多目标轨迹配准与交汇定位试验报告_CN.md",
+      "expected_sha256": "19d531714874acecb692b75c03059091e222cbe6d7b58724351ba937ee391d06",
+      "actual_sha256": "19d531714874acecb692b75c03059091e222cbe6d7b58724351ba937ee391d06",
+      "unchanged": true
+    },
+    {
+      "path": "deliverables/leadership_report/双光电多目标轨迹配准与交汇定位试验报告_CN.docx",
+      "expected_sha256": "b7ea538761a53fffc0d44fb658b1f45350ff144c61346ab4b8d4999aee7e19fb",
+      "actual_sha256": "b7ea538761a53fffc0d44fb658b1f45350ff144c61346ab4b8d4999aee7e19fb",
+      "unchanged": true
+    },
+    {
+      "path": "deliverables/leadership_report/协同搜索试验报告_CN.md",
+      "expected_sha256": "1b86ed674e79b265de933e3b4ad7516aa7cee2e378ecd3d0a49a0d999a11d9ba",
+      "actual_sha256": "1b86ed674e79b265de933e3b4ad7516aa7cee2e378ecd3d0a49a0d999a11d9ba",
+      "unchanged": true
+    },
+    {
+      "path": "deliverables/leadership_report/协同搜索试验报告_CN.docx",
+      "expected_sha256": "71dd55cb7eb76d3f0491227ac212c1ced2523c88996355ec98b759a1a0e4acb4",
+      "actual_sha256": "71dd55cb7eb76d3f0491227ac212c1ced2523c88996355ec98b759a1a0e4acb4",
+      "unchanged": true
+    },
+    {
+      "path": "deliverables/leadership_report/末端目标配准试验报告_CN.md",
+      "expected_sha256": "6ad38947ed6745bc3ec8cd2e0f69905a4257009587ea06f270251790112fb216",
+      "actual_sha256": "6ad38947ed6745bc3ec8cd2e0f69905a4257009587ea06f270251790112fb216",
+      "unchanged": true
+    },
+    {
+      "path": "deliverables/leadership_report/末端目标配准试验报告_CN.docx",
+      "expected_sha256": "6a3efa97807b2ebe6bc29c6b8dab8144f7b0932b0e42bcec407ff2a5542e1ceb",
+      "actual_sha256": "6a3efa97807b2ebe6bc29c6b8dab8144f7b0932b0e42bcec407ff2a5542e1ceb",
+      "unchanged": true
+    },
+    {
+      "path": "deliverables/leadership_report/中心航迹与拦截无人机目标配准试验报告_CN.md",
+      "expected_sha256": "463267ad8f52df196f8c778b38b99ede781ab6dfaa71b775de8af5bb176d412c",
+      "actual_sha256": "463267ad8f52df196f8c778b38b99ede781ab6dfaa71b775de8af5bb176d412c",
+      "unchanged": true
+    },
+    {
+      "path": "deliverables/leadership_report/中心航迹与拦截无人机目标配准试验报告_CN.docx",
+      "expected_sha256": "ba43ffcac9f16d1cddc74684461195a4b2516638405b94e7e583ddf789b59a42",
+      "actual_sha256": "ba43ffcac9f16d1cddc74684461195a4b2516638405b94e7e583ddf789b59a42",
+      "unchanged": true
+    }
+  ],
+  "material_requests": 6,
+  "diff_check_exit_code": 0,
+  "passed": true,
+  "pass_meaning": "Bounded administrative audit and preservation checks passed, not full environment recovery.",
+  "research_code_executed": false,
+  "experiments_run": false,
+  "metrics_recomputed": false
+}

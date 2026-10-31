@@ -1,0 +1,348 @@
+{
+  "module": "D3",
+  "reviewed_at": "2026-09-26",
+  "scope": "只读复核 GOAL_REQUIREMENT_EVIDENCE.csv 中 owner 明示 D3 或范围包含 D3 的全部17项；共同责任项仅出具D3侧意见。suggested_status 仅为审计建议，不改变模块状态、GAP、授权或原表。只新建本目录 D3_review.json 和 D3_review.md，不委托子智能体。",
+  "source_register": "deliverables/project_audits/goal_resume_audit_20260926_v1/GOAL_REQUIREMENT_EVIDENCE.csv",
+  "historical_evidence_dates": {
+    "old_bc_development": "2026-07-20",
+    "old_source_independent_v2": "2026-07-31",
+    "formal_r0_summary": "2026-07-31",
+    "d3_documentation_probe_baseline": "2026-08-02",
+    "d3_source_generation": "2026-08-02",
+    "goal_completion_and_source_audit": "2026-08-03",
+    "goal_saved_progress": "2026-08-07",
+    "main_evidence_location_audit": "2026-09-26"
+  },
+  "evidence_boundary": [
+    "已实现软件合同、历史局部验证、旧模型或独立演示、原Goal统一验收分开登记；本轮没有新增实验结果。",
+    "正式R0的450组保持摘要可查、完整记录未定位；728组来源生成由D3/D4/D5的300/324/104组构成，不是450组正式结果。",
+    "D3 A1 v3来源生成及来源完整性审计已保存，当前代际训练、选模、独立评价及准入没有完成证据。旧bundle schema中的v3也不等于当前A1 v3来源代际。",
+    "本轮只读摘要、文档、小型聚合JSON及已有文件校验登记；不读取大批原始真值，不重做来源语义审计或载荷哈希，不运行pytest、训练、GPU、AirSim、控制或重新评分。",
+    "现存模块文档的8月1日至2日阶段文字与8月3日、7日主级保存断点分别保留，不改原文，不把历史测试数写成本轮通过数。"
+  ],
+  "requirements": [
+    {
+      "requirement_id": "G04",
+      "original_status": "部分完成",
+      "review_result": "限定认可",
+      "suggested_status": "部分完成",
+      "evidence": [
+        "research_modules/scalable_3d_simulation/docs/SCALABLE_3D_FORMAL_R0_80E55EB_SHARDS0_9_20260731_CN.md",
+        "research_modules/scalable_3d_simulation/docs/SCALABLE_3D_GOAL_COMPLETION_AUDIT_20260803_CN.md",
+        "deliverables/project_audits/goal_resume_audit_20260926_v1/历史结果定位与完整性核对_CN.md",
+        "deliverables/project_audits/goal_resume_audit_20260926_v1/SUPPLEMENTAL_CHECKS.json"
+      ],
+      "reason": "历史450组报告记在线真值使用为0；8月3日审计记另外728组来源真值及切分泄漏为0，D3部分为300组/3086帧。9月26日已有字节核验记录不能替代语义审计，更不能把来源生成等同于正式全矩阵在线隔离验收。本轮未打开这些原始载荷。",
+      "remaining_evidence": ["正式450组完整载荷、运行清单和逐组违规记录仍未定位。", "原Goal同冻结版本完整矩阵的在线隔离统一验收记录缺失。"]
+    },
+    {
+      "requirement_id": "G06",
+      "original_status": "部分完成",
+      "review_result": "限定认可",
+      "suggested_status": "部分完成",
+      "evidence": [
+        "research_modules/scalable_3d_simulation/docs/SCALABLE_3D_GOAL_COMPLETION_AUDIT_20260803_CN.md",
+        "subagent_reviews/D3_M_TO_N_ASSIGNMENT_AND_SCHEDULING_REVIEW.md",
+        "research_modules/d3_assignment_planner/docs/AIRSIM_INTEGRATION_PLAN.md"
+      ],
+      "reason": "既有审计和模块记录支持可变规模、普通一对一与独立M-to-N需求合同存在。7月25日200v200、seed1000、2秒开发复验和7月31日旧v2高威胁100/200规模各10seed评价均有限定范围，不能证明原Goal所有场景的需求质量或完整物理结果。",
+      "remaining_evidence": ["原冻结协议中普通一对一与多机需求场景分别对应的完整逐组结果、需求口径和统一验收记录。"]
+    },
+    {
+      "requirement_id": "G16",
+      "original_status": "部分完成",
+      "review_result": "限定认可",
+      "suggested_status": "部分完成",
+      "evidence": [
+        "research_modules/scalable_3d_simulation/docs/SCALABLE_3D_GOAL_COMPLETION_AUDIT_20260803_CN.md",
+        "research_modules/scalable_3d_simulation/docs/SCALABLE_3D_GOAL_PROGRESS_AND_NEXT_PLAN_20260807_CN.md",
+        "research_modules/d3_assignment_planner/README.md"
+      ],
+      "reason": "D3 writer已有双时间戳校验的历史文档证据，但writer合同不是统一总线消费证据。原完成审计明确D1摘要双时间戳不全，D2到D3仍有同进程对象直传；A1 v3来源还不显式包含六维状态和协方差，不能以来源审计通过推断整个消息合同完整。",
+      "remaining_evidence": ["同冻结版本D3实际按统一消息订阅消费的保存记录。", "覆盖双时间戳、协方差、来源和版本的端到端消息完整性证据。"]
+    },
+    {
+      "requirement_id": "G19",
+      "original_status": "部分完成",
+      "review_result": "需修订",
+      "suggested_status": "部分完成",
+      "evidence": [
+        "research_modules/scalable_3d_simulation/docs/SCALABLE_3D_GOAL_COMPLETION_AUDIT_20260803_CN.md",
+        "research_modules/scalable_3d_simulation/docs/SCALABLE_3D_GOAL_PROGRESS_AND_NEXT_PLAN_20260807_CN.md",
+        "deliverables/project_audits/goal_resume_audit_20260926_v1/SOURCE_DIRECTORY_STATUS.json",
+        "deliverables/project_audits/goal_resume_audit_20260926_v1/SUPPLEMENTAL_CHECKS.json",
+        "research_modules/d3_assignment_planner/README.md"
+      ],
+      "reason": "状态认可，但主级逐项理由应补足来源输入边界：三维规则实现存在，不代表学习来源显式带六维状态和协方差。主级8月3日、7日保存记录支持A1 v3来源300组/3086帧及完整性审计通过；模块README顶部仍是8月2日dirty探针、非正式数据集阶段，不能用该探针单独证明正式生成。建议并列标明正式来源完成、来源字段受限、模型未训练三个事实。",
+      "remaining_evidence": ["当前A1 v3冻结模型、选模、来源独立评价和准入制品缺失。", "将模块阶段文档与后续正式来源保存记录明确对应的owner状态说明尚未出现在原模块文档中。"]
+    },
+    {
+      "requirement_id": "G29",
+      "original_status": "部分完成",
+      "review_result": "限定认可",
+      "suggested_status": "部分完成",
+      "evidence": [
+        "research_modules/scalable_3d_simulation/docs/SCALABLE_3D_GOAL_COMPLETION_AUDIT_20260803_CN.md",
+        "research_modules/d3_assignment_planner/results/formal_bc_development_20260720/TRAINING_REPORT_CN.md",
+        "research_modules/d3_assignment_planner/results/a1_source_independent_evaluation_v2_20260731/aggregate.json",
+        "research_modules/d3_assignment_planner/docs/EXPERIMENT_REPORT.md"
+      ],
+      "reason": "旧BC开发训练确有保存报告；旧v2来源独立评价为100 episode/292帧，machine_gate_passed=true而status仍为not_admitted，test正类教师完全匹配为0/25。训练代码、旧训练与旧独立评价都不能替代当前A1 v3的训练/选模。旧报告的d3_learning_model_bundle_v3是bundle schema，不是当前A1 v3代际完成标记。",
+      "remaining_evidence": ["当前A1 v3训练日志、检查点、选模记录和独立评价结果。", "与当前代际绑定的BC/PPO执行记录，而非仅有脚本或旧开发模型。"]
+    },
+    {
+      "requirement_id": "G32",
+      "original_status": "部分完成",
+      "review_result": "限定认可",
+      "suggested_status": "部分完成",
+      "evidence": [
+        "research_modules/scalable_3d_simulation/docs/SCALABLE_3D_GOAL_COMPLETION_AUDIT_20260803_CN.md",
+        "research_modules/d3_assignment_planner/results/a1_source_independent_evaluation_v2_20260731/aggregate.json",
+        "research_modules/d3_assignment_planner/docs/MODULE_PRINCIPLES_CN.md"
+      ],
+      "reason": "D3有界输出、确定性约束和回退有既有合同及旧v2局部记录。旧v2聚合记94个拒绝帧均exact-R0、违规计数为0，同时运行等权限全部false。这支持有限历史软件证据，不支持当前代际全变体安全性或非退化已经验收；D4/D5实现由各自owner确认。",
+      "remaining_evidence": ["当前代际各变体在同冻结协议下的异常、回退及非退化逐组验收记录。"]
+    },
+    {
+      "requirement_id": "G36",
+      "original_status": "未完成",
+      "review_result": "认可",
+      "suggested_status": "未完成",
+      "evidence": [
+        "research_modules/scalable_3d_simulation/docs/SCALABLE_3D_GOAL_COMPLETION_AUDIT_20260803_CN.md",
+        "research_modules/scalable_3d_simulation/docs/SCALABLE_3D_GOAL_PROGRESS_AND_NEXT_PLAN_20260807_CN.md",
+        "deliverables/project_audits/goal_resume_audit_20260926_v1/原Goal逐项状态对照_CN.md"
+      ],
+      "reason": "当前代际来源完整性审计不授予训练、模型消费或运行。A1 v3未形成冻结模型及正式对照，三方案统一正式比较因此不能完成；后续独立试验没有原Goal同版本接入和统一验收证据。",
+      "remaining_evidence": ["当前A1/A2/A3各自冻结模型、独立评价以及同键R0正式比较结果；D3仅确认其中A1边界。"]
+    },
+    {
+      "requirement_id": "G38",
+      "original_status": "未完成",
+      "review_result": "认可",
+      "suggested_status": "未完成",
+      "evidence": [
+        "research_modules/scalable_3d_simulation/docs/SCALABLE_3D_GOAL_COMPLETION_AUDIT_20260803_CN.md",
+        "research_modules/scalable_3d_simulation/docs/SCALABLE_3D_GOAL_PROGRESS_AND_NEXT_PLAN_20260807_CN.md",
+        "deliverables/project_audits/goal_resume_audit_20260926_v1/原Goal逐项状态对照_CN.md"
+      ],
+      "reason": "D3规则链或局部计划门存在不能证明F1完成。原完成审计和最后进展均明确完整故障矩阵、20个未见seed和完整时长统一结果未交付；没有把后续独立演示登记为F1完成的依据。",
+      "remaining_evidence": ["原Goal同冻结版本F1完整矩阵、逐seed结果与统一验收记录。"]
+    },
+    {
+      "requirement_id": "G40",
+      "original_status": "部分完成",
+      "review_result": "限定认可",
+      "suggested_status": "部分完成",
+      "evidence": [
+        "research_modules/d3_assignment_planner/docs/AIRSIM_INTEGRATION_PLAN.md",
+        "subagent_reviews/D3_M_TO_N_ASSIGNMENT_AND_SCHEDULING_REVIEW.md",
+        "research_modules/d3_assignment_planner/results/a1_source_independent_evaluation_v2_20260731/aggregate.json",
+        "deliverables/project_audits/goal_resume_audit_20260926_v1/历史结果定位与完整性核对_CN.md"
+      ],
+      "reason": "版本和资源唯一性有历史局部门控证据。7月23日200v200、seed1100、2.2秒记录明确没有主动注入stale plan；旧v2离线292帧的零违规也不是正式执行授权统计。不得从这些局部结果推出所有正式组旧计划接受、重复授权及硬约束违规均为0。",
+      "remaining_evidence": ["最终统一矩阵逐组安全计数及其指标可用性。", "原正式450组完整安全记录仍未定位。"]
+    },
+    {
+      "requirement_id": "G43",
+      "original_status": "证据不足",
+      "review_result": "证据不足",
+      "suggested_status": "证据不足",
+      "evidence": [
+        "research_modules/d3_assignment_planner/results/formal_bc_development_20260720/TRAINING_REPORT_CN.md",
+        "subagent_reviews/D3_M_TO_N_ASSIGNMENT_AND_SCHEDULING_REVIEW.md",
+        "deliverables/project_audits/goal_resume_audit_20260926_v1/GOAL_REQUIREMENT_EVIDENCE.csv",
+        "deliverables/project_audits/goal_resume_audit_20260926_v1/历史结果定位与完整性核对_CN.md"
+      ],
+      "reason": "旧BC报告确有internal-test需求满足率0.9757和200规模0.9715，不能遗漏这些历史数字，但报告是development/shadow-only，使用900个旧数据episode、100个数值seed和1604帧，不是正式R0的900组或当前v3。该汇总也不是原要求名义资源充分子集的冻结验收口径，不能据其超过0.95认定G43完成，也不能反向认定已证明不达标。",
+      "remaining_evidence": ["原冻结协议中名义、资源充分条件的明确筛选和分母。", "该子集逐组需求满足结果、冻结阈值及可定位原始证据；完整450组仍未定位。"]
+    },
+    {
+      "requirement_id": "G44",
+      "original_status": "未完成",
+      "review_result": "认可",
+      "suggested_status": "未完成",
+      "evidence": [
+        "research_modules/scalable_3d_simulation/docs/SCALABLE_3D_GOAL_COMPLETION_AUDIT_20260803_CN.md",
+        "research_modules/d3_assignment_planner/results/a1_source_independent_evaluation_v2_20260731/aggregate.json",
+        "research_modules/scalable_3d_simulation/docs/SCALABLE_3D_GOAL_PROGRESS_AND_NEXT_PLAN_20260807_CN.md"
+      ],
+      "reason": "配对比较软件及旧v2局部零违规记录存在，但当前A1 v3没有冻结模型与同键R0比较。旧独立评价权限为false，不能替代原Goal全部学习变体的身份交换、重复分配和违规非退化结论。",
+      "remaining_evidence": ["当前冻结模型与R0按同seed、同外生输入配对的完整非退化结果及指标可用性说明。"]
+    },
+    {
+      "requirement_id": "G47",
+      "original_status": "未完成",
+      "review_result": "认可",
+      "suggested_status": "未完成",
+      "evidence": [
+        "research_modules/scalable_3d_simulation/docs/SCALABLE_3D_GOAL_COMPLETION_AUDIT_20260803_CN.md",
+        "research_modules/scalable_3d_simulation/docs/SCALABLE_3D_GOAL_PROGRESS_AND_NEXT_PLAN_20260807_CN.md",
+        "research_modules/d3_assignment_planner/results/formal_bc_development_20260720/TRAINING_REPORT_CN.md"
+      ],
+      "reason": "原审计明确最终显存归因未交付，当前A1 v3模型未完成。旧开发训练耗时或推理P95不是RTX4050上当前冻结模型及全体系显存不超过5GB的证据，本轮未查询或运行GPU。",
+      "remaining_evidence": ["绑定当前冻结模型、RTX4050运行环境、测量范围及峰值口径的历史显存验收记录。"]
+    },
+    {
+      "requirement_id": "G49",
+      "original_status": "部分完成",
+      "review_result": "限定认可",
+      "suggested_status": "部分完成",
+      "evidence": [
+        "research_modules/scalable_3d_simulation/docs/SCALABLE_3D_GOAL_COMPLETION_AUDIT_20260803_CN.md",
+        "research_modules/d3_assignment_planner/README.md",
+        "deliverables/project_audits/goal_resume_audit_20260926_v1/VERSION_DIFFS.json"
+      ],
+      "reason": "主模块522项通过是8月3日绑定adc13d109a77的历史摘要。D3 README另记8月2日15-cell阶段796 passed及后续全量约17%中止，两者不可拼成最终同版本全量通过。本批Git比较只支持跟踪内容未变，不验证ignored输出或新运行结果；本轮没有pytest。",
+      "remaining_evidence": ["最终同冻结版本、完整D1至D7接口和统一交付范围的回归记录。"]
+    },
+    {
+      "requirement_id": "G51",
+      "original_status": "部分完成",
+      "review_result": "限定认可",
+      "suggested_status": "部分完成",
+      "evidence": [
+        "research_modules/scalable_3d_simulation/docs/SCALABLE_3D_GOAL_COMPLETION_AUDIT_20260803_CN.md",
+        "deliverables/project_audits/goal_resume_audit_20260926_v1/SOURCE_DIRECTORY_STATUS.json",
+        "deliverables/project_audits/goal_resume_audit_20260926_v1/SUPPLEMENTAL_CHECKS.json",
+        "research_modules/d3_assignment_planner/results/formal_bc_development_20260720/TRAINING_REPORT_CN.md"
+      ],
+      "reason": "D3代码、正式来源及保存核验记录存在；generation_checkpoint是来源生产进度，不是模型训练检查点。旧development bundle及权重哈希只证明旧代际开发制品，不能充当当前A1 v3学习制品交付。",
+      "remaining_evidence": ["当前A1 v3训练检查点、配置、模型说明与权重校验的完整交付清单。"]
+    },
+    {
+      "requirement_id": "G55",
+      "original_status": "部分完成",
+      "review_result": "需修订",
+      "suggested_status": "部分完成",
+      "evidence": [
+        "research_modules/d3_assignment_planner/README.md",
+        "research_modules/d3_assignment_planner/PLAN.md",
+        "subagent_reviews/D3_IMPLEMENTATION_GAP_AUDIT.md",
+        "subagent_reviews/D3_ASSIGNMENT_PLANNER_REVIEW_AND_PLAN.md",
+        "subagent_reviews/D3_M_TO_N_ASSIGNMENT_AND_SCHEDULING_REVIEW.md",
+        "research_modules/scalable_3d_simulation/docs/SCALABLE_3D_GOAL_PROGRESS_AND_NEXT_PLAN_20260807_CN.md",
+        "research_modules/scalable_3d_simulation/VERSIONING.md"
+      ],
+      "reason": "原表的主级进展已保存可以保留，但须明确不等于D3全部文档已与最后断点同步。README/PLAN/GAP/review等顶部仍为8月2日dirty probe、正式生成未授权；M-to-N review及VERSIONING的8月1日快照仍记无seed/数据，后续主级已有正式生成及来源审计。这是时间层级和现状摘要未衔接，不是推翻历史阶段。还须保留未完成总体验收及合并条件的限制。本次只登记差异，按授权不修改原文或关闭GAP。",
+      "remaining_evidence": ["原模块各文档对8月3日正式来源审计及8月7日断点的统一现状说明。", "满足原Goal验收条件后的主级合并/验收记录；分支继承不能替代。"]
+    },
+    {
+      "requirement_id": "G57",
+      "original_status": "部分完成",
+      "review_result": "限定认可",
+      "suggested_status": "部分完成",
+      "evidence": [
+        "research_modules/scalable_3d_simulation/VERSIONING.md",
+        "deliverables/project_audits/goal_resume_audit_20260926_v1/SOURCE_DIRECTORY_STATUS.json",
+        "deliverables/project_audits/goal_resume_audit_20260926_v1/SUPPLEMENTAL_CHECKS.json",
+        "deliverables/project_audits/goal_resume_audit_20260926_v1/ARCHIVE_LOCATION_REGISTER.csv"
+      ],
+      "reason": "版本合同和来源清单有保存记录，D3正式来源绑定e7c438ca0e480f9f56dc426dc20a3f8f83d7d6a6，不能拿当前HEAD代替其执行来源。SOURCE_DIRECTORY_STATUS的初步current_full_payload_hash_audit=false与SUPPLEMENTAL_CHECKS后续307项字节匹配是顺序阶段，不构成矛盾。两份登记都不是当前v3模型冻结或450组原manifest已恢复的证明。",
+      "remaining_evidence": ["正式450组原manifest和逐组版本链仍未定位。", "当前代际模型、阈值及最终运行版本绑定清单缺失。"]
+    },
+    {
+      "requirement_id": "G59",
+      "original_status": "证据不足",
+      "review_result": "证据不足",
+      "suggested_status": "证据不足",
+      "evidence": [
+        "subagent_reviews/D3_IMPLEMENTATION_GAP_AUDIT.md",
+        "research_modules/d3_assignment_planner/PLAN.md",
+        "research_modules/d3_assignment_planner/results/formal_bc_development_20260720/TRAINING_REPORT_CN.md",
+        "research_modules/scalable_3d_simulation/docs/SCALABLE_3D_GOAL_PROGRESS_AND_NEXT_PLAN_20260807_CN.md"
+      ],
+      "reason": "D3已有旧权重SHA和本地ignored bundle定位，但GAP明确长期制品仓或Git LFS移交仍开放。当前A1 v3最终模型未交付；旧本地路径、配置说明和哈希不足以证明长期LFS对象保存或远端可达。本轮没有访问远端，也不把历史本机无LFS描述当成当前环境检测。",
+      "remaining_evidence": ["当前代际权重、模型说明和配置的长期保存清单。", "原要求对应的LFS对象及远端可达性证明，或已有正式接受的替代存储验收记录。"]
+    }
+  ],
+  "documentation_checked": [
+    {
+      "path": "research_modules/d3_assignment_planner/README.md",
+      "exists": true,
+      "checked_scope": "顶部8月2日探针、8月1日writer和旧v2结果，以及LFS说明",
+      "inconsistency": "作为历史探针记录成立；若当作最后断点，遗漏8月3日正式来源生成和审计。",
+      "modified": false,
+      "reason": "本次无能力变更或GAP关闭，且写权限仅限两份新审计文件；现状衔接差异登记在G19/G55，不重写历史。"
+    },
+    {
+      "path": "research_modules/d3_assignment_planner/PLAN.md",
+      "exists": true,
+      "checked_scope": "8月2日顶部状态与未勾选的正式生成/审计项、旧评价和长期保存说明",
+      "inconsistency": "顶部generation_not_authorized及待正式生成项停在探针阶段，晚于它的主级保存记录已到来源审计通过。",
+      "modified": false,
+      "reason": "仅审阅历史证据，不执行计划或变更GAP；遵守本批写入边界，在G55登记。"
+    },
+    {
+      "path": "subagent_reviews/D3_IMPLEMENTATION_GAP_AUDIT.md",
+      "exists": true,
+      "checked_scope": "顶部request-level quota状态、旧v2 test缺口和长期权重保存开放项",
+      "inconsistency": "顶部正式生成未授权属于8月2日阶段，尚未衔接后续正式来源审计；下文失败探针已有历史范围提示，不能误读为当前阻断。",
+      "modified": false,
+      "reason": "本次不关闭或重分类模块GAP，只登记现成文档时间口径差异；原审计保留。"
+    },
+    {
+      "path": "subagent_reviews/D3_ASSIGNMENT_PLANNER_REVIEW_AND_PLAN.md",
+      "exists": true,
+      "checked_scope": "8月2日顶部review、历史失败段落、旧v2与长期权重说明",
+      "inconsistency": "顶部仍只允许request、等待正式生成，与后续主级断点未衔接；历史段落中的readiness须区分request-ready和readiness_eligible。",
+      "modified": false,
+      "reason": "本次没有算法或准入变化，不覆盖旧review，差异仅登记在授权审计中。"
+    },
+    {
+      "path": "subagent_reviews/D3_M_TO_N_ASSIGNMENT_AND_SCHEDULING_REVIEW.md",
+      "exists": true,
+      "checked_scope": "8月1日v3请求、7月31日旧v2、7月25日滚动需求及7月23日安全门",
+      "inconsistency": "8月1日无seed/数据是带日期历史快照，不能作为当前来源状态；其M-to-N旧评价仍不是正式统一验收。",
+      "modified": false,
+      "reason": "M-to-N算法和试验结论未变化，此次不增加实施方案；保留历史快照并登记G55时间边界。"
+    },
+    {
+      "path": "research_modules/d3_assignment_planner/docs/MODULE_PRINCIPLES_CN.md",
+      "exists": true,
+      "checked_scope": "8月2日状态基线、来源权限分层、旧v2结果及保存边界",
+      "inconsistency": "生成请求与数据已生成的原则区分明确，但现状仍限dirty探针，未衔接后续主级正式来源记录。",
+      "modified": false,
+      "reason": "原理和能力未改变，禁止越权同步原文件；只在G19/G55登记现状衔接问题。"
+    },
+    {
+      "path": "research_modules/d3_assignment_planner/docs/ALGORITHM_AND_IMPLEMENTATION.md",
+      "exists": true,
+      "checked_scope": "8月2日状态基线、request权限、旧评价和LFS说明",
+      "inconsistency": "request阶段当前状态不能覆盖后续generation-only和audit-only记录；没有本轮算法变化。",
+      "modified": false,
+      "reason": "只复核已有证据，不制定实现路径或改算法说明；历史权限阶段原样保留。"
+    },
+    {
+      "path": "research_modules/d3_assignment_planner/docs/AIRSIM_INTEGRATION_PLAN.md",
+      "exists": true,
+      "checked_scope": "滚动需求、身份承诺、7月23日和25日质点验证与AirSim边界",
+      "inconsistency": "所读段落明确质点验证不是AirSim、没有stale注入；未发现需因本次只读任务改变的集成合同。",
+      "modified": false,
+      "reason": "本次未改变AirSim DTO、settings、episode、adapter或控制，也未新增AirSim证据，无需同步原集成计划。"
+    },
+    {
+      "path": "research_modules/d3_assignment_planner/docs/EXPERIMENT_REPORT.md",
+      "exists": true,
+      "checked_scope": "顶部300条dirty探针、8月1日失败归因、7月31日旧v2分母及末尾开发探针状态",
+      "inconsistency": "最新段落是非正式探针，不是正式来源生成报告；旧v2总体机器门通过和test 0/25须同时保留，不能升级当前代际。",
+      "modified": false,
+      "reason": "没有新实验或重评分，不改旧报告数值；主级后续来源断点与模块报告的时间差登记在G19/G55。"
+    }
+  ],
+  "validation": {
+    "status": "passed_file_checks_only",
+    "checked_at": "2026-09-26",
+    "requirement_coverage": "17/17",
+    "original_status_matches": 17,
+    "evidence_and_document_paths_exist": 22,
+    "documentation_checked_count": 9,
+    "markdown_rows_and_links": "passed",
+    "unchanged_document_and_register_hashes": "10/10",
+    "suggested_status_changes": 0,
+    "allowed_checks": ["JSON解析及字段枚举", "CSV owner范围展开及17项精确覆盖", "原状态一致性", "仓库相对引用路径存在性", "Markdown编号覆盖", "9份模块文档及原登记表前后摘要一致性"],
+    "experiments_run": false,
+    "module_pytest_run": false,
+    "module_state_changed": false
+  }
+}

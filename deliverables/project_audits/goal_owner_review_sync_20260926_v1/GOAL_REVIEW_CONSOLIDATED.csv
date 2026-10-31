@@ -1,0 +1,61 @@
+requirement_id,requirement,original_status,retained_status,required_reviewers,review_count,explanation_revision_requested,classification_difference,opinions,review_files
+G01,独立分支与主控三维模块,已完成,已完成,main,1,False,False,"{""main"": ""限定认可""}",MAIN_REVIEW.json
+G02,主模块只负责世界与编排且D1至D7保留原目录,已完成,已完成,main,1,False,False,"{""main"": ""限定认可""}",MAIN_REVIEW.json
+G03,质点仿真不接真实飞控执行机构,已完成,已完成,main,1,False,False,"{""main"": ""限定认可""}",MAIN_REVIEW.json
+G04,在线D1至D5真值隔离,部分完成,部分完成,D1;D2;D3;D4;D5;D6;main,7,False,False,"{""D1"": ""限定认可"", ""D2"": ""限定认可"", ""D3"": ""限定认可"", ""D4"": ""限定认可"", ""D5"": ""限定认可"", ""D6"": ""限定认可"", ""main"": ""限定认可""}",owners/D1_review.json;owners/D2_review.json;owners/D3_review.json;owners/D4_review.json;owners/D5_review.json;owners/D6_review.json;MAIN_REVIEW.json
+G05,全局编号归中心且其他模块不改写,部分完成,部分完成,D2;D5;D7,3,False,False,"{""D2"": ""限定认可"", ""D5"": ""限定认可"", ""D7"": ""限定认可""}",owners/D2_review.json;owners/D5_review.json;owners/D7_review.json
+G06,200对200一对一且高威胁多机需求另设场景,部分完成,部分完成,D3;main,2,False,False,"{""D3"": ""限定认可"", ""main"": ""限定认可""}",owners/D3_review.json;MAIN_REVIEW.json
+G07,D7保持确定性三维及视觉导引,部分完成,部分完成,D7,1,False,False,"{""D7"": ""限定认可""}",owners/D7_review.json
+G08,保留原2对2等回归并限制AirSim为代表子场景,部分完成,部分完成,main,1,False,False,"{""main"": ""限定认可""}",MAIN_REVIEW.json
+G09,NED六维状态与高度符号及外部坐标边界,已完成,已完成,main,1,False,False,"{""main"": ""限定认可""}",MAIN_REVIEW.json
+G10,受速度加速度转弯爬升限制的质点动力学,部分完成,部分完成,main,1,False,False,"{""main"": ""限定认可""}",MAIN_REVIEW.json
+G11,多种目标运动及资源控制状态回写,部分完成,部分完成,D7;main,2,False,False,"{""D7"": ""限定认可"", ""main"": ""限定认可""}",owners/D7_review.json;MAIN_REVIEW.json
+G12,相机独立状态及多频率调度,部分完成,部分完成,main,1,False,False,"{""main"": ""限定认可""}",MAIN_REVIEW.json
+G13,NPZ与JSONL及CSV和JSON日志,部分完成,部分完成,D6;main,2,False,False,"{""D6"": ""限定认可"", ""main"": ""限定认可""}",owners/D6_review.json;MAIN_REVIEW.json
+G14,针孔投影与代理框及投影协方差,部分完成,部分完成,D5;main,2,False,False,"{""D5"": ""限定认可"", ""main"": ""限定认可""}",owners/D5_review.json;MAIN_REVIEW.json
+G15,视场遮挡与检测噪声及外参时间通信误差,部分完成,部分完成,main,1,False,False,"{""main"": ""限定认可""}",MAIN_REVIEW.json
+G16,双时间戳协方差匿名片段与分区广域线索,部分完成,部分完成,D1;D2;D3;D4;D5;main,6,False,False,"{""D1"": ""限定认可"", ""D2"": ""限定认可"", ""D3"": ""限定认可"", ""D4"": ""限定认可"", ""D5"": ""认可"", ""main"": ""限定认可""}",owners/D1_review.json;owners/D2_review.json;owners/D3_review.json;owners/D4_review.json;owners/D5_review.json;MAIN_REVIEW.json
+G17,批量密集起始六维融合及异步协方差,部分完成,部分完成,D1,1,True,False,"{""D1"": ""需修订""}",owners/D1_review.json
+G18,六维稀疏关联与显式身份连续性指标,部分完成,部分完成,D2,1,False,False,"{""D2"": ""限定认可""}",owners/D2_review.json
+G19,三维规则分配及学习辅助接口,部分完成,部分完成,D3,1,True,False,"{""D3"": ""需修订""}",owners/D3_review.json
+G20,区域节点与分级降级及有效期和联盟确认,部分完成,部分完成,D4,1,False,False,"{""D4"": ""限定认可""}",owners/D4_review.json
+G21,几何图网络主动视觉与身份门控,部分完成,部分完成,D5,1,True,False,"{""D5"": ""需修订""}",owners/D5_review.json
+G22,指标多种子区间与三维报告,部分完成,部分完成,D6,1,True,False,"{""D6"": ""需修订""}",owners/D6_review.json
+G23,每个分配对独立控制状态及机动约束,部分完成,部分完成,D7,1,False,False,"{""D7"": ""限定认可""}",owners/D7_review.json
+G24,匿名局部航迹图节点与稀疏几何候选,部分完成,部分完成,D5,1,False,False,"{""D5"": ""限定认可""}",owners/D5_review.json
+G25,含时空误差与尺度和外参协方差的边特征,部分完成,部分完成,D5,1,False,False,"{""D5"": ""认可""}",owners/D5_review.json
+G26,图输出概率且确定性一一匹配和受约束聚类,部分完成,部分完成,D5,1,False,False,"{""D5"": ""限定认可""}",owners/D5_review.json
+G27,原生PyTorch图网络且其他图框架为可选对照,部分完成,部分完成,D5,1,False,False,"{""D5"": ""限定认可""}",owners/D5_review.json
+G28,困难负样本类别平衡及跨场景独立测试,部分完成,部分完成,D5,1,True,False,"{""D5"": ""需修订""}",owners/D5_review.json
+G29,有界代价修正与行为克隆及PPO训练,部分完成,部分完成,D3,1,False,False,"{""D3"": ""限定认可""}",owners/D3_review.json
+G30,区域图资源策略及规则回退,部分完成,部分完成,D4,1,False,False,"{""D4"": ""限定认可""}",owners/D4_review.json
+G31,主动视觉动作合同与训练管线,部分完成,部分完成,D5,1,False,False,"{""D5"": ""限定认可""}",owners/D5_review.json
+G32,稀疏有界输出确定性约束及异常回退,部分完成,部分完成,D3;D4;D5;main,4,False,False,"{""D3"": ""限定认可"", ""D4"": ""限定认可"", ""D5"": ""限定认可"", ""main"": ""限定认可""}",owners/D3_review.json;owners/D4_review.json;owners/D5_review.json;MAIN_REVIEW.json
+G33,5及20及50及100及200规模和各类故障场景,部分完成,部分完成,D6;main,2,False,False,"{""D6"": ""限定认可"", ""main"": ""限定认可""}",owners/D6_review.json;MAIN_REVIEW.json
+G34,纯规则同种子正式基线,部分完成,部分完成,D6;main,2,False,False,"{""D6"": ""限定认可"", ""main"": ""限定认可""}",owners/D6_review.json;MAIN_REVIEW.json
+G35,跨视角图网络正式对照,部分完成,部分完成,D5;D6,2,False,False,"{""D5"": ""限定认可"", ""D6"": ""限定认可""}",owners/D5_review.json;owners/D6_review.json
+G36,三个当前代际学习方案正式对照,未完成,未完成,D3;D4;D5;D6,4,False,False,"{""D3"": ""认可"", ""D4"": ""认可"", ""D5"": ""认可"", ""D6"": ""认可""}",owners/D3_review.json;owners/D4_review.json;owners/D5_review.json;owners/D6_review.json
+G37,图网络与强化学习组合正式结果,未完成,未完成,D6;main,2,False,False,"{""D6"": ""认可"", ""main"": ""限定认可""}",owners/D6_review.json;MAIN_REVIEW.json
+G38,降级与三维闭环完整体系结果,未完成,未完成,D1;D2;D3;D4;D5;D6;D7;main,8,False,False,"{""D1"": ""认可"", ""D2"": ""认可"", ""D3"": ""认可"", ""D4"": ""认可"", ""D5"": ""认可"", ""D6"": ""认可"", ""D7"": ""认可"", ""main"": ""限定认可""}",owners/D1_review.json;owners/D2_review.json;owners/D3_review.json;owners/D4_review.json;owners/D5_review.json;owners/D6_review.json;owners/D7_review.json;MAIN_REVIEW.json
+G39,200对200无硬编码越界及非有限状态,部分完成,部分完成,main,1,False,False,"{""main"": ""限定认可""}",MAIN_REVIEW.json
+G40,旧计划重复授权及硬约束违规均为零,部分完成,部分完成,D3;D4;D5;D6;D7,5,True,False,"{""D3"": ""限定认可"", ""D4"": ""限定认可"", ""D5"": ""限定认可"", ""D6"": ""需修订"", ""D7"": ""限定认可""}",owners/D3_review.json;owners/D4_review.json;owners/D5_review.json;owners/D6_review.json;owners/D7_review.json
+G41,名义暖机召回建议不低于95%,未完成,未完成,D1;D6,2,True,False,"{""D1"": ""需修订"", ""D6"": ""认可""}",owners/D1_review.json;owners/D6_review.json
+G42,D5压力场景分类与错误合并指标,部分完成,部分完成,D5;D6,2,False,False,"{""D5"": ""限定认可"", ""D6"": ""限定认可""}",owners/D5_review.json;owners/D6_review.json
+G43,名义资源充分时需求满足率建议95%,证据不足,证据不足,D3;D6,2,False,False,"{""D3"": ""证据不足"", ""D6"": ""证据不足""}",owners/D3_review.json;owners/D6_review.json
+G44,学习不提高身份交换重复分配及违规,未完成,未完成,D3;D4;D5;D6,4,False,False,"{""D3"": ""认可"", ""D4"": ""认可"", ""D5"": ""认可"", ""D6"": ""认可""}",owners/D3_review.json;owners/D4_review.json;owners/D5_review.json;owners/D6_review.json
+G45,离线物理成功与在线估计停止分开,部分完成,部分完成,D6;D7;main,3,False,False,"{""D6"": ""限定认可"", ""D7"": ""认可"", ""main"": ""限定认可""}",owners/D6_review.json;owners/D7_review.json;MAIN_REVIEW.json
+G46,至少20个未见随机种子及均值标准差区间,未完成,未完成,D6;main,2,False,False,"{""D6"": ""认可"", ""main"": ""限定认可""}",owners/D6_review.json;MAIN_REVIEW.json
+G47,RTX4050环境学习显存目标5GB内,未完成,未完成,D3;D4;D5;D6,4,False,False,"{""D3"": ""认可"", ""D4"": ""认可"", ""D5"": ""认可"", ""D6"": ""认可""}",owners/D3_review.json;owners/D4_review.json;owners/D5_review.json;owners/D6_review.json
+G48,200对200实时目标或完整阶段归因,部分完成,部分完成,D6;main,2,False,False,"{""D6"": ""限定认可"", ""main"": ""限定认可""}",owners/D6_review.json;MAIN_REVIEW.json
+G49,三维模块与D1至D7接口回归交付,部分完成,部分完成,D1;D2;D3;D4;D5;D6;D7;main,8,False,False,"{""D1"": ""限定认可"", ""D2"": ""限定认可"", ""D3"": ""限定认可"", ""D4"": ""限定认可"", ""D5"": ""限定认可"", ""D6"": ""限定认可"", ""D7"": ""限定认可"", ""main"": ""限定认可""}",owners/D1_review.json;owners/D2_review.json;owners/D3_review.json;owners/D4_review.json;owners/D5_review.json;owners/D6_review.json;owners/D7_review.json;MAIN_REVIEW.json
+G50,图网络数据配置权重模型说明,部分完成,部分完成,D5,1,True,False,"{""D5"": ""需修订""}",owners/D5_review.json
+G51,环境脚本检查点及规则回退配置,部分完成,部分完成,D3;D4;D5,3,False,False,"{""D3"": ""限定认可"", ""D4"": ""限定认可"", ""D5"": ""限定认可""}",owners/D3_review.json;owners/D4_review.json;owners/D5_review.json
+G52,各规模规则学习组合比较报告,未完成,未完成,D6;main,2,False,False,"{""D6"": ""认可"", ""main"": ""限定认可""}",owners/D6_review.json;MAIN_REVIEW.json
+G53,三维轨迹视场关联分配图与GIF或MP4,部分完成,部分完成,D6;main,2,False,False,"{""D6"": ""限定认可"", ""main"": ""限定认可""}",owners/D6_review.json;MAIN_REVIEW.json
+G54,逐种子CSV聚合JSON中文MD和Word,部分完成,部分完成,D6;main,2,False,False,"{""D6"": ""限定认可"", ""main"": ""限定认可""}",owners/D6_review.json;MAIN_REVIEW.json
+G55,同步README和PLAN及GAP并满足条件后合并,部分完成,部分完成,D1;D2;D3;D4;D5;D6;D7;main,8,True,False,"{""D1"": ""限定认可"", ""D2"": ""限定认可"", ""D3"": ""需修订"", ""D4"": ""需修订"", ""D5"": ""需修订"", ""D6"": ""需修订"", ""D7"": ""限定认可"", ""main"": ""限定认可""}",owners/D1_review.json;owners/D2_review.json;owners/D3_review.json;owners/D4_review.json;owners/D5_review.json;owners/D6_review.json;owners/D7_review.json;MAIN_REVIEW.json
+G56,模块自改自测和主控集成及分批提交,部分完成,部分完成,main,1,False,False,"{""main"": ""限定认可""}",MAIN_REVIEW.json
+G57,世界总线场景模型阈值计划联盟配置版本,部分完成,部分完成,D1;D2;D3;D4;D5;D6;D7;main,8,True,False,"{""D1"": ""限定认可"", ""D2"": ""需修订"", ""D3"": ""限定认可"", ""D4"": ""限定认可"", ""D5"": ""限定认可"", ""D6"": ""限定认可"", ""D7"": ""限定认可"", ""main"": ""限定认可""}",owners/D1_review.json;owners/D2_review.json;owners/D3_review.json;owners/D4_review.json;owners/D5_review.json;owners/D6_review.json;owners/D7_review.json;MAIN_REVIEW.json
+G58,六个scalable3d版本标签,未完成,未完成,main,1,False,False,"{""main"": ""限定认可""}",MAIN_REVIEW.json
+G59,长期权重LFS与配置说明SHA256,证据不足,证据不足,D3;D4;D5;main,4,False,False,"{""D3"": ""证据不足"", ""D4"": ""证据不足"", ""D5"": ""证据不足"", ""main"": ""限定认可""}",owners/D3_review.json;owners/D4_review.json;owners/D5_review.json;MAIN_REVIEW.json
+G60,统一世界中完整可复现闭环总体交付,未完成,未完成,main,1,False,False,"{""main"": ""限定认可""}",MAIN_REVIEW.json

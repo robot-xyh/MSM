@@ -1,0 +1,123 @@
+{
+  "requirement_rows": 60,
+  "goal_query_current": null,
+  "goal_query_note": "Current get_goal call returned goal=null during this audit",
+  "baseline_manifest_sha256": "d1654f8a3cc51b29995130c1119826765bba99d9562a6554937ec57a7d955833",
+  "baseline_fixture_checks": [
+    {
+      "path": "/home/linux/Documents/MSM/research_modules/airsim_runtime/baselines/d5_long_range_20target_20260810/offline_truth_sidecar.json",
+      "expected": "a2da6dcbe610177774bd23fe89e1e8e9f3b0fc0035cd73ee27e1af396652f30b",
+      "actual": "a2da6dcbe610177774bd23fe89e1e8e9f3b0fc0035cd73ee27e1af396652f30b",
+      "match": true
+    },
+    {
+      "path": "/home/linux/Documents/MSM/research_modules/airsim_runtime/baselines/d5_long_range_20target_20260810/online_replay.jsonl",
+      "expected": "1a9218d84913e3f9ecfe18fd0d0a624d98433509a6b856e42783969c5b565988",
+      "actual": "1a9218d84913e3f9ecfe18fd0d0a624d98433509a6b856e42783969c5b565988",
+      "match": true
+    }
+  ],
+  "baseline_original_artifact_checks": [
+    {
+      "path": "/home/linux/Documents/MSM/research_modules/airsim_runtime/outputs/d5_cv_long_range_20target_visual_evidence_20260810/coverage_safe/associations.csv",
+      "expected": "2a357823809b1c2108814a9e45a0308b779bd1dc7245bc3fad41acc8e3ac7a3b",
+      "actual": "2a357823809b1c2108814a9e45a0308b779bd1dc7245bc3fad41acc8e3ac7a3b",
+      "match": true
+    },
+    {
+      "path": "/home/linux/Documents/MSM/research_modules/airsim_runtime/outputs/d5_cv_long_range_20target_visual_evidence_20260810/coverage_safe/metrics.json",
+      "expected": "2871a81921efaa25ca5adb487e9dfda08c28a9caf41029e2c5020136cdac6edf",
+      "actual": "2871a81921efaa25ca5adb487e9dfda08c28a9caf41029e2c5020136cdac6edf",
+      "match": true
+    },
+    {
+      "path": "/home/linux/Documents/MSM/research_modules/airsim_runtime/outputs/d5_cv_long_range_20target_visual_evidence_20260810/coverage_safe/mot_continuity.json",
+      "expected": "cbb6d49a3db8474340b0c55a590ffe0cd6d368c217371c3f1ec419f27338105a",
+      "actual": "cbb6d49a3db8474340b0c55a590ffe0cd6d368c217371c3f1ec419f27338105a",
+      "match": true
+    },
+    {
+      "path": "/home/linux/Documents/MSM/research_modules/airsim_runtime/outputs/d5_cv_long_range_20target_visual_evidence_20260810/coverage_safe/mot_offline_score.csv",
+      "expected": "1d1c4af23d92352f6b8ba7180caa4cf32713d83e02fac8d71be21bdd873b8d71",
+      "actual": "1d1c4af23d92352f6b8ba7180caa4cf32713d83e02fac8d71be21bdd873b8d71",
+      "match": true
+    },
+    {
+      "path": "/home/linux/Documents/MSM/research_modules/airsim_runtime/outputs/d5_cv_long_range_20target_visual_evidence_20260810/coverage_safe/offline_truth.csv",
+      "expected": "9944c3ae818a96056b7a7796b793c5e20c6215dc71e2b4635a22bb143b670a9f",
+      "actual": "9944c3ae818a96056b7a7796b793c5e20c6215dc71e2b4635a22bb143b670a9f",
+      "match": true
+    },
+    {
+      "path": "/home/linux/Documents/MSM/research_modules/airsim_runtime/outputs/d5_cv_long_range_20target_visual_evidence_20260810/coverage_safe/record_manifest.json",
+      "expected": "429b40d7a541ce49b8ccb978e394e6b46d65b9b7ee9a81fa078d247714686d6f",
+      "actual": "429b40d7a541ce49b8ccb978e394e6b46d65b9b7ee9a81fa078d247714686d6f",
+      "match": true
+    }
+  ],
+  "first_committed_inventory_sha256": "590514ca516f6ae5d8a05a0f28a5409822240abe390903689b32bb79e9556885",
+  "cited_inventory_sha256_in_historical_report": "c9bf5e479526cded07aa3d170540aa389b8083af3ec801496f41d620d4ffb68f",
+  "source_directory_size_explanations": [
+    {
+      "module": "D3",
+      "extra_file_count": 1,
+      "extra_bytes": 49497,
+      "generation_result_bytes": 49497,
+      "historical_source_bytes_read_scope": 1375907650,
+      "current_total_equals_historical_read_scope": true,
+      "manifest_tree_matches_historical_audit": true,
+      "inventory_members_checked": 307,
+      "inventory_member_matches": 307,
+      "interpretation": "Inventory members byte-hashed against generation_result; semantic leakage and model quality audit not repeated."
+    },
+    {
+      "module": "D4",
+      "extra_file_count": 1,
+      "extra_bytes": 90580,
+      "generation_result_bytes": 90580,
+      "historical_source_bytes_read_scope": 30988677,
+      "current_total_equals_historical_read_scope": true,
+      "manifest_tree_matches_historical_audit": true,
+      "inventory_members_checked": 653,
+      "inventory_member_matches": 653,
+      "interpretation": "Inventory members byte-hashed against generation_result; semantic leakage and model quality audit not repeated."
+    },
+    {
+      "module": "D5",
+      "extra_file_count": 1,
+      "extra_bytes": 55472,
+      "generation_result_bytes": 55472,
+      "historical_source_bytes_read_scope": 355512715,
+      "current_total_equals_historical_read_scope": true,
+      "manifest_tree_matches_historical_audit": true,
+      "inventory_members_checked": 318,
+      "inventory_member_matches": 318,
+      "interpretation": "Inventory members byte-hashed against generation_result; semantic leakage and model quality audit not repeated."
+    }
+  ],
+  "scalable_direct_independent_imports": [],
+  "static_import_parse_errors": [],
+  "limitations": [
+    "No dynamic execution proof inferred from imports",
+    "Source payload byte hashes checked but semantic leakage audit not repeated",
+    "No remote artifact search",
+    "Current goal query is not a historical completion decision"
+  ],
+  "additional_plan_hash_search": {
+    "roots": [
+      "/home/linux/Documents",
+      "/home/linux/Downloads",
+      "/dev/shm"
+    ],
+    "patterns": [
+      "*manifest*.json",
+      "*plan*.json",
+      "*aggregate*.json",
+      "*SHA256*"
+    ],
+    "query": "b922ff5f95864345efa583da7256935694e5c675529989a659716522a0d7590e",
+    "match_count": 0,
+    "exit_code": 2,
+    "limitation": "Two unrelated PX4 mavlink directories unreadable; see ARCHIVE_SEARCH.json"
+  }
+}

@@ -1,5 +1,9 @@
 # D4 实现差距审计：分布式协同与降级接管
 
+<!-- evidence-status-sync:20260926:begin -->
+2026-09-26 仅作资料同步，不是新的实验日期。[当前证据状态](../research_modules/d4_distributed_fallback/docs/CURRENT_EVIDENCE_STATUS_CN.md) 为唯一集中说明；下列旧章节仅按其日期作为历史阶段阅读，包括旧 0/324、fcf8525 预检及历史待办。本次不勾选旧任务、不关闭 GAP、不升级能力或权限，原 Goal 状态不因文档同步而改变。
+<!-- evidence-status-sync:20260926:end -->
+
 ## 2026-08-03 A2 v8 实现绑定 P0 关闭
 
 - **实现漂移门已恢复。** main 共享 adapter 的 D5 通信等价签名改变后，D4 request 因整文件

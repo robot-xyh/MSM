@@ -1,0 +1,1739 @@
+{
+  "started_at": "2026-09-26T14:08:03.503983+00:00",
+  "finished_at": "2026-09-26T14:08:04.867581+00:00",
+  "head": "a0d3d8ad2cd037c71845119840dfd5cae426c2e6",
+  "branch": "exp/d5-ideal-20target-registration",
+  "recorded_base": "ad59ff3f48e180248f1168bf72a0e152bd80264a",
+  "scope": "metadata, literal static imports, byte hashes and saved configuration records only",
+  "algorithm_execution": false,
+  "model_loaded": false,
+  "original_files_unchanged": true,
+  "watched_file_count": 141,
+  "closures": {
+    "dual": {
+      "entry": "research_modules/independent_experiments/dual_optical_online_benchmark/report_matrix_replay.py",
+      "local_file_count": 46,
+      "status_counts": {
+        "same_as_base_commit_only": 41,
+        "historical_file_hash_match": 5
+      },
+      "dynamic_call_count": 2,
+      "external_imports": [
+        "matplotlib",
+        "numpy",
+        "scipy",
+        "sklearn",
+        "torch"
+      ],
+      "unresolved_relative": []
+    },
+    "center": {
+      "entry": "research_modules/independent_experiments/center_terminal_cv_campaign/exp_center_handover/run_error_matrix.py",
+      "local_file_count": 14,
+      "status_counts": {
+        "same_as_base_commit_only": 3,
+        "historical_file_hash_match": 11
+      },
+      "dynamic_call_count": 2,
+      "external_imports": [
+        "matplotlib",
+        "numpy",
+        "scipy",
+        "torch"
+      ],
+      "unresolved_relative": []
+    },
+    "search": {
+      "entry": "research_modules/independent_experiments/center_terminal_cv_campaign/exp_search/run_offline_matrix.py",
+      "local_file_count": 11,
+      "status_counts": {
+        "same_as_base_commit_only": 8,
+        "different_from_base_commit": 1,
+        "absent_from_base_commit": 2
+      },
+      "dynamic_call_count": 0,
+      "external_imports": [
+        "airsim",
+        "matplotlib",
+        "numpy",
+        "scipy"
+      ],
+      "unresolved_relative": []
+    }
+  },
+  "preserved_source_count": 16,
+  "preserved_member_count": 71,
+  "archive_bytes": 179108,
+  "archive_sha256": "ade5d80bb07902ac16870eb7b1a727b1061abab902c43e9dc51bf4b529b2e024",
+  "limits": [
+    "Static imports include optional and unexecuted paths; they are not an execution trace.",
+    "External/dynamic imports, resources and runtime resolution are not a verified dependency closure.",
+    "Matching a dirty run's base commit does not attest that run's actual file.",
+    "The new ZIP is an audit evidence copy, not the historical execution package or a full backup.",
+    "No raw labels were rescored and no reproducibility run was performed."
+  ],
+  "center_artifacts": [
+    {
+      "role": "model",
+      "path": "inputs/center_handover_sparse_gnn.pt",
+      "sha256": "0548176bf9cb94fc8f5da36e24cb099128f192b3f7374ccb910257366ce0db05",
+      "bytes": 25909,
+      "match": true
+    },
+    {
+      "role": "model_manifest",
+      "path": "inputs/center_handover_sparse_gnn.pt.manifest.json",
+      "sha256": "c20407798cdebf334c19c0961a37ff8d8529275aca24710bdd60e68e6717724f",
+      "bytes": 4667,
+      "match": true
+    },
+    {
+      "role": "algorithm_source_snapshot",
+      "path": "source_snapshot/source_files.json",
+      "sha256": "3900e260f954acd20b08e3a44a47576b2be550161b9a40dde18dc750da0f11cb",
+      "bytes": 3857,
+      "match": true
+    },
+    {
+      "role": "algorithm_source_snapshot",
+      "path": "source_snapshot/tracked_worktree.patch",
+      "sha256": "4460af7fb567d434eb7febea9249618626719115167a1de46c0690fd8aedfa96",
+      "bytes": 44287,
+      "match": true
+    }
+  ],
+  "entry_histories": [
+    {
+      "path": "research_modules/independent_experiments/dual_optical_online_benchmark/report_matrix_replay.py",
+      "history": [
+        {
+          "commit": "4a49518ed95c96c11eadc5aa0788d9fac5cc457b",
+          "author_date": "2026-09-25T01:36:07-07:00",
+          "subject": "feat(experiments): preserve dual-optical report replay matrix",
+          "file_sha256": "d6e209f8396c27ba4d192d361d3967c9eb433a419768b46a97d9b364cea28371",
+          "matches_current": true
+        }
+      ]
+    },
+    {
+      "path": "research_modules/independent_experiments/center_terminal_cv_campaign/exp_center_handover/run_error_matrix.py",
+      "history": [
+        {
+          "commit": "a0bbeb28ddf44441f15d2faad4c16bf7db5e3b31",
+          "author_date": "2026-09-25T01:36:50-07:00",
+          "subject": "feat(experiments): preserve search replays and registration error studies",
+          "file_sha256": "d80528a706e73c61a22198160d187b3d45a8422e2a69d387aad7f2fe4bbf4d82",
+          "matches_current": true
+        }
+      ]
+    },
+    {
+      "path": "research_modules/independent_experiments/center_terminal_cv_campaign/exp_search/run_offline_matrix.py",
+      "history": [
+        {
+          "commit": "a0bbeb28ddf44441f15d2faad4c16bf7db5e3b31",
+          "author_date": "2026-09-25T01:36:50-07:00",
+          "subject": "feat(experiments): preserve search replays and registration error studies",
+          "file_sha256": "986110b7dac47eef15fb1be1cd7c02a1bf18b90cb280cc2168273f343f5825f4",
+          "matches_current": true
+        }
+      ]
+    },
+    {
+      "path": "research_modules/independent_experiments/center_terminal_cv_campaign/exp_search/offline_replay.py",
+      "history": [
+        {
+          "commit": "a0bbeb28ddf44441f15d2faad4c16bf7db5e3b31",
+          "author_date": "2026-09-25T01:36:50-07:00",
+          "subject": "feat(experiments): preserve search replays and registration error studies",
+          "file_sha256": "b3a6b2618ac495910dc817d4e32348b0192858764a03adb71433cec1910bea42",
+          "matches_current": true
+        }
+      ]
+    }
+  ],
+  "search_config_evidence": {
+    "count": 45,
+    "records": [
+      {
+        "run_id": "n20_m30_sigma030_seed20260816",
+        "path": "research_modules/independent_experiments/center_terminal_cv_campaign/outputs/offline_search_100pct_cues_20260819/runs/n20_m30_sigma030_seed20260816/evidence_manifest.json",
+        "sha256": "87efc693f73f879289ebf9dd7a622ea48b0cc76fb0da50032510b757c2040fa6",
+        "config": {
+          "target_count": 20,
+          "resource_count": 30,
+          "position_sigma_m": 30.0,
+          "seed": 20260816,
+          "duration_s": 18.0,
+          "frame_interval_s": 0.1,
+          "frames_per_observation": 3,
+          "platform_max_speed_mps": 97.0,
+          "gimbal_max_rate_dps": 200.0,
+          "image_width": 1920,
+          "image_height": 1080,
+          "horizontal_fov_deg": 19.0,
+          "observation_standoff_m": 700.0,
+          "cell_overlap_fraction": 0.2,
+          "recognition_extent_px": 10.0,
+          "confirmation_frames": 2,
+          "local_track_gate_px": 180.0,
+          "staging_north_m": 2100.0,
+          "staging_east_bounds_m": [
+            -650.0,
+            650.0
+          ],
+          "staging_down_layers_m": [
+            -90.0,
+            -140.0,
+            -200.0
+          ]
+        },
+        "source_keys_present": []
+      },
+      {
+        "run_id": "n20_m30_sigma030_seed20260817",
+        "path": "research_modules/independent_experiments/center_terminal_cv_campaign/outputs/offline_search_100pct_cues_20260819/runs/n20_m30_sigma030_seed20260817/evidence_manifest.json",
+        "sha256": "f647c9294199d6f6995192e2738b9f82629c9a926d154bd7f7d00105c4acce4f",
+        "config": {
+          "target_count": 20,
+          "resource_count": 30,
+          "position_sigma_m": 30.0,
+          "seed": 20260817,
+          "duration_s": 18.0,
+          "frame_interval_s": 0.1,
+          "frames_per_observation": 3,
+          "platform_max_speed_mps": 97.0,
+          "gimbal_max_rate_dps": 200.0,
+          "image_width": 1920,
+          "image_height": 1080,
+          "horizontal_fov_deg": 19.0,
+          "observation_standoff_m": 700.0,
+          "cell_overlap_fraction": 0.2,
+          "recognition_extent_px": 10.0,
+          "confirmation_frames": 2,
+          "local_track_gate_px": 180.0,
+          "staging_north_m": 2100.0,
+          "staging_east_bounds_m": [
+            -650.0,
+            650.0
+          ],
+          "staging_down_layers_m": [
+            -90.0,
+            -140.0,
+            -200.0
+          ]
+        },
+        "source_keys_present": []
+      },
+      {
+        "run_id": "n20_m30_sigma030_seed20260818",
+        "path": "research_modules/independent_experiments/center_terminal_cv_campaign/outputs/offline_search_100pct_cues_20260819/runs/n20_m30_sigma030_seed20260818/evidence_manifest.json",
+        "sha256": "428d0cf1b6f3f59cc65194ae948f3bbef6ce8683bcb1a5f540725d4babeb21b9",
+        "config": {
+          "target_count": 20,
+          "resource_count": 30,
+          "position_sigma_m": 30.0,
+          "seed": 20260818,
+          "duration_s": 18.0,
+          "frame_interval_s": 0.1,
+          "frames_per_observation": 3,
+          "platform_max_speed_mps": 97.0,
+          "gimbal_max_rate_dps": 200.0,
+          "image_width": 1920,
+          "image_height": 1080,
+          "horizontal_fov_deg": 19.0,
+          "observation_standoff_m": 700.0,
+          "cell_overlap_fraction": 0.2,
+          "recognition_extent_px": 10.0,
+          "confirmation_frames": 2,
+          "local_track_gate_px": 180.0,
+          "staging_north_m": 2100.0,
+          "staging_east_bounds_m": [
+            -650.0,
+            650.0
+          ],
+          "staging_down_layers_m": [
+            -90.0,
+            -140.0,
+            -200.0
+          ]
+        },
+        "source_keys_present": []
+      },
+      {
+        "run_id": "n20_m30_sigma030_seed20260819",
+        "path": "research_modules/independent_experiments/center_terminal_cv_campaign/outputs/offline_search_100pct_cues_20260819/runs/n20_m30_sigma030_seed20260819/evidence_manifest.json",
+        "sha256": "a5885e6c164f318a57f26d97a930265a5c79896b10238689e2e4dda2342b9b3b",
+        "config": {
+          "target_count": 20,
+          "resource_count": 30,
+          "position_sigma_m": 30.0,
+          "seed": 20260819,
+          "duration_s": 18.0,
+          "frame_interval_s": 0.1,
+          "frames_per_observation": 3,
+          "platform_max_speed_mps": 97.0,
+          "gimbal_max_rate_dps": 200.0,
+          "image_width": 1920,
+          "image_height": 1080,
+          "horizontal_fov_deg": 19.0,
+          "observation_standoff_m": 700.0,
+          "cell_overlap_fraction": 0.2,
+          "recognition_extent_px": 10.0,
+          "confirmation_frames": 2,
+          "local_track_gate_px": 180.0,
+          "staging_north_m": 2100.0,
+          "staging_east_bounds_m": [
+            -650.0,
+            650.0
+          ],
+          "staging_down_layers_m": [
+            -90.0,
+            -140.0,
+            -200.0
+          ]
+        },
+        "source_keys_present": []
+      },
+      {
+        "run_id": "n20_m30_sigma030_seed20260820",
+        "path": "research_modules/independent_experiments/center_terminal_cv_campaign/outputs/offline_search_100pct_cues_20260819/runs/n20_m30_sigma030_seed20260820/evidence_manifest.json",
+        "sha256": "6a3d19e1a9b58907c575aedd38cfc9b6c29061ff600881e116f1a2e3cfdf2ab1",
+        "config": {
+          "target_count": 20,
+          "resource_count": 30,
+          "position_sigma_m": 30.0,
+          "seed": 20260820,
+          "duration_s": 18.0,
+          "frame_interval_s": 0.1,
+          "frames_per_observation": 3,
+          "platform_max_speed_mps": 97.0,
+          "gimbal_max_rate_dps": 200.0,
+          "image_width": 1920,
+          "image_height": 1080,
+          "horizontal_fov_deg": 19.0,
+          "observation_standoff_m": 700.0,
+          "cell_overlap_fraction": 0.2,
+          "recognition_extent_px": 10.0,
+          "confirmation_frames": 2,
+          "local_track_gate_px": 180.0,
+          "staging_north_m": 2100.0,
+          "staging_east_bounds_m": [
+            -650.0,
+            650.0
+          ],
+          "staging_down_layers_m": [
+            -90.0,
+            -140.0,
+            -200.0
+          ]
+        },
+        "source_keys_present": []
+      },
+      {
+        "run_id": "n20_m30_sigma060_seed20260816",
+        "path": "research_modules/independent_experiments/center_terminal_cv_campaign/outputs/offline_search_100pct_cues_20260819/runs/n20_m30_sigma060_seed20260816/evidence_manifest.json",
+        "sha256": "459e84d2caf109234a84a4e2500f1b62fbd6e41aefa1279e63b268f0b4116456",
+        "config": {
+          "target_count": 20,
+          "resource_count": 30,
+          "position_sigma_m": 60.0,
+          "seed": 20260816,
+          "duration_s": 18.0,
+          "frame_interval_s": 0.1,
+          "frames_per_observation": 3,
+          "platform_max_speed_mps": 97.0,
+          "gimbal_max_rate_dps": 200.0,
+          "image_width": 1920,
+          "image_height": 1080,
+          "horizontal_fov_deg": 19.0,
+          "observation_standoff_m": 700.0,
+          "cell_overlap_fraction": 0.2,
+          "recognition_extent_px": 10.0,
+          "confirmation_frames": 2,
+          "local_track_gate_px": 180.0,
+          "staging_north_m": 2100.0,
+          "staging_east_bounds_m": [
+            -650.0,
+            650.0
+          ],
+          "staging_down_layers_m": [
+            -90.0,
+            -140.0,
+            -200.0
+          ]
+        },
+        "source_keys_present": []
+      },
+      {
+        "run_id": "n20_m30_sigma060_seed20260817",
+        "path": "research_modules/independent_experiments/center_terminal_cv_campaign/outputs/offline_search_100pct_cues_20260819/runs/n20_m30_sigma060_seed20260817/evidence_manifest.json",
+        "sha256": "ee62dd3b03bb14d82fad2440c263754f4b90bbca4c692696fcbd3a3590d57c91",
+        "config": {
+          "target_count": 20,
+          "resource_count": 30,
+          "position_sigma_m": 60.0,
+          "seed": 20260817,
+          "duration_s": 18.0,
+          "frame_interval_s": 0.1,
+          "frames_per_observation": 3,
+          "platform_max_speed_mps": 97.0,
+          "gimbal_max_rate_dps": 200.0,
+          "image_width": 1920,
+          "image_height": 1080,
+          "horizontal_fov_deg": 19.0,
+          "observation_standoff_m": 700.0,
+          "cell_overlap_fraction": 0.2,
+          "recognition_extent_px": 10.0,
+          "confirmation_frames": 2,
+          "local_track_gate_px": 180.0,
+          "staging_north_m": 2100.0,
+          "staging_east_bounds_m": [
+            -650.0,
+            650.0
+          ],
+          "staging_down_layers_m": [
+            -90.0,
+            -140.0,
+            -200.0
+          ]
+        },
+        "source_keys_present": []
+      },
+      {
+        "run_id": "n20_m30_sigma060_seed20260818",
+        "path": "research_modules/independent_experiments/center_terminal_cv_campaign/outputs/offline_search_100pct_cues_20260819/runs/n20_m30_sigma060_seed20260818/evidence_manifest.json",
+        "sha256": "d687e1fb6246bb79678e2cbc6ff1c21d0f1f7efa93d89e47ed75175b12b33419",
+        "config": {
+          "target_count": 20,
+          "resource_count": 30,
+          "position_sigma_m": 60.0,
+          "seed": 20260818,
+          "duration_s": 18.0,
+          "frame_interval_s": 0.1,
+          "frames_per_observation": 3,
+          "platform_max_speed_mps": 97.0,
+          "gimbal_max_rate_dps": 200.0,
+          "image_width": 1920,
+          "image_height": 1080,
+          "horizontal_fov_deg": 19.0,
+          "observation_standoff_m": 700.0,
+          "cell_overlap_fraction": 0.2,
+          "recognition_extent_px": 10.0,
+          "confirmation_frames": 2,
+          "local_track_gate_px": 180.0,
+          "staging_north_m": 2100.0,
+          "staging_east_bounds_m": [
+            -650.0,
+            650.0
+          ],
+          "staging_down_layers_m": [
+            -90.0,
+            -140.0,
+            -200.0
+          ]
+        },
+        "source_keys_present": []
+      },
+      {
+        "run_id": "n20_m30_sigma060_seed20260819",
+        "path": "research_modules/independent_experiments/center_terminal_cv_campaign/outputs/offline_search_100pct_cues_20260819/runs/n20_m30_sigma060_seed20260819/evidence_manifest.json",
+        "sha256": "58905c095c1a277bbdb93a623b3a2c0bc08d4ffbf2d0d8a5707f97fb9c0f6de9",
+        "config": {
+          "target_count": 20,
+          "resource_count": 30,
+          "position_sigma_m": 60.0,
+          "seed": 20260819,
+          "duration_s": 18.0,
+          "frame_interval_s": 0.1,
+          "frames_per_observation": 3,
+          "platform_max_speed_mps": 97.0,
+          "gimbal_max_rate_dps": 200.0,
+          "image_width": 1920,
+          "image_height": 1080,
+          "horizontal_fov_deg": 19.0,
+          "observation_standoff_m": 700.0,
+          "cell_overlap_fraction": 0.2,
+          "recognition_extent_px": 10.0,
+          "confirmation_frames": 2,
+          "local_track_gate_px": 180.0,
+          "staging_north_m": 2100.0,
+          "staging_east_bounds_m": [
+            -650.0,
+            650.0
+          ],
+          "staging_down_layers_m": [
+            -90.0,
+            -140.0,
+            -200.0
+          ]
+        },
+        "source_keys_present": []
+      },
+      {
+        "run_id": "n20_m30_sigma060_seed20260820",
+        "path": "research_modules/independent_experiments/center_terminal_cv_campaign/outputs/offline_search_100pct_cues_20260819/runs/n20_m30_sigma060_seed20260820/evidence_manifest.json",
+        "sha256": "5178a1c673afc549665327caee5e5bed1c5435aed4430aeb53d16afc6469b8cc",
+        "config": {
+          "target_count": 20,
+          "resource_count": 30,
+          "position_sigma_m": 60.0,
+          "seed": 20260820,
+          "duration_s": 18.0,
+          "frame_interval_s": 0.1,
+          "frames_per_observation": 3,
+          "platform_max_speed_mps": 97.0,
+          "gimbal_max_rate_dps": 200.0,
+          "image_width": 1920,
+          "image_height": 1080,
+          "horizontal_fov_deg": 19.0,
+          "observation_standoff_m": 700.0,
+          "cell_overlap_fraction": 0.2,
+          "recognition_extent_px": 10.0,
+          "confirmation_frames": 2,
+          "local_track_gate_px": 180.0,
+          "staging_north_m": 2100.0,
+          "staging_east_bounds_m": [
+            -650.0,
+            650.0
+          ],
+          "staging_down_layers_m": [
+            -90.0,
+            -140.0,
+            -200.0
+          ]
+        },
+        "source_keys_present": []
+      },
+      {
+        "run_id": "n20_m30_sigma100_seed20260816",
+        "path": "research_modules/independent_experiments/center_terminal_cv_campaign/outputs/offline_search_100pct_cues_20260819/runs/n20_m30_sigma100_seed20260816/evidence_manifest.json",
+        "sha256": "fd542f993023e262a383de678da777642c2fb761696e1379c7f6a7be8133c1a4",
+        "config": {
+          "target_count": 20,
+          "resource_count": 30,
+          "position_sigma_m": 100.0,
+          "seed": 20260816,
+          "duration_s": 18.0,
+          "frame_interval_s": 0.1,
+          "frames_per_observation": 3,
+          "platform_max_speed_mps": 97.0,
+          "gimbal_max_rate_dps": 200.0,
+          "image_width": 1920,
+          "image_height": 1080,
+          "horizontal_fov_deg": 19.0,
+          "observation_standoff_m": 700.0,
+          "cell_overlap_fraction": 0.2,
+          "recognition_extent_px": 10.0,
+          "confirmation_frames": 2,
+          "local_track_gate_px": 180.0,
+          "staging_north_m": 2100.0,
+          "staging_east_bounds_m": [
+            -650.0,
+            650.0
+          ],
+          "staging_down_layers_m": [
+            -90.0,
+            -140.0,
+            -200.0
+          ]
+        },
+        "source_keys_present": []
+      },
+      {
+        "run_id": "n20_m30_sigma100_seed20260817",
+        "path": "research_modules/independent_experiments/center_terminal_cv_campaign/outputs/offline_search_100pct_cues_20260819/runs/n20_m30_sigma100_seed20260817/evidence_manifest.json",
+        "sha256": "2ac0b0869506440426ce89455199f89cede70a0d2f55cf1fef7b539e1dc6efbe",
+        "config": {
+          "target_count": 20,
+          "resource_count": 30,
+          "position_sigma_m": 100.0,
+          "seed": 20260817,
+          "duration_s": 18.0,
+          "frame_interval_s": 0.1,
+          "frames_per_observation": 3,
+          "platform_max_speed_mps": 97.0,
+          "gimbal_max_rate_dps": 200.0,
+          "image_width": 1920,
+          "image_height": 1080,
+          "horizontal_fov_deg": 19.0,
+          "observation_standoff_m": 700.0,
+          "cell_overlap_fraction": 0.2,
+          "recognition_extent_px": 10.0,
+          "confirmation_frames": 2,
+          "local_track_gate_px": 180.0,
+          "staging_north_m": 2100.0,
+          "staging_east_bounds_m": [
+            -650.0,
+            650.0
+          ],
+          "staging_down_layers_m": [
+            -90.0,
+            -140.0,
+            -200.0
+          ]
+        },
+        "source_keys_present": []
+      },
+      {
+        "run_id": "n20_m30_sigma100_seed20260818",
+        "path": "research_modules/independent_experiments/center_terminal_cv_campaign/outputs/offline_search_100pct_cues_20260819/runs/n20_m30_sigma100_seed20260818/evidence_manifest.json",
+        "sha256": "c4b6d25884341687888853d63bc0f6e1a954108b5a59c167816b364297a22980",
+        "config": {
+          "target_count": 20,
+          "resource_count": 30,
+          "position_sigma_m": 100.0,
+          "seed": 20260818,
+          "duration_s": 18.0,
+          "frame_interval_s": 0.1,
+          "frames_per_observation": 3,
+          "platform_max_speed_mps": 97.0,
+          "gimbal_max_rate_dps": 200.0,
+          "image_width": 1920,
+          "image_height": 1080,
+          "horizontal_fov_deg": 19.0,
+          "observation_standoff_m": 700.0,
+          "cell_overlap_fraction": 0.2,
+          "recognition_extent_px": 10.0,
+          "confirmation_frames": 2,
+          "local_track_gate_px": 180.0,
+          "staging_north_m": 2100.0,
+          "staging_east_bounds_m": [
+            -650.0,
+            650.0
+          ],
+          "staging_down_layers_m": [
+            -90.0,
+            -140.0,
+            -200.0
+          ]
+        },
+        "source_keys_present": []
+      },
+      {
+        "run_id": "n20_m30_sigma100_seed20260819",
+        "path": "research_modules/independent_experiments/center_terminal_cv_campaign/outputs/offline_search_100pct_cues_20260819/runs/n20_m30_sigma100_seed20260819/evidence_manifest.json",
+        "sha256": "4caa7aead93f1580e21048b76dd76f9d3854f3bf7d6172b89f6062f4278cfa4c",
+        "config": {
+          "target_count": 20,
+          "resource_count": 30,
+          "position_sigma_m": 100.0,
+          "seed": 20260819,
+          "duration_s": 18.0,
+          "frame_interval_s": 0.1,
+          "frames_per_observation": 3,
+          "platform_max_speed_mps": 97.0,
+          "gimbal_max_rate_dps": 200.0,
+          "image_width": 1920,
+          "image_height": 1080,
+          "horizontal_fov_deg": 19.0,
+          "observation_standoff_m": 700.0,
+          "cell_overlap_fraction": 0.2,
+          "recognition_extent_px": 10.0,
+          "confirmation_frames": 2,
+          "local_track_gate_px": 180.0,
+          "staging_north_m": 2100.0,
+          "staging_east_bounds_m": [
+            -650.0,
+            650.0
+          ],
+          "staging_down_layers_m": [
+            -90.0,
+            -140.0,
+            -200.0
+          ]
+        },
+        "source_keys_present": []
+      },
+      {
+        "run_id": "n20_m30_sigma100_seed20260820",
+        "path": "research_modules/independent_experiments/center_terminal_cv_campaign/outputs/offline_search_100pct_cues_20260819/runs/n20_m30_sigma100_seed20260820/evidence_manifest.json",
+        "sha256": "ef4bd61900afb4dcc11dc5c6c104e781c15769c5347cdf05b75ea0f10b939b6c",
+        "config": {
+          "target_count": 20,
+          "resource_count": 30,
+          "position_sigma_m": 100.0,
+          "seed": 20260820,
+          "duration_s": 18.0,
+          "frame_interval_s": 0.1,
+          "frames_per_observation": 3,
+          "platform_max_speed_mps": 97.0,
+          "gimbal_max_rate_dps": 200.0,
+          "image_width": 1920,
+          "image_height": 1080,
+          "horizontal_fov_deg": 19.0,
+          "observation_standoff_m": 700.0,
+          "cell_overlap_fraction": 0.2,
+          "recognition_extent_px": 10.0,
+          "confirmation_frames": 2,
+          "local_track_gate_px": 180.0,
+          "staging_north_m": 2100.0,
+          "staging_east_bounds_m": [
+            -650.0,
+            650.0
+          ],
+          "staging_down_layers_m": [
+            -90.0,
+            -140.0,
+            -200.0
+          ]
+        },
+        "source_keys_present": []
+      },
+      {
+        "run_id": "n20_m8_sigma030_seed20260816",
+        "path": "research_modules/independent_experiments/center_terminal_cv_campaign/outputs/offline_search_100pct_cues_20260819/runs/n20_m8_sigma030_seed20260816/evidence_manifest.json",
+        "sha256": "6fb66942e28da13c6dfe4b1da28342faf3073ee0762ff0b41eaad8daf7a844e6",
+        "config": {
+          "target_count": 20,
+          "resource_count": 8,
+          "position_sigma_m": 30.0,
+          "seed": 20260816,
+          "duration_s": 18.0,
+          "frame_interval_s": 0.1,
+          "frames_per_observation": 3,
+          "platform_max_speed_mps": 97.0,
+          "gimbal_max_rate_dps": 200.0,
+          "image_width": 1920,
+          "image_height": 1080,
+          "horizontal_fov_deg": 19.0,
+          "observation_standoff_m": 700.0,
+          "cell_overlap_fraction": 0.2,
+          "recognition_extent_px": 10.0,
+          "confirmation_frames": 2,
+          "local_track_gate_px": 180.0,
+          "staging_north_m": 2100.0,
+          "staging_east_bounds_m": [
+            -650.0,
+            650.0
+          ],
+          "staging_down_layers_m": [
+            -90.0,
+            -140.0,
+            -200.0
+          ]
+        },
+        "source_keys_present": []
+      },
+      {
+        "run_id": "n20_m8_sigma030_seed20260817",
+        "path": "research_modules/independent_experiments/center_terminal_cv_campaign/outputs/offline_search_100pct_cues_20260819/runs/n20_m8_sigma030_seed20260817/evidence_manifest.json",
+        "sha256": "c777d3fead9c6813b0e54b268b935e07f99ac1fd3a883487679b07a755d84ebe",
+        "config": {
+          "target_count": 20,
+          "resource_count": 8,
+          "position_sigma_m": 30.0,
+          "seed": 20260817,
+          "duration_s": 18.0,
+          "frame_interval_s": 0.1,
+          "frames_per_observation": 3,
+          "platform_max_speed_mps": 97.0,
+          "gimbal_max_rate_dps": 200.0,
+          "image_width": 1920,
+          "image_height": 1080,
+          "horizontal_fov_deg": 19.0,
+          "observation_standoff_m": 700.0,
+          "cell_overlap_fraction": 0.2,
+          "recognition_extent_px": 10.0,
+          "confirmation_frames": 2,
+          "local_track_gate_px": 180.0,
+          "staging_north_m": 2100.0,
+          "staging_east_bounds_m": [
+            -650.0,
+            650.0
+          ],
+          "staging_down_layers_m": [
+            -90.0,
+            -140.0,
+            -200.0
+          ]
+        },
+        "source_keys_present": []
+      },
+      {
+        "run_id": "n20_m8_sigma030_seed20260818",
+        "path": "research_modules/independent_experiments/center_terminal_cv_campaign/outputs/offline_search_100pct_cues_20260819/runs/n20_m8_sigma030_seed20260818/evidence_manifest.json",
+        "sha256": "d8c9d9a549729b4d5b563ab3f14b312d000a24eeeb69551dbfbd6b2ff1201a53",
+        "config": {
+          "target_count": 20,
+          "resource_count": 8,
+          "position_sigma_m": 30.0,
+          "seed": 20260818,
+          "duration_s": 18.0,
+          "frame_interval_s": 0.1,
+          "frames_per_observation": 3,
+          "platform_max_speed_mps": 97.0,
+          "gimbal_max_rate_dps": 200.0,
+          "image_width": 1920,
+          "image_height": 1080,
+          "horizontal_fov_deg": 19.0,
+          "observation_standoff_m": 700.0,
+          "cell_overlap_fraction": 0.2,
+          "recognition_extent_px": 10.0,
+          "confirmation_frames": 2,
+          "local_track_gate_px": 180.0,
+          "staging_north_m": 2100.0,
+          "staging_east_bounds_m": [
+            -650.0,
+            650.0
+          ],
+          "staging_down_layers_m": [
+            -90.0,
+            -140.0,
+            -200.0
+          ]
+        },
+        "source_keys_present": []
+      },
+      {
+        "run_id": "n20_m8_sigma030_seed20260819",
+        "path": "research_modules/independent_experiments/center_terminal_cv_campaign/outputs/offline_search_100pct_cues_20260819/runs/n20_m8_sigma030_seed20260819/evidence_manifest.json",
+        "sha256": "d943c4aab16562fadc399d811b24d3b4abcc81311695b480a11bb839edab0e51",
+        "config": {
+          "target_count": 20,
+          "resource_count": 8,
+          "position_sigma_m": 30.0,
+          "seed": 20260819,
+          "duration_s": 18.0,
+          "frame_interval_s": 0.1,
+          "frames_per_observation": 3,
+          "platform_max_speed_mps": 97.0,
+          "gimbal_max_rate_dps": 200.0,
+          "image_width": 1920,
+          "image_height": 1080,
+          "horizontal_fov_deg": 19.0,
+          "observation_standoff_m": 700.0,
+          "cell_overlap_fraction": 0.2,
+          "recognition_extent_px": 10.0,
+          "confirmation_frames": 2,
+          "local_track_gate_px": 180.0,
+          "staging_north_m": 2100.0,
+          "staging_east_bounds_m": [
+            -650.0,
+            650.0
+          ],
+          "staging_down_layers_m": [
+            -90.0,
+            -140.0,
+            -200.0
+          ]
+        },
+        "source_keys_present": []
+      },
+      {
+        "run_id": "n20_m8_sigma030_seed20260820",
+        "path": "research_modules/independent_experiments/center_terminal_cv_campaign/outputs/offline_search_100pct_cues_20260819/runs/n20_m8_sigma030_seed20260820/evidence_manifest.json",
+        "sha256": "b3b748b884a99fb2fb57a917d93b82645e5d533795e22350927266d66ec04cfb",
+        "config": {
+          "target_count": 20,
+          "resource_count": 8,
+          "position_sigma_m": 30.0,
+          "seed": 20260820,
+          "duration_s": 18.0,
+          "frame_interval_s": 0.1,
+          "frames_per_observation": 3,
+          "platform_max_speed_mps": 97.0,
+          "gimbal_max_rate_dps": 200.0,
+          "image_width": 1920,
+          "image_height": 1080,
+          "horizontal_fov_deg": 19.0,
+          "observation_standoff_m": 700.0,
+          "cell_overlap_fraction": 0.2,
+          "recognition_extent_px": 10.0,
+          "confirmation_frames": 2,
+          "local_track_gate_px": 180.0,
+          "staging_north_m": 2100.0,
+          "staging_east_bounds_m": [
+            -650.0,
+            650.0
+          ],
+          "staging_down_layers_m": [
+            -90.0,
+            -140.0,
+            -200.0
+          ]
+        },
+        "source_keys_present": []
+      },
+      {
+        "run_id": "n20_m8_sigma060_seed20260816",
+        "path": "research_modules/independent_experiments/center_terminal_cv_campaign/outputs/offline_search_100pct_cues_20260819/runs/n20_m8_sigma060_seed20260816/evidence_manifest.json",
+        "sha256": "2fb1e137273aa3eff3b4295efc644e582a59ede91b1a48e240c41ddede1b74d2",
+        "config": {
+          "target_count": 20,
+          "resource_count": 8,
+          "position_sigma_m": 60.0,
+          "seed": 20260816,
+          "duration_s": 18.0,
+          "frame_interval_s": 0.1,
+          "frames_per_observation": 3,
+          "platform_max_speed_mps": 97.0,
+          "gimbal_max_rate_dps": 200.0,
+          "image_width": 1920,
+          "image_height": 1080,
+          "horizontal_fov_deg": 19.0,
+          "observation_standoff_m": 700.0,
+          "cell_overlap_fraction": 0.2,
+          "recognition_extent_px": 10.0,
+          "confirmation_frames": 2,
+          "local_track_gate_px": 180.0,
+          "staging_north_m": 2100.0,
+          "staging_east_bounds_m": [
+            -650.0,
+            650.0
+          ],
+          "staging_down_layers_m": [
+            -90.0,
+            -140.0,
+            -200.0
+          ]
+        },
+        "source_keys_present": []
+      },
+      {
+        "run_id": "n20_m8_sigma060_seed20260817",
+        "path": "research_modules/independent_experiments/center_terminal_cv_campaign/outputs/offline_search_100pct_cues_20260819/runs/n20_m8_sigma060_seed20260817/evidence_manifest.json",
+        "sha256": "bf9cd95ec8acae0a56e0ed185891ea30286cf73fabf34a3ca800f1a24b8674fc",
+        "config": {
+          "target_count": 20,
+          "resource_count": 8,
+          "position_sigma_m": 60.0,
+          "seed": 20260817,
+          "duration_s": 18.0,
+          "frame_interval_s": 0.1,
+          "frames_per_observation": 3,
+          "platform_max_speed_mps": 97.0,
+          "gimbal_max_rate_dps": 200.0,
+          "image_width": 1920,
+          "image_height": 1080,
+          "horizontal_fov_deg": 19.0,
+          "observation_standoff_m": 700.0,
+          "cell_overlap_fraction": 0.2,
+          "recognition_extent_px": 10.0,
+          "confirmation_frames": 2,
+          "local_track_gate_px": 180.0,
+          "staging_north_m": 2100.0,
+          "staging_east_bounds_m": [
+            -650.0,
+            650.0
+          ],
+          "staging_down_layers_m": [
+            -90.0,
+            -140.0,
+            -200.0
+          ]
+        },
+        "source_keys_present": []
+      },
+      {
+        "run_id": "n20_m8_sigma060_seed20260818",
+        "path": "research_modules/independent_experiments/center_terminal_cv_campaign/outputs/offline_search_100pct_cues_20260819/runs/n20_m8_sigma060_seed20260818/evidence_manifest.json",
+        "sha256": "bf759ae19bd3fac0d74bbe9dddb05b3d290235d92c0634f244180b4e052e77fc",
+        "config": {
+          "target_count": 20,
+          "resource_count": 8,
+          "position_sigma_m": 60.0,
+          "seed": 20260818,
+          "duration_s": 18.0,
+          "frame_interval_s": 0.1,
+          "frames_per_observation": 3,
+          "platform_max_speed_mps": 97.0,
+          "gimbal_max_rate_dps": 200.0,
+          "image_width": 1920,
+          "image_height": 1080,
+          "horizontal_fov_deg": 19.0,
+          "observation_standoff_m": 700.0,
+          "cell_overlap_fraction": 0.2,
+          "recognition_extent_px": 10.0,
+          "confirmation_frames": 2,
+          "local_track_gate_px": 180.0,
+          "staging_north_m": 2100.0,
+          "staging_east_bounds_m": [
+            -650.0,
+            650.0
+          ],
+          "staging_down_layers_m": [
+            -90.0,
+            -140.0,
+            -200.0
+          ]
+        },
+        "source_keys_present": []
+      },
+      {
+        "run_id": "n20_m8_sigma060_seed20260819",
+        "path": "research_modules/independent_experiments/center_terminal_cv_campaign/outputs/offline_search_100pct_cues_20260819/runs/n20_m8_sigma060_seed20260819/evidence_manifest.json",
+        "sha256": "9678de4137f7d6b2ad3ecd43e27b3960aa30a9073870275df42bbb09699b8652",
+        "config": {
+          "target_count": 20,
+          "resource_count": 8,
+          "position_sigma_m": 60.0,
+          "seed": 20260819,
+          "duration_s": 18.0,
+          "frame_interval_s": 0.1,
+          "frames_per_observation": 3,
+          "platform_max_speed_mps": 97.0,
+          "gimbal_max_rate_dps": 200.0,
+          "image_width": 1920,
+          "image_height": 1080,
+          "horizontal_fov_deg": 19.0,
+          "observation_standoff_m": 700.0,
+          "cell_overlap_fraction": 0.2,
+          "recognition_extent_px": 10.0,
+          "confirmation_frames": 2,
+          "local_track_gate_px": 180.0,
+          "staging_north_m": 2100.0,
+          "staging_east_bounds_m": [
+            -650.0,
+            650.0
+          ],
+          "staging_down_layers_m": [
+            -90.0,
+            -140.0,
+            -200.0
+          ]
+        },
+        "source_keys_present": []
+      },
+      {
+        "run_id": "n20_m8_sigma060_seed20260820",
+        "path": "research_modules/independent_experiments/center_terminal_cv_campaign/outputs/offline_search_100pct_cues_20260819/runs/n20_m8_sigma060_seed20260820/evidence_manifest.json",
+        "sha256": "eb7578f52b8511169fd02eebf434b719ae0aa0ce22877bfb956b0205eac2a9d8",
+        "config": {
+          "target_count": 20,
+          "resource_count": 8,
+          "position_sigma_m": 60.0,
+          "seed": 20260820,
+          "duration_s": 18.0,
+          "frame_interval_s": 0.1,
+          "frames_per_observation": 3,
+          "platform_max_speed_mps": 97.0,
+          "gimbal_max_rate_dps": 200.0,
+          "image_width": 1920,
+          "image_height": 1080,
+          "horizontal_fov_deg": 19.0,
+          "observation_standoff_m": 700.0,
+          "cell_overlap_fraction": 0.2,
+          "recognition_extent_px": 10.0,
+          "confirmation_frames": 2,
+          "local_track_gate_px": 180.0,
+          "staging_north_m": 2100.0,
+          "staging_east_bounds_m": [
+            -650.0,
+            650.0
+          ],
+          "staging_down_layers_m": [
+            -90.0,
+            -140.0,
+            -200.0
+          ]
+        },
+        "source_keys_present": []
+      },
+      {
+        "run_id": "n20_m8_sigma100_seed20260816",
+        "path": "research_modules/independent_experiments/center_terminal_cv_campaign/outputs/offline_search_100pct_cues_20260819/runs/n20_m8_sigma100_seed20260816/evidence_manifest.json",
+        "sha256": "7df4a4392b8d2170083fdbdbb3fccfd8503a1b120e56353c621a1e00630a7065",
+        "config": {
+          "target_count": 20,
+          "resource_count": 8,
+          "position_sigma_m": 100.0,
+          "seed": 20260816,
+          "duration_s": 18.0,
+          "frame_interval_s": 0.1,
+          "frames_per_observation": 3,
+          "platform_max_speed_mps": 97.0,
+          "gimbal_max_rate_dps": 200.0,
+          "image_width": 1920,
+          "image_height": 1080,
+          "horizontal_fov_deg": 19.0,
+          "observation_standoff_m": 700.0,
+          "cell_overlap_fraction": 0.2,
+          "recognition_extent_px": 10.0,
+          "confirmation_frames": 2,
+          "local_track_gate_px": 180.0,
+          "staging_north_m": 2100.0,
+          "staging_east_bounds_m": [
+            -650.0,
+            650.0
+          ],
+          "staging_down_layers_m": [
+            -90.0,
+            -140.0,
+            -200.0
+          ]
+        },
+        "source_keys_present": []
+      },
+      {
+        "run_id": "n20_m8_sigma100_seed20260817",
+        "path": "research_modules/independent_experiments/center_terminal_cv_campaign/outputs/offline_search_100pct_cues_20260819/runs/n20_m8_sigma100_seed20260817/evidence_manifest.json",
+        "sha256": "38648ed59d927fd02de782ecd3535675f3c46ee91bb44e389d457ea268d37e7c",
+        "config": {
+          "target_count": 20,
+          "resource_count": 8,
+          "position_sigma_m": 100.0,
+          "seed": 20260817,
+          "duration_s": 18.0,
+          "frame_interval_s": 0.1,
+          "frames_per_observation": 3,
+          "platform_max_speed_mps": 97.0,
+          "gimbal_max_rate_dps": 200.0,
+          "image_width": 1920,
+          "image_height": 1080,
+          "horizontal_fov_deg": 19.0,
+          "observation_standoff_m": 700.0,
+          "cell_overlap_fraction": 0.2,
+          "recognition_extent_px": 10.0,
+          "confirmation_frames": 2,
+          "local_track_gate_px": 180.0,
+          "staging_north_m": 2100.0,
+          "staging_east_bounds_m": [
+            -650.0,
+            650.0
+          ],
+          "staging_down_layers_m": [
+            -90.0,
+            -140.0,
+            -200.0
+          ]
+        },
+        "source_keys_present": []
+      },
+      {
+        "run_id": "n20_m8_sigma100_seed20260818",
+        "path": "research_modules/independent_experiments/center_terminal_cv_campaign/outputs/offline_search_100pct_cues_20260819/runs/n20_m8_sigma100_seed20260818/evidence_manifest.json",
+        "sha256": "e8f8101040b4ffbde8362f94467de8c2804d44444397391282e84ceb9126c20a",
+        "config": {
+          "target_count": 20,
+          "resource_count": 8,
+          "position_sigma_m": 100.0,
+          "seed": 20260818,
+          "duration_s": 18.0,
+          "frame_interval_s": 0.1,
+          "frames_per_observation": 3,
+          "platform_max_speed_mps": 97.0,
+          "gimbal_max_rate_dps": 200.0,
+          "image_width": 1920,
+          "image_height": 1080,
+          "horizontal_fov_deg": 19.0,
+          "observation_standoff_m": 700.0,
+          "cell_overlap_fraction": 0.2,
+          "recognition_extent_px": 10.0,
+          "confirmation_frames": 2,
+          "local_track_gate_px": 180.0,
+          "staging_north_m": 2100.0,
+          "staging_east_bounds_m": [
+            -650.0,
+            650.0
+          ],
+          "staging_down_layers_m": [
+            -90.0,
+            -140.0,
+            -200.0
+          ]
+        },
+        "source_keys_present": []
+      },
+      {
+        "run_id": "n20_m8_sigma100_seed20260819",
+        "path": "research_modules/independent_experiments/center_terminal_cv_campaign/outputs/offline_search_100pct_cues_20260819/runs/n20_m8_sigma100_seed20260819/evidence_manifest.json",
+        "sha256": "47fdb87d593954cba6374c4746ab6d52a83bc1f612068c9fc2aebfc0a236eee0",
+        "config": {
+          "target_count": 20,
+          "resource_count": 8,
+          "position_sigma_m": 100.0,
+          "seed": 20260819,
+          "duration_s": 18.0,
+          "frame_interval_s": 0.1,
+          "frames_per_observation": 3,
+          "platform_max_speed_mps": 97.0,
+          "gimbal_max_rate_dps": 200.0,
+          "image_width": 1920,
+          "image_height": 1080,
+          "horizontal_fov_deg": 19.0,
+          "observation_standoff_m": 700.0,
+          "cell_overlap_fraction": 0.2,
+          "recognition_extent_px": 10.0,
+          "confirmation_frames": 2,
+          "local_track_gate_px": 180.0,
+          "staging_north_m": 2100.0,
+          "staging_east_bounds_m": [
+            -650.0,
+            650.0
+          ],
+          "staging_down_layers_m": [
+            -90.0,
+            -140.0,
+            -200.0
+          ]
+        },
+        "source_keys_present": []
+      },
+      {
+        "run_id": "n20_m8_sigma100_seed20260820",
+        "path": "research_modules/independent_experiments/center_terminal_cv_campaign/outputs/offline_search_100pct_cues_20260819/runs/n20_m8_sigma100_seed20260820/evidence_manifest.json",
+        "sha256": "516120580f3f3f5165cd817940bd87a1748f69e20d8103958c7cb6c3ce150612",
+        "config": {
+          "target_count": 20,
+          "resource_count": 8,
+          "position_sigma_m": 100.0,
+          "seed": 20260820,
+          "duration_s": 18.0,
+          "frame_interval_s": 0.1,
+          "frames_per_observation": 3,
+          "platform_max_speed_mps": 97.0,
+          "gimbal_max_rate_dps": 200.0,
+          "image_width": 1920,
+          "image_height": 1080,
+          "horizontal_fov_deg": 19.0,
+          "observation_standoff_m": 700.0,
+          "cell_overlap_fraction": 0.2,
+          "recognition_extent_px": 10.0,
+          "confirmation_frames": 2,
+          "local_track_gate_px": 180.0,
+          "staging_north_m": 2100.0,
+          "staging_east_bounds_m": [
+            -650.0,
+            650.0
+          ],
+          "staging_down_layers_m": [
+            -90.0,
+            -140.0,
+            -200.0
+          ]
+        },
+        "source_keys_present": []
+      },
+      {
+        "run_id": "n40_m50_sigma030_seed20260816",
+        "path": "research_modules/independent_experiments/center_terminal_cv_campaign/outputs/offline_search_100pct_cues_20260819/runs/n40_m50_sigma030_seed20260816/evidence_manifest.json",
+        "sha256": "1a71dcb48e6f05aab5d0f28b3e7d9ad3fe67428e5acc7a57677a1e0b04e8ff55",
+        "config": {
+          "target_count": 40,
+          "resource_count": 50,
+          "position_sigma_m": 30.0,
+          "seed": 20260816,
+          "duration_s": 18.0,
+          "frame_interval_s": 0.1,
+          "frames_per_observation": 3,
+          "platform_max_speed_mps": 97.0,
+          "gimbal_max_rate_dps": 200.0,
+          "image_width": 1920,
+          "image_height": 1080,
+          "horizontal_fov_deg": 19.0,
+          "observation_standoff_m": 700.0,
+          "cell_overlap_fraction": 0.2,
+          "recognition_extent_px": 10.0,
+          "confirmation_frames": 2,
+          "local_track_gate_px": 180.0,
+          "staging_north_m": 2100.0,
+          "staging_east_bounds_m": [
+            -650.0,
+            650.0
+          ],
+          "staging_down_layers_m": [
+            -90.0,
+            -140.0,
+            -200.0
+          ]
+        },
+        "source_keys_present": []
+      },
+      {
+        "run_id": "n40_m50_sigma030_seed20260817",
+        "path": "research_modules/independent_experiments/center_terminal_cv_campaign/outputs/offline_search_100pct_cues_20260819/runs/n40_m50_sigma030_seed20260817/evidence_manifest.json",
+        "sha256": "da078cd861bb8bc4ee113fb78a9bf05561ab01983920496d6f2d907b549ecf1a",
+        "config": {
+          "target_count": 40,
+          "resource_count": 50,
+          "position_sigma_m": 30.0,
+          "seed": 20260817,
+          "duration_s": 18.0,
+          "frame_interval_s": 0.1,
+          "frames_per_observation": 3,
+          "platform_max_speed_mps": 97.0,
+          "gimbal_max_rate_dps": 200.0,
+          "image_width": 1920,
+          "image_height": 1080,
+          "horizontal_fov_deg": 19.0,
+          "observation_standoff_m": 700.0,
+          "cell_overlap_fraction": 0.2,
+          "recognition_extent_px": 10.0,
+          "confirmation_frames": 2,
+          "local_track_gate_px": 180.0,
+          "staging_north_m": 2100.0,
+          "staging_east_bounds_m": [
+            -650.0,
+            650.0
+          ],
+          "staging_down_layers_m": [
+            -90.0,
+            -140.0,
+            -200.0
+          ]
+        },
+        "source_keys_present": []
+      },
+      {
+        "run_id": "n40_m50_sigma030_seed20260818",
+        "path": "research_modules/independent_experiments/center_terminal_cv_campaign/outputs/offline_search_100pct_cues_20260819/runs/n40_m50_sigma030_seed20260818/evidence_manifest.json",
+        "sha256": "9ffcffa6b7d931481e5166eb3ac72bd7dc9575315657d3843c3070f988128fb3",
+        "config": {
+          "target_count": 40,
+          "resource_count": 50,
+          "position_sigma_m": 30.0,
+          "seed": 20260818,
+          "duration_s": 18.0,
+          "frame_interval_s": 0.1,
+          "frames_per_observation": 3,
+          "platform_max_speed_mps": 97.0,
+          "gimbal_max_rate_dps": 200.0,
+          "image_width": 1920,
+          "image_height": 1080,
+          "horizontal_fov_deg": 19.0,
+          "observation_standoff_m": 700.0,
+          "cell_overlap_fraction": 0.2,
+          "recognition_extent_px": 10.0,
+          "confirmation_frames": 2,
+          "local_track_gate_px": 180.0,
+          "staging_north_m": 2100.0,
+          "staging_east_bounds_m": [
+            -650.0,
+            650.0
+          ],
+          "staging_down_layers_m": [
+            -90.0,
+            -140.0,
+            -200.0
+          ]
+        },
+        "source_keys_present": []
+      },
+      {
+        "run_id": "n40_m50_sigma030_seed20260819",
+        "path": "research_modules/independent_experiments/center_terminal_cv_campaign/outputs/offline_search_100pct_cues_20260819/runs/n40_m50_sigma030_seed20260819/evidence_manifest.json",
+        "sha256": "23420b96e135056e2189b639c894307f9dc83c4a2cf68acd7ab4ea98ab3c01ed",
+        "config": {
+          "target_count": 40,
+          "resource_count": 50,
+          "position_sigma_m": 30.0,
+          "seed": 20260819,
+          "duration_s": 18.0,
+          "frame_interval_s": 0.1,
+          "frames_per_observation": 3,
+          "platform_max_speed_mps": 97.0,
+          "gimbal_max_rate_dps": 200.0,
+          "image_width": 1920,
+          "image_height": 1080,
+          "horizontal_fov_deg": 19.0,
+          "observation_standoff_m": 700.0,
+          "cell_overlap_fraction": 0.2,
+          "recognition_extent_px": 10.0,
+          "confirmation_frames": 2,
+          "local_track_gate_px": 180.0,
+          "staging_north_m": 2100.0,
+          "staging_east_bounds_m": [
+            -650.0,
+            650.0
+          ],
+          "staging_down_layers_m": [
+            -90.0,
+            -140.0,
+            -200.0
+          ]
+        },
+        "source_keys_present": []
+      },
+      {
+        "run_id": "n40_m50_sigma030_seed20260820",
+        "path": "research_modules/independent_experiments/center_terminal_cv_campaign/outputs/offline_search_100pct_cues_20260819/runs/n40_m50_sigma030_seed20260820/evidence_manifest.json",
+        "sha256": "395d776a0041d1cfaf89146cdcc8b72041c768e73a669341366e47ce21bff717",
+        "config": {
+          "target_count": 40,
+          "resource_count": 50,
+          "position_sigma_m": 30.0,
+          "seed": 20260820,
+          "duration_s": 18.0,
+          "frame_interval_s": 0.1,
+          "frames_per_observation": 3,
+          "platform_max_speed_mps": 97.0,
+          "gimbal_max_rate_dps": 200.0,
+          "image_width": 1920,
+          "image_height": 1080,
+          "horizontal_fov_deg": 19.0,
+          "observation_standoff_m": 700.0,
+          "cell_overlap_fraction": 0.2,
+          "recognition_extent_px": 10.0,
+          "confirmation_frames": 2,
+          "local_track_gate_px": 180.0,
+          "staging_north_m": 2100.0,
+          "staging_east_bounds_m": [
+            -650.0,
+            650.0
+          ],
+          "staging_down_layers_m": [
+            -90.0,
+            -140.0,
+            -200.0
+          ]
+        },
+        "source_keys_present": []
+      },
+      {
+        "run_id": "n40_m50_sigma060_seed20260816",
+        "path": "research_modules/independent_experiments/center_terminal_cv_campaign/outputs/offline_search_100pct_cues_20260819/runs/n40_m50_sigma060_seed20260816/evidence_manifest.json",
+        "sha256": "1f2053443783fc60596f4e44b1a83a92f017c9d6b90f90e37ed41e820bd9421e",
+        "config": {
+          "target_count": 40,
+          "resource_count": 50,
+          "position_sigma_m": 60.0,
+          "seed": 20260816,
+          "duration_s": 18.0,
+          "frame_interval_s": 0.1,
+          "frames_per_observation": 3,
+          "platform_max_speed_mps": 97.0,
+          "gimbal_max_rate_dps": 200.0,
+          "image_width": 1920,
+          "image_height": 1080,
+          "horizontal_fov_deg": 19.0,
+          "observation_standoff_m": 700.0,
+          "cell_overlap_fraction": 0.2,
+          "recognition_extent_px": 10.0,
+          "confirmation_frames": 2,
+          "local_track_gate_px": 180.0,
+          "staging_north_m": 2100.0,
+          "staging_east_bounds_m": [
+            -650.0,
+            650.0
+          ],
+          "staging_down_layers_m": [
+            -90.0,
+            -140.0,
+            -200.0
+          ]
+        },
+        "source_keys_present": []
+      },
+      {
+        "run_id": "n40_m50_sigma060_seed20260817",
+        "path": "research_modules/independent_experiments/center_terminal_cv_campaign/outputs/offline_search_100pct_cues_20260819/runs/n40_m50_sigma060_seed20260817/evidence_manifest.json",
+        "sha256": "ceed6925ee225580c20d85f8be70fb6638bba676e9ea5406c318b28223e11b4c",
+        "config": {
+          "target_count": 40,
+          "resource_count": 50,
+          "position_sigma_m": 60.0,
+          "seed": 20260817,
+          "duration_s": 18.0,
+          "frame_interval_s": 0.1,
+          "frames_per_observation": 3,
+          "platform_max_speed_mps": 97.0,
+          "gimbal_max_rate_dps": 200.0,
+          "image_width": 1920,
+          "image_height": 1080,
+          "horizontal_fov_deg": 19.0,
+          "observation_standoff_m": 700.0,
+          "cell_overlap_fraction": 0.2,
+          "recognition_extent_px": 10.0,
+          "confirmation_frames": 2,
+          "local_track_gate_px": 180.0,
+          "staging_north_m": 2100.0,
+          "staging_east_bounds_m": [
+            -650.0,
+            650.0
+          ],
+          "staging_down_layers_m": [
+            -90.0,
+            -140.0,
+            -200.0
+          ]
+        },
+        "source_keys_present": []
+      },
+      {
+        "run_id": "n40_m50_sigma060_seed20260818",
+        "path": "research_modules/independent_experiments/center_terminal_cv_campaign/outputs/offline_search_100pct_cues_20260819/runs/n40_m50_sigma060_seed20260818/evidence_manifest.json",
+        "sha256": "877461932c217c006941bf310d78962f039595a856c2b7dcad97d7444316bf4a",
+        "config": {
+          "target_count": 40,
+          "resource_count": 50,
+          "position_sigma_m": 60.0,
+          "seed": 20260818,
+          "duration_s": 18.0,
+          "frame_interval_s": 0.1,
+          "frames_per_observation": 3,
+          "platform_max_speed_mps": 97.0,
+          "gimbal_max_rate_dps": 200.0,
+          "image_width": 1920,
+          "image_height": 1080,
+          "horizontal_fov_deg": 19.0,
+          "observation_standoff_m": 700.0,
+          "cell_overlap_fraction": 0.2,
+          "recognition_extent_px": 10.0,
+          "confirmation_frames": 2,
+          "local_track_gate_px": 180.0,
+          "staging_north_m": 2100.0,
+          "staging_east_bounds_m": [
+            -650.0,
+            650.0
+          ],
+          "staging_down_layers_m": [
+            -90.0,
+            -140.0,
+            -200.0
+          ]
+        },
+        "source_keys_present": []
+      },
+      {
+        "run_id": "n40_m50_sigma060_seed20260819",
+        "path": "research_modules/independent_experiments/center_terminal_cv_campaign/outputs/offline_search_100pct_cues_20260819/runs/n40_m50_sigma060_seed20260819/evidence_manifest.json",
+        "sha256": "bc90160954b67ee343ab4eee75c0a407b0353ecd2eec9d73ea8a7fd71ac2decf",
+        "config": {
+          "target_count": 40,
+          "resource_count": 50,
+          "position_sigma_m": 60.0,
+          "seed": 20260819,
+          "duration_s": 18.0,
+          "frame_interval_s": 0.1,
+          "frames_per_observation": 3,
+          "platform_max_speed_mps": 97.0,
+          "gimbal_max_rate_dps": 200.0,
+          "image_width": 1920,
+          "image_height": 1080,
+          "horizontal_fov_deg": 19.0,
+          "observation_standoff_m": 700.0,
+          "cell_overlap_fraction": 0.2,
+          "recognition_extent_px": 10.0,
+          "confirmation_frames": 2,
+          "local_track_gate_px": 180.0,
+          "staging_north_m": 2100.0,
+          "staging_east_bounds_m": [
+            -650.0,
+            650.0
+          ],
+          "staging_down_layers_m": [
+            -90.0,
+            -140.0,
+            -200.0
+          ]
+        },
+        "source_keys_present": []
+      },
+      {
+        "run_id": "n40_m50_sigma060_seed20260820",
+        "path": "research_modules/independent_experiments/center_terminal_cv_campaign/outputs/offline_search_100pct_cues_20260819/runs/n40_m50_sigma060_seed20260820/evidence_manifest.json",
+        "sha256": "74c8ba003b6269dd7d473020ce8df8ea64b397c2fed8616e62ce8ee931a800f8",
+        "config": {
+          "target_count": 40,
+          "resource_count": 50,
+          "position_sigma_m": 60.0,
+          "seed": 20260820,
+          "duration_s": 18.0,
+          "frame_interval_s": 0.1,
+          "frames_per_observation": 3,
+          "platform_max_speed_mps": 97.0,
+          "gimbal_max_rate_dps": 200.0,
+          "image_width": 1920,
+          "image_height": 1080,
+          "horizontal_fov_deg": 19.0,
+          "observation_standoff_m": 700.0,
+          "cell_overlap_fraction": 0.2,
+          "recognition_extent_px": 10.0,
+          "confirmation_frames": 2,
+          "local_track_gate_px": 180.0,
+          "staging_north_m": 2100.0,
+          "staging_east_bounds_m": [
+            -650.0,
+            650.0
+          ],
+          "staging_down_layers_m": [
+            -90.0,
+            -140.0,
+            -200.0
+          ]
+        },
+        "source_keys_present": []
+      },
+      {
+        "run_id": "n40_m50_sigma100_seed20260816",
+        "path": "research_modules/independent_experiments/center_terminal_cv_campaign/outputs/offline_search_100pct_cues_20260819/runs/n40_m50_sigma100_seed20260816/evidence_manifest.json",
+        "sha256": "02195fd9239d4c1a8da3c1db1b416b80d386c481a8b001da523d960f5b9ef1a4",
+        "config": {
+          "target_count": 40,
+          "resource_count": 50,
+          "position_sigma_m": 100.0,
+          "seed": 20260816,
+          "duration_s": 18.0,
+          "frame_interval_s": 0.1,
+          "frames_per_observation": 3,
+          "platform_max_speed_mps": 97.0,
+          "gimbal_max_rate_dps": 200.0,
+          "image_width": 1920,
+          "image_height": 1080,
+          "horizontal_fov_deg": 19.0,
+          "observation_standoff_m": 700.0,
+          "cell_overlap_fraction": 0.2,
+          "recognition_extent_px": 10.0,
+          "confirmation_frames": 2,
+          "local_track_gate_px": 180.0,
+          "staging_north_m": 2100.0,
+          "staging_east_bounds_m": [
+            -650.0,
+            650.0
+          ],
+          "staging_down_layers_m": [
+            -90.0,
+            -140.0,
+            -200.0
+          ]
+        },
+        "source_keys_present": []
+      },
+      {
+        "run_id": "n40_m50_sigma100_seed20260817",
+        "path": "research_modules/independent_experiments/center_terminal_cv_campaign/outputs/offline_search_100pct_cues_20260819/runs/n40_m50_sigma100_seed20260817/evidence_manifest.json",
+        "sha256": "cef9eeab8f5874864fc4c5ccc75e83bba86715e8e8a8c123d2b03ea52c1f35b2",
+        "config": {
+          "target_count": 40,
+          "resource_count": 50,
+          "position_sigma_m": 100.0,
+          "seed": 20260817,
+          "duration_s": 18.0,
+          "frame_interval_s": 0.1,
+          "frames_per_observation": 3,
+          "platform_max_speed_mps": 97.0,
+          "gimbal_max_rate_dps": 200.0,
+          "image_width": 1920,
+          "image_height": 1080,
+          "horizontal_fov_deg": 19.0,
+          "observation_standoff_m": 700.0,
+          "cell_overlap_fraction": 0.2,
+          "recognition_extent_px": 10.0,
+          "confirmation_frames": 2,
+          "local_track_gate_px": 180.0,
+          "staging_north_m": 2100.0,
+          "staging_east_bounds_m": [
+            -650.0,
+            650.0
+          ],
+          "staging_down_layers_m": [
+            -90.0,
+            -140.0,
+            -200.0
+          ]
+        },
+        "source_keys_present": []
+      },
+      {
+        "run_id": "n40_m50_sigma100_seed20260818",
+        "path": "research_modules/independent_experiments/center_terminal_cv_campaign/outputs/offline_search_100pct_cues_20260819/runs/n40_m50_sigma100_seed20260818/evidence_manifest.json",
+        "sha256": "2985f1b51e79898baba47bef9cf013e63beb7f85deac5076401db7be72e164aa",
+        "config": {
+          "target_count": 40,
+          "resource_count": 50,
+          "position_sigma_m": 100.0,
+          "seed": 20260818,
+          "duration_s": 18.0,
+          "frame_interval_s": 0.1,
+          "frames_per_observation": 3,
+          "platform_max_speed_mps": 97.0,
+          "gimbal_max_rate_dps": 200.0,
+          "image_width": 1920,
+          "image_height": 1080,
+          "horizontal_fov_deg": 19.0,
+          "observation_standoff_m": 700.0,
+          "cell_overlap_fraction": 0.2,
+          "recognition_extent_px": 10.0,
+          "confirmation_frames": 2,
+          "local_track_gate_px": 180.0,
+          "staging_north_m": 2100.0,
+          "staging_east_bounds_m": [
+            -650.0,
+            650.0
+          ],
+          "staging_down_layers_m": [
+            -90.0,
+            -140.0,
+            -200.0
+          ]
+        },
+        "source_keys_present": []
+      },
+      {
+        "run_id": "n40_m50_sigma100_seed20260819",
+        "path": "research_modules/independent_experiments/center_terminal_cv_campaign/outputs/offline_search_100pct_cues_20260819/runs/n40_m50_sigma100_seed20260819/evidence_manifest.json",
+        "sha256": "61619739d926dced24d87764100244e8506350832b88ed4b6982d2a653f551b1",
+        "config": {
+          "target_count": 40,
+          "resource_count": 50,
+          "position_sigma_m": 100.0,
+          "seed": 20260819,
+          "duration_s": 18.0,
+          "frame_interval_s": 0.1,
+          "frames_per_observation": 3,
+          "platform_max_speed_mps": 97.0,
+          "gimbal_max_rate_dps": 200.0,
+          "image_width": 1920,
+          "image_height": 1080,
+          "horizontal_fov_deg": 19.0,
+          "observation_standoff_m": 700.0,
+          "cell_overlap_fraction": 0.2,
+          "recognition_extent_px": 10.0,
+          "confirmation_frames": 2,
+          "local_track_gate_px": 180.0,
+          "staging_north_m": 2100.0,
+          "staging_east_bounds_m": [
+            -650.0,
+            650.0
+          ],
+          "staging_down_layers_m": [
+            -90.0,
+            -140.0,
+            -200.0
+          ]
+        },
+        "source_keys_present": []
+      },
+      {
+        "run_id": "n40_m50_sigma100_seed20260820",
+        "path": "research_modules/independent_experiments/center_terminal_cv_campaign/outputs/offline_search_100pct_cues_20260819/runs/n40_m50_sigma100_seed20260820/evidence_manifest.json",
+        "sha256": "132868692e0f6b84920308fa3525c55b5ca7c4ee64317da117b8dc8829cd3978",
+        "config": {
+          "target_count": 40,
+          "resource_count": 50,
+          "position_sigma_m": 100.0,
+          "seed": 20260820,
+          "duration_s": 18.0,
+          "frame_interval_s": 0.1,
+          "frames_per_observation": 3,
+          "platform_max_speed_mps": 97.0,
+          "gimbal_max_rate_dps": 200.0,
+          "image_width": 1920,
+          "image_height": 1080,
+          "horizontal_fov_deg": 19.0,
+          "observation_standoff_m": 700.0,
+          "cell_overlap_fraction": 0.2,
+          "recognition_extent_px": 10.0,
+          "confirmation_frames": 2,
+          "local_track_gate_px": 180.0,
+          "staging_north_m": 2100.0,
+          "staging_east_bounds_m": [
+            -650.0,
+            650.0
+          ],
+          "staging_down_layers_m": [
+            -90.0,
+            -140.0,
+            -200.0
+          ]
+        },
+        "source_keys_present": []
+      }
+    ],
+    "center_patch_contains_search_entry": false,
+    "center_patch_contains_search_dependency": false,
+    "search_scope": "entry-specific reachable Git history; 45 saved manifests; center frozen patch",
+    "not_searched": "external backups, other hosts, private session history, unreachable Git objects"
+  }
+}

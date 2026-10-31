@@ -1,0 +1,148 @@
+{
+  "created_at": "2026-09-26T14:21:21.293865+00:00",
+  "passed": true,
+  "documents": [
+    {
+      "path": "deliverables/leadership_report/双光电多目标轨迹配准与交汇定位试验报告_CN.md",
+      "before_sha256": "59e715d2f4675785f2c34a718027584113fac071226f153020012ac45991ed09",
+      "after_sha256": "19d531714874acecb692b75c03059091e222cbe6d7b58724351ba937ee391d06",
+      "table_lines_unchanged": true,
+      "images_unchanged": true
+    },
+    {
+      "path": "deliverables/leadership_report/双光电多目标轨迹配准与交汇定位试验报告_CN.docx",
+      "before_sha256": "4c199ecfc3a49cba28f890d93eaa6a6a9ce71b7655c5face38b04c46fee645bd",
+      "after_sha256": "b7ea538761a53fffc0d44fb658b1f45350ff144c61346ab4b8d4999aee7e19fb",
+      "changed_parts": [
+        "word/document.xml"
+      ],
+      "tables_drawings_sections_unchanged": true
+    },
+    {
+      "path": "deliverables/leadership_report/协同搜索试验报告_CN.md",
+      "before_sha256": "0a7e553fadf95441a7989dfd89019773054fd66eb3b0eb2b28ae91a8aac0a163",
+      "after_sha256": "1b86ed674e79b265de933e3b4ad7516aa7cee2e378ecd3d0a49a0d999a11d9ba",
+      "table_lines_unchanged": true,
+      "images_unchanged": true
+    },
+    {
+      "path": "deliverables/leadership_report/协同搜索试验报告_CN.docx",
+      "before_sha256": "b3ad0325d202f2a1251e09ea0cb2dd9b4abf15f0967abecd9634e0ec20d19b68",
+      "after_sha256": "71dd55cb7eb76d3f0491227ac212c1ced2523c88996355ec98b759a1a0e4acb4",
+      "changed_parts": [
+        "word/document.xml"
+      ],
+      "tables_drawings_sections_unchanged": true
+    },
+    {
+      "path": "deliverables/leadership_report/末端目标配准试验报告_CN.md",
+      "before_sha256": "cf03f390d1f2dc8922b2dcc29d9a5f6021bae0cb747ca29ef6bef876ad9645f7",
+      "after_sha256": "6ad38947ed6745bc3ec8cd2e0f69905a4257009587ea06f270251790112fb216",
+      "table_lines_unchanged": true,
+      "images_unchanged": true
+    },
+    {
+      "path": "deliverables/leadership_report/末端目标配准试验报告_CN.docx",
+      "before_sha256": "3b9fde8f836402d4ff0ad058736bc8a80e9aca3c3e7253e9c4d250c30f89f7a4",
+      "after_sha256": "6a3efa97807b2ebe6bc29c6b8dab8144f7b0932b0e42bcec407ff2a5542e1ceb",
+      "changed_parts": [
+        "word/document.xml"
+      ],
+      "tables_drawings_sections_unchanged": true
+    },
+    {
+      "path": "deliverables/leadership_report/中心航迹与拦截无人机目标配准试验报告_CN.md",
+      "before_sha256": "c298f8a6deffbb04096ddb738762da4f633dbce1721c8222ddb11a47de481ce4",
+      "after_sha256": "463267ad8f52df196f8c778b38b99ede781ab6dfaa71b775de8af5bb176d412c",
+      "table_lines_unchanged": true,
+      "images_unchanged": true
+    },
+    {
+      "path": "deliverables/leadership_report/中心航迹与拦截无人机目标配准试验报告_CN.docx",
+      "before_sha256": "e17e0ead41087f615ea13bffb8cb313137b4fbc5776c39069faf37df2e14b957",
+      "after_sha256": "ba43ffcac9f16d1cddc74684461195a4b2516638405b94e7e583ddf789b59a42",
+      "changed_parts": [
+        "word/document.xml"
+      ],
+      "tables_drawings_sections_unchanged": true
+    }
+  ],
+  "rendered": [
+    {
+      "path": "deliverables/project_audits/goal_owner_review_sync_20260926_v1/rendered_reports/双光电多目标轨迹配准与交汇定位试验报告_CN.pdf",
+      "page_count": 21,
+      "new_text_found": true,
+      "notes": [
+        {
+          "text_prefix": "每组结果使用5个固定随机场景。质量精度按各场景正确关系数之和除以",
+          "pages": [
+            10
+          ]
+        },
+        {
+          "text_prefix": "几何方法三组",
+          "pages": [
+            11
+          ]
+        },
+        {
+          "text_prefix": "图神经网络三组",
+          "pages": [
+            11
+          ]
+        },
+        {
+          "text_prefix": "但三组全部超时",
+          "pages": [
+            20
+          ]
+        }
+      ],
+      "preview": "deliverables/project_audits/goal_owner_review_sync_20260926_v1/rendered_reports/双光电多目标轨迹配准与交汇定位试验报告_CN_p10.png"
+    },
+    {
+      "path": "deliverables/project_audits/goal_owner_review_sync_20260926_v1/rendered_reports/协同搜索试验报告_CN.pdf",
+      "page_count": 10,
+      "new_text_found": true,
+      "notes": [
+        {
+          "text_prefix": "45组结果保存了逐组配置、指标、匿名观测记录、独立真值、输入校验",
+          "pages": [
+            10
+          ]
+        }
+      ],
+      "preview": "deliverables/project_audits/goal_owner_review_sync_20260926_v1/rendered_reports/协同搜索试验报告_CN_p10.png"
+    },
+    {
+      "path": "deliverables/project_audits/goal_owner_review_sync_20260926_v1/rendered_reports/末端目标配准试验报告_CN.pdf",
+      "page_count": 14,
+      "new_text_found": true,
+      "notes": [
+        {
+          "text_prefix": "下表耗时为同一保存观测上的5次重复计时中位数，包含关联、审计输出",
+          "pages": [
+            10
+          ]
+        }
+      ],
+      "preview": "deliverables/project_audits/goal_owner_review_sync_20260926_v1/rendered_reports/末端目标配准试验报告_CN_p10.png"
+    },
+    {
+      "path": "deliverables/project_audits/goal_owner_review_sync_20260926_v1/rendered_reports/中心航迹与拦截无人机目标配准试验报告_CN.pdf",
+      "page_count": 10,
+      "new_text_found": true,
+      "notes": [
+        {
+          "text_prefix": "表中准确度为每种配置下10个固定随机场景的精度均值。没有形成确认",
+          "pages": [
+            8
+          ]
+        }
+      ],
+      "preview": "deliverables/project_audits/goal_owner_review_sync_20260926_v1/rendered_reports/中心航迹与拦截无人机目标配准试验报告_CN_p08.png"
+    }
+  ],
+  "unit_tests": "test_ambiguous_replacement_rejected (test_report_sync.TextEditTests.test_ambiguous_replacement_rejected) ... ok\ntest_insert_only_text_properties (test_report_sync.TextEditTests.test_insert_only_text_properties) ... ok\ntest_replacement_spans_runs_without_dropping_styles (test_report_sync.TextEditTests.test_replacement_spans_runs_without_dropping_styles) ... ok\n\n----------------------------------------------------------------------\nRan 3 tests in 0.000s\n\nOK\n",
+  "scope": "Text edits and structural integrity; rendering confirms new text is present, not a complete visual layout review."
+}

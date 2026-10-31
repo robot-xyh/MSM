@@ -1,0 +1,284 @@
+{"time": "2026-09-26T13:15:56.880086+00:00", "event": "start", "execute": true, "selected_count": 94}
+{"time": "2026-09-26T13:15:57.005469+00:00", "event": "verified", "path": "/home/linux/Documents/MSM/.pytest_cache", "reason": null}
+{"time": "2026-09-26T13:15:57.132262+00:00", "event": "verified", "path": "/home/linux/Documents/MSM/.codex/skills/locate-experiment-evidence/scripts/__pycache__", "reason": null}
+{"time": "2026-09-26T13:15:57.260306+00:00", "event": "verified", "path": "/home/linux/Documents/MSM/deliverables/patents/tools/__pycache__", "reason": null}
+{"time": "2026-09-26T13:15:57.383879+00:00", "event": "verified", "path": "/home/linux/Documents/MSM/deliverables/background/__pycache__", "reason": null}
+{"time": "2026-09-26T13:15:57.508124+00:00", "event": "verified", "path": "/home/linux/Documents/MSM/deliverables/background/figures/200v200_learning_gnn/__pycache__", "reason": null}
+{"time": "2026-09-26T13:15:57.657615+00:00", "event": "verified", "path": "/home/linux/Documents/MSM/deliverables/background/figures/200v200_full_stack_3d/__pycache__", "reason": null}
+{"time": "2026-09-26T13:15:57.781595+00:00", "event": "verified", "path": "/home/linux/Documents/MSM/deliverables/leadership_report/__pycache__", "reason": null}
+{"time": "2026-09-26T13:15:57.906234+00:00", "event": "verified", "path": "/home/linux/Documents/MSM/deliverables/leadership_report/tools/__pycache__", "reason": null}
+{"time": "2026-09-26T13:15:58.036398+00:00", "event": "verified", "path": "/home/linux/Documents/MSM/deliverables/project_proposals/__pycache__", "reason": null}
+{"time": "2026-09-26T13:15:58.162556+00:00", "event": "verified", "path": "/home/linux/Documents/MSM/deliverables/project_proposals/tools/__pycache__", "reason": null}
+{"time": "2026-09-26T13:15:58.285925+00:00", "event": "verified", "path": "/home/linux/Documents/MSM/research_modules/__pycache__", "reason": null}
+{"time": "2026-09-26T13:15:58.414680+00:00", "event": "verified", "path": "/home/linux/Documents/MSM/research_modules/scalable_3d_simulation/__pycache__", "reason": null}
+{"time": "2026-09-26T13:15:58.539770+00:00", "event": "verified", "path": "/home/linux/Documents/MSM/research_modules/scalable_3d_simulation/scripts/__pycache__", "reason": null}
+{"time": "2026-09-26T13:15:58.669665+00:00", "event": "verified", "path": "/home/linux/Documents/MSM/research_modules/scalable_3d_simulation/tests/__pycache__", "reason": null}
+{"time": "2026-09-26T13:15:58.797389+00:00", "event": "verified", "path": "/home/linux/Documents/MSM/research_modules/d2_data_association/.pytest_cache", "reason": null}
+{"time": "2026-09-26T13:15:58.921144+00:00", "event": "verified", "path": "/home/linux/Documents/MSM/research_modules/d2_data_association/scripts/__pycache__", "reason": null}
+{"time": "2026-09-26T13:15:59.047800+00:00", "event": "verified", "path": "/home/linux/Documents/MSM/research_modules/d2_data_association/d2_data_association/__pycache__", "reason": null}
+{"time": "2026-09-26T13:15:59.179242+00:00", "event": "verified", "path": "/home/linux/Documents/MSM/research_modules/d2_data_association/tests/__pycache__", "reason": null}
+{"time": "2026-09-26T13:15:59.304321+00:00", "event": "verified", "path": "/home/linux/Documents/MSM/research_modules/integrated_simulation/__pycache__", "reason": null}
+{"time": "2026-09-26T13:15:59.430413+00:00", "event": "verified", "path": "/home/linux/Documents/MSM/research_modules/integrated_simulation/tests/__pycache__", "reason": null}
+{"time": "2026-09-26T13:15:59.554185+00:00", "event": "verified", "path": "/home/linux/Documents/MSM/research_modules/integration_tests/__pycache__", "reason": null}
+{"time": "2026-09-26T13:15:59.681872+00:00", "event": "verified", "path": "/home/linux/Documents/MSM/research_modules/d1_sensor_fusion/scripts/__pycache__", "reason": null}
+{"time": "2026-09-26T13:15:59.808845+00:00", "event": "verified", "path": "/home/linux/Documents/MSM/research_modules/d1_sensor_fusion/src/d1_sensor_fusion/__pycache__", "reason": null}
+{"time": "2026-09-26T13:15:59.940038+00:00", "event": "verified", "path": "/home/linux/Documents/MSM/research_modules/d1_sensor_fusion/tests/__pycache__", "reason": null}
+{"time": "2026-09-26T13:16:00.068374+00:00", "event": "verified", "path": "/home/linux/Documents/MSM/research_modules/d6_evaluation_metrics/scripts/__pycache__", "reason": null}
+{"time": "2026-09-26T13:16:00.202889+00:00", "event": "verified", "path": "/home/linux/Documents/MSM/research_modules/d6_evaluation_metrics/tests/__pycache__", "reason": null}
+{"time": "2026-09-26T13:16:00.327229+00:00", "event": "verified", "path": "/home/linux/Documents/MSM/research_modules/independent_experiments/__pycache__", "reason": null}
+{"time": "2026-09-26T13:16:00.452671+00:00", "event": "verified", "path": "/home/linux/Documents/MSM/research_modules/independent_experiments/dual_optical_target_track_gnn/__pycache__", "reason": null}
+{"time": "2026-09-26T13:16:00.580887+00:00", "event": "verified", "path": "/home/linux/Documents/MSM/research_modules/independent_experiments/dual_optical_target_track_gnn/tests/__pycache__", "reason": null}
+{"time": "2026-09-26T13:16:00.708902+00:00", "event": "verified", "path": "/home/linux/Documents/MSM/research_modules/independent_experiments/dual_optical_online_benchmark/__pycache__", "reason": null}
+{"time": "2026-09-26T13:16:00.836144+00:00", "event": "verified", "path": "/home/linux/Documents/MSM/research_modules/independent_experiments/dual_optical_online_benchmark/tests/__pycache__", "reason": null}
+{"time": "2026-09-26T13:16:00.965309+00:00", "event": "verified", "path": "/home/linux/Documents/MSM/research_modules/independent_experiments/dual_optical_100target_gnn/.pytest_cache", "reason": null}
+{"time": "2026-09-26T13:16:01.090910+00:00", "event": "verified", "path": "/home/linux/Documents/MSM/research_modules/independent_experiments/dual_optical_100target_gnn/__pycache__", "reason": null}
+{"time": "2026-09-26T13:16:01.217973+00:00", "event": "verified", "path": "/home/linux/Documents/MSM/research_modules/independent_experiments/dual_optical_100target_gnn/tests/__pycache__", "reason": null}
+{"time": "2026-09-26T13:16:01.343033+00:00", "event": "verified", "path": "/home/linux/Documents/MSM/research_modules/independent_experiments/dual_optical_100target_guide_case/__pycache__", "reason": null}
+{"time": "2026-09-26T13:16:01.470191+00:00", "event": "verified", "path": "/home/linux/Documents/MSM/research_modules/independent_experiments/dual_optical_100target_guide_case/tests/__pycache__", "reason": null}
+{"time": "2026-09-26T13:16:01.595372+00:00", "event": "verified", "path": "/home/linux/Documents/MSM/research_modules/independent_experiments/dual_optical_100target_lightweight/.pytest_cache", "reason": null}
+{"time": "2026-09-26T13:16:01.721602+00:00", "event": "verified", "path": "/home/linux/Documents/MSM/research_modules/independent_experiments/dual_optical_40target/.pytest_cache", "reason": null}
+{"time": "2026-09-26T13:16:01.845804+00:00", "event": "verified", "path": "/home/linux/Documents/MSM/research_modules/independent_experiments/dual_optical_40target/__pycache__", "reason": null}
+{"time": "2026-09-26T13:16:01.970365+00:00", "event": "verified", "path": "/home/linux/Documents/MSM/research_modules/independent_experiments/dual_optical_40target/tests/__pycache__", "reason": null}
+{"time": "2026-09-26T13:16:02.096852+00:00", "event": "verified", "path": "/home/linux/Documents/MSM/research_modules/independent_experiments/center_terminal_cv_campaign/__pycache__", "reason": null}
+{"time": "2026-09-26T13:16:02.223318+00:00", "event": "verified", "path": "/home/linux/Documents/MSM/research_modules/independent_experiments/center_terminal_cv_campaign/exp_crossview/__pycache__", "reason": null}
+{"time": "2026-09-26T13:16:02.349730+00:00", "event": "verified", "path": "/home/linux/Documents/MSM/research_modules/independent_experiments/center_terminal_cv_campaign/exp_crossview/tests/__pycache__", "reason": null}
+{"time": "2026-09-26T13:16:02.473590+00:00", "event": "verified", "path": "/home/linux/Documents/MSM/research_modules/independent_experiments/center_terminal_cv_campaign/common/__pycache__", "reason": null}
+{"time": "2026-09-26T13:16:02.599817+00:00", "event": "verified", "path": "/home/linux/Documents/MSM/research_modules/independent_experiments/center_terminal_cv_campaign/tests/__pycache__", "reason": null}
+{"time": "2026-09-26T13:16:02.724151+00:00", "event": "verified", "path": "/home/linux/Documents/MSM/research_modules/independent_experiments/center_terminal_cv_campaign/exp_center_handover/__pycache__", "reason": null}
+{"time": "2026-09-26T13:16:02.850633+00:00", "event": "verified", "path": "/home/linux/Documents/MSM/research_modules/independent_experiments/center_terminal_cv_campaign/exp_center_handover/tests/__pycache__", "reason": null}
+{"time": "2026-09-26T13:16:02.975950+00:00", "event": "verified", "path": "/home/linux/Documents/MSM/research_modules/independent_experiments/center_terminal_cv_campaign/exp_search/__pycache__", "reason": null}
+{"time": "2026-09-26T13:16:03.101191+00:00", "event": "verified", "path": "/home/linux/Documents/MSM/research_modules/independent_experiments/center_terminal_cv_campaign/exp_search/tests/__pycache__", "reason": null}
+{"time": "2026-09-26T13:16:03.225550+00:00", "event": "verified", "path": "/home/linux/Documents/MSM/research_modules/independent_experiments/dual_optical_track_superglue/__pycache__", "reason": null}
+{"time": "2026-09-26T13:16:03.350817+00:00", "event": "verified", "path": "/home/linux/Documents/MSM/research_modules/independent_experiments/dual_optical_track_superglue/tests/__pycache__", "reason": null}
+{"time": "2026-09-26T13:16:03.476407+00:00", "event": "verified", "path": "/home/linux/Documents/MSM/research_modules/d7_proportional_guidance/scripts/__pycache__", "reason": null}
+{"time": "2026-09-26T13:16:03.602021+00:00", "event": "verified", "path": "/home/linux/Documents/MSM/research_modules/d7_proportional_guidance/png_guidance_delivery/examples/__pycache__", "reason": null}
+{"time": "2026-09-26T13:16:03.726344+00:00", "event": "verified", "path": "/home/linux/Documents/MSM/research_modules/d7_proportional_guidance/png_guidance_delivery/tools/__pycache__", "reason": null}
+{"time": "2026-09-26T13:16:03.851137+00:00", "event": "verified", "path": "/home/linux/Documents/MSM/research_modules/d7_proportional_guidance/png_guidance_delivery/vision_guidance/__pycache__", "reason": null}
+{"time": "2026-09-26T13:16:03.977262+00:00", "event": "verified", "path": "/home/linux/Documents/MSM/research_modules/d7_proportional_guidance/tests/__pycache__", "reason": null}
+{"time": "2026-09-26T13:16:04.102861+00:00", "event": "verified", "path": "/home/linux/Documents/MSM/research_modules/d7_proportional_guidance/d7_proportional_guidance/__pycache__", "reason": null}
+{"time": "2026-09-26T13:16:04.225360+00:00", "event": "verified", "path": "/home/linux/Documents/MSM/research_modules/airsim_dryrun/__pycache__", "reason": null}
+{"time": "2026-09-26T13:16:04.350987+00:00", "event": "verified", "path": "/home/linux/Documents/MSM/research_modules/airsim_dryrun/tests/__pycache__", "reason": null}
+{"time": "2026-09-26T13:16:04.475759+00:00", "event": "verified", "path": "/home/linux/Documents/MSM/research_modules/d5_terminal_association/.pytest_cache", "reason": null}
+{"time": "2026-09-26T13:16:04.601672+00:00", "event": "verified", "path": "/home/linux/Documents/MSM/research_modules/d5_terminal_association/scripts/__pycache__", "reason": null}
+{"time": "2026-09-26T13:16:04.732633+00:00", "event": "verified", "path": "/home/linux/Documents/MSM/research_modules/d5_terminal_association/src/d5_terminal_association/__pycache__", "reason": null}
+{"time": "2026-09-26T13:16:04.862842+00:00", "event": "verified", "path": "/home/linux/Documents/MSM/research_modules/d5_terminal_association/tests/__pycache__", "reason": null}
+{"time": "2026-09-26T13:16:04.989515+00:00", "event": "verified", "path": "/home/linux/Documents/MSM/research_modules/d5_terminal_association/simulations/__pycache__", "reason": null}
+{"time": "2026-09-26T13:16:05.112502+00:00", "event": "verified", "path": "/home/linux/Documents/MSM/research_modules/d3_assignment_planner/.pytest_cache", "reason": null}
+{"time": "2026-09-26T13:16:05.235994+00:00", "event": "verified", "path": "/home/linux/Documents/MSM/research_modules/d3_assignment_planner/scripts/__pycache__", "reason": null}
+{"time": "2026-09-26T13:16:05.363113+00:00", "event": "verified", "path": "/home/linux/Documents/MSM/research_modules/d3_assignment_planner/src/d3_assignment_planner/__pycache__", "reason": null}
+{"time": "2026-09-26T13:16:05.492550+00:00", "event": "verified", "path": "/home/linux/Documents/MSM/research_modules/d3_assignment_planner/tests/__pycache__", "reason": null}
+{"time": "2026-09-26T13:16:05.619179+00:00", "event": "verified", "path": "/home/linux/Documents/MSM/research_modules/d3_assignment_planner/simulations/__pycache__", "reason": null}
+{"time": "2026-09-26T13:16:05.746220+00:00", "event": "verified", "path": "/home/linux/Documents/MSM/research_modules/airsim_runtime/__pycache__", "reason": null}
+{"time": "2026-09-26T13:16:05.872761+00:00", "event": "verified", "path": "/home/linux/Documents/MSM/research_modules/airsim_runtime/tests/__pycache__", "reason": null}
+{"time": "2026-09-26T13:16:05.999634+00:00", "event": "verified", "path": "/home/linux/Documents/MSM/research_modules/d4_distributed_fallback/scripts/__pycache__", "reason": null}
+{"time": "2026-09-26T13:16:06.130710+00:00", "event": "verified", "path": "/home/linux/Documents/MSM/research_modules/d4_distributed_fallback/tests/__pycache__", "reason": null}
+{"time": "2026-09-26T13:16:06.260066+00:00", "event": "verified", "path": "/home/linux/Documents/MSM/research_modules/d4_distributed_fallback/d4_distributed_fallback/__pycache__", "reason": null}
+{"time": "2026-09-26T13:16:06.386394+00:00", "event": "verified", "path": "/home/linux/Documents/MSM/presentations/__pycache__", "reason": null}
+{"time": "2026-09-26T13:16:06.513173+00:00", "event": "verified", "path": "/home/linux/Documents/MSM/paper/__pycache__", "reason": null}
+{"time": "2026-09-26T13:16:06.639286+00:00", "event": "verified", "path": "/home/linux/Documents/MSM/paper/other-paper/__pycache__", "reason": null}
+{"time": "2026-09-26T13:16:06.765709+00:00", "event": "verified", "path": "/home/linux/Documents/MSM/paper/other-paper/中文详解/__pycache__", "reason": null}
+{"time": "2026-09-26T13:16:06.892356+00:00", "event": "verified", "path": "/home/linux/Documents/MSM/paper/Fastlab_world_fly/.pytest_cache", "reason": null}
+{"time": "2026-09-26T13:16:07.018861+00:00", "event": "verified", "path": "/home/linux/Documents/MSM/paper/Fastlab_world_fly/scripts/__pycache__", "reason": null}
+{"time": "2026-09-26T13:16:07.147482+00:00", "event": "verified", "path": "/home/linux/Documents/MSM/paper/Fastlab_world_fly/tests/__pycache__", "reason": null}
+{"time": "2026-09-26T13:16:07.275301+00:00", "event": "verified", "path": "/home/linux/Documents/MSM/paper/tools/__pycache__", "reason": null}
+{"time": "2026-09-26T13:16:07.402849+00:00", "event": "verified", "path": "/home/linux/Documents/MSM/paper/YOPO/YOPO/__pycache__", "reason": null}
+{"time": "2026-09-26T13:16:07.530571+00:00", "event": "verified", "path": "/home/linux/Documents/MSM/paper/YOPO/YOPO/policy/__pycache__", "reason": null}
+{"time": "2026-09-26T13:16:07.670130+00:00", "event": "verified", "path": "/home/linux/Documents/MSM/deliverables/图片素材/ChatGPT Image Sep 7, 2026, 06_.zip", "reason": null}
+{"time": "2026-09-26T13:16:08.194642+00:00", "event": "verified", "path": "/home/linux/Documents/MSM/paper/Fastlab_world_fly/Fastlab.zip", "reason": null}
+{"time": "2026-09-26T13:16:09.855883+00:00", "event": "verified", "path": "/home/linux/Documents/MSM/paper/YOPO/YOPO.zip", "reason": null}
+{"time": "2026-09-26T13:16:11.583259+00:00", "event": "verified", "path": "/home/linux/Documents/MSM/paper/ego-planner/ego-planner.zip", "reason": null}
+{"time": "2026-09-26T13:16:13.373370+00:00", "event": "verified", "path": "/home/linux/Documents/MSM/paper/ego-planner-swarm/EGO-planner-swarm.zip", "reason": null}
+{"time": "2026-09-26T13:16:13.824631+00:00", "event": "verified", "path": "/home/linux/Documents/MSM/paper/papers/paper.zip", "reason": null}
+{"time": "2026-09-26T13:16:14.028409+00:00", "event": "verified", "path": "/home/linux/Documents/MSM/paper/papers/中文详解/PDF.zip", "reason": null}
+{"time": "2026-09-26T13:16:14.220678+00:00", "event": "verified", "path": "/home/linux/Documents/MSM/paper/other-paper/paper20.txt", "reason": null}
+{"time": "2026-09-26T13:16:14.426523+00:00", "event": "verified", "path": "/home/linux/Documents/MSM/paper/other-paper/paper21.txt", "reason": null}
+{"time": "2026-09-26T13:16:14.592857+00:00", "event": "verified", "path": "/home/linux/Documents/MSM/paper/other-paper/skywalker.txt", "reason": null}
+{"time": "2026-09-26T13:16:14.604156+00:00", "event": "deleting", "path": "/home/linux/Documents/MSM/.pytest_cache"}
+{"time": "2026-09-26T13:16:14.623465+00:00", "event": "deleted", "path": "/home/linux/Documents/MSM/.pytest_cache", "reason": null}
+{"time": "2026-09-26T13:16:14.623602+00:00", "event": "deleting", "path": "/home/linux/Documents/MSM/.codex/skills/locate-experiment-evidence/scripts/__pycache__"}
+{"time": "2026-09-26T13:16:14.623659+00:00", "event": "deleted", "path": "/home/linux/Documents/MSM/.codex/skills/locate-experiment-evidence/scripts/__pycache__", "reason": null}
+{"time": "2026-09-26T13:16:14.623815+00:00", "event": "deleting", "path": "/home/linux/Documents/MSM/deliverables/patents/tools/__pycache__"}
+{"time": "2026-09-26T13:16:14.624096+00:00", "event": "deleted", "path": "/home/linux/Documents/MSM/deliverables/patents/tools/__pycache__", "reason": null}
+{"time": "2026-09-26T13:16:14.624279+00:00", "event": "deleting", "path": "/home/linux/Documents/MSM/deliverables/background/__pycache__"}
+{"time": "2026-09-26T13:16:14.624436+00:00", "event": "deleted", "path": "/home/linux/Documents/MSM/deliverables/background/__pycache__", "reason": null}
+{"time": "2026-09-26T13:16:14.624539+00:00", "event": "deleting", "path": "/home/linux/Documents/MSM/deliverables/background/figures/200v200_learning_gnn/__pycache__"}
+{"time": "2026-09-26T13:16:14.624583+00:00", "event": "deleted", "path": "/home/linux/Documents/MSM/deliverables/background/figures/200v200_learning_gnn/__pycache__", "reason": null}
+{"time": "2026-09-26T13:16:14.624672+00:00", "event": "deleting", "path": "/home/linux/Documents/MSM/deliverables/background/figures/200v200_full_stack_3d/__pycache__"}
+{"time": "2026-09-26T13:16:14.624710+00:00", "event": "deleted", "path": "/home/linux/Documents/MSM/deliverables/background/figures/200v200_full_stack_3d/__pycache__", "reason": null}
+{"time": "2026-09-26T13:16:14.624789+00:00", "event": "deleting", "path": "/home/linux/Documents/MSM/deliverables/leadership_report/__pycache__"}
+{"time": "2026-09-26T13:16:14.624826+00:00", "event": "deleted", "path": "/home/linux/Documents/MSM/deliverables/leadership_report/__pycache__", "reason": null}
+{"time": "2026-09-26T13:16:14.625434+00:00", "event": "deleting", "path": "/home/linux/Documents/MSM/deliverables/leadership_report/tools/__pycache__"}
+{"time": "2026-09-26T13:16:14.625679+00:00", "event": "deleted", "path": "/home/linux/Documents/MSM/deliverables/leadership_report/tools/__pycache__", "reason": null}
+{"time": "2026-09-26T13:16:14.625769+00:00", "event": "deleting", "path": "/home/linux/Documents/MSM/deliverables/project_proposals/__pycache__"}
+{"time": "2026-09-26T13:16:14.625895+00:00", "event": "deleted", "path": "/home/linux/Documents/MSM/deliverables/project_proposals/__pycache__", "reason": null}
+{"time": "2026-09-26T13:16:14.625978+00:00", "event": "deleting", "path": "/home/linux/Documents/MSM/deliverables/project_proposals/tools/__pycache__"}
+{"time": "2026-09-26T13:16:14.626017+00:00", "event": "deleted", "path": "/home/linux/Documents/MSM/deliverables/project_proposals/tools/__pycache__", "reason": null}
+{"time": "2026-09-26T13:16:14.626172+00:00", "event": "deleting", "path": "/home/linux/Documents/MSM/research_modules/__pycache__"}
+{"time": "2026-09-26T13:16:14.626394+00:00", "event": "deleted", "path": "/home/linux/Documents/MSM/research_modules/__pycache__", "reason": null}
+{"time": "2026-09-26T13:16:14.628573+00:00", "event": "deleting", "path": "/home/linux/Documents/MSM/research_modules/scalable_3d_simulation/__pycache__"}
+{"time": "2026-09-26T13:16:14.629488+00:00", "event": "deleted", "path": "/home/linux/Documents/MSM/research_modules/scalable_3d_simulation/__pycache__", "reason": null}
+{"time": "2026-09-26T13:16:14.629732+00:00", "event": "deleting", "path": "/home/linux/Documents/MSM/research_modules/scalable_3d_simulation/scripts/__pycache__"}
+{"time": "2026-09-26T13:16:14.629817+00:00", "event": "deleted", "path": "/home/linux/Documents/MSM/research_modules/scalable_3d_simulation/scripts/__pycache__", "reason": null}
+{"time": "2026-09-26T13:16:14.631987+00:00", "event": "deleting", "path": "/home/linux/Documents/MSM/research_modules/scalable_3d_simulation/tests/__pycache__"}
+{"time": "2026-09-26T13:16:14.632684+00:00", "event": "deleted", "path": "/home/linux/Documents/MSM/research_modules/scalable_3d_simulation/tests/__pycache__", "reason": null}
+{"time": "2026-09-26T13:16:14.633119+00:00", "event": "deleting", "path": "/home/linux/Documents/MSM/research_modules/d2_data_association/.pytest_cache"}
+{"time": "2026-09-26T13:16:14.633325+00:00", "event": "deleted", "path": "/home/linux/Documents/MSM/research_modules/d2_data_association/.pytest_cache", "reason": null}
+{"time": "2026-09-26T13:16:14.633699+00:00", "event": "deleting", "path": "/home/linux/Documents/MSM/research_modules/d2_data_association/scripts/__pycache__"}
+{"time": "2026-09-26T13:16:14.633895+00:00", "event": "deleted", "path": "/home/linux/Documents/MSM/research_modules/d2_data_association/scripts/__pycache__", "reason": null}
+{"time": "2026-09-26T13:16:14.634953+00:00", "event": "deleting", "path": "/home/linux/Documents/MSM/research_modules/d2_data_association/d2_data_association/__pycache__"}
+{"time": "2026-09-26T13:16:14.635184+00:00", "event": "deleted", "path": "/home/linux/Documents/MSM/research_modules/d2_data_association/d2_data_association/__pycache__", "reason": null}
+{"time": "2026-09-26T13:16:14.637030+00:00", "event": "deleting", "path": "/home/linux/Documents/MSM/research_modules/d2_data_association/tests/__pycache__"}
+{"time": "2026-09-26T13:16:14.637585+00:00", "event": "deleted", "path": "/home/linux/Documents/MSM/research_modules/d2_data_association/tests/__pycache__", "reason": null}
+{"time": "2026-09-26T13:16:14.637903+00:00", "event": "deleting", "path": "/home/linux/Documents/MSM/research_modules/integrated_simulation/__pycache__"}
+{"time": "2026-09-26T13:16:14.637992+00:00", "event": "deleted", "path": "/home/linux/Documents/MSM/research_modules/integrated_simulation/__pycache__", "reason": null}
+{"time": "2026-09-26T13:16:14.638163+00:00", "event": "deleting", "path": "/home/linux/Documents/MSM/research_modules/integrated_simulation/tests/__pycache__"}
+{"time": "2026-09-26T13:16:14.638219+00:00", "event": "deleted", "path": "/home/linux/Documents/MSM/research_modules/integrated_simulation/tests/__pycache__", "reason": null}
+{"time": "2026-09-26T13:16:14.638328+00:00", "event": "deleting", "path": "/home/linux/Documents/MSM/research_modules/integration_tests/__pycache__"}
+{"time": "2026-09-26T13:16:14.638372+00:00", "event": "deleted", "path": "/home/linux/Documents/MSM/research_modules/integration_tests/__pycache__", "reason": null}
+{"time": "2026-09-26T13:16:14.639053+00:00", "event": "deleting", "path": "/home/linux/Documents/MSM/research_modules/d1_sensor_fusion/scripts/__pycache__"}
+{"time": "2026-09-26T13:16:14.639219+00:00", "event": "deleted", "path": "/home/linux/Documents/MSM/research_modules/d1_sensor_fusion/scripts/__pycache__", "reason": null}
+{"time": "2026-09-26T13:16:14.640537+00:00", "event": "deleting", "path": "/home/linux/Documents/MSM/research_modules/d1_sensor_fusion/src/d1_sensor_fusion/__pycache__"}
+{"time": "2026-09-26T13:16:14.640823+00:00", "event": "deleted", "path": "/home/linux/Documents/MSM/research_modules/d1_sensor_fusion/src/d1_sensor_fusion/__pycache__", "reason": null}
+{"time": "2026-09-26T13:16:14.643839+00:00", "event": "deleting", "path": "/home/linux/Documents/MSM/research_modules/d1_sensor_fusion/tests/__pycache__"}
+{"time": "2026-09-26T13:16:14.644702+00:00", "event": "deleted", "path": "/home/linux/Documents/MSM/research_modules/d1_sensor_fusion/tests/__pycache__", "reason": null}
+{"time": "2026-09-26T13:16:14.646370+00:00", "event": "deleting", "path": "/home/linux/Documents/MSM/research_modules/d6_evaluation_metrics/scripts/__pycache__"}
+{"time": "2026-09-26T13:16:14.646819+00:00", "event": "deleted", "path": "/home/linux/Documents/MSM/research_modules/d6_evaluation_metrics/scripts/__pycache__", "reason": null}
+{"time": "2026-09-26T13:16:14.651360+00:00", "event": "deleting", "path": "/home/linux/Documents/MSM/research_modules/d6_evaluation_metrics/tests/__pycache__"}
+{"time": "2026-09-26T13:16:14.652469+00:00", "event": "deleted", "path": "/home/linux/Documents/MSM/research_modules/d6_evaluation_metrics/tests/__pycache__", "reason": null}
+{"time": "2026-09-26T13:16:14.652597+00:00", "event": "deleting", "path": "/home/linux/Documents/MSM/research_modules/independent_experiments/__pycache__"}
+{"time": "2026-09-26T13:16:14.652647+00:00", "event": "deleted", "path": "/home/linux/Documents/MSM/research_modules/independent_experiments/__pycache__", "reason": null}
+{"time": "2026-09-26T13:16:14.652962+00:00", "event": "deleting", "path": "/home/linux/Documents/MSM/research_modules/independent_experiments/dual_optical_target_track_gnn/__pycache__"}
+{"time": "2026-09-26T13:16:14.653042+00:00", "event": "deleted", "path": "/home/linux/Documents/MSM/research_modules/independent_experiments/dual_optical_target_track_gnn/__pycache__", "reason": null}
+{"time": "2026-09-26T13:16:14.653249+00:00", "event": "deleting", "path": "/home/linux/Documents/MSM/research_modules/independent_experiments/dual_optical_target_track_gnn/tests/__pycache__"}
+{"time": "2026-09-26T13:16:14.653306+00:00", "event": "deleted", "path": "/home/linux/Documents/MSM/research_modules/independent_experiments/dual_optical_target_track_gnn/tests/__pycache__", "reason": null}
+{"time": "2026-09-26T13:16:14.654292+00:00", "event": "deleting", "path": "/home/linux/Documents/MSM/research_modules/independent_experiments/dual_optical_online_benchmark/__pycache__"}
+{"time": "2026-09-26T13:16:14.654863+00:00", "event": "deleted", "path": "/home/linux/Documents/MSM/research_modules/independent_experiments/dual_optical_online_benchmark/__pycache__", "reason": null}
+{"time": "2026-09-26T13:16:14.656124+00:00", "event": "deleting", "path": "/home/linux/Documents/MSM/research_modules/independent_experiments/dual_optical_online_benchmark/tests/__pycache__"}
+{"time": "2026-09-26T13:16:14.656411+00:00", "event": "deleted", "path": "/home/linux/Documents/MSM/research_modules/independent_experiments/dual_optical_online_benchmark/tests/__pycache__", "reason": null}
+{"time": "2026-09-26T13:16:14.656831+00:00", "event": "deleting", "path": "/home/linux/Documents/MSM/research_modules/independent_experiments/dual_optical_100target_gnn/.pytest_cache"}
+{"time": "2026-09-26T13:16:14.656949+00:00", "event": "deleted", "path": "/home/linux/Documents/MSM/research_modules/independent_experiments/dual_optical_100target_gnn/.pytest_cache", "reason": null}
+{"time": "2026-09-26T13:16:14.657547+00:00", "event": "deleting", "path": "/home/linux/Documents/MSM/research_modules/independent_experiments/dual_optical_100target_gnn/__pycache__"}
+{"time": "2026-09-26T13:16:14.657682+00:00", "event": "deleted", "path": "/home/linux/Documents/MSM/research_modules/independent_experiments/dual_optical_100target_gnn/__pycache__", "reason": null}
+{"time": "2026-09-26T13:16:14.658042+00:00", "event": "deleting", "path": "/home/linux/Documents/MSM/research_modules/independent_experiments/dual_optical_100target_gnn/tests/__pycache__"}
+{"time": "2026-09-26T13:16:14.658127+00:00", "event": "deleted", "path": "/home/linux/Documents/MSM/research_modules/independent_experiments/dual_optical_100target_gnn/tests/__pycache__", "reason": null}
+{"time": "2026-09-26T13:16:14.658356+00:00", "event": "deleting", "path": "/home/linux/Documents/MSM/research_modules/independent_experiments/dual_optical_100target_guide_case/__pycache__"}
+{"time": "2026-09-26T13:16:14.658420+00:00", "event": "deleted", "path": "/home/linux/Documents/MSM/research_modules/independent_experiments/dual_optical_100target_guide_case/__pycache__", "reason": null}
+{"time": "2026-09-26T13:16:14.658551+00:00", "event": "deleting", "path": "/home/linux/Documents/MSM/research_modules/independent_experiments/dual_optical_100target_guide_case/tests/__pycache__"}
+{"time": "2026-09-26T13:16:14.658598+00:00", "event": "deleted", "path": "/home/linux/Documents/MSM/research_modules/independent_experiments/dual_optical_100target_guide_case/tests/__pycache__", "reason": null}
+{"time": "2026-09-26T13:16:14.658950+00:00", "event": "deleting", "path": "/home/linux/Documents/MSM/research_modules/independent_experiments/dual_optical_100target_lightweight/.pytest_cache"}
+{"time": "2026-09-26T13:16:14.659037+00:00", "event": "deleted", "path": "/home/linux/Documents/MSM/research_modules/independent_experiments/dual_optical_100target_lightweight/.pytest_cache", "reason": null}
+{"time": "2026-09-26T13:16:14.659422+00:00", "event": "deleting", "path": "/home/linux/Documents/MSM/research_modules/independent_experiments/dual_optical_40target/.pytest_cache"}
+{"time": "2026-09-26T13:16:14.659524+00:00", "event": "deleted", "path": "/home/linux/Documents/MSM/research_modules/independent_experiments/dual_optical_40target/.pytest_cache", "reason": null}
+{"time": "2026-09-26T13:16:14.659807+00:00", "event": "deleting", "path": "/home/linux/Documents/MSM/research_modules/independent_experiments/dual_optical_40target/__pycache__"}
+{"time": "2026-09-26T13:16:14.659884+00:00", "event": "deleted", "path": "/home/linux/Documents/MSM/research_modules/independent_experiments/dual_optical_40target/__pycache__", "reason": null}
+{"time": "2026-09-26T13:16:14.660182+00:00", "event": "deleting", "path": "/home/linux/Documents/MSM/research_modules/independent_experiments/dual_optical_40target/tests/__pycache__"}
+{"time": "2026-09-26T13:16:14.660262+00:00", "event": "deleted", "path": "/home/linux/Documents/MSM/research_modules/independent_experiments/dual_optical_40target/tests/__pycache__", "reason": null}
+{"time": "2026-09-26T13:16:14.660553+00:00", "event": "deleting", "path": "/home/linux/Documents/MSM/research_modules/independent_experiments/center_terminal_cv_campaign/__pycache__"}
+{"time": "2026-09-26T13:16:14.660736+00:00", "event": "deleted", "path": "/home/linux/Documents/MSM/research_modules/independent_experiments/center_terminal_cv_campaign/__pycache__", "reason": null}
+{"time": "2026-09-26T13:16:14.661273+00:00", "event": "deleting", "path": "/home/linux/Documents/MSM/research_modules/independent_experiments/center_terminal_cv_campaign/exp_crossview/__pycache__"}
+{"time": "2026-09-26T13:16:14.661394+00:00", "event": "deleted", "path": "/home/linux/Documents/MSM/research_modules/independent_experiments/center_terminal_cv_campaign/exp_crossview/__pycache__", "reason": null}
+{"time": "2026-09-26T13:16:14.661863+00:00", "event": "deleting", "path": "/home/linux/Documents/MSM/research_modules/independent_experiments/center_terminal_cv_campaign/exp_crossview/tests/__pycache__"}
+{"time": "2026-09-26T13:16:14.661982+00:00", "event": "deleted", "path": "/home/linux/Documents/MSM/research_modules/independent_experiments/center_terminal_cv_campaign/exp_crossview/tests/__pycache__", "reason": null}
+{"time": "2026-09-26T13:16:14.662224+00:00", "event": "deleting", "path": "/home/linux/Documents/MSM/research_modules/independent_experiments/center_terminal_cv_campaign/common/__pycache__"}
+{"time": "2026-09-26T13:16:14.662282+00:00", "event": "deleted", "path": "/home/linux/Documents/MSM/research_modules/independent_experiments/center_terminal_cv_campaign/common/__pycache__", "reason": null}
+{"time": "2026-09-26T13:16:14.662793+00:00", "event": "deleting", "path": "/home/linux/Documents/MSM/research_modules/independent_experiments/center_terminal_cv_campaign/tests/__pycache__"}
+{"time": "2026-09-26T13:16:14.662914+00:00", "event": "deleted", "path": "/home/linux/Documents/MSM/research_modules/independent_experiments/center_terminal_cv_campaign/tests/__pycache__", "reason": null}
+{"time": "2026-09-26T13:16:14.663370+00:00", "event": "deleting", "path": "/home/linux/Documents/MSM/research_modules/independent_experiments/center_terminal_cv_campaign/exp_center_handover/__pycache__"}
+{"time": "2026-09-26T13:16:14.663474+00:00", "event": "deleted", "path": "/home/linux/Documents/MSM/research_modules/independent_experiments/center_terminal_cv_campaign/exp_center_handover/__pycache__", "reason": null}
+{"time": "2026-09-26T13:16:14.664103+00:00", "event": "deleting", "path": "/home/linux/Documents/MSM/research_modules/independent_experiments/center_terminal_cv_campaign/exp_center_handover/tests/__pycache__"}
+{"time": "2026-09-26T13:16:14.664238+00:00", "event": "deleted", "path": "/home/linux/Documents/MSM/research_modules/independent_experiments/center_terminal_cv_campaign/exp_center_handover/tests/__pycache__", "reason": null}
+{"time": "2026-09-26T13:16:14.664656+00:00", "event": "deleting", "path": "/home/linux/Documents/MSM/research_modules/independent_experiments/center_terminal_cv_campaign/exp_search/__pycache__"}
+{"time": "2026-09-26T13:16:14.664743+00:00", "event": "deleted", "path": "/home/linux/Documents/MSM/research_modules/independent_experiments/center_terminal_cv_campaign/exp_search/__pycache__", "reason": null}
+{"time": "2026-09-26T13:16:14.664923+00:00", "event": "deleting", "path": "/home/linux/Documents/MSM/research_modules/independent_experiments/center_terminal_cv_campaign/exp_search/tests/__pycache__"}
+{"time": "2026-09-26T13:16:14.664974+00:00", "event": "deleted", "path": "/home/linux/Documents/MSM/research_modules/independent_experiments/center_terminal_cv_campaign/exp_search/tests/__pycache__", "reason": null}
+{"time": "2026-09-26T13:16:14.665339+00:00", "event": "deleting", "path": "/home/linux/Documents/MSM/research_modules/independent_experiments/dual_optical_track_superglue/__pycache__"}
+{"time": "2026-09-26T13:16:14.665503+00:00", "event": "deleted", "path": "/home/linux/Documents/MSM/research_modules/independent_experiments/dual_optical_track_superglue/__pycache__", "reason": null}
+{"time": "2026-09-26T13:16:14.665926+00:00", "event": "deleting", "path": "/home/linux/Documents/MSM/research_modules/independent_experiments/dual_optical_track_superglue/tests/__pycache__"}
+{"time": "2026-09-26T13:16:14.666021+00:00", "event": "deleted", "path": "/home/linux/Documents/MSM/research_modules/independent_experiments/dual_optical_track_superglue/tests/__pycache__", "reason": null}
+{"time": "2026-09-26T13:16:14.666104+00:00", "event": "deleting", "path": "/home/linux/Documents/MSM/research_modules/d7_proportional_guidance/scripts/__pycache__"}
+{"time": "2026-09-26T13:16:14.666225+00:00", "event": "deleted", "path": "/home/linux/Documents/MSM/research_modules/d7_proportional_guidance/scripts/__pycache__", "reason": null}
+{"time": "2026-09-26T13:16:14.666406+00:00", "event": "deleting", "path": "/home/linux/Documents/MSM/research_modules/d7_proportional_guidance/png_guidance_delivery/examples/__pycache__"}
+{"time": "2026-09-26T13:16:14.666463+00:00", "event": "deleted", "path": "/home/linux/Documents/MSM/research_modules/d7_proportional_guidance/png_guidance_delivery/examples/__pycache__", "reason": null}
+{"time": "2026-09-26T13:16:14.666611+00:00", "event": "deleting", "path": "/home/linux/Documents/MSM/research_modules/d7_proportional_guidance/png_guidance_delivery/tools/__pycache__"}
+{"time": "2026-09-26T13:16:14.666654+00:00", "event": "deleted", "path": "/home/linux/Documents/MSM/research_modules/d7_proportional_guidance/png_guidance_delivery/tools/__pycache__", "reason": null}
+{"time": "2026-09-26T13:16:14.667127+00:00", "event": "deleting", "path": "/home/linux/Documents/MSM/research_modules/d7_proportional_guidance/png_guidance_delivery/vision_guidance/__pycache__"}
+{"time": "2026-09-26T13:16:14.667227+00:00", "event": "deleted", "path": "/home/linux/Documents/MSM/research_modules/d7_proportional_guidance/png_guidance_delivery/vision_guidance/__pycache__", "reason": null}
+{"time": "2026-09-26T13:16:14.668133+00:00", "event": "deleting", "path": "/home/linux/Documents/MSM/research_modules/d7_proportional_guidance/tests/__pycache__"}
+{"time": "2026-09-26T13:16:14.668373+00:00", "event": "deleted", "path": "/home/linux/Documents/MSM/research_modules/d7_proportional_guidance/tests/__pycache__", "reason": null}
+{"time": "2026-09-26T13:16:14.669090+00:00", "event": "deleting", "path": "/home/linux/Documents/MSM/research_modules/d7_proportional_guidance/d7_proportional_guidance/__pycache__"}
+{"time": "2026-09-26T13:16:14.669262+00:00", "event": "deleted", "path": "/home/linux/Documents/MSM/research_modules/d7_proportional_guidance/d7_proportional_guidance/__pycache__", "reason": null}
+{"time": "2026-09-26T13:16:14.669477+00:00", "event": "deleting", "path": "/home/linux/Documents/MSM/research_modules/airsim_dryrun/__pycache__"}
+{"time": "2026-09-26T13:16:14.669548+00:00", "event": "deleted", "path": "/home/linux/Documents/MSM/research_modules/airsim_dryrun/__pycache__", "reason": null}
+{"time": "2026-09-26T13:16:14.669715+00:00", "event": "deleting", "path": "/home/linux/Documents/MSM/research_modules/airsim_dryrun/tests/__pycache__"}
+{"time": "2026-09-26T13:16:14.669765+00:00", "event": "deleted", "path": "/home/linux/Documents/MSM/research_modules/airsim_dryrun/tests/__pycache__", "reason": null}
+{"time": "2026-09-26T13:16:14.670100+00:00", "event": "deleting", "path": "/home/linux/Documents/MSM/research_modules/d5_terminal_association/.pytest_cache"}
+{"time": "2026-09-26T13:16:14.670196+00:00", "event": "deleted", "path": "/home/linux/Documents/MSM/research_modules/d5_terminal_association/.pytest_cache", "reason": null}
+{"time": "2026-09-26T13:16:14.670716+00:00", "event": "deleting", "path": "/home/linux/Documents/MSM/research_modules/d5_terminal_association/scripts/__pycache__"}
+{"time": "2026-09-26T13:16:14.671110+00:00", "event": "deleted", "path": "/home/linux/Documents/MSM/research_modules/d5_terminal_association/scripts/__pycache__", "reason": null}
+{"time": "2026-09-26T13:16:14.673186+00:00", "event": "deleting", "path": "/home/linux/Documents/MSM/research_modules/d5_terminal_association/src/d5_terminal_association/__pycache__"}
+{"time": "2026-09-26T13:16:14.673678+00:00", "event": "deleted", "path": "/home/linux/Documents/MSM/research_modules/d5_terminal_association/src/d5_terminal_association/__pycache__", "reason": null}
+{"time": "2026-09-26T13:16:14.677022+00:00", "event": "deleting", "path": "/home/linux/Documents/MSM/research_modules/d5_terminal_association/tests/__pycache__"}
+{"time": "2026-09-26T13:16:14.677959+00:00", "event": "deleted", "path": "/home/linux/Documents/MSM/research_modules/d5_terminal_association/tests/__pycache__", "reason": null}
+{"time": "2026-09-26T13:16:14.678094+00:00", "event": "deleting", "path": "/home/linux/Documents/MSM/research_modules/d5_terminal_association/simulations/__pycache__"}
+{"time": "2026-09-26T13:16:14.678141+00:00", "event": "deleted", "path": "/home/linux/Documents/MSM/research_modules/d5_terminal_association/simulations/__pycache__", "reason": null}
+{"time": "2026-09-26T13:16:14.678518+00:00", "event": "deleting", "path": "/home/linux/Documents/MSM/research_modules/d3_assignment_planner/.pytest_cache"}
+{"time": "2026-09-26T13:16:14.678620+00:00", "event": "deleted", "path": "/home/linux/Documents/MSM/research_modules/d3_assignment_planner/.pytest_cache", "reason": null}
+{"time": "2026-09-26T13:16:14.678710+00:00", "event": "deleting", "path": "/home/linux/Documents/MSM/research_modules/d3_assignment_planner/scripts/__pycache__"}
+{"time": "2026-09-26T13:16:14.678746+00:00", "event": "deleted", "path": "/home/linux/Documents/MSM/research_modules/d3_assignment_planner/scripts/__pycache__", "reason": null}
+{"time": "2026-09-26T13:16:14.680240+00:00", "event": "deleting", "path": "/home/linux/Documents/MSM/research_modules/d3_assignment_planner/src/d3_assignment_planner/__pycache__"}
+{"time": "2026-09-26T13:16:14.680585+00:00", "event": "deleted", "path": "/home/linux/Documents/MSM/research_modules/d3_assignment_planner/src/d3_assignment_planner/__pycache__", "reason": null}
+{"time": "2026-09-26T13:16:14.684221+00:00", "event": "deleting", "path": "/home/linux/Documents/MSM/research_modules/d3_assignment_planner/tests/__pycache__"}
+{"time": "2026-09-26T13:16:14.685263+00:00", "event": "deleted", "path": "/home/linux/Documents/MSM/research_modules/d3_assignment_planner/tests/__pycache__", "reason": null}
+{"time": "2026-09-26T13:16:14.685741+00:00", "event": "deleting", "path": "/home/linux/Documents/MSM/research_modules/d3_assignment_planner/simulations/__pycache__"}
+{"time": "2026-09-26T13:16:14.685866+00:00", "event": "deleted", "path": "/home/linux/Documents/MSM/research_modules/d3_assignment_planner/simulations/__pycache__", "reason": null}
+{"time": "2026-09-26T13:16:14.686697+00:00", "event": "deleting", "path": "/home/linux/Documents/MSM/research_modules/airsim_runtime/__pycache__"}
+{"time": "2026-09-26T13:16:14.687056+00:00", "event": "deleted", "path": "/home/linux/Documents/MSM/research_modules/airsim_runtime/__pycache__", "reason": null}
+{"time": "2026-09-26T13:16:14.687635+00:00", "event": "deleting", "path": "/home/linux/Documents/MSM/research_modules/airsim_runtime/tests/__pycache__"}
+{"time": "2026-09-26T13:16:14.687786+00:00", "event": "deleted", "path": "/home/linux/Documents/MSM/research_modules/airsim_runtime/tests/__pycache__", "reason": null}
+{"time": "2026-09-26T13:16:14.688588+00:00", "event": "deleting", "path": "/home/linux/Documents/MSM/research_modules/d4_distributed_fallback/scripts/__pycache__"}
+{"time": "2026-09-26T13:16:14.688763+00:00", "event": "deleted", "path": "/home/linux/Documents/MSM/research_modules/d4_distributed_fallback/scripts/__pycache__", "reason": null}
+{"time": "2026-09-26T13:16:14.692003+00:00", "event": "deleting", "path": "/home/linux/Documents/MSM/research_modules/d4_distributed_fallback/tests/__pycache__"}
+{"time": "2026-09-26T13:16:14.692845+00:00", "event": "deleted", "path": "/home/linux/Documents/MSM/research_modules/d4_distributed_fallback/tests/__pycache__", "reason": null}
+{"time": "2026-09-26T13:16:14.694565+00:00", "event": "deleting", "path": "/home/linux/Documents/MSM/research_modules/d4_distributed_fallback/d4_distributed_fallback/__pycache__"}
+{"time": "2026-09-26T13:16:14.695020+00:00", "event": "deleted", "path": "/home/linux/Documents/MSM/research_modules/d4_distributed_fallback/d4_distributed_fallback/__pycache__", "reason": null}
+{"time": "2026-09-26T13:16:14.695109+00:00", "event": "deleting", "path": "/home/linux/Documents/MSM/presentations/__pycache__"}
+{"time": "2026-09-26T13:16:14.695149+00:00", "event": "deleted", "path": "/home/linux/Documents/MSM/presentations/__pycache__", "reason": null}
+{"time": "2026-09-26T13:16:14.695329+00:00", "event": "deleting", "path": "/home/linux/Documents/MSM/paper/__pycache__"}
+{"time": "2026-09-26T13:16:14.695397+00:00", "event": "deleted", "path": "/home/linux/Documents/MSM/paper/__pycache__", "reason": null}
+{"time": "2026-09-26T13:16:14.695485+00:00", "event": "deleting", "path": "/home/linux/Documents/MSM/paper/other-paper/__pycache__"}
+{"time": "2026-09-26T13:16:14.695522+00:00", "event": "deleted", "path": "/home/linux/Documents/MSM/paper/other-paper/__pycache__", "reason": null}
+{"time": "2026-09-26T13:16:14.695607+00:00", "event": "deleting", "path": "/home/linux/Documents/MSM/paper/other-paper/中文详解/__pycache__"}
+{"time": "2026-09-26T13:16:14.695642+00:00", "event": "deleted", "path": "/home/linux/Documents/MSM/paper/other-paper/中文详解/__pycache__", "reason": null}
+{"time": "2026-09-26T13:16:14.696025+00:00", "event": "deleting", "path": "/home/linux/Documents/MSM/paper/Fastlab_world_fly/.pytest_cache"}
+{"time": "2026-09-26T13:16:14.696216+00:00", "event": "deleted", "path": "/home/linux/Documents/MSM/paper/Fastlab_world_fly/.pytest_cache", "reason": null}
+{"time": "2026-09-26T13:16:14.696423+00:00", "event": "deleting", "path": "/home/linux/Documents/MSM/paper/Fastlab_world_fly/scripts/__pycache__"}
+{"time": "2026-09-26T13:16:14.696483+00:00", "event": "deleted", "path": "/home/linux/Documents/MSM/paper/Fastlab_world_fly/scripts/__pycache__", "reason": null}
+{"time": "2026-09-26T13:16:14.696963+00:00", "event": "deleting", "path": "/home/linux/Documents/MSM/paper/Fastlab_world_fly/tests/__pycache__"}
+{"time": "2026-09-26T13:16:14.697077+00:00", "event": "deleted", "path": "/home/linux/Documents/MSM/paper/Fastlab_world_fly/tests/__pycache__", "reason": null}
+{"time": "2026-09-26T13:16:14.697980+00:00", "event": "deleting", "path": "/home/linux/Documents/MSM/paper/tools/__pycache__"}
+{"time": "2026-09-26T13:16:14.698183+00:00", "event": "deleted", "path": "/home/linux/Documents/MSM/paper/tools/__pycache__", "reason": null}
+{"time": "2026-09-26T13:16:14.698299+00:00", "event": "deleting", "path": "/home/linux/Documents/MSM/paper/YOPO/YOPO/__pycache__"}
+{"time": "2026-09-26T13:16:14.698342+00:00", "event": "deleted", "path": "/home/linux/Documents/MSM/paper/YOPO/YOPO/__pycache__", "reason": null}
+{"time": "2026-09-26T13:16:14.698494+00:00", "event": "deleting", "path": "/home/linux/Documents/MSM/paper/YOPO/YOPO/policy/__pycache__"}
+{"time": "2026-09-26T13:16:14.698539+00:00", "event": "deleted", "path": "/home/linux/Documents/MSM/paper/YOPO/YOPO/policy/__pycache__", "reason": null}
+{"time": "2026-09-26T13:16:14.698558+00:00", "event": "deleting", "path": "/home/linux/Documents/MSM/deliverables/图片素材/ChatGPT Image Sep 7, 2026, 06_.zip"}
+{"time": "2026-09-26T13:16:14.698628+00:00", "event": "deleted", "path": "/home/linux/Documents/MSM/deliverables/图片素材/ChatGPT Image Sep 7, 2026, 06_.zip", "reason": null}
+{"time": "2026-09-26T13:16:14.698644+00:00", "event": "deleting", "path": "/home/linux/Documents/MSM/paper/Fastlab_world_fly/Fastlab.zip"}
+{"time": "2026-09-26T13:16:14.698830+00:00", "event": "deleted", "path": "/home/linux/Documents/MSM/paper/Fastlab_world_fly/Fastlab.zip", "reason": null}
+{"time": "2026-09-26T13:16:14.698844+00:00", "event": "deleting", "path": "/home/linux/Documents/MSM/paper/YOPO/YOPO.zip"}
+{"time": "2026-09-26T13:16:14.699281+00:00", "event": "deleted", "path": "/home/linux/Documents/MSM/paper/YOPO/YOPO.zip", "reason": null}
+{"time": "2026-09-26T13:16:14.699298+00:00", "event": "deleting", "path": "/home/linux/Documents/MSM/paper/ego-planner/ego-planner.zip"}
+{"time": "2026-09-26T13:16:14.699412+00:00", "event": "deleted", "path": "/home/linux/Documents/MSM/paper/ego-planner/ego-planner.zip", "reason": null}
+{"time": "2026-09-26T13:16:14.699425+00:00", "event": "deleting", "path": "/home/linux/Documents/MSM/paper/ego-planner-swarm/EGO-planner-swarm.zip"}
+{"time": "2026-09-26T13:16:14.699577+00:00", "event": "deleted", "path": "/home/linux/Documents/MSM/paper/ego-planner-swarm/EGO-planner-swarm.zip", "reason": null}
+{"time": "2026-09-26T13:16:14.699592+00:00", "event": "deleting", "path": "/home/linux/Documents/MSM/paper/papers/paper.zip"}
+{"time": "2026-09-26T13:16:14.700799+00:00", "event": "deleted", "path": "/home/linux/Documents/MSM/paper/papers/paper.zip", "reason": null}
+{"time": "2026-09-26T13:16:14.700824+00:00", "event": "deleting", "path": "/home/linux/Documents/MSM/paper/papers/中文详解/PDF.zip"}
+{"time": "2026-09-26T13:16:14.700933+00:00", "event": "deleted", "path": "/home/linux/Documents/MSM/paper/papers/中文详解/PDF.zip", "reason": null}
+{"time": "2026-09-26T13:16:14.700946+00:00", "event": "deleting", "path": "/home/linux/Documents/MSM/paper/other-paper/paper20.txt"}
+{"time": "2026-09-26T13:16:14.700964+00:00", "event": "deleted", "path": "/home/linux/Documents/MSM/paper/other-paper/paper20.txt", "reason": null}
+{"time": "2026-09-26T13:16:14.700975+00:00", "event": "deleting", "path": "/home/linux/Documents/MSM/paper/other-paper/paper21.txt"}
+{"time": "2026-09-26T13:16:14.700989+00:00", "event": "deleted", "path": "/home/linux/Documents/MSM/paper/other-paper/paper21.txt", "reason": null}
+{"time": "2026-09-26T13:16:14.700999+00:00", "event": "deleting", "path": "/home/linux/Documents/MSM/paper/other-paper/skywalker.txt"}
+{"time": "2026-09-26T13:16:14.701014+00:00", "event": "deleted", "path": "/home/linux/Documents/MSM/paper/other-paper/skywalker.txt", "reason": null}
+{"time": "2026-09-26T13:16:14.738933+00:00", "event": "finished", "deleted_items": 94}

@@ -1,0 +1,589 @@
+{
+  "schema": "msm-backup-preflight-v1",
+  "started_at_utc": "2026-09-26T09:09:59.941880+00:00",
+  "backup_created": false,
+  "restore_verified": false,
+  "source_payload_hashed": false,
+  "source_revision": {
+    "command": [
+      "git",
+      "-C",
+      "/home/linux/Documents/MSM",
+      "rev-parse",
+      "HEAD"
+    ],
+    "returncode": 0,
+    "stdout": "a0d3d8ad2cd037c71845119840dfd5cae426c2e6\n",
+    "stderr": ""
+  },
+  "revision_scope": "Repository state at preflight, not historical experiment execution revision.",
+  "scope": "Entire repository and six sibling trees, including Git metadata, ignored files, environments and caches.",
+  "excluded_tree": "/home/linux/Documents/MSM/deliverables/project_audits/20260926_stage3_backup_preflight_v1",
+  "exclusion_reason": "This new preflight output is recorded separately after generation.",
+  "inventory_limit": "Sequential metadata inventory, not an atomic snapshot or source-content verification. Symlinks are recorded, not followed. Hardlinks are counted by path.",
+  "capacity_rule": "ceil(1.10 * logical bytes) + 1 GiB; planning reserve, not an exact destination allocation estimate.",
+  "sources": [
+    {
+      "path": "/home/linux/Documents/MSM",
+      "exists": true,
+      "destination_relative_path": "MSM",
+      "file_count": 212344,
+      "logical_bytes": 72170355868,
+      "allocated_bytes": 72660103168,
+      "directory_count": 19228,
+      "symlink_count": 2,
+      "special_count": 0,
+      "error_count": 0
+    },
+    {
+      "path": "/home/linux/Documents/MSM-d5-training-clean",
+      "exists": true,
+      "destination_relative_path": "MSM-d5-training-clean",
+      "file_count": 34339,
+      "logical_bytes": 325229501,
+      "allocated_bytes": 411631616,
+      "directory_count": 187,
+      "symlink_count": 0,
+      "special_count": 0,
+      "error_count": 0
+    },
+    {
+      "path": "/home/linux/Documents/MSM-source-audit-request-20260803",
+      "exists": true,
+      "destination_relative_path": "MSM-source-audit-request-20260803",
+      "file_count": 8,
+      "logical_bytes": 18637,
+      "allocated_bytes": 40960,
+      "directory_count": 3,
+      "symlink_count": 0,
+      "special_count": 0,
+      "error_count": 0
+    },
+    {
+      "path": "/home/linux/Documents/MSM-source-audit-result-20260803-v3",
+      "exists": true,
+      "destination_relative_path": "MSM-source-audit-result-20260803-v3",
+      "file_count": 3,
+      "logical_bytes": 14042,
+      "allocated_bytes": 20480,
+      "directory_count": 1,
+      "symlink_count": 0,
+      "special_count": 0,
+      "error_count": 0
+    },
+    {
+      "path": "/home/linux/Documents/MSM-source-generation-output-64dfc08-20260803",
+      "exists": true,
+      "destination_relative_path": "MSM-source-generation-output-64dfc08-20260803",
+      "file_count": 320,
+      "logical_bytes": 355514166,
+      "allocated_bytes": 356188160,
+      "directory_count": 11,
+      "symlink_count": 0,
+      "special_count": 0,
+      "error_count": 0
+    },
+    {
+      "path": "/home/linux/Documents/MSM-source-generation-output-6737b44-20260803",
+      "exists": true,
+      "destination_relative_path": "MSM-source-generation-output-6737b44-20260803",
+      "file_count": 950,
+      "logical_bytes": 308747521,
+      "allocated_bytes": 310706176,
+      "directory_count": 15,
+      "symlink_count": 0,
+      "special_count": 0,
+      "error_count": 0
+    },
+    {
+      "path": "/home/linux/Documents/MSM-source-generation-output-e7c438c-20260802",
+      "exists": true,
+      "destination_relative_path": "MSM-source-generation-output-e7c438c-20260802",
+      "file_count": 565,
+      "logical_bytes": 1411007972,
+      "allocated_bytes": 1412218880,
+      "directory_count": 15,
+      "symlink_count": 0,
+      "special_count": 0,
+      "error_count": 0
+    }
+  ],
+  "errors": [],
+  "links": [
+    {
+      "path": "/home/linux/Documents/MSM/paper/ego-planner/src/CMakeLists.txt",
+      "relative_path": "paper/ego-planner/src/CMakeLists.txt",
+      "source_root": "/home/linux/Documents/MSM",
+      "device": 66308,
+      "inode": 17336217,
+      "mode": 511,
+      "bytes": 50,
+      "allocated_bytes": 0,
+      "mtime_ns": 1788230348261230254,
+      "ctime_ns": 1788230348261230254,
+      "kind": "symlink",
+      "link_target": "/opt/ros/kinetic/share/catkin/cmake/toplevel.cmake",
+      "target_followed": false
+    },
+    {
+      "path": "/home/linux/Documents/MSM/research_modules/independent_experiments/dual_optical_online_benchmark/outputs/scale_funnel_v5_phase180_targettrack/contract_smoke/test_v5_adapter_freeze_publishcurrent",
+      "relative_path": "research_modules/independent_experiments/dual_optical_online_benchmark/outputs/scale_funnel_v5_phase180_targettrack/contract_smoke/test_v5_adapter_freeze_publishcurrent",
+      "source_root": "/home/linux/Documents/MSM",
+      "device": 66308,
+      "inode": 17174396,
+      "mode": 511,
+      "bytes": 188,
+      "allocated_bytes": 4096,
+      "mtime_ns": 1786771436512066619,
+      "ctime_ns": 1786771436512066619,
+      "kind": "symlink",
+      "link_target": "/home/linux/Documents/MSM/research_modules/independent_experiments/dual_optical_online_benchmark/outputs/scale_funnel_v5_phase180_targettrack/contract_smoke/test_v5_adapter_freeze_publish0",
+      "target_followed": false
+    }
+  ],
+  "special_files": [],
+  "mounts": {
+    "command": [
+      "findmnt",
+      "--json",
+      "--output",
+      "TARGET,SOURCE,FSTYPE,OPTIONS"
+    ],
+    "returncode": 0,
+    "stdout": "{\n   \"filesystems\": [\n      {\n         \"target\": \"/\",\n         \"source\": \"/dev/nvme0n1p4\",\n         \"fstype\": \"ext4\",\n         \"options\": \"rw,relatime\",\n         \"children\": [\n            {\n               \"target\": \"/sys\",\n               \"source\": \"sysfs\",\n               \"fstype\": \"sysfs\",\n               \"options\": \"rw,nosuid,nodev,noexec,relatime\",\n               \"children\": [\n                  {\n                     \"target\": \"/sys/kernel/security\",\n                     \"source\": \"securityfs\",\n                     \"fstype\": \"securityfs\",\n                     \"options\": \"rw,nosuid,nodev,noexec,relatime\"\n                  },{\n                     \"target\": \"/sys/fs/cgroup\",\n                     \"source\": \"cgroup2\",\n                     \"fstype\": \"cgroup2\",\n                     \"options\": \"rw,nosuid,nodev,noexec,relatime,nsdelegate,memory_recursiveprot\"\n                  },{\n                     \"target\": \"/sys/fs/pstore\",\n                     \"source\": \"none\",\n                     \"fstype\": \"pstore\",\n                     \"options\": \"rw,nosuid,nodev,noexec,relatime\"\n                  },{\n                     \"target\": \"/sys/firmware/efi/efivars\",\n                     \"source\": \"efivarfs\",\n                     \"fstype\": \"efivarfs\",\n                     \"options\": \"rw,nosuid,nodev,noexec,relatime\"\n                  },{\n                     \"target\": \"/sys/fs/bpf\",\n                     \"source\": \"bpf\",\n                     \"fstype\": \"bpf\",\n                     \"options\": \"rw,nosuid,nodev,noexec,relatime,mode=700\"\n                  },{\n                     \"target\": \"/sys/kernel/tracing\",\n                     \"source\": \"tracefs\",\n                     \"fstype\": \"tracefs\",\n                     \"options\": \"rw,nosuid,nodev,noexec,relatime\"\n                  },{\n                     \"target\": \"/sys/kernel/debug\",\n                     \"source\": \"debugfs\",\n                     \"fstype\": \"debugfs\",\n                     \"options\": \"rw,nosuid,nodev,noexec,relatime\"\n                  },{\n                     \"target\": \"/sys/kernel/config\",\n                     \"source\": \"configfs\",\n                     \"fstype\": \"configfs\",\n                     \"options\": \"rw,nosuid,nodev,noexec,relatime\"\n                  },{\n                     \"target\": \"/sys/fs/fuse/connections\",\n                     \"source\": \"fusectl\",\n                     \"fstype\": \"fusectl\",\n                     \"options\": \"rw,nosuid,nodev,noexec,relatime\"\n                  }\n               ]\n            },{\n               \"target\": \"/proc\",\n               \"source\": \"proc\",\n               \"fstype\": \"proc\",\n               \"options\": \"rw,nosuid,nodev,noexec,relatime\",\n               \"children\": [\n                  {\n                     \"target\": \"/proc/sys/fs/binfmt_misc\",\n                     \"source\": \"systemd-1\",\n                     \"fstype\": \"autofs\",\n                     \"options\": \"rw,relatime,fd=32,pgrp=1,timeout=0,minproto=5,maxproto=5,direct,pipe_ino=25056\",\n                     \"children\": [\n                        {\n                           \"target\": \"/proc/sys/fs/binfmt_misc\",\n                           \"source\": \"binfmt_misc\",\n                           \"fstype\": \"binfmt_misc\",\n                           \"options\": \"rw,nosuid,nodev,noexec,relatime\"\n                        }\n                     ]\n                  }\n               ]\n            },{\n               \"target\": \"/dev\",\n               \"source\": \"udev\",\n               \"fstype\": \"devtmpfs\",\n               \"options\": \"rw,nosuid,relatime,size=14601596k,nr_inodes=3650399,mode=755,inode64\",\n               \"children\": [\n                  {\n                     \"target\": \"/dev/pts\",\n                     \"source\": \"devpts\",\n                     \"fstype\": \"devpts\",\n                     \"options\": \"rw,nosuid,noexec,relatime,gid=5,mode=620,ptmxmode=000\"\n                  },{\n                     \"target\": \"/dev/shm\",\n                     \"source\": \"tmpfs\",\n                     \"fstype\": \"tmpfs\",\n                     \"options\": \"rw,nosuid,nodev,inode64\"\n                  },{\n                     \"target\": \"/dev/hugepages\",\n                     \"source\": \"hugetlbfs\",\n                     \"fstype\": \"hugetlbfs\",\n                     \"options\": \"rw,nosuid,nodev,relatime,pagesize=2M\"\n                  },{\n                     \"target\": \"/dev/mqueue\",\n                     \"source\": \"mqueue\",\n                     \"fstype\": \"mqueue\",\n                     \"options\": \"rw,nosuid,nodev,noexec,relatime\"\n                  }\n               ]\n            },{\n               \"target\": \"/run\",\n               \"source\": \"tmpfs\",\n               \"fstype\": \"tmpfs\",\n               \"options\": \"rw,nosuid,nodev,noexec,relatime,size=3234284k,mode=755,inode64\",\n               \"children\": [\n                  {\n                     \"target\": \"/run/lock\",\n                     \"source\": \"tmpfs\",\n                     \"fstype\": \"tmpfs\",\n                     \"options\": \"rw,nosuid,nodev,noexec,relatime,size=5120k,inode64\"\n                  },{\n                     \"target\": \"/run/snapd/ns\",\n                     \"source\": \"tmpfs[/snapd/ns]\",\n                     \"fstype\": \"tmpfs\",\n                     \"options\": \"rw,nosuid,nodev,noexec,relatime,size=3234284k,mode=755,inode64\",\n                     \"children\": [\n                        {\n                           \"target\": \"/run/snapd/ns/snapd-desktop-integration.mnt\",\n                           \"source\": \"nsfs[mnt:[4026533048]]\",\n                           \"fstype\": \"nsfs\",\n                           \"options\": \"rw\"\n                        },{\n                           \"target\": \"/run/snapd/ns/firmware-updater.mnt\",\n                           \"source\": \"nsfs[mnt:[4026532860]]\",\n                           \"fstype\": \"nsfs\",\n                           \"options\": \"rw\"\n                        },{\n                           \"target\": \"/run/snapd/ns/firefox.mnt\",\n                           \"source\": \"nsfs[mnt:[4026532858]]\",\n                           \"fstype\": \"nsfs\",\n                           \"options\": \"rw\"\n                        }\n                     ]\n                  },{\n                     \"target\": \"/run/user/1000\",\n                     \"source\": \"tmpfs\",\n                     \"fstype\": \"tmpfs\",\n                     \"options\": \"rw,nosuid,nodev,relatime,size=3234280k,nr_inodes=808570,mode=700,uid=1000,gid=1000,inode64\",\n                     \"children\": [\n                        {\n                           \"target\": \"/run/user/1000/doc\",\n                           \"source\": \"portal\",\n                           \"fstype\": \"fuse.portal\",\n                           \"options\": \"rw,nosuid,nodev,relatime,user_id=1000,group_id=1000\"\n                        },{\n                           \"target\": \"/run/user/1000/gvfs\",\n                           \"source\": \"gvfsd-fuse\",\n                           \"fstype\": \"fuse.gvfsd-fuse\",\n                           \"options\": \"rw,nosuid,nodev,relatime,user_id=1000,group_id=1000\"\n                        }\n                     ]\n                  }\n               ]\n            },{\n               \"target\": \"/snap/bare/5\",\n               \"source\": \"/dev/loop0\",\n               \"fstype\": \"squashfs\",\n               \"options\": \"ro,nodev,relatime,errors=continue,threads=single\"\n            },{\n               \"target\": \"/snap/core20/2866\",\n               \"source\": \"/dev/loop1\",\n               \"fstype\": \"squashfs\",\n               \"options\": \"ro,nodev,relatime,errors=continue,threads=single\"\n            },{\n               \"target\": \"/snap/core20/2922\",\n               \"source\": \"/dev/loop2\",\n               \"fstype\": \"squashfs\",\n               \"options\": \"ro,nodev,relatime,errors=continue,threads=single\"\n            },{\n               \"target\": \"/snap/core22/2437\",\n               \"source\": \"/dev/loop3\",\n               \"fstype\": \"squashfs\",\n               \"options\": \"ro,nodev,relatime,errors=continue,threads=single\"\n            },{\n               \"target\": \"/snap/core22/2955\",\n               \"source\": \"/dev/loop5\",\n               \"fstype\": \"squashfs\",\n               \"options\": \"ro,nodev,relatime,errors=continue,threads=single\"\n            },{\n               \"target\": \"/snap/core24/1643\",\n               \"source\": \"/dev/loop6\",\n               \"fstype\": \"squashfs\",\n               \"options\": \"ro,nodev,relatime,errors=continue,threads=single\"\n            },{\n               \"target\": \"/snap/firefox/8929\",\n               \"source\": \"/dev/loop8\",\n               \"fstype\": \"squashfs\",\n               \"options\": \"ro,nodev,relatime,errors=continue,threads=single\"\n            },{\n               \"target\": \"/snap/firmware-updater/226\",\n               \"source\": \"/dev/loop10\",\n               \"fstype\": \"squashfs\",\n               \"options\": \"ro,nodev,relatime,errors=continue,threads=single\"\n            },{\n               \"target\": \"/snap/gnome-42-2204/247\",\n               \"source\": \"/dev/loop11\",\n               \"fstype\": \"squashfs\",\n               \"options\": \"ro,nodev,relatime,errors=continue,threads=single\"\n            },{\n               \"target\": \"/snap/gnome-42-2204/263\",\n               \"source\": \"/dev/loop12\",\n               \"fstype\": \"squashfs\",\n               \"options\": \"ro,nodev,relatime,errors=continue,threads=single\"\n            },{\n               \"target\": \"/snap/gnome-46-2404/153\",\n               \"source\": \"/dev/loop13\",\n               \"fstype\": \"squashfs\",\n               \"options\": \"ro,nodev,relatime,errors=continue,threads=single\"\n            },{\n               \"target\": \"/snap/gtk-common-themes/1535\",\n               \"source\": \"/dev/loop15\",\n               \"fstype\": \"squashfs\",\n               \"options\": \"ro,nodev,relatime,errors=continue,threads=single\"\n            },{\n               \"target\": \"/snap/mesa-2404/1165\",\n               \"source\": \"/dev/loop16\",\n               \"fstype\": \"squashfs\",\n               \"options\": \"ro,nodev,relatime,errors=continue,threads=single\"\n            },{\n               \"target\": \"/snap/gnome-46-2404/164\",\n               \"source\": \"/dev/loop14\",\n               \"fstype\": \"squashfs\",\n               \"options\": \"ro,nodev,relatime,errors=continue,threads=single\"\n            },{\n               \"target\": \"/snap/mesa-2404/1839\",\n               \"source\": \"/dev/loop17\",\n               \"fstype\": \"squashfs\",\n               \"options\": \"ro,nodev,relatime,errors=continue,threads=single\"\n            },{\n               \"target\": \"/snap/snap-store/1390\",\n               \"source\": \"/dev/loop18\",\n               \"fstype\": \"squashfs\",\n               \"options\": \"ro,nodev,relatime,errors=continue,threads=single\"\n            },{\n               \"target\": \"/snap/snap-store/1419\",\n               \"source\": \"/dev/loop19\",\n               \"fstype\": \"squashfs\",\n               \"options\": \"ro,nodev,relatime,errors=continue,threads=single\"\n            },{\n               \"target\": \"/snap/snapd/27738\",\n               \"source\": \"/dev/loop20\",\n               \"fstype\": \"squashfs\",\n               \"options\": \"ro,nodev,relatime,errors=continue,threads=single\"\n            },{\n               \"target\": \"/snap/snapd-desktop-integration/387\",\n               \"source\": \"/dev/loop21\",\n               \"fstype\": \"squashfs\",\n               \"options\": \"ro,nodev,relatime,errors=continue,threads=single\"\n            },{\n               \"target\": \"/snap/snapd/27710\",\n               \"source\": \"/dev/loop22\",\n               \"fstype\": \"squashfs\",\n               \"options\": \"ro,nodev,relatime,errors=continue,threads=single\"\n            },{\n               \"target\": \"/snap/snapd-desktop-integration/391\",\n               \"source\": \"/dev/loop23\",\n               \"fstype\": \"squashfs\",\n               \"options\": \"ro,nodev,relatime,errors=continue,threads=single\"\n            },{\n               \"target\": \"/boot/efi\",\n               \"source\": \"/dev/nvme0n1p2\",\n               \"fstype\": \"vfat\",\n               \"options\": \"rw,relatime,fmask=0022,dmask=0022,codepage=437,iocharset=iso8859-1,shortname=mixed,errors=remount-ro\"\n            },{\n               \"target\": \"/tmp/fuse\",\n               \"source\": \"/dev/fuse\",\n               \"fstype\": \"fuse\",\n               \"options\": \"rw,nosuid,nodev,relatime,user_id=1000,group_id=1000\"\n            },{\n               \"target\": \"/snap/firmware-updater/258\",\n               \"source\": \"/dev/loop24\",\n               \"fstype\": \"squashfs\",\n               \"options\": \"ro,nodev,relatime,errors=continue,threads=single\"\n            },{\n               \"target\": \"/snap/core24/2124\",\n               \"source\": \"/dev/loop9\",\n               \"fstype\": \"squashfs\",\n               \"options\": \"ro,nodev,relatime,errors=continue,threads=single\"\n            },{\n               \"target\": \"/snap/firefox/8969\",\n               \"source\": \"/dev/loop4\",\n               \"fstype\": \"squashfs\",\n               \"options\": \"ro,nodev,relatime,errors=continue,threads=single\"\n            }\n         ]\n      }\n   ]\n}\n",
+    "stderr": ""
+  },
+  "block_devices": {
+    "command": [
+      "lsblk",
+      "--json",
+      "--bytes",
+      "--output",
+      "NAME,TYPE,SIZE,FSTYPE,MOUNTPOINTS,PKNAME"
+    ],
+    "returncode": 0,
+    "stdout": "{\n   \"blockdevices\": [\n      {\n         \"name\": \"loop0\",\n         \"type\": \"loop\",\n         \"size\": 4096,\n         \"fstype\": \"squashfs\",\n         \"mountpoints\": [\n             \"/snap/bare/5\"\n         ],\n         \"pkname\": null\n      },{\n         \"name\": \"loop1\",\n         \"type\": \"loop\",\n         \"size\": 66879488,\n         \"fstype\": \"squashfs\",\n         \"mountpoints\": [\n             \"/snap/core20/2866\"\n         ],\n         \"pkname\": null\n      },{\n         \"name\": \"loop2\",\n         \"type\": \"loop\",\n         \"size\": 66883584,\n         \"fstype\": \"squashfs\",\n         \"mountpoints\": [\n             \"/snap/core20/2922\"\n         ],\n         \"pkname\": null\n      },{\n         \"name\": \"loop3\",\n         \"type\": \"loop\",\n         \"size\": 77586432,\n         \"fstype\": \"squashfs\",\n         \"mountpoints\": [\n             \"/snap/core22/2437\"\n         ],\n         \"pkname\": null\n      },{\n         \"name\": \"loop4\",\n         \"type\": \"loop\",\n         \"size\": 274079744,\n         \"fstype\": \"squashfs\",\n         \"mountpoints\": [\n             \"/snap/firefox/8969\"\n         ],\n         \"pkname\": null\n      },{\n         \"name\": \"loop5\",\n         \"type\": \"loop\",\n         \"size\": 77574144,\n         \"fstype\": \"squashfs\",\n         \"mountpoints\": [\n             \"/snap/core22/2955\"\n         ],\n         \"pkname\": null\n      },{\n         \"name\": \"loop6\",\n         \"type\": \"loop\",\n         \"size\": 70049792,\n         \"fstype\": \"squashfs\",\n         \"mountpoints\": [\n             \"/snap/core24/1643\"\n         ],\n         \"pkname\": null\n      },{\n         \"name\": \"loop8\",\n         \"type\": \"loop\",\n         \"size\": 273973248,\n         \"fstype\": \"squashfs\",\n         \"mountpoints\": [\n             \"/snap/firefox/8929\"\n         ],\n         \"pkname\": null\n      },{\n         \"name\": \"loop9\",\n         \"type\": \"loop\",\n         \"size\": 70033408,\n         \"fstype\": \"squashfs\",\n         \"mountpoints\": [\n             \"/snap/core24/2124\"\n         ],\n         \"pkname\": null\n      },{\n         \"name\": \"loop10\",\n         \"type\": \"loop\",\n         \"size\": 17301504,\n         \"fstype\": \"squashfs\",\n         \"mountpoints\": [\n             \"/snap/firmware-updater/226\"\n         ],\n         \"pkname\": null\n      },{\n         \"name\": \"loop11\",\n         \"type\": \"loop\",\n         \"size\": 557187072,\n         \"fstype\": \"squashfs\",\n         \"mountpoints\": [\n             \"/snap/gnome-42-2204/247\"\n         ],\n         \"pkname\": null\n      },{\n         \"name\": \"loop12\",\n         \"type\": \"loop\",\n         \"size\": 557309952,\n         \"fstype\": \"squashfs\",\n         \"mountpoints\": [\n             \"/snap/gnome-42-2204/263\"\n         ],\n         \"pkname\": null\n      },{\n         \"name\": \"loop13\",\n         \"type\": \"loop\",\n         \"size\": 635518976,\n         \"fstype\": \"squashfs\",\n         \"mountpoints\": [\n             \"/snap/gnome-46-2404/153\"\n         ],\n         \"pkname\": null\n      },{\n         \"name\": \"loop14\",\n         \"type\": \"loop\",\n         \"size\": 644382720,\n         \"fstype\": \"squashfs\",\n         \"mountpoints\": [\n             \"/snap/gnome-46-2404/164\"\n         ],\n         \"pkname\": null\n      },{\n         \"name\": \"loop15\",\n         \"type\": \"loop\",\n         \"size\": 96141312,\n         \"fstype\": \"squashfs\",\n         \"mountpoints\": [\n             \"/snap/gtk-common-themes/1535\"\n         ],\n         \"pkname\": null\n      },{\n         \"name\": \"loop16\",\n         \"type\": \"loop\",\n         \"size\": 414167040,\n         \"fstype\": \"squashfs\",\n         \"mountpoints\": [\n             \"/snap/mesa-2404/1165\"\n         ],\n         \"pkname\": null\n      },{\n         \"name\": \"loop17\",\n         \"type\": \"loop\",\n         \"size\": 421507072,\n         \"fstype\": \"squashfs\",\n         \"mountpoints\": [\n             \"/snap/mesa-2404/1839\"\n         ],\n         \"pkname\": null\n      },{\n         \"name\": \"loop18\",\n         \"type\": \"loop\",\n         \"size\": 12382208,\n         \"fstype\": \"squashfs\",\n         \"mountpoints\": [\n             \"/snap/snap-store/1390\"\n         ],\n         \"pkname\": null\n      },{\n         \"name\": \"loop19\",\n         \"type\": \"loop\",\n         \"size\": 12406784,\n         \"fstype\": \"squashfs\",\n         \"mountpoints\": [\n             \"/snap/snap-store/1419\"\n         ],\n         \"pkname\": null\n      },{\n         \"name\": \"loop20\",\n         \"type\": \"loop\",\n         \"size\": 52711424,\n         \"fstype\": \"squashfs\",\n         \"mountpoints\": [\n             \"/snap/snapd/27738\"\n         ],\n         \"pkname\": null\n      },{\n         \"name\": \"loop21\",\n         \"type\": \"loop\",\n         \"size\": 847872,\n         \"fstype\": \"squashfs\",\n         \"mountpoints\": [\n             \"/snap/snapd-desktop-integration/387\"\n         ],\n         \"pkname\": null\n      },{\n         \"name\": \"loop22\",\n         \"type\": \"loop\",\n         \"size\": 52535296,\n         \"fstype\": \"squashfs\",\n         \"mountpoints\": [\n             \"/snap/snapd/27710\"\n         ],\n         \"pkname\": null\n      },{\n         \"name\": \"loop23\",\n         \"type\": \"loop\",\n         \"size\": 847872,\n         \"fstype\": \"squashfs\",\n         \"mountpoints\": [\n             \"/snap/snapd-desktop-integration/391\"\n         ],\n         \"pkname\": null\n      },{\n         \"name\": \"loop24\",\n         \"type\": \"loop\",\n         \"size\": 13316096,\n         \"fstype\": \"squashfs\",\n         \"mountpoints\": [\n             \"/snap/firmware-updater/258\"\n         ],\n         \"pkname\": null\n      },{\n         \"name\": \"nvme0n1\",\n         \"type\": \"disk\",\n         \"size\": 1024209543168,\n         \"fstype\": null,\n         \"mountpoints\": [\n             null\n         ],\n         \"pkname\": null,\n         \"children\": [\n            {\n               \"name\": \"nvme0n1p1\",\n               \"type\": \"part\",\n               \"size\": 16777216,\n               \"fstype\": null,\n               \"mountpoints\": [\n                   null\n               ],\n               \"pkname\": \"nvme0n1\"\n            },{\n               \"name\": \"nvme0n1p2\",\n               \"type\": \"part\",\n               \"size\": 314572800,\n               \"fstype\": \"vfat\",\n               \"mountpoints\": [\n                   \"/boot/efi\"\n               ],\n               \"pkname\": \"nvme0n1\"\n            },{\n               \"name\": \"nvme0n1p3\",\n               \"type\": \"part\",\n               \"size\": 511101108224,\n               \"fstype\": \"ntfs\",\n               \"mountpoints\": [\n                   null\n               ],\n               \"pkname\": \"nvme0n1\"\n            },{\n               \"name\": \"nvme0n1p4\",\n               \"type\": \"part\",\n               \"size\": 512775684096,\n               \"fstype\": \"ext4\",\n               \"mountpoints\": [\n                   \"/\"\n               ],\n               \"pkname\": \"nvme0n1\"\n            }\n         ]\n      }\n   ]\n}\n",
+    "stderr": ""
+  },
+  "worktrees": {
+    "command": [
+      "git",
+      "-C",
+      "/home/linux/Documents/MSM",
+      "worktree",
+      "list",
+      "--porcelain"
+    ],
+    "returncode": 0,
+    "stdout": "worktree /home/linux/Documents/MSM\nHEAD a0d3d8ad2cd037c71845119840dfd5cae426c2e6\nbranch refs/heads/exp/d5-ideal-20target-registration\n\nworktree /home/linux/Documents/MSM-d5-training-clean\nHEAD fa3ec10712cd03533c718283b36a6326bd29f5c7\ndetached\n\n",
+    "stderr": ""
+  },
+  "totals": {
+    "file_count": 248529,
+    "logical_bytes": 74570887707,
+    "allocated_bytes": 75150909440,
+    "directory_count": 19460,
+    "symlink_count": 2,
+    "special_count": 0,
+    "error_count": 0
+  },
+  "nested_repository_sizes": [
+    {
+      "path": "/home/linux/Documents/MSM/paper/Fastlab_world_fly",
+      "file_count": 257,
+      "logical_bytes": 350062569,
+      "allocated_bytes": 350658560,
+      "directory_count": 49,
+      "symlink_count": 0,
+      "special_count": 0,
+      "error_count": 0
+    },
+    {
+      "path": "/home/linux/Documents/MSM/paper/YOPO",
+      "file_count": 551,
+      "logical_bytes": 1993740832,
+      "allocated_bytes": 1995108352,
+      "directory_count": 127,
+      "symlink_count": 0,
+      "special_count": 0,
+      "error_count": 0
+    },
+    {
+      "path": "/home/linux/Documents/MSM/paper/ego-planner",
+      "file_count": 594,
+      "logical_bytes": 99151673,
+      "allocated_bytes": 100626432,
+      "directory_count": 156,
+      "symlink_count": 1,
+      "special_count": 0,
+      "error_count": 0
+    },
+    {
+      "path": "/home/linux/Documents/MSM/paper/ego-planner-swarm",
+      "file_count": 625,
+      "logical_bytes": 99765272,
+      "allocated_bytes": 101335040,
+      "directory_count": 169,
+      "symlink_count": 0,
+      "special_count": 0,
+      "error_count": 0
+    }
+  ],
+  "repositories": [
+    {
+      "path": "/home/linux/Documents/MSM",
+      "exists": true,
+      "head": {
+        "command": [
+          "git",
+          "-C",
+          "/home/linux/Documents/MSM",
+          "rev-parse",
+          "HEAD"
+        ],
+        "returncode": 0,
+        "stdout": "a0d3d8ad2cd037c71845119840dfd5cae426c2e6\n",
+        "stderr": ""
+      },
+      "status": {
+        "command": [
+          "git",
+          "-C",
+          "/home/linux/Documents/MSM",
+          "status",
+          "--porcelain=v1",
+          "--untracked-files=all"
+        ],
+        "returncode": 0,
+        "stdout": "?? \"deliverables/background/\\346\\243\\200\\347\\264\\242-\\344\\270\\255\\345\\233\\275\\347\\237\\245\\347\\275\\221.html\"\n?? \"deliverables/background/\\346\\243\\200\\347\\264\\242-\\344\\270\\255\\345\\233\\275\\347\\237\\245\\347\\275\\221_files/120b9fa4fbe740e0a23e762814caf786.jpg\"\n?? \"deliverables/background/\\346\\243\\200\\347\\264\\242-\\344\\270\\255\\345\\233\\275\\347\\237\\245\\347\\275\\221_files/15fdfa454668409a9f469d6003391900.jpg\"\n?? \"deliverables/background/\\346\\243\\200\\347\\264\\242-\\344\\270\\255\\345\\233\\275\\347\\237\\245\\347\\275\\221_files/160fe37b1cfa412889f86080e1d8544f.jpg\"\n?? \"deliverables/background/\\346\\243\\200\\347\\264\\242-\\344\\270\\255\\345\\233\\275\\347\\237\\245\\347\\275\\221_files/175da7b01c264de8839044659dd014b7.jpg\"\n?? \"deliverables/background/\\346\\243\\200\\347\\264\\242-\\344\\270\\255\\345\\233\\275\\347\\237\\245\\347\\275\\221_files/25c398b837e54f1ea59193d28ed0aaac.jpg\"\n?? \"deliverables/background/\\346\\243\\200\\347\\264\\242-\\344\\270\\255\\345\\233\\275\\347\\237\\245\\347\\275\\221_files/267939733b2b49e19b229d978c01aff2.jpg\"\n?? \"deliverables/background/\\346\\243\\200\\347\\264\\242-\\344\\270\\255\\345\\233\\275\\347\\237\\245\\347\\275\\221_files/557e8a316c2e4c0e8a409eadc8744a10.jpg\"\n?? \"deliverables/background/\\346\\243\\200\\347\\264\\242-\\344\\270\\255\\345\\233\\275\\347\\237\\245\\347\\275\\221_files/658970feea8042688261e7fb6c981f13.jpg\"\n?? \"deliverables/background/\\346\\243\\200\\347\\264\\242-\\344\\270\\255\\345\\233\\275\\347\\237\\245\\347\\275\\221_files/98d9beb4d63a4df2a1f80a2f4f005357.jpg\"\n?? \"deliverables/background/\\346\\243\\200\\347\\264\\242-\\344\\270\\255\\345\\233\\275\\347\\237\\245\\347\\275\\221_files/ad.css\"\n?? \"deliverables/background/\\346\\243\\200\\347\\264\\242-\\344\\270\\255\\345\\233\\275\\347\\237\\245\\347\\275\\221_files/ad.js\"\n?? \"deliverables/background/\\346\\243\\200\\347\\264\\242-\\344\\270\\255\\345\\233\\275\\347\\237\\245\\347\\275\\221_files/aes.js\"\n?? \"deliverables/background/\\346\\243\\200\\347\\264\\242-\\344\\270\\255\\345\\233\\275\\347\\237\\245\\347\\275\\221_files/cnkisug.min.js\"\n?? \"deliverables/background/\\346\\243\\200\\347\\264\\242-\\344\\270\\255\\345\\233\\275\\347\\237\\245\\347\\275\\221_files/common.min.js\"\n?? \"deliverables/background/\\346\\243\\200\\347\\264\\242-\\344\\270\\255\\345\\233\\275\\347\\237\\245\\347\\275\\221_files/compare_template.css\"\n?? \"deliverables/background/\\346\\243\\200\\347\\264\\242-\\344\\270\\255\\345\\233\\275\\347\\237\\245\\347\\275\\221_files/crypto-js.js\"\n?? \"deliverables/background/\\346\\243\\200\\347\\264\\242-\\344\\270\\255\\345\\233\\275\\347\\237\\245\\347\\275\\221_files/crypto-js.min.js\"\n?? \"deliverables/background/\\346\\243\\200\\347\\264\\242-\\344\\270\\255\\345\\233\\275\\347\\237\\245\\347\\275\\221_files/dblistnew.index.min.js\"\n?? \"deliverables/background/\\346\\243\\200\\347\\264\\242-\\344\\270\\255\\345\\233\\275\\347\\237\\245\\347\\275\\221_files/defaultsearchindex.index.min.js\"\n?? \"deliverables/background/\\346\\243\\200\\347\\264\\242-\\344\\270\\255\\345\\233\\275\\347\\237\\245\\347\\275\\221_files/eaec91d4b4a643b3b2abb343ff63b071.jpg\"\n?? \"deliverables/background/\\346\\243\\200\\347\\264\\242-\\344\\270\\255\\345\\233\\275\\347\\237\\245\\347\\275\\221_files/footer.css\"\n?? \"deliverables/background/\\346\\243\\200\\347\\264\\242-\\344\\270\\255\\345\\233\\275\\347\\237\\245\\347\\275\\221_files/header.v3.min.js\"\n?? \"deliverables/background/\\346\\243\\200\\347\\264\\242-\\344\\270\\255\\345\\233\\275\\347\\237\\245\\347\\275\\221_files/imglist_top.min.css\"\n?? \"deliverables/background/\\346\\243\\200\\347\\264\\242-\\344\\270\\255\\345\\233\\275\\347\\237\\245\\347\\275\\221_files/jquery-3.7.1.min.js\"\n?? \"deliverables/background/\\346\\243\\200\\347\\264\\242-\\344\\270\\255\\345\\233\\275\\347\\237\\245\\347\\275\\221_files/kindex.min.css\"\n?? \"deliverables/background/\\346\\243\\200\\347\\264\\242-\\344\\270\\255\\345\\233\\275\\347\\237\\245\\347\\275\\221_files/kns.brief.min.js\"\n?? \"deliverables/background/\\346\\243\\200\\347\\264\\242-\\344\\270\\255\\345\\233\\275\\347\\237\\245\\347\\275\\221_files/kns.common.min.js\"\n?? \"deliverables/background/\\346\\243\\200\\347\\264\\242-\\344\\270\\255\\345\\233\\275\\347\\237\\245\\347\\275\\221_files/knsad.js\"\n?? \"deliverables/background/\\346\\243\\200\\347\\264\\242-\\344\\270\\255\\345\\233\\275\\347\\237\\245\\347\\275\\221_files/layer.css\"\n?? \"deliverables/background/\\346\\243\\200\\347\\264\\242-\\344\\270\\255\\345\\233\\275\\347\\237\\245\\347\\275\\221_files/layer.js\"\n?? \"deliverables/background/\\346\\243\\200\\347\\264\\242-\\344\\270\\255\\345\\233\\275\\347\\237\\245\\347\\275\\221_files/layout.index.min.js\"\n?? \"deliverables/background/\\346\\243\\200\\347\\264\\242-\\344\\270\\255\\345\\233\\275\\347\\237\\245\\347\\275\\221_files/layout.min.css\"\n?? \"deliverables/background/\\346\\243\\200\\347\\264\\242-\\344\\270\\255\\345\\233\\275\\347\\237\\245\\347\\275\\221_files/loginhead.css\"\n?? \"deliverables/background/\\346\\243\\200\\347\\264\\242-\\344\\270\\255\\345\\233\\275\\347\\237\\245\\347\\275\\221_files/loginhead.js\"\n?? \"deliverables/background/\\346\\243\\200\\347\\264\\242-\\344\\270\\255\\345\\233\\275\\347\\237\\245\\347\\275\\221_files/normalize.css\"\n?? \"deliverables/background/\\346\\243\\200\\347\\264\\242-\\344\\270\\255\\345\\233\\275\\347\\237\\245\\347\\275\\221_files/public.min.css\"\n?? \"deliverables/background/\\346\\243\\200\\347\\264\\242-\\344\\270\\255\\345\\233\\275\\347\\237\\245\\347\\275\\221_files/templatecommon.min.css\"\n?? deliverables/project_audits/20260926_stage3_backup_preflight_v1/BACKUP_SOURCE_FILES.jsonl.gz\n?? deliverables/project_audits/tools/prepare_backup_preflight.py\n?? deliverables/project_audits/tools/test_prepare_backup_preflight.py\n?? \"deliverables/\\345\\233\\276\\347\\211\\207\\347\\264\\240\\346\\235\\220/ChatGPT Image Sep 7, 2026, 06_.zip\"\n?? paper/Fastlab_world_fly/\n?? paper/YOPO/\n?? paper/ego-planner-swarm/\n?? paper/ego-planner/\n?? paper/english_lines.txt\n?? \"paper/other-paper/A Decoupled and Linear Framework for Global Outlier Rejection over Planar Pose Graph.pdf\"\n?? \"paper/other-paper/A Linear and Exact Algorithm for Whole-Body Collision Evaluation via Scale Optimization.pdf\"\n?? \"paper/other-paper/Adaptive Tracking and Perching for Quadrotor in Dynamic Scenarios.pdf\"\n?? \"paper/other-paper/Aggressive Collision-Inclusive Motion Planning.pdf\"\n?? \"paper/other-paper/An Efficient Spatial-Temporal Trajectory Planner for Autonomous Vehicles in Unstructured Environments.pdf\"\n?? \"paper/other-paper/Auto Filmer Autonomous Aerial Videography Under Human Interaction.pdf\"\n?? \"paper/other-paper/Autonomous Exploration With Terrestrial-Aerial Bimodal Vehicles.pdf\"\n?? \"paper/other-paper/Bearing-Based Relative Localization for Robotic Swarm With Partially Mutual Observations.pdf\"\n?? \"paper/other-paper/Collaborative Planning for Catching and Transporting Objects in Unstructured Environments.pdf\"\n?? \"paper/other-paper/Cost-Effective Swarm Navigation System via Close Cooperation.pdf\"\n?? \"paper/other-paper/DPNet Doppler LiDAR Motion Planning for Highly-Dynamic Environments.pdf\"\n?? \"paper/other-paper/Dynamically Feasible Trajectory Generation With Optimization-Embedded Networks for Autonomous Flight.pdf\"\n?? \"paper/other-paper/Efficient View Path Planning for Autonomous Implicit Reconstruction.pdf\"\n?? \"paper/other-paper/FACT Fast and Active Coordinate Initialization for Vision-Based Drone Swarms.pdf\"\n?? \"paper/other-paper/FAR-AVIO Fast and Robust Schur-Complement Based Acoustic-Visual-Inertial Fusion Odometry With Sensor Calibration.pdf\"\n?? \"paper/other-paper/FastSim A Modular and Plug-and-Play Simulator for Aerial Robots.pdf\"\n?? \"paper/other-paper/Flying in Dynamic Scenes With Multitarget Velocimetry and Perception-Enhanced Planning.pdf\"\n?? \"paper/other-paper/Global-State-Free Obstacle Avoidance for Quadrotor Control in Air-Ground Cooperation.pdf\"\n?? \"paper/other-paper/Ground-Effect-Aware Modeling and Control for Multicopters.pdf\"\n?? \"paper/other-paper/Hierarchically Depicting Vehicle Trajectory with Stability in Complex Environments.pdf\"\n?? \"paper/other-paper/Impact-Aware Planning and Control for Aerial Robots With Suspended Payloads.pdf\"\n?? \"paper/other-paper/LEMON-Mapping Loop-Enhanced Large-Scale Multi-Session Point Cloud Merging and Optimization for Globally Consistent Mapping.pdf\"\n?? \"paper/other-paper/LF-VISLAM A SLAM Framework for Large Field-of-View Cameras With Negative Imaging Plane on Mobile Agents.pdf\"\n?? \"paper/other-paper/LiDAR-VGGT Cross-Modal Coarse-to-Fine Fusion for Globally Consistent and Metric-Scale Dense Mapping.pdf\"\n?? \"paper/other-paper/Microsaccade-Inspired Event Camera for Robotics.pdf\"\n?? \"paper/other-paper/NavDreamer Video Models as Zero-Shot 3D Navigators.pdf\"\n?? \"paper/other-paper/PredRecon A Prediction-boosted Planning Framework for Fast and High-quality Autonomous Aerial Reconstruction.pdf\"\n?? \"paper/other-paper/Primitive-Swarm An Ultra-Lightweight and Scalable Planner for Large-Scale Aerial Swarms.pdf\"\n?? \"paper/other-paper/Real-Time Trajectory Planning for Aerial Perching.pdf\"\n?? \"paper/other-paper/Rotor-Failure-Aware Quadrotors Flight in Unknown Environments.pdf\"\n?? \"paper/other-paper/STD-Trees Spatio-temporal Deformable Trees for Multirotors Kinodynamic Planning.pdf\"\n?? \"paper/other-paper/Skywalker A Compact and Agile Air-Ground Omnidirectional Vehicle.pdf\"\n?? \"paper/other-paper/Star-Searcher A Complete and Efficient Aerial System for Autonomous Target Search in Complex Unknown Environments.pdf\"\n?? \"paper/other-paper/The Forgotten Spectrum Reviving Ultrasound for Robust Autonomy.pdf\"\n?? \"paper/other-paper/Universal Trajectory Optimization Framework for Differential Drive Robot Class.pdf\"\n?? paper/other-paper/archives/bulk-download(1).zip\n?? paper/other-paper/archives/bulk-download(2).zip\n?? paper/other-paper/archives/bulk-download(3).zip\n?? paper/other-paper/archives/bulk-download.zip\n?? \"paper/other-paper/duplicates/Diffusion-Based 3-D Radar Semantic Perception in Cluttered Agricultural Environments.pdf\"\n?? \"paper/other-paper/duplicates/Fast Iterative Region Inflation for Computing Large 2-D-3-D Convex Regions of Obstacle-Free Space.pdf\"\n?? \"paper/other-paper/duplicates/Flying in Clutter on Monocular RGB by Learning in 3D Radiance Fields With Domain Adaptation.pdf\"\n?? \"paper/other-paper/duplicates/High-Speed Vision-Based Flight in Clutter With Safety-Shielded Reinforcement Learning.pdf\"\n?? \"paper/other-paper/duplicates/Precise Aggressive Aerial Maneuvers with Sensorimotor Policies Science Robotics Version.pdf\"\n?? \"paper/other-paper/duplicates/RE-Formation Resilient and Efficient Formation Planning in Large-Scale Distributed Aerial Swarms.pdf\"\n?? \"paper/other-paper/duplicates/Ring-Rotor A Novel Retractable Ring-Shaped Quadrotor With Aerial Grasping and Transportation Capability.pdf\"\n?? \"paper/other-paper/duplicates/Safe and Agile Transportation of Cable-Suspended Payload via Multiple Aerial Robots.pdf\"\n?? \"paper/other-paper/duplicates/Skater A Novel Bi-Modal Bi-Copter Robot for Adaptive Locomotion in Air and Diverse Terrain.pdf\"\n?? \"paper/other-paper/duplicates/Unlocking Aerobatic Potential of Quadcopters Duplicate Copy.pdf\"\n?? paper/other-paper/paper20.txt\n?? paper/other-paper/paper21.txt\n?? paper/other-paper/skywalker.txt\n?? \"paper/other-paper/\\344\\270\\255\\346\\226\\207\\350\\257\\246\\350\\247\\243/PDF.zip\"\n?? \"paper/other-paper/\\344\\270\\255\\346\\226\\207\\350\\257\\246\\350\\247\\243/PDF/01_\\345\\271\\263\\351\\235\\242\\344\\275\\215\\345\\247\\277\\345\\233\\276\\345\\205\\250\\345\\261\\200\\345\\244\\226\\347\\202\\271\\345\\211\\224\\351\\231\\244\\350\\247\\243\\350\\200\\246\\347\\272\\277\\346\\200\\247\\346\\241\\206\\346\\236\\266.pdf\"\n?? \"paper/other-paper/\\344\\270\\255\\346\\226\\207\\350\\257\\246\\350\\247\\243/PDF/02_\\345\\237\\272\\344\\272\\216\\345\\260\\272\\345\\272\\246\\344\\274\\230\\345\\214\\226\\347\\232\\204\\345\\205\\250\\346\\234\\272\\350\\272\\253\\347\\262\\276\\347\\241\\256\\347\\242\\260\\346\\222\\236\\350\\257\\204\\344\\274\\260\\347\\272\\277\\346\\200\\247\\347\\256\\227\\346\\263\\225.pdf\"\n?? \"paper/other-paper/\\344\\270\\255\\346\\226\\207\\350\\257\\246\\350\\247\\243/PDF/03_\\345\\212\\250\\346\\200\\201\\345\\234\\272\\346\\231\\257\\344\\270\\213\\345\\233\\233\\346\\227\\213\\347\\277\\274\\350\\207\\252\\351\\200\\202\\345\\272\\224\\350\\267\\237\\350\\270\\252\\344\\270\\216\\345\\201\\234\\346\\263\\212.pdf\"\n?? \"paper/other-paper/\\344\\270\\255\\346\\226\\207\\350\\257\\246\\350\\247\\243/PDF/04_\\345\\214\\205\\345\\220\\253\\347\\242\\260\\346\\222\\236\\347\\232\\204\\351\\253\\230\\345\\212\\250\\346\\200\\201\\346\\234\\272\\345\\212\\250\\350\\277\\220\\345\\212\\250\\350\\247\\204\\345\\210\\222.pdf\"\n?? \"paper/other-paper/\\344\\270\\255\\346\\226\\207\\350\\257\\246\\350\\247\\243/PDF/05_\\351\\235\\236\\347\\273\\223\\346\\236\\204\\345\\214\\226\\347\\216\\257\\345\\242\\203\\344\\270\\213\\350\\207\\252\\345\\212\\250\\351\\251\\276\\351\\251\\266\\350\\275\\246\\350\\276\\206\\351\\253\\230\\346\\225\\210\\346\\227\\266\\347\\251\\272\\350\\275\\250\\350\\277\\271\\350\\247\\204\\345\\210\\222\\345\\231\\250.pdf\"\n?? \"paper/other-paper/\\344\\270\\255\\346\\226\\207\\350\\257\\246\\350\\247\\243/PDF/06_Auto_Filmer\\344\\272\\272\\346\\234\\272\\344\\272\\244\\344\\272\\222\\344\\270\\213\\347\\232\\204\\350\\207\\252\\344\\270\\273\\347\\251\\272\\344\\270\\255\\345\\275\\261\\350\\247\\206\\346\\213\\215\\346\\221\\204.pdf\"\n?? \"paper/other-paper/\\344\\270\\255\\346\\226\\207\\350\\257\\246\\350\\247\\243/PDF/07_\\347\\251\\272\\345\\234\\260\\345\\217\\214\\346\\250\\241\\346\\200\\201\\346\\234\\272\\345\\231\\250\\344\\272\\272\\350\\207\\252\\344\\270\\273\\347\\216\\257\\345\\242\\203\\346\\216\\242\\347\\264\\242.pdf\"\n?? \"paper/other-paper/\\344\\270\\255\\346\\226\\207\\350\\257\\246\\350\\247\\243/PDF/08_\\345\\237\\272\\344\\272\\216\\346\\226\\271\\344\\275\\215\\346\\265\\213\\351\\207\\217\\347\\232\\204\\351\\203\\250\\345\\210\\206\\347\\233\\270\\344\\272\\222\\350\\247\\202\\346\\265\\213\\346\\234\\272\\345\\231\\250\\344\\272\\272\\351\\233\\206\\347\\276\\244\\347\\233\\270\\345\\257\\271\\345\\256\\232\\344\\275\\215.pdf\"\n?? \"paper/other-paper/\\344\\270\\255\\346\\226\\207\\350\\257\\246\\350\\247\\243/PDF/09_\\351\\235\\236\\347\\273\\223\\346\\236\\204\\345\\214\\226\\347\\216\\257\\345\\242\\203\\344\\270\\213\\345\\244\\232\\346\\234\\272\\345\\215\\217\\345\\220\\214\\346\\216\\245\\345\\212\\233\\347\\211\\251\\344\\275\\223\\346\\215\\225\\350\\216\\267\\344\\270\\216\\350\\277\\220\\350\\276\\223\\350\\247\\204\\345\\210\\222.pdf\"\n?? \"paper/other-paper/\\344\\270\\255\\346\\226\\207\\350\\257\\246\\350\\247\\243/PDF/10_\\347\\264\\247\\345\\257\\206\\345\\215\\217\\344\\275\\234\\344\\270\\213\\347\\232\\204\\351\\253\\230\\346\\200\\247\\344\\273\\267\\346\\257\\224\\346\\227\\240\\344\\272\\272\\346\\234\\272\\351\\233\\206\\347\\276\\244\\345\\257\\274\\350\\210\\252\\347\\263\\273\\347\\273\\237.pdf\"\n?? \"paper/other-paper/\\344\\270\\255\\346\\226\\207\\350\\257\\246\\350\\247\\243/PDF/11_DPNet\\345\\244\\232\\346\\231\\256\\345\\213\\222\\346\\277\\200\\345\\205\\211\\351\\233\\267\\350\\276\\276\\351\\253\\230\\345\\212\\250\\346\\200\\201\\347\\216\\257\\345\\242\\203\\350\\277\\220\\345\\212\\250\\350\\247\\204\\345\\210\\222.pdf\"\n?? \"paper/other-paper/\\344\\270\\255\\346\\226\\207\\350\\257\\246\\350\\247\\243/PDF/12_\\345\\265\\214\\345\\205\\245\\344\\274\\230\\345\\214\\226\\347\\245\\236\\347\\273\\217\\347\\275\\221\\347\\273\\234\\347\\232\\204\\350\\207\\252\\344\\270\\273\\351\\243\\236\\350\\241\\214\\345\\217\\257\\350\\241\\214\\345\\212\\250\\345\\212\\233\\345\\255\\246\\350\\275\\250\\350\\277\\271\\347\\224\\237\\346\\210\\220.pdf\"\n?? \"paper/other-paper/\\344\\270\\255\\346\\226\\207\\350\\257\\246\\350\\247\\243/PDF/13_\\350\\207\\252\\344\\270\\273\\351\\232\\220\\345\\274\\217\\347\\245\\236\\347\\273\\217\\351\\207\\215\\345\\273\\272\\347\\232\\204\\351\\253\\230\\346\\225\\210\\350\\247\\206\\347\\202\\271\\350\\267\\257\\345\\276\\204\\350\\247\\204\\345\\210\\222.pdf\"\n?? \"paper/other-paper/\\344\\270\\255\\346\\226\\207\\350\\257\\246\\350\\247\\243/PDF/14_FACT\\350\\247\\206\\350\\247\\211\\346\\227\\240\\344\\272\\272\\346\\234\\272\\351\\233\\206\\347\\276\\244\\345\\277\\253\\351\\200\\237\\344\\270\\273\\345\\212\\250\\345\\235\\220\\346\\240\\207\\347\\263\\273\\345\\210\\235\\345\\247\\213\\345\\214\\226.pdf\"\n?? \"paper/other-paper/\\344\\270\\255\\346\\226\\207\\350\\257\\246\\350\\247\\243/PDF/15_FAR-AVIO\\345\\237\\272\\344\\272\\216\\350\\210\\222\\345\\260\\224\\350\\241\\245\\347\\232\\204\\345\\243\\260\\345\\205\\211\\346\\203\\257\\350\\236\\215\\345\\220\\210\\351\\207\\214\\347\\250\\213\\350\\256\\241\\344\\270\\216\\345\\234\\250\\347\\272\\277\\346\\240\\207\\345\\256\\232.pdf\"\n?? \"paper/other-paper/\\344\\270\\255\\346\\226\\207\\350\\257\\246\\350\\247\\243/PDF/16_FastSim\\346\\250\\241\\345\\235\\227\\345\\214\\226\\345\\215\\263\\346\\217\\222\\345\\215\\263\\347\\224\\250\\347\\251\\272\\344\\270\\255\\346\\234\\272\\345\\231\\250\\344\\272\\272\\344\\273\\277\\347\\234\\237\\345\\271\\263\\345\\217\\260.pdf\"\n?? \"paper/other-paper/\\344\\270\\255\\346\\226\\207\\350\\257\\246\\350\\247\\243/PDF/17_\\345\\212\\250\\346\\200\\201\\345\\234\\272\\346\\231\\257\\345\\244\\232\\347\\233\\256\\346\\240\\207\\346\\265\\213\\351\\200\\237\\344\\270\\216\\346\\204\\237\\347\\237\\245\\345\\242\\236\\345\\274\\272\\350\\247\\204\\345\\210\\222\\351\\243\\236\\350\\241\\214.pdf\"\n?? \"paper/other-paper/\\344\\270\\255\\346\\226\\207\\350\\257\\246\\350\\247\\243/PDF/18_\\347\\251\\272\\345\\234\\260\\345\\215\\217\\345\\220\\214\\344\\270\\255\\346\\227\\240\\345\\205\\250\\345\\261\\200\\347\\212\\266\\346\\200\\201\\345\\233\\233\\346\\227\\213\\347\\277\\274\\351\\201\\277\\351\\232\\234\\346\\216\\247\\345\\210\\266.pdf\"\n?? \"paper/other-paper/\\344\\270\\255\\346\\226\\207\\350\\257\\246\\350\\247\\243/PDF/19_\\345\\244\\232\\346\\227\\213\\347\\277\\274\\350\\277\\221\\345\\234\\260\\346\\225\\210\\345\\272\\224\\345\\273\\272\\346\\250\\241\\344\\270\\216\\350\\207\\252\\351\\200\\202\\345\\272\\224\\346\\216\\247\\345\\210\\266.pdf\"\n?? \"paper/other-paper/\\344\\270\\255\\346\\226\\207\\350\\257\\246\\350\\247\\243/PDF/20_\\345\\244\\215\\346\\235\\202\\347\\216\\257\\345\\242\\203\\344\\270\\213\\345\\205\\274\\351\\241\\276\\347\\250\\263\\345\\256\\232\\346\\200\\247\\347\\232\\204\\350\\275\\246\\350\\276\\206\\345\\210\\206\\345\\261\\202\\350\\275\\250\\350\\277\\271\\350\\241\\250\\345\\276\\201.pdf\"\n?? \"paper/other-paper/\\344\\270\\255\\346\\226\\207\\350\\257\\246\\350\\247\\243/PDF/21_\\350\\200\\203\\350\\231\\221\\347\\242\\260\\346\\222\\236\\345\\206\\262\\345\\207\\273\\347\\232\\204\\347\\274\\206\\347\\273\\263\\346\\202\\254\\346\\214\\202\\350\\275\\275\\350\\215\\267\\346\\227\\240\\344\\272\\272\\346\\234\\272\\350\\247\\204\\345\\210\\222\\344\\270\\216\\346\\216\\247\\345\\210\\266.pdf\"\n?? \"paper/other-paper/\\344\\270\\255\\346\\226\\207\\350\\257\\246\\350\\247\\243/PDF/22_LEMON-Mapping\\345\\244\\247\\350\\247\\204\\346\\250\\241\\345\\244\\232\\346\\227\\266\\345\\272\\217\\347\\202\\271\\344\\272\\221\\350\\236\\215\\345\\220\\210\\344\\270\\216\\345\\233\\236\\347\\216\\257\\345\\242\\236\\345\\274\\272\\344\\274\\230\\345\\214\\226.pdf\"\n?? \"paper/other-paper/\\344\\270\\255\\346\\226\\207\\350\\257\\246\\350\\247\\243/PDF/23_LF-VISLAM\\350\\264\\237\\346\\210\\220\\345\\203\\217\\345\\271\\263\\351\\235\\242\\350\\266\\205\\345\\244\\247\\350\\247\\206\\345\\234\\272\\347\\233\\270\\346\\234\\272\\350\\247\\206\\350\\247\\211\\346\\203\\257\\345\\257\\274SLAM.pdf\"\n?? \"paper/other-paper/\\344\\270\\255\\346\\226\\207\\350\\257\\246\\350\\247\\243/PDF/24_LiDAR-VGGT\\350\\267\\250\\346\\250\\241\\346\\200\\201\\347\\262\\227\\345\\210\\260\\347\\262\\276\\350\\236\\215\\345\\220\\210\\345\\205\\250\\345\\261\\200\\344\\270\\200\\350\\207\\264\\347\\261\\263\\345\\210\\266\\347\\250\\240\\345\\257\\206\\345\\273\\272\\345\\233\\276.pdf\"\n?? \"paper/other-paper/\\344\\270\\255\\346\\226\\207\\350\\257\\246\\350\\247\\243/PDF/25_\\345\\276\\256\\350\\267\\263\\350\\247\\206\\344\\273\\277\\347\\224\\237\\344\\272\\213\\344\\273\\266\\347\\233\\270\\346\\234\\272\\346\\234\\272\\345\\231\\250\\344\\272\\272\\350\\247\\206\\350\\247\\211\\346\\204\\237\\347\\237\\245\\347\\263\\273\\347\\273\\237.pdf\"\n?? \"paper/other-paper/\\344\\270\\255\\346\\226\\207\\350\\257\\246\\350\\247\\243/PDF/26_NavDreamer\\345\\237\\272\\344\\272\\216\\350\\247\\206\\351\\242\\221\\347\\224\\237\\346\\210\\220\\346\\250\\241\\345\\236\\213\\347\\232\\204\\351\\233\\266\\346\\240\\267\\346\\234\\254\\344\\270\\211\\347\\273\\264\\345\\205\\267\\350\\272\\253\\345\\257\\274\\350\\210\\252.pdf\"\n?? \"paper/other-paper/\\344\\270\\255\\346\\226\\207\\350\\257\\246\\350\\247\\243/PDF/27_PredRecon\\345\\237\\272\\344\\272\\216\\351\\242\\204\\346\\265\\213\\345\\242\\236\\345\\274\\272\\347\\232\\204\\351\\253\\230\\346\\225\\210\\351\\253\\230\\350\\264\\250\\351\\207\\217\\350\\207\\252\\344\\270\\273\\347\\251\\272\\344\\270\\255\\344\\270\\211\\347\\273\\264\\351\\207\\215\\345\\273\\272.pdf\"\n?? \"paper/other-paper/\\344\\270\\255\\346\\226\\207\\350\\257\\246\\350\\247\\243/PDF/28_Primitive-Swarm\\350\\266\\205\\350\\275\\273\\351\\207\\217\\351\\253\\230\\346\\211\\251\\345\\261\\225\\345\\244\\247\\350\\247\\204\\346\\250\\241\\346\\227\\240\\344\\272\\272\\346\\234\\272\\351\\233\\206\\347\\276\\244\\350\\247\\204\\345\\210\\222\\345\\231\\250.pdf\"\n?? \"paper/other-paper/\\344\\270\\255\\346\\226\\207\\350\\257\\246\\350\\247\\243/PDF/29_\\345\\256\\236\\346\\227\\266\\347\\251\\272\\344\\270\\255\\345\\201\\234\\346\\263\\212\\350\\275\\250\\350\\277\\271\\350\\247\\204\\345\\210\\222.pdf\"\n?? \"paper/other-paper/\\344\\270\\255\\346\\226\\207\\350\\257\\246\\350\\247\\243/PDF/30_\\346\\227\\213\\347\\277\\274\\346\\225\\205\\351\\232\\234\\346\\204\\237\\347\\237\\245\\345\\233\\233\\346\\227\\213\\347\\277\\274\\346\\234\\252\\347\\237\\245\\347\\216\\257\\345\\242\\203\\350\\207\\252\\344\\270\\273\\351\\243\\236\\350\\241\\214.pdf\"\n?? \"paper/other-paper/\\344\\270\\255\\346\\226\\207\\350\\257\\246\\350\\247\\243/PDF/31_STD-Trees\\346\\227\\266\\347\\251\\272\\345\\217\\257\\345\\217\\230\\345\\275\\242\\346\\220\\234\\347\\264\\242\\346\\240\\221\\350\\277\\220\\345\\212\\250\\345\\212\\250\\345\\212\\233\\345\\255\\246\\350\\247\\204\\345\\210\\222.pdf\"\n?? \"paper/other-paper/\\344\\270\\255\\346\\226\\207\\350\\257\\246\\350\\247\\243/PDF/32_Skywalker\\347\\264\\247\\345\\207\\221\\347\\201\\265\\346\\264\\273\\347\\251\\272\\345\\234\\260\\345\\205\\250\\345\\220\\221\\347\\247\\273\\345\\212\\250\\346\\234\\272\\345\\231\\250\\344\\272\\272.pdf\"\n?? \"paper/other-paper/\\344\\270\\255\\346\\226\\207\\350\\257\\246\\350\\247\\243/PDF/33_Star-Searcher\\345\\244\\215\\346\\235\\202\\346\\234\\252\\347\\237\\245\\347\\216\\257\\345\\242\\203\\350\\207\\252\\344\\270\\273\\347\\233\\256\\346\\240\\207\\346\\220\\234\\347\\264\\242\\347\\263\\273\\347\\273\\237.pdf\"\n?? \"paper/other-paper/\\344\\270\\255\\346\\226\\207\\350\\257\\246\\350\\247\\243/PDF/34_\\345\\244\\215\\345\\205\\264\\350\\266\\205\\345\\243\\260\\346\\263\\242\\344\\274\\240\\346\\204\\237\\346\\236\\204\\345\\273\\272\\351\\262\\201\\346\\243\\222\\350\\207\\252\\344\\270\\273\\347\\263\\273\\347\\273\\237.pdf\"\n?? \"paper/other-paper/\\344\\270\\255\\346\\226\\207\\350\\257\\246\\350\\247\\243/PDF/35_\\345\\267\\256\\351\\200\\237\\351\\251\\261\\345\\212\\250\\346\\234\\272\\345\\231\\250\\344\\272\\272\\346\\227\\217\\351\\200\\232\\347\\224\\250\\350\\275\\250\\350\\277\\271\\344\\274\\230\\345\\214\\226\\346\\241\\206\\346\\236\\266.pdf\"\n?? \"paper/other-paper/\\344\\270\\255\\346\\226\\207\\350\\257\\246\\350\\247\\243/PDF/README.pdf\"\n?? paper/papers/01_Unlocking_Aerobatic_Potential_of_Quadcopters.pdf\n?? paper/papers/02_Reactive_Aerobatic_Flight_via_Reinforcement_Learning.pdf\n?? paper/papers/03_Automatic_Generation_of_Aerobatic_Flight_via_Diffusion_Models.pdf\n?? paper/papers/04_Flying_in_Clutter_on_Monocular_RGB.pdf\n?? paper/papers/05_High-Speed_Vision-Based_Flight_in_Clutter.pdf\n?? paper/papers/06_Precise_Aggressive_Aerial_Maneuvers.pdf\n?? paper/papers/07_Diffusion-Based_3-D_Radar_Semantic_Perception.pdf\n?? paper/papers/09_RAPID_Robust_and_Agile_Planner.pdf\n?? paper/papers/11_SEB-Naver.pdf\n?? paper/papers/12_Real-time_Spatial-temporal_Traversability_Assessment.pdf\n?? paper/papers/13_Tracailer.pdf\n?? paper/papers/14_Implicit_Swept_Volume_SDF.pdf\n?? paper/papers/15_TopAY_Trajectory_Planning_for_Mobile_Manipulators.pdf\n?? paper/papers/16_Fast_Iterative_Region_Inflation.pdf\n?? paper/papers/17_RE-Formation_Large-Scale_Distributed_Aerial_Swarms.pdf\n?? paper/papers/18_MARTS_Cable-Suspended_Payloads.pdf\n?? paper/papers/19_Ring-Rotor_Retractable_Quadrotor.pdf\n?? paper/papers/20_Shape-Adaptive_Planning_and_Control_for_a_Deformable_Quadrotor.pdf\n?? paper/papers/21_Hand-like_Autonomous_Flying_Robot.pdf\n?? paper/papers/22_Force-Aware_Grasping_for_Aerial_Manipulation.pdf\n?? paper/papers/24_FLOAT_Drone_for_Physical_Interaction.pdf\n?? paper/papers/25_Skater_Bi-Modal_Bi-Copter_Robot.pdf\n?? paper/papers/26_FastViDAR.pdf\n?? paper/papers/28_FLAP_FOV-Constrained_Active_Perception_Planning.pdf\n?? paper/papers/29_FlyMirage.pdf\n?? paper/papers/paper.zip\n?? \"paper/papers/\\344\\270\\255\\346\\226\\207\\350\\257\\246\\350\\247\\243/PDF.zip\"\n?? \"paper/papers/\\344\\270\\255\\346\\226\\207\\350\\257\\246\\350\\247\\243/PDF/01_\\351\\207\\212\\346\\224\\276\\345\\233\\233\\346\\227\\213\\347\\277\\274\\347\\211\\271\\346\\212\\200\\351\\243\\236\\350\\241\\214\\346\\275\\234\\350\\203\\275.pdf\"\n?? \"paper/papers/\\344\\270\\255\\346\\226\\207\\350\\257\\246\\350\\247\\243/PDF/02_\\345\\274\\272\\345\\214\\226\\345\\255\\246\\344\\271\\240\\345\\217\\215\\345\\272\\224\\345\\274\\217\\347\\211\\271\\346\\212\\200\\351\\243\\236\\350\\241\\214.pdf\"\n?? \"paper/papers/\\344\\270\\255\\346\\226\\207\\350\\257\\246\\350\\247\\243/PDF/03_\\346\\211\\251\\346\\225\\243\\346\\250\\241\\345\\236\\213\\350\\207\\252\\345\\212\\250\\347\\224\\237\\346\\210\\220\\347\\211\\271\\346\\212\\200\\351\\243\\236\\350\\241\\214.pdf\"\n?? \"paper/papers/\\344\\270\\255\\346\\226\\207\\350\\257\\246\\350\\247\\243/PDF/04_\\345\\215\\225\\347\\233\\256RGB\\346\\235\\202\\344\\271\\261\\347\\216\\257\\345\\242\\203\\351\\243\\236\\350\\241\\214.pdf\"\n?? \"paper/papers/\\344\\270\\255\\346\\226\\207\\350\\257\\246\\350\\247\\243/PDF/05_\\345\\256\\211\\345\\205\\250\\345\\261\\217\\350\\224\\275\\345\\274\\272\\345\\214\\226\\345\\255\\246\\344\\271\\240\\351\\253\\230\\351\\200\\237\\351\\243\\236\\350\\241\\214.pdf\"\n?? \"paper/papers/\\344\\270\\255\\346\\226\\207\\350\\257\\246\\350\\247\\243/PDF/06_\\344\\274\\240\\346\\204\\237\\350\\277\\220\\345\\212\\250\\347\\255\\226\\347\\225\\245\\347\\262\\276\\345\\207\\206\\346\\277\\200\\350\\277\\233\\346\\234\\272\\345\\212\\250.pdf\"\n?? \"paper/papers/\\344\\270\\255\\346\\226\\207\\350\\257\\246\\350\\247\\243/PDF/07_\\346\\211\\251\\346\\225\\243\\346\\250\\241\\345\\236\\213\\344\\270\\211\\347\\273\\264\\351\\233\\267\\350\\276\\276\\350\\257\\255\\344\\271\\211\\346\\204\\237\\347\\237\\245.pdf\"\n?? \"paper/papers/\\344\\270\\255\\346\\226\\207\\350\\257\\246\\350\\247\\243/PDF/09_RAPID\\351\\200\\206\\345\\274\\272\\345\\214\\226\\345\\255\\246\\344\\271\\240\\350\\247\\206\\350\\247\\211\\345\\257\\274\\350\\210\\252.pdf\"\n?? \"paper/papers/\\344\\270\\255\\346\\226\\207\\350\\257\\246\\350\\247\\243/PDF/11_SEB-Naver\\345\\264\\216\\345\\262\\226\\345\\234\\260\\345\\275\\242\\345\\261\\200\\351\\203\\250\\345\\257\\274\\350\\210\\252.pdf\"\n?? \"paper/papers/\\344\\270\\255\\346\\226\\207\\350\\257\\246\\350\\247\\243/PDF/12_FSGP-BGK\\346\\227\\266\\347\\251\\272\\345\\217\\257\\351\\200\\232\\350\\241\\214\\346\\200\\247\\350\\257\\204\\344\\274\\260.pdf\"\n?? \"paper/papers/\\344\\270\\255\\346\\226\\207\\350\\257\\246\\350\\247\\243/PDF/13_Tracailer\\347\\211\\265\\345\\274\\225\\346\\214\\202\\350\\275\\246\\350\\275\\250\\350\\277\\271\\350\\247\\204\\345\\210\\222.pdf\"\n?? \"paper/papers/\\344\\270\\255\\346\\226\\207\\350\\257\\246\\350\\247\\243/PDF/14_\\351\\232\\220\\345\\274\\217\\346\\211\\253\\346\\216\\240\\344\\275\\223SDF\\350\\277\\236\\347\\273\\255\\351\\201\\277\\347\\242\\260.pdf\"\n?? \"paper/papers/\\344\\270\\255\\346\\226\\207\\350\\257\\246\\350\\247\\243/PDF/15_TopAY\\347\\247\\273\\345\\212\\250\\346\\223\\215\\344\\275\\234\\345\\231\\250\\350\\275\\250\\350\\277\\271\\350\\247\\204\\345\\210\\222.pdf\"\n?? \"paper/papers/\\344\\270\\255\\346\\226\\207\\350\\257\\246\\350\\247\\243/PDF/16_FIRI\\345\\277\\253\\351\\200\\237\\345\\207\\270\\345\\256\\211\\345\\205\\250\\345\\214\\272\\345\\237\\237\\350\\206\\250\\350\\203\\200.pdf\"\n?? \"paper/papers/\\344\\270\\255\\346\\226\\207\\350\\257\\246\\350\\247\\243/PDF/17_RE-Formation\\345\\244\\247\\350\\247\\204\\346\\250\\241\\345\\210\\206\\345\\270\\203\\345\\274\\217\\346\\227\\240\\344\\272\\272\\346\\234\\272\\347\\274\\226\\351\\230\\237.pdf\"\n?? \"paper/papers/\\344\\270\\255\\346\\226\\207\\350\\257\\246\\350\\247\\243/PDF/18_MARTS\\345\\244\\232\\346\\234\\272\\347\\273\\263\\345\\220\\212\\350\\275\\275\\350\\215\\267\\350\\277\\220\\350\\276\\223.pdf\"\n?? \"paper/papers/\\344\\270\\255\\346\\226\\207\\350\\257\\246\\350\\247\\243/PDF/19_Ring-Rotor\\345\\217\\257\\344\\274\\270\\347\\274\\251\\347\\216\\257\\345\\275\\242\\345\\233\\233\\346\\227\\213\\347\\277\\274.pdf\"\n?? \"paper/papers/\\344\\270\\255\\346\\226\\207\\350\\257\\246\\350\\247\\243/PDF/20_\\345\\217\\257\\345\\217\\230\\345\\275\\242\\345\\233\\233\\346\\227\\213\\347\\277\\274\\345\\275\\242\\347\\212\\266\\350\\207\\252\\351\\200\\202\\345\\272\\224\\350\\247\\204\\345\\210\\222\\344\\270\\216\\346\\216\\247\\345\\210\\266.pdf\"\n?? \"paper/papers/\\344\\270\\255\\346\\226\\207\\350\\257\\246\\350\\247\\243/PDF/21_HI-ARM\\344\\273\\277\\344\\272\\272\\346\\211\\213\\350\\207\\252\\344\\270\\273\\351\\243\\236\\350\\241\\214\\346\\234\\272\\345\\231\\250\\344\\272\\272.pdf\"\n?? \"paper/papers/\\344\\270\\255\\346\\226\\207\\350\\257\\246\\350\\247\\243/PDF/22_\\345\\212\\233\\346\\204\\237\\347\\237\\245\\347\\251\\272\\344\\270\\255\\346\\212\\223\\345\\217\\226\\347\\263\\273\\347\\273\\237.pdf\"\n?? \"paper/papers/\\344\\270\\255\\346\\226\\207\\350\\257\\246\\350\\247\\243/PDF/24_FLOAT\\345\\205\\250\\351\\251\\261\\345\\220\\214\\350\\275\\264\\344\\272\\244\\344\\272\\222\\346\\227\\240\\344\\272\\272\\346\\234\\272.pdf\"\n?? \"paper/papers/\\344\\270\\255\\346\\226\\207\\350\\257\\246\\350\\247\\243/PDF/25_Skater\\347\\251\\272\\345\\234\\260\\345\\217\\214\\346\\250\\241\\346\\200\\201\\345\\217\\214\\346\\227\\213\\347\\277\\274\\346\\234\\272\\345\\231\\250\\344\\272\\272.pdf\"\n?? \"paper/papers/\\344\\270\\255\\346\\226\\207\\350\\257\\246\\350\\247\\243/PDF/26_FastViDAR\\345\\205\\250\\345\\220\\221\\346\\267\\261\\345\\272\\246\\344\\274\\260\\350\\256\\241.pdf\"\n?? \"paper/papers/\\344\\270\\255\\346\\226\\207\\350\\257\\246\\350\\247\\243/PDF/28_FLAP\\345\\217\\227\\351\\231\\220\\350\\247\\206\\345\\234\\272\\344\\270\\273\\345\\212\\250\\346\\204\\237\\347\\237\\245\\350\\247\\204\\345\\210\\222.pdf\"\n?? \"paper/papers/\\344\\270\\255\\346\\226\\207\\350\\257\\246\\350\\247\\243/PDF/29_FlyMirage\\350\\210\\252\\347\\251\\272VLN\\346\\225\\260\\346\\215\\256\\347\\224\\237\\346\\210\\220.pdf\"\n?? \"paper/papers/\\344\\270\\255\\346\\226\\207\\350\\257\\246\\350\\247\\243/PDF/README.pdf\"\n?? \"paper/song-tao/\\350\\256\\272\\346\\226\\207PDF/01_HOMATracker\\345\\220\\214\\346\\236\\204\\346\\227\\240\\344\\272\\272\\346\\234\\272\\351\\233\\206\\347\\276\\244\\350\\267\\237\\350\\270\\252.pdf\"\n?? \"paper/song-tao/\\350\\256\\272\\346\\226\\207PDF/02_\\351\\235\\231\\347\\250\\263\\346\\234\\237\\345\\206\\205\\350\\210\\260\\350\\275\\275\\347\\235\\200\\351\\231\\206\\346\\216\\247\\345\\210\\266.pdf\"\n?? \"paper/song-tao/\\350\\256\\272\\346\\226\\207PDF/03_\\345\\270\\246\\350\\247\\206\\345\\234\\272\\347\\272\\246\\346\\235\\237\\347\\232\\204\\345\\233\\272\\345\\256\\232\\346\\227\\266\\351\\227\\264\\350\\247\\206\\350\\247\\211\\347\\235\\200\\351\\231\\206.pdf\"\n?? \"paper/song-tao/\\350\\256\\272\\346\\226\\207PDF/04_\\347\\272\\257\\346\\265\\213\\350\\267\\235UWB\\345\\205\\255\\350\\207\\252\\347\\224\\261\\345\\272\\246\\344\\275\\215\\345\\247\\277\\346\\200\\247\\350\\203\\275\\345\\210\\206\\346\\236\\220.pdf\"\n?? \"paper/song-tao/\\350\\256\\272\\346\\226\\207PDF/05_\\345\\215\\253\\346\\230\\237\\345\\275\\261\\345\\203\\217\\345\\244\\232\\347\\272\\247\\345\\234\\260\\345\\233\\276\\347\\277\\273\\350\\257\\221.pdf\"\n?? \"paper/song-tao/\\350\\256\\272\\346\\226\\207PDF/06_BELGTracker\\347\\251\\272\\345\\257\\271\\347\\251\\272\\345\\244\\232\\346\\227\\240\\344\\272\\272\\346\\234\\272\\350\\267\\237\\350\\270\\252.pdf\"\n?? \"paper/song-tao/\\350\\256\\272\\346\\226\\207PDF/07_\\345\\244\\232\\346\\242\\257\\345\\272\\246\\346\\235\\220\\346\\226\\231\\347\\273\\223\\346\\236\\204\\346\\213\\223\\346\\211\\221\\344\\274\\230\\345\\214\\226.pdf\"\n?? \"paper/song-tao/\\350\\256\\272\\346\\226\\207PDF/08_\\351\\235\\236\\345\\220\\210\\344\\275\\234\\345\\233\\233\\346\\227\\213\\347\\277\\274\\347\\273\\210\\347\\253\\257\\351\\200\\237\\345\\272\\246\\347\\272\\246\\346\\235\\237\\346\\213\\246\\346\\210\\252.pdf\"\n?? \"paper/song-tao/\\350\\256\\272\\346\\226\\207PDF/09_\\345\\205\\263\\347\\263\\273\\345\\233\\276\\347\\275\\221\\347\\273\\234\\346\\227\\240\\344\\272\\272\\346\\234\\272\\346\\243\\200\\346\\265\\213\\344\\270\\216\\344\\275\\215\\345\\247\\277\\344\\274\\260\\350\\256\\241.pdf\"\n?? \"paper/song-tao/\\350\\256\\272\\346\\226\\207PDF/10_\\347\\251\\272\\351\\227\\264\\346\\227\\266\\351\\227\\264\\345\\215\\217\\345\\220\\214\\345\\210\\266\\345\\257\\274.pdf\"\n?? \"paper/song-tao/\\350\\256\\272\\346\\226\\207PDF/11_SCT-MOT\\351\\233\\206\\347\\276\\244\\350\\200\\246\\345\\220\\210\\350\\275\\250\\350\\277\\271\\345\\274\\225\\345\\257\\274\\350\\267\\237\\350\\270\\252.pdf\"\n?? \"paper/song-tao/\\350\\256\\272\\346\\226\\207PDF/12_\\346\\234\\200\\345\\260\\221UWB\\350\\256\\276\\345\\244\\207\\347\\232\\204\\346\\227\\240\\346\\274\\202\\347\\247\\273\\345\\233\\233\\350\\207\\252\\347\\224\\261\\345\\272\\246\\344\\275\\215\\345\\247\\277.pdf\"\n?? \"paper/song-tao/\\350\\256\\272\\346\\226\\207PDF/13_\\345\\260\\276\\346\\216\\250\\345\\270\\203\\345\\261\\200\\345\\244\\232\\346\\227\\213\\347\\277\\274\\350\\256\\276\\350\\256\\241\\344\\274\\230\\345\\214\\226.pdf\"\n?? \"paper/song-tao/\\350\\256\\272\\346\\226\\207PDF/14_\\350\\247\\206\\345\\234\\272\\344\\270\\216\\346\\222\\236\\345\\207\\273\\350\\247\\222\\347\\272\\246\\346\\235\\237\\346\\234\\200\\344\\274\\230\\345\\210\\266\\345\\257\\274.pdf\"\n?? \"paper/song-tao/\\350\\256\\272\\346\\226\\207PDF/15_\\344\\270\\211\\347\\273\\264\\350\\246\\206\\347\\233\\226\\345\\215\\217\\345\\220\\214\\345\\210\\266\\345\\257\\274.pdf\"\n?? \"paper/song-tao/\\350\\256\\272\\346\\226\\207PDF/16_\\350\\207\\252\\351\\200\\202\\345\\272\\224\\345\\212\\250\\346\\200\\201\\350\\247\\204\\345\\210\\222\\345\\215\\217\\345\\220\\214\\344\\270\\273\\345\\212\\250\\351\\230\\262\\345\\276\\241.pdf\"\n?? \"paper/song-tao/\\350\\256\\272\\346\\226\\207PDF/17_\\346\\263\\250\\346\\204\\217\\345\\212\\233\\345\\244\\232\\346\\231\\272\\350\\203\\275\\344\\275\\223\\347\\251\\272\\346\\210\\230\\345\\206\\263\\347\\255\\226.pdf\"\n?? \"paper/song-tao/\\350\\256\\272\\346\\226\\207PDF/18_\\345\\257\\274\\345\\274\\271\\345\\221\\275\\344\\270\\255\\346\\246\\202\\347\\216\\207\\345\\242\\236\\345\\274\\272\\347\\251\\272\\346\\210\\230\\345\\206\\263\\347\\255\\226.pdf\"\n?? \"paper/song-tao/\\350\\256\\272\\346\\226\\207PDF/19_\\350\\207\\252\\345\\212\\250\\345\\257\\271\\346\\211\\213\\351\\207\\207\\346\\240\\267\\347\\251\\272\\346\\210\\230\\345\\274\\272\\345\\214\\226\\345\\255\\246\\344\\271\\240.pdf\"\n?? \"paper/song-tao/\\350\\256\\272\\346\\226\\207PDF/20_\\345\\270\\246\\347\\233\\256\\346\\240\\207\\344\\274\\260\\350\\256\\241\\344\\270\\216\\350\\247\\206\\345\\234\\272\\347\\272\\246\\346\\235\\237\\347\\232\\204\\350\\247\\206\\350\\247\\211\\350\\267\\237\\350\\270\\252\\346\\216\\247\\345\\210\\266.pdf\"\n?? \"paper/song-tao/\\350\\256\\272\\346\\226\\207PDF/\\346\\215\\237\\345\\235\\217\\351\\207\\215\\345\\244\\215\\346\\226\\207\\344\\273\\266/14_\\350\\247\\206\\345\\234\\272\\344\\270\\216\\346\\222\\236\\345\\207\\273\\350\\247\\222\\347\\272\\246\\346\\235\\237\\346\\234\\200\\344\\274\\230\\345\\210\\266\\345\\257\\274_\\346\\227\\247\\344\\270\\213\\350\\275\\275\\346\\215\\237\\345\\235\\217.pdf\"\n",
+        "stderr": ""
+      },
+      "git_dir": {
+        "command": [
+          "git",
+          "-C",
+          "/home/linux/Documents/MSM",
+          "rev-parse",
+          "--absolute-git-dir"
+        ],
+        "returncode": 0,
+        "stdout": "/home/linux/Documents/MSM/.git\n",
+        "stderr": ""
+      },
+      "common_dir": {
+        "command": [
+          "git",
+          "-C",
+          "/home/linux/Documents/MSM",
+          "rev-parse",
+          "--path-format=absolute",
+          "--git-common-dir"
+        ],
+        "returncode": 0,
+        "stdout": "/home/linux/Documents/MSM/.git\n",
+        "stderr": ""
+      }
+    },
+    {
+      "path": "/home/linux/Documents/MSM-d5-training-clean",
+      "exists": true,
+      "head": {
+        "command": [
+          "git",
+          "-C",
+          "/home/linux/Documents/MSM-d5-training-clean",
+          "rev-parse",
+          "HEAD"
+        ],
+        "returncode": 0,
+        "stdout": "fa3ec10712cd03533c718283b36a6326bd29f5c7\n",
+        "stderr": ""
+      },
+      "status": {
+        "command": [
+          "git",
+          "-C",
+          "/home/linux/Documents/MSM-d5-training-clean",
+          "status",
+          "--porcelain=v1",
+          "--untracked-files=all"
+        ],
+        "returncode": 0,
+        "stdout": "",
+        "stderr": ""
+      },
+      "git_dir": {
+        "command": [
+          "git",
+          "-C",
+          "/home/linux/Documents/MSM-d5-training-clean",
+          "rev-parse",
+          "--absolute-git-dir"
+        ],
+        "returncode": 0,
+        "stdout": "/home/linux/Documents/MSM/.git/worktrees/MSM-d5-training-clean\n",
+        "stderr": ""
+      },
+      "common_dir": {
+        "command": [
+          "git",
+          "-C",
+          "/home/linux/Documents/MSM-d5-training-clean",
+          "rev-parse",
+          "--path-format=absolute",
+          "--git-common-dir"
+        ],
+        "returncode": 0,
+        "stdout": "/home/linux/Documents/MSM/.git\n",
+        "stderr": ""
+      }
+    },
+    {
+      "path": "/home/linux/Documents/MSM/paper/Fastlab_world_fly",
+      "exists": true,
+      "head": {
+        "command": [
+          "git",
+          "-C",
+          "/home/linux/Documents/MSM/paper/Fastlab_world_fly",
+          "rev-parse",
+          "HEAD"
+        ],
+        "returncode": 0,
+        "stdout": "0dd9a9dcfcf98b946c51d7b060525c62ea189562\n",
+        "stderr": ""
+      },
+      "status": {
+        "command": [
+          "git",
+          "-C",
+          "/home/linux/Documents/MSM/paper/Fastlab_world_fly",
+          "status",
+          "--porcelain=v1",
+          "--untracked-files=all"
+        ],
+        "returncode": 0,
+        "stdout": "?? Fastlab.zip\n",
+        "stderr": ""
+      },
+      "git_dir": {
+        "command": [
+          "git",
+          "-C",
+          "/home/linux/Documents/MSM/paper/Fastlab_world_fly",
+          "rev-parse",
+          "--absolute-git-dir"
+        ],
+        "returncode": 0,
+        "stdout": "/home/linux/Documents/MSM/paper/Fastlab_world_fly/.git\n",
+        "stderr": ""
+      },
+      "common_dir": {
+        "command": [
+          "git",
+          "-C",
+          "/home/linux/Documents/MSM/paper/Fastlab_world_fly",
+          "rev-parse",
+          "--path-format=absolute",
+          "--git-common-dir"
+        ],
+        "returncode": 0,
+        "stdout": "/home/linux/Documents/MSM/paper/Fastlab_world_fly/.git\n",
+        "stderr": ""
+      }
+    },
+    {
+      "path": "/home/linux/Documents/MSM/paper/YOPO",
+      "exists": true,
+      "head": {
+        "command": [
+          "git",
+          "-C",
+          "/home/linux/Documents/MSM/paper/YOPO",
+          "rev-parse",
+          "HEAD"
+        ],
+        "returncode": 0,
+        "stdout": "efb91d61e6d0ef4d71f91a836831cbc3537b5a85\n",
+        "stderr": ""
+      },
+      "status": {
+        "command": [
+          "git",
+          "-C",
+          "/home/linux/Documents/MSM/paper/YOPO",
+          "status",
+          "--porcelain=v1",
+          "--untracked-files=all"
+        ],
+        "returncode": 0,
+        "stdout": "?? YOPO.zip\n",
+        "stderr": ""
+      },
+      "git_dir": {
+        "command": [
+          "git",
+          "-C",
+          "/home/linux/Documents/MSM/paper/YOPO",
+          "rev-parse",
+          "--absolute-git-dir"
+        ],
+        "returncode": 0,
+        "stdout": "/home/linux/Documents/MSM/paper/YOPO/.git\n",
+        "stderr": ""
+      },
+      "common_dir": {
+        "command": [
+          "git",
+          "-C",
+          "/home/linux/Documents/MSM/paper/YOPO",
+          "rev-parse",
+          "--path-format=absolute",
+          "--git-common-dir"
+        ],
+        "returncode": 0,
+        "stdout": "/home/linux/Documents/MSM/paper/YOPO/.git\n",
+        "stderr": ""
+      }
+    },
+    {
+      "path": "/home/linux/Documents/MSM/paper/ego-planner",
+      "exists": true,
+      "head": {
+        "command": [
+          "git",
+          "-C",
+          "/home/linux/Documents/MSM/paper/ego-planner",
+          "rev-parse",
+          "HEAD"
+        ],
+        "returncode": 0,
+        "stdout": "bfda51284c8c1b476043255a8145ef925a3778a5\n",
+        "stderr": ""
+      },
+      "status": {
+        "command": [
+          "git",
+          "-C",
+          "/home/linux/Documents/MSM/paper/ego-planner",
+          "status",
+          "--porcelain=v1",
+          "--untracked-files=all"
+        ],
+        "returncode": 0,
+        "stdout": "?? ego-planner.zip\n",
+        "stderr": ""
+      },
+      "git_dir": {
+        "command": [
+          "git",
+          "-C",
+          "/home/linux/Documents/MSM/paper/ego-planner",
+          "rev-parse",
+          "--absolute-git-dir"
+        ],
+        "returncode": 0,
+        "stdout": "/home/linux/Documents/MSM/paper/ego-planner/.git\n",
+        "stderr": ""
+      },
+      "common_dir": {
+        "command": [
+          "git",
+          "-C",
+          "/home/linux/Documents/MSM/paper/ego-planner",
+          "rev-parse",
+          "--path-format=absolute",
+          "--git-common-dir"
+        ],
+        "returncode": 0,
+        "stdout": "/home/linux/Documents/MSM/paper/ego-planner/.git\n",
+        "stderr": ""
+      }
+    },
+    {
+      "path": "/home/linux/Documents/MSM/paper/ego-planner-swarm",
+      "exists": true,
+      "head": {
+        "command": [
+          "git",
+          "-C",
+          "/home/linux/Documents/MSM/paper/ego-planner-swarm",
+          "rev-parse",
+          "HEAD"
+        ],
+        "returncode": 0,
+        "stdout": "92fe9f7227b2da819133eb8e0e8c7fc000f6ae20\n",
+        "stderr": ""
+      },
+      "status": {
+        "command": [
+          "git",
+          "-C",
+          "/home/linux/Documents/MSM/paper/ego-planner-swarm",
+          "status",
+          "--porcelain=v1",
+          "--untracked-files=all"
+        ],
+        "returncode": 0,
+        "stdout": "?? EGO-planner-swarm.zip\n",
+        "stderr": ""
+      },
+      "git_dir": {
+        "command": [
+          "git",
+          "-C",
+          "/home/linux/Documents/MSM/paper/ego-planner-swarm",
+          "rev-parse",
+          "--absolute-git-dir"
+        ],
+        "returncode": 0,
+        "stdout": "/home/linux/Documents/MSM/paper/ego-planner-swarm/.git\n",
+        "stderr": ""
+      },
+      "common_dir": {
+        "command": [
+          "git",
+          "-C",
+          "/home/linux/Documents/MSM/paper/ego-planner-swarm",
+          "rev-parse",
+          "--path-format=absolute",
+          "--git-common-dir"
+        ],
+        "returncode": 0,
+        "stdout": "/home/linux/Documents/MSM/paper/ego-planner-swarm/.git\n",
+        "stderr": ""
+      }
+    }
+  ],
+  "source_filesystem": {
+    "device": 66308,
+    "available_bytes": 29219430400
+  },
+  "destination": {
+    "path": null,
+    "copy_started": false,
+    "independence_verified": false,
+    "write_probe_performed": false,
+    "required_available_bytes": 83101718302,
+    "status": "destination_not_specified"
+  },
+  "inventory": {
+    "path": "/home/linux/Documents/MSM/deliverables/project_audits/20260926_stage3_backup_preflight_v1/BACKUP_SOURCE_FILES.jsonl.gz",
+    "hash_status": "stable_read",
+    "bytes": 9422949,
+    "mtime_ns": 1790413864854050832,
+    "device": 66308,
+    "kind": "file",
+    "sha256": "e3235e02cce062304b22287b41ebd7dca9c3138dc0cc97af05c1aa17a0da24e4"
+  },
+  "tool": {
+    "path": "/home/linux/Documents/MSM/deliverables/project_audits/tools/prepare_backup_preflight.py",
+    "hash_status": "stable_read",
+    "bytes": 10559,
+    "mtime_ns": 1790413783032629288,
+    "device": 66308,
+    "kind": "file",
+    "sha256": "7a13093070d0f20b42816c1a1faab1f6f545d5c236a6d9404dff467a41bd9047"
+  },
+  "finished_at_utc": "2026-09-26T09:11:04.923133+00:00"
+}

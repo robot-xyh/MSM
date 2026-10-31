@@ -1,5 +1,10 @@
 # D5 M 对 N 末端多视角配准与协同定位调研
 
+<!-- evidence-status-sync:20260926:begin -->
+> 2026-09-26 仅作资料同步，不是新的实验日期。当前口径统一见 [D5 当前证据状态](../research_modules/d5_terminal_association/docs/CURRENT_EVIDENCE_STATUS_CN.md)。
+> 下列旧章节按其日期作历史阶段阅读；本轮不改旧正文、任务勾选或 GAP，不升级能力，原 Goal 状态不变。
+<!-- evidence-status-sync:20260926:end -->
+
 ## 2026-08-10 时序几何层对 M 对 N 的作用边界
 
 D5 已增加相机内的有状态时序几何关联。相同 `local_track_id` 按资源、相机和流分别维护，短时

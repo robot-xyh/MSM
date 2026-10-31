@@ -1,0 +1,111 @@
+{
+  "created_at": "2026-09-26T14:25:00.678757+00:00",
+  "passed": true,
+  "checks": [
+    {
+      "name": "all_requirements_and_owners",
+      "passed": true,
+      "details": {
+        "requirements": 60,
+        "reviews": 140
+      }
+    },
+    {
+      "name": "original_classifications_retained",
+      "passed": true,
+      "details": {
+        "已完成": 4,
+        "部分完成": 44,
+        "未完成": 10,
+        "证据不足": 2
+      }
+    },
+    {
+      "name": "original_goal_sources_unchanged",
+      "passed": true,
+      "details": []
+    },
+    {
+      "name": "prior_experiment_inputs_unchanged",
+      "passed": true,
+      "details": {
+        "checked": 133,
+        "changed": []
+      }
+    },
+    {
+      "name": "report_structural_validation",
+      "passed": true,
+      "details": {
+        "documents": 8,
+        "rendered": 4
+      }
+    },
+    {
+      "name": "current_reports_match_validation",
+      "passed": true,
+      "details": 8
+    },
+    {
+      "name": "errata_originals_still_match",
+      "passed": true,
+      "details": [
+        {
+          "id": "M01",
+          "source": "research_modules/independent_experiments/center_terminal_cv_campaign/outputs/center_handover_sensor_error_20260820/reproduction_manifest.json",
+          "sha256": "94b02450a16839a7e41ee45fa9f32326c236e38c8240649f98cbbfb53d40bfa0",
+          "original_field_matches": true
+        },
+        {
+          "id": "M02",
+          "source": "research_modules/independent_experiments/center_terminal_cv_campaign/outputs/center_handover_sensor_error_20260820/metrics_contract.json",
+          "sha256": "161a1607c21358fc53573591d53c5a3313fc8a53c8852d14c33740338b7333d4",
+          "original_field_matches": true
+        },
+        {
+          "id": "M03",
+          "source": "research_modules/independent_experiments/center_terminal_cv_campaign/outputs/center_handover_sensor_error_20260820/metrics_contract.json",
+          "sha256": "161a1607c21358fc53573591d53c5a3313fc8a53c8852d14c33740338b7333d4",
+          "original_field_matches": true
+        },
+        {
+          "id": "M04",
+          "source": "research_modules/independent_experiments/center_terminal_cv_campaign/outputs/offline_search_100pct_cues_20260819/reproduction_manifest.json",
+          "sha256": "cbc2d0d14dae3535c7357f29db056fae53fcf2277009d67955f917ed1e49ad9a",
+          "original_field_matches": true
+        }
+      ]
+    },
+    {
+      "name": "new_audit_links",
+      "passed": true,
+      "details": {
+        "checked": 57,
+        "broken": []
+      }
+    },
+    {
+      "name": "action_ids_preserved",
+      "passed": true,
+      "details": 12
+    },
+    {
+      "name": "audit_unit_tests",
+      "passed": true,
+      "details": "test_disjoint_owners (test_owner_selection.OwnerSelectionTests.test_disjoint_owners) ... ok\ntest_main_only (test_owner_selection.OwnerSelectionTests.test_main_only) ... ok\ntest_range_with_main (test_owner_selection.OwnerSelectionTests.test_range_with_main) ... ok\ntest_ambiguous_replacement_rejected (test_report_sync.TextEditTests.test_ambiguous_replacement_rejected) ... ok\ntest_insert_only_text_properties (test_report_sync.TextEditTests.test_insert_only_text_properties) ... ok\ntest_replacement_spans_runs_without_dropping_styles (test_report_sync.TextEditTests.test_replacement_spans_runs_without_dropping_styles) ... ok\n\n----------------------------------------------------------------------\nRan 6 tests in 0.000s\n\nOK\n"
+    },
+    {
+      "name": "no_module_edits",
+      "passed": true,
+      "details": ""
+    },
+    {
+      "name": "diff_whitespace",
+      "passed": true,
+      "details": ""
+    }
+  ],
+  "visual_review": "Main inspected the four changed-note preview pages; no text overlap or clipping observed on those pages.",
+  "algorithm_execution": false,
+  "module_tests_run": false
+}

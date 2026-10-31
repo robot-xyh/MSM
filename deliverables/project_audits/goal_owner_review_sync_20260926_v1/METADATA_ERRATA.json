@@ -1,0 +1,39 @@
+{
+  "schema_version": "audit-metadata-errata-v1",
+  "issued_at": "2026-09-26",
+  "scope": "历史元数据的解释性勘误，不修改原清单、原数值或算法，不代表重新运行结果。",
+  "items": [
+    {
+      "id": "M01",
+      "source": "research_modules/independent_experiments/center_terminal_cv_campaign/outputs/center_handover_sensor_error_20260820/reproduction_manifest.json",
+      "field": "reproduction.comparison_tolerance",
+      "original": "deterministic CSV equality on the recorded software stack",
+      "clarification": "原CSV含实测runtime_s。保存哈希用于历史文件完整性检查，不用于承诺重新运行时整份CSV逐字节一致。计数、质量指标、缺失状态与耗时须分别比较。",
+      "unresolved": "本轮未进行算法回放，没有确定跨设备、跨环境重运行容差。"
+    },
+    {
+      "id": "M02",
+      "source": "research_modules/independent_experiments/center_terminal_cv_campaign/outputs/center_handover_sensor_error_20260820/metrics_contract.json",
+      "field": "timeout_included_as_failure",
+      "original": true,
+      "clarification": "报告明确未设置工程期限并保留全部质量结果。逐行记录缺少可复核的时限和超时判定字段，现存证据不能支持由这个布尔值推导按时结果。",
+      "unresolved": "历史超时判定无法独立还原；不回填标志、不将全部行推定为按时完成。"
+    },
+    {
+      "id": "M03",
+      "source": "research_modules/independent_experiments/center_terminal_cv_campaign/outputs/center_handover_sensor_error_20260820/metrics_contract.json",
+      "field": "binding_precision",
+      "original": "correct confirmed bindings / all confirmed bindings",
+      "clarification": "原960条记录中246条确认输出数为0，精度记0并参加逐种子平均。该零值是原计分政策，不表示已输出关系全错；通常比值在零分母时没有定义。原值全部保留。",
+      "unresolved": "不另算条件精度，不将全矩阵246条写成裁剪子集的无输出数量。"
+    },
+    {
+      "id": "M04",
+      "source": "research_modules/independent_experiments/center_terminal_cv_campaign/outputs/offline_search_100pct_cues_20260819/reproduction_manifest.json",
+      "field": "git_revision",
+      "original": "ad59ff3f48e180248f1168bf72a0e152bd80264a",
+      "clarification": "该提交是working_tree_dirty=true时的基线，不代表完整执行源码。45组实际配置保存在逐组清单中，但入口和核心回放文件缺少8月运行版本的可验证冻结依据。",
+      "unresolved": "仍需当时源码副本或文件指纹，不能以9月入库文件倒填8月执行状态。"
+    }
+  ]
+}

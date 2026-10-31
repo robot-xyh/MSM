@@ -1,5 +1,10 @@
 # D5 实现差距审计
 
+<!-- evidence-status-sync:20260926:begin -->
+> 2026-09-26 仅作资料同步，不是新的实验日期。当前口径统一见 [D5 当前证据状态](../research_modules/d5_terminal_association/docs/CURRENT_EVIDENCE_STATUS_CN.md)。
+> 下列旧章节按其日期作历史阶段阅读；本轮不改旧正文、任务勾选或 GAP，不升级能力，原 Goal 状态不变。
+<!-- evidence-status-sync:20260926:end -->
+
 ## 2026-08-10 有状态时序几何关联 GAP 更新
 
 | 项目 | 当前状态 | 证据与剩余限制 |

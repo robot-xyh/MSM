@@ -1,0 +1,208 @@
+{
+  "module": "D5",
+  "synced_at": "2026-09-26",
+  "sync_type": "existing_evidence_documentation_only",
+  "current_evidence_page": "research_modules/d5_terminal_association/docs/CURRENT_EVIDENCE_STATUS_CN.md",
+  "changed_files": [
+    "research_modules/d5_terminal_association/README.md",
+    "research_modules/d5_terminal_association/PLAN.md",
+    "subagent_reviews/D5_IMPLEMENTATION_GAP_AUDIT.md",
+    "subagent_reviews/D5_TERMINAL_ASSOCIATION_REVIEW_AND_PLAN.md",
+    "subagent_reviews/D5_M_TO_N_TERMINAL_MULTIVIEW_REVIEW.md",
+    "research_modules/d5_terminal_association/docs/MODULE_PRINCIPLES_CN.md",
+    "research_modules/d5_terminal_association/docs/ALGORITHM_AND_IMPLEMENTATION.md",
+    "research_modules/d5_terminal_association/docs/AIRSIM_INTEGRATION_PLAN.md",
+    "research_modules/d5_terminal_association/docs/EXPERIMENT_REPORT.md",
+    "research_modules/d5_terminal_association/docs/README.md",
+    "research_modules/d5_terminal_association/docs/CURRENT_EVIDENCE_STATUS_CN.md"
+  ],
+  "checked_unchanged": [
+    {
+      "path": "deliverables/project_audits/goal_module_status_sync_20260926_v1/BEFORE.json",
+      "reason": "main的1180文件及8报告原始基线，只读用于原文和哈希比对，不改写。"
+    },
+    {
+      "path": "deliverables/project_audits/goal_owner_review_sync_20260926_v1/owners/D5_review.json",
+      "reason": "上一批25条所有者审计快照作为本次输入保留原样，不追改历史审计结论。"
+    },
+    {
+      "path": "research_modules/scalable_3d_simulation/docs/SCALABLE_3D_GOAL_PROGRESS_AND_NEXT_PLAN_20260807_CN.md",
+      "reason": "主级历史进展是来源审计状态出处，非D5写权限，未修改。"
+    },
+    {
+      "path": "research_modules/airsim_runtime/baselines/d5_long_range_20target_20260810/baseline_manifest.json",
+      "reason": "旧v2保存结果为只读出处，不改实验输出或重算指标。"
+    }
+  ],
+  "documentation_checked": [
+    {
+      "path": "research_modules/d5_terminal_association/README.md",
+      "exists": true,
+      "action": "inserted_marked_link_after_h1",
+      "reason": "按上一批复核衔接当前来源审计、历史制品及实验代际口径；不改旧正文。",
+      "historical_body_preserved": true
+    },
+    {
+      "path": "research_modules/d5_terminal_association/PLAN.md",
+      "exists": true,
+      "action": "inserted_marked_link_after_h1",
+      "reason": "按上一批复核衔接当前来源审计、历史制品及实验代际口径；不改旧正文。",
+      "historical_body_preserved": true
+    },
+    {
+      "path": "subagent_reviews/D5_IMPLEMENTATION_GAP_AUDIT.md",
+      "exists": true,
+      "action": "inserted_marked_link_after_h1",
+      "reason": "按上一批复核衔接当前来源审计、历史制品及实验代际口径；不改旧正文。",
+      "historical_body_preserved": true
+    },
+    {
+      "path": "subagent_reviews/D5_TERMINAL_ASSOCIATION_REVIEW_AND_PLAN.md",
+      "exists": true,
+      "action": "inserted_marked_link_after_h1",
+      "reason": "按上一批复核衔接当前来源审计、历史制品及实验代际口径；不改旧正文。",
+      "historical_body_preserved": true
+    },
+    {
+      "path": "subagent_reviews/D5_M_TO_N_TERMINAL_MULTIVIEW_REVIEW.md",
+      "exists": true,
+      "action": "inserted_marked_link_after_h1",
+      "reason": "按上一批复核衔接当前来源审计、历史制品及实验代际口径；不改旧正文。",
+      "historical_body_preserved": true
+    },
+    {
+      "path": "research_modules/d5_terminal_association/docs/MODULE_PRINCIPLES_CN.md",
+      "exists": true,
+      "action": "inserted_marked_link_after_h1",
+      "reason": "按上一批复核衔接当前来源审计、历史制品及实验代际口径；不改旧正文。",
+      "historical_body_preserved": true
+    },
+    {
+      "path": "research_modules/d5_terminal_association/docs/ALGORITHM_AND_IMPLEMENTATION.md",
+      "exists": true,
+      "action": "inserted_marked_link_after_h1",
+      "reason": "按上一批复核衔接当前来源审计、历史制品及实验代际口径；不改旧正文。",
+      "historical_body_preserved": true
+    },
+    {
+      "path": "research_modules/d5_terminal_association/docs/AIRSIM_INTEGRATION_PLAN.md",
+      "exists": true,
+      "action": "inserted_marked_link_after_h1",
+      "reason": "原文已区分旧v2和新v3；仅补集中状态入口，保持既有解释和历史正文。",
+      "historical_body_preserved": true
+    },
+    {
+      "path": "research_modules/d5_terminal_association/docs/EXPERIMENT_REPORT.md",
+      "exists": true,
+      "action": "inserted_marked_link_after_h1",
+      "reason": "按上一批复核衔接当前来源审计、历史制品及实验代际口径；不改旧正文。",
+      "historical_body_preserved": true
+    },
+    {
+      "path": "research_modules/d5_terminal_association/docs/README.md",
+      "exists": true,
+      "action": "inserted_marked_link_after_h1",
+      "reason": "文档索引增加唯一集中状态页入口，原索引及历史记录保留。",
+      "historical_body_preserved": true
+    }
+  ],
+  "evidence": [
+    "deliverables/project_audits/goal_owner_review_sync_20260926_v1/owners/D5_review.json",
+    "research_modules/scalable_3d_simulation/docs/SCALABLE_3D_GOAL_COMPLETION_AUDIT_20260803_CN.md",
+    "research_modules/scalable_3d_simulation/docs/SCALABLE_3D_GOAL_PROGRESS_AND_NEXT_PLAN_20260807_CN.md",
+    "deliverables/project_audits/goal_resume_audit_20260926_v1/SOURCE_INTEGRITY_CHECKS.csv",
+    "deliverables/project_audits/goal_resume_audit_20260926_v1/历史结果定位与完整性核对_CN.md",
+    "research_modules/d5_terminal_association/docs/EXPERIMENT_REPORT.md",
+    "research_modules/d5_terminal_association/docs/ALGORITHM_AND_IMPLEMENTATION.md",
+    "research_modules/d5_terminal_association/docs/AIRSIM_INTEGRATION_PLAN.md",
+    "research_modules/airsim_runtime/baselines/d5_long_range_20target_20260810/baseline_manifest.json"
+  ],
+  "checks": {
+    "passed": true,
+    "baseline": "deliverables/project_audits/goal_module_status_sync_20260926_v1/BEFORE.json",
+    "before_sha256": "67e2fa5b831e96c51a10eb8d83da60b351b73b2761be3347fda2840c5f18f771",
+    "mandatory_document_coverage": "9/9 changed",
+    "changed_existing_documents": [
+      {
+        "path": "research_modules/d5_terminal_association/README.md",
+        "before_sha256": "b08ef9e70ff442625be36032993f8fbd5da43e0ef376fee5bdca82a13b74af5f",
+        "after_sha256": "dc36731f227c7fab95e38162712a16bea4cbd831904030ca466b0c61da4174f4",
+        "historical_body_preserved": true
+      },
+      {
+        "path": "research_modules/d5_terminal_association/PLAN.md",
+        "before_sha256": "160a832654c155194bf197d1c32eb33d0e0973dc47977995630c5c25c22003d7",
+        "after_sha256": "5379a7528960fc0d02b65d800c553269aa636526733dd078e1a1c054d3115feb",
+        "historical_body_preserved": true
+      },
+      {
+        "path": "subagent_reviews/D5_IMPLEMENTATION_GAP_AUDIT.md",
+        "before_sha256": "2b880a315edb799b9c119e3bd0abfbe5b81d45cfda5a488bfb5696460d45377b",
+        "after_sha256": "991272420265d76d55542c8d94fe1f3e4fc3bac574ce8ffdd9236b0d3475b044",
+        "historical_body_preserved": true
+      },
+      {
+        "path": "subagent_reviews/D5_TERMINAL_ASSOCIATION_REVIEW_AND_PLAN.md",
+        "before_sha256": "66fe39d6ef17dd546968db6c6c827dc6681b29bba6eba7f999efd4a932d09197",
+        "after_sha256": "b5b165f3df566b64d4ead145fc6ed6bd30b7d886569ee85c5deb0c9ffdfe1f56",
+        "historical_body_preserved": true
+      },
+      {
+        "path": "subagent_reviews/D5_M_TO_N_TERMINAL_MULTIVIEW_REVIEW.md",
+        "before_sha256": "7ae4152a3bcaa2900fae6f4701fc93f69595493a073a20b26e727e2261178b72",
+        "after_sha256": "5a48fde12570ab5a612ba37a108d4ff520902b83ee3d6a4c57839d0522b99b61",
+        "historical_body_preserved": true
+      },
+      {
+        "path": "research_modules/d5_terminal_association/docs/MODULE_PRINCIPLES_CN.md",
+        "before_sha256": "3101e9bfef02d200601c6bdae628234f4ece8fadea9166cf1a29f9bde00110a3",
+        "after_sha256": "790f97e673b003396bacea7e7b86bc021b8c493b55d228639a344a0aa99bd262",
+        "historical_body_preserved": true
+      },
+      {
+        "path": "research_modules/d5_terminal_association/docs/ALGORITHM_AND_IMPLEMENTATION.md",
+        "before_sha256": "1609b671c5324c4232c99c20b0ff8192f50417862277f0b0af83c1ccbfb406e4",
+        "after_sha256": "5f66ac844a4acd22ee3a4ba4324769b518779ea3ab44ae91157e6f1f4f95a0ef",
+        "historical_body_preserved": true
+      },
+      {
+        "path": "research_modules/d5_terminal_association/docs/AIRSIM_INTEGRATION_PLAN.md",
+        "before_sha256": "48ca45cd5918510ea548f6c132f8edabb295e4c3dd0126fdbeebd64a7ee58444",
+        "after_sha256": "7a0dfaaa6fb3d5ae6dea4b7d29d9ec8b1d12385193b8050788e45cb572cf33bb",
+        "historical_body_preserved": true
+      },
+      {
+        "path": "research_modules/d5_terminal_association/docs/EXPERIMENT_REPORT.md",
+        "before_sha256": "a1f9150b9ac215247b8c2e43413fe4da7a3c0c1aea8c636519c7c12595ae9da6",
+        "after_sha256": "41f82196a78c42db0cbcfc7d8789c16000ce6c58a6539421fc205533c103ac8d",
+        "historical_body_preserved": true
+      },
+      {
+        "path": "research_modules/d5_terminal_association/docs/README.md",
+        "before_sha256": "33ba6e055879a02e5d0593c60191d74570bf13e268eef87ecb1dedf39f709384",
+        "after_sha256": "3438692246417e4959d9b0ae5a6902148fa5b4f658201dce195052cbbc621979",
+        "historical_body_preserved": true
+      }
+    ],
+    "new_document_lines": 62,
+    "relative_links_checked": 28,
+    "markers_and_exact_two_newlines": "passed",
+    "strip_matches_before": "10/10",
+    "other_d5_baseline_files_unchanged": 240,
+    "prior_reports_unchanged": 8,
+    "new_module_file_scope": "passed",
+    "git_diff_check": "passed",
+    "algorithm_tests_run": false
+  },
+  "limitations": [
+    "2026-09-26只是资料同步日期，不是新的实验日期；原Goal状态不因文档同步而改变，统一验收仍未完成。",
+    "仅同步已有事实，未更改算法、参数、模型、输出、其他模块或领导报告，不制定增强计划，不改变旧日期或勾选历史任务，不关闭GAP或升级能力。",
+    "source_integrity_audit_passed_not_training_authorized仅表示A3 v3来源audit-only完整性审计通过，不授予训练或模型消费；当前代际训练仍未完成。",
+    "G1 v5历史装配加载通过与当前旧/tmp根不存在分开登记；完整副本未定位，不声称所有副本丢失，未检查权重、LFS或远端，未重新加载。",
+    "旧v2 AirSim1934条保存结果不是新时序v3真实复跑；接线测试、理想演示和原Goal统一验收不互相替代。",
+    "正式450组仍摘要可查、完整记录未定位；来源728组及D5来源104组均不能填补正式450组缺失。",
+    "链接检查只覆盖新集中页与新增标记块，不修复或改写历史正文的旧链接。",
+    "仅执行普通文件、链接、哈希及git diff --check；未运行pytest、模型、训练、GPU、仿真、配准、控制、重评分，也未委托子智能体。",
+    "未运行会写入主级VALIDATION_RECORD.json的全批check_sync.py；跨模块总验收由main执行。"
+  ]
+}

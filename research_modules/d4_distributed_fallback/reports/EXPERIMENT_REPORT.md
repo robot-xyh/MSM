@@ -1,5 +1,9 @@
 # D4 分布式降级与接管实验报告
 
+<!-- evidence-status-sync:20260926:begin -->
+2026-09-26 仅作资料同步，不是新的实验日期。[当前证据状态](../docs/CURRENT_EVIDENCE_STATUS_CN.md) 为唯一集中说明；下列旧章节仅按其日期作为历史阶段阅读，包括旧 0/324、fcf8525 预检及历史待办。本次不勾选旧任务、不关闭 GAP、不升级能力或权限，原 Goal 状态不因文档同步而改变。
+<!-- evidence-status-sync:20260926:end -->
+
 ## 2026-08-03 A2 v8 request 重冻结验证
 
 本轮没有运行来源生成 episode。验证对象是 D4 request、producer 文件引用和 readiness 合同。

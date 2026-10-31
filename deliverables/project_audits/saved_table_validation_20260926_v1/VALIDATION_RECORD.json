@@ -1,0 +1,3346 @@
+{
+  "schema": "saved-table-record-audit-result-v1",
+  "started_at_utc": "2026-09-26T15:16:34.035574+00:00",
+  "finished_at_utc": "2026-09-26T15:16:34.105182+00:00",
+  "passed": true,
+  "audit_head": "a0d3d8ad2cd037c71845119840dfd5cae426c2e6",
+  "historical_execution_revision_inferred": false,
+  "spec": "/home/linux/Documents/MSM/deliverables/project_audits/tools/saved_table_records_20260926_spec.json",
+  "spec_sha256": "802ca1b93fc5457f268a54fac59e456253364429cf1128423102778bab0c1bf5",
+  "spec_unchanged": true,
+  "sources": [
+    {
+      "source": "dual_final",
+      "status": "passed",
+      "errors": [],
+      "config": {
+        "kind": "csv",
+        "path": "research_modules/independent_experiments/dual_optical_online_benchmark/outputs/report_replay_20260819_v2/combined_final_case_metrics.csv",
+        "expected": {
+          "rows": 270,
+          "groups": 54,
+          "seeds_per_group": 5
+        },
+        "record_contract": {
+          "unique_key": [
+            "profile",
+            "target_count",
+            "condition",
+            "route_name",
+            "seed"
+          ],
+          "group_by": [
+            "profile",
+            "target_count",
+            "condition",
+            "route_name"
+          ],
+          "seed_field": "seed",
+          "numeric_fields": [
+            "target_count",
+            "seed",
+            "round_index",
+            "output_match_count",
+            "correct_match_count",
+            "false_match_count",
+            "association_precision",
+            "correct_unique_target_count",
+            "fixed_target_coverage",
+            "latency_ms",
+            "deadline_ms",
+            "on_time_correct_unique_target_count",
+            "on_time_fixed_target_coverage",
+            "dual_station_residual_loss_count",
+            "single_station_correct_identity_count",
+            "single_station_identity_opportunity_count",
+            "single_station_coverage",
+            "single_station_dominant_observation_count",
+            "single_station_labeled_observation_count",
+            "single_station_precision",
+            "single_station_duplicate_track_count",
+            "single_station_mixed_track_count",
+            "single_station_false_only_track_count",
+            "single_station_labeled_track_count",
+            "shared_correct_truth_count"
+          ],
+          "nullable_fields": [
+            "association_precision"
+          ]
+        },
+        "notes": "One saved final row per configuration and seed. No round selection is performed. Nullable precision preserves the existing unavailable-value convention."
+      },
+      "record_validation": {
+        "status": "passed",
+        "record_count": 270,
+        "unique_key": [
+          "profile",
+          "target_count",
+          "condition",
+          "route_name",
+          "seed"
+        ],
+        "numeric_fields": {
+          "target_count": {
+            "valid_count": 270,
+            "missing_count": 0,
+            "all_missing": false
+          },
+          "seed": {
+            "valid_count": 270,
+            "missing_count": 0,
+            "all_missing": false
+          },
+          "round_index": {
+            "valid_count": 270,
+            "missing_count": 0,
+            "all_missing": false
+          },
+          "output_match_count": {
+            "valid_count": 270,
+            "missing_count": 0,
+            "all_missing": false
+          },
+          "correct_match_count": {
+            "valid_count": 270,
+            "missing_count": 0,
+            "all_missing": false
+          },
+          "false_match_count": {
+            "valid_count": 270,
+            "missing_count": 0,
+            "all_missing": false
+          },
+          "association_precision": {
+            "valid_count": 270,
+            "missing_count": 0,
+            "all_missing": false
+          },
+          "correct_unique_target_count": {
+            "valid_count": 270,
+            "missing_count": 0,
+            "all_missing": false
+          },
+          "fixed_target_coverage": {
+            "valid_count": 270,
+            "missing_count": 0,
+            "all_missing": false
+          },
+          "latency_ms": {
+            "valid_count": 270,
+            "missing_count": 0,
+            "all_missing": false
+          },
+          "deadline_ms": {
+            "valid_count": 270,
+            "missing_count": 0,
+            "all_missing": false
+          },
+          "on_time_correct_unique_target_count": {
+            "valid_count": 270,
+            "missing_count": 0,
+            "all_missing": false
+          },
+          "on_time_fixed_target_coverage": {
+            "valid_count": 270,
+            "missing_count": 0,
+            "all_missing": false
+          },
+          "dual_station_residual_loss_count": {
+            "valid_count": 270,
+            "missing_count": 0,
+            "all_missing": false
+          },
+          "single_station_correct_identity_count": {
+            "valid_count": 270,
+            "missing_count": 0,
+            "all_missing": false
+          },
+          "single_station_identity_opportunity_count": {
+            "valid_count": 270,
+            "missing_count": 0,
+            "all_missing": false
+          },
+          "single_station_coverage": {
+            "valid_count": 270,
+            "missing_count": 0,
+            "all_missing": false
+          },
+          "single_station_dominant_observation_count": {
+            "valid_count": 270,
+            "missing_count": 0,
+            "all_missing": false
+          },
+          "single_station_labeled_observation_count": {
+            "valid_count": 270,
+            "missing_count": 0,
+            "all_missing": false
+          },
+          "single_station_precision": {
+            "valid_count": 270,
+            "missing_count": 0,
+            "all_missing": false
+          },
+          "single_station_duplicate_track_count": {
+            "valid_count": 270,
+            "missing_count": 0,
+            "all_missing": false
+          },
+          "single_station_mixed_track_count": {
+            "valid_count": 270,
+            "missing_count": 0,
+            "all_missing": false
+          },
+          "single_station_false_only_track_count": {
+            "valid_count": 270,
+            "missing_count": 0,
+            "all_missing": false
+          },
+          "single_station_labeled_track_count": {
+            "valid_count": 270,
+            "missing_count": 0,
+            "all_missing": false
+          },
+          "shared_correct_truth_count": {
+            "valid_count": 270,
+            "missing_count": 0,
+            "all_missing": false
+          }
+        },
+        "groups": [
+          {
+            "group": {
+              "profile": "continuous_360",
+              "target_count": "20",
+              "condition": "clean",
+              "route_name": "epipolar_mht"
+            },
+            "record_count": 5,
+            "distinct_seed_count": 5
+          },
+          {
+            "group": {
+              "profile": "continuous_360",
+              "target_count": "20",
+              "condition": "clean",
+              "route_name": "gnn"
+            },
+            "record_count": 5,
+            "distinct_seed_count": 5
+          },
+          {
+            "group": {
+              "profile": "continuous_360",
+              "target_count": "20",
+              "condition": "heavy",
+              "route_name": "epipolar_mht"
+            },
+            "record_count": 5,
+            "distinct_seed_count": 5
+          },
+          {
+            "group": {
+              "profile": "continuous_360",
+              "target_count": "20",
+              "condition": "heavy",
+              "route_name": "gnn"
+            },
+            "record_count": 5,
+            "distinct_seed_count": 5
+          },
+          {
+            "group": {
+              "profile": "continuous_360",
+              "target_count": "20",
+              "condition": "light",
+              "route_name": "epipolar_mht"
+            },
+            "record_count": 5,
+            "distinct_seed_count": 5
+          },
+          {
+            "group": {
+              "profile": "continuous_360",
+              "target_count": "20",
+              "condition": "light",
+              "route_name": "gnn"
+            },
+            "record_count": 5,
+            "distinct_seed_count": 5
+          },
+          {
+            "group": {
+              "profile": "continuous_360",
+              "target_count": "20",
+              "condition": "medium",
+              "route_name": "epipolar_mht"
+            },
+            "record_count": 5,
+            "distinct_seed_count": 5
+          },
+          {
+            "group": {
+              "profile": "continuous_360",
+              "target_count": "20",
+              "condition": "medium",
+              "route_name": "gnn"
+            },
+            "record_count": 5,
+            "distinct_seed_count": 5
+          },
+          {
+            "group": {
+              "profile": "continuous_360",
+              "target_count": "40",
+              "condition": "clean",
+              "route_name": "epipolar_mht"
+            },
+            "record_count": 5,
+            "distinct_seed_count": 5
+          },
+          {
+            "group": {
+              "profile": "continuous_360",
+              "target_count": "40",
+              "condition": "clean",
+              "route_name": "gnn"
+            },
+            "record_count": 5,
+            "distinct_seed_count": 5
+          },
+          {
+            "group": {
+              "profile": "continuous_360",
+              "target_count": "40",
+              "condition": "heavy",
+              "route_name": "epipolar_mht"
+            },
+            "record_count": 5,
+            "distinct_seed_count": 5
+          },
+          {
+            "group": {
+              "profile": "continuous_360",
+              "target_count": "40",
+              "condition": "heavy",
+              "route_name": "gnn"
+            },
+            "record_count": 5,
+            "distinct_seed_count": 5
+          },
+          {
+            "group": {
+              "profile": "continuous_360",
+              "target_count": "40",
+              "condition": "light",
+              "route_name": "epipolar_mht"
+            },
+            "record_count": 5,
+            "distinct_seed_count": 5
+          },
+          {
+            "group": {
+              "profile": "continuous_360",
+              "target_count": "40",
+              "condition": "light",
+              "route_name": "gnn"
+            },
+            "record_count": 5,
+            "distinct_seed_count": 5
+          },
+          {
+            "group": {
+              "profile": "continuous_360",
+              "target_count": "40",
+              "condition": "medium",
+              "route_name": "epipolar_mht"
+            },
+            "record_count": 5,
+            "distinct_seed_count": 5
+          },
+          {
+            "group": {
+              "profile": "continuous_360",
+              "target_count": "40",
+              "condition": "medium",
+              "route_name": "gnn"
+            },
+            "record_count": 5,
+            "distinct_seed_count": 5
+          },
+          {
+            "group": {
+              "profile": "continuous_360",
+              "target_count": "60",
+              "condition": "clean",
+              "route_name": "epipolar_mht"
+            },
+            "record_count": 5,
+            "distinct_seed_count": 5
+          },
+          {
+            "group": {
+              "profile": "continuous_360",
+              "target_count": "60",
+              "condition": "clean",
+              "route_name": "gnn"
+            },
+            "record_count": 5,
+            "distinct_seed_count": 5
+          },
+          {
+            "group": {
+              "profile": "continuous_360",
+              "target_count": "60",
+              "condition": "heavy",
+              "route_name": "epipolar_mht"
+            },
+            "record_count": 5,
+            "distinct_seed_count": 5
+          },
+          {
+            "group": {
+              "profile": "continuous_360",
+              "target_count": "60",
+              "condition": "heavy",
+              "route_name": "gnn"
+            },
+            "record_count": 5,
+            "distinct_seed_count": 5
+          },
+          {
+            "group": {
+              "profile": "continuous_360",
+              "target_count": "60",
+              "condition": "light",
+              "route_name": "epipolar_mht"
+            },
+            "record_count": 5,
+            "distinct_seed_count": 5
+          },
+          {
+            "group": {
+              "profile": "continuous_360",
+              "target_count": "60",
+              "condition": "light",
+              "route_name": "gnn"
+            },
+            "record_count": 5,
+            "distinct_seed_count": 5
+          },
+          {
+            "group": {
+              "profile": "continuous_360",
+              "target_count": "60",
+              "condition": "medium",
+              "route_name": "epipolar_mht"
+            },
+            "record_count": 5,
+            "distinct_seed_count": 5
+          },
+          {
+            "group": {
+              "profile": "continuous_360",
+              "target_count": "60",
+              "condition": "medium",
+              "route_name": "gnn"
+            },
+            "record_count": 5,
+            "distinct_seed_count": 5
+          },
+          {
+            "group": {
+              "profile": "oracle_360",
+              "target_count": "20",
+              "condition": "clean",
+              "route_name": "epipolar_mht"
+            },
+            "record_count": 5,
+            "distinct_seed_count": 5
+          },
+          {
+            "group": {
+              "profile": "oracle_360",
+              "target_count": "20",
+              "condition": "clean",
+              "route_name": "gnn"
+            },
+            "record_count": 5,
+            "distinct_seed_count": 5
+          },
+          {
+            "group": {
+              "profile": "oracle_360",
+              "target_count": "40",
+              "condition": "clean",
+              "route_name": "epipolar_mht"
+            },
+            "record_count": 5,
+            "distinct_seed_count": 5
+          },
+          {
+            "group": {
+              "profile": "oracle_360",
+              "target_count": "40",
+              "condition": "clean",
+              "route_name": "gnn"
+            },
+            "record_count": 5,
+            "distinct_seed_count": 5
+          },
+          {
+            "group": {
+              "profile": "oracle_360",
+              "target_count": "60",
+              "condition": "clean",
+              "route_name": "epipolar_mht"
+            },
+            "record_count": 5,
+            "distinct_seed_count": 5
+          },
+          {
+            "group": {
+              "profile": "oracle_360",
+              "target_count": "60",
+              "condition": "clean",
+              "route_name": "gnn"
+            },
+            "record_count": 5,
+            "distinct_seed_count": 5
+          },
+          {
+            "group": {
+              "profile": "s180",
+              "target_count": "20",
+              "condition": "clean",
+              "route_name": "epipolar_mht"
+            },
+            "record_count": 5,
+            "distinct_seed_count": 5
+          },
+          {
+            "group": {
+              "profile": "s180",
+              "target_count": "20",
+              "condition": "clean",
+              "route_name": "gnn"
+            },
+            "record_count": 5,
+            "distinct_seed_count": 5
+          },
+          {
+            "group": {
+              "profile": "s180",
+              "target_count": "20",
+              "condition": "heavy",
+              "route_name": "epipolar_mht"
+            },
+            "record_count": 5,
+            "distinct_seed_count": 5
+          },
+          {
+            "group": {
+              "profile": "s180",
+              "target_count": "20",
+              "condition": "heavy",
+              "route_name": "gnn"
+            },
+            "record_count": 5,
+            "distinct_seed_count": 5
+          },
+          {
+            "group": {
+              "profile": "s180",
+              "target_count": "20",
+              "condition": "light",
+              "route_name": "epipolar_mht"
+            },
+            "record_count": 5,
+            "distinct_seed_count": 5
+          },
+          {
+            "group": {
+              "profile": "s180",
+              "target_count": "20",
+              "condition": "light",
+              "route_name": "gnn"
+            },
+            "record_count": 5,
+            "distinct_seed_count": 5
+          },
+          {
+            "group": {
+              "profile": "s180",
+              "target_count": "20",
+              "condition": "medium",
+              "route_name": "epipolar_mht"
+            },
+            "record_count": 5,
+            "distinct_seed_count": 5
+          },
+          {
+            "group": {
+              "profile": "s180",
+              "target_count": "20",
+              "condition": "medium",
+              "route_name": "gnn"
+            },
+            "record_count": 5,
+            "distinct_seed_count": 5
+          },
+          {
+            "group": {
+              "profile": "s180",
+              "target_count": "40",
+              "condition": "clean",
+              "route_name": "epipolar_mht"
+            },
+            "record_count": 5,
+            "distinct_seed_count": 5
+          },
+          {
+            "group": {
+              "profile": "s180",
+              "target_count": "40",
+              "condition": "clean",
+              "route_name": "gnn"
+            },
+            "record_count": 5,
+            "distinct_seed_count": 5
+          },
+          {
+            "group": {
+              "profile": "s180",
+              "target_count": "40",
+              "condition": "heavy",
+              "route_name": "epipolar_mht"
+            },
+            "record_count": 5,
+            "distinct_seed_count": 5
+          },
+          {
+            "group": {
+              "profile": "s180",
+              "target_count": "40",
+              "condition": "heavy",
+              "route_name": "gnn"
+            },
+            "record_count": 5,
+            "distinct_seed_count": 5
+          },
+          {
+            "group": {
+              "profile": "s180",
+              "target_count": "40",
+              "condition": "light",
+              "route_name": "epipolar_mht"
+            },
+            "record_count": 5,
+            "distinct_seed_count": 5
+          },
+          {
+            "group": {
+              "profile": "s180",
+              "target_count": "40",
+              "condition": "light",
+              "route_name": "gnn"
+            },
+            "record_count": 5,
+            "distinct_seed_count": 5
+          },
+          {
+            "group": {
+              "profile": "s180",
+              "target_count": "40",
+              "condition": "medium",
+              "route_name": "epipolar_mht"
+            },
+            "record_count": 5,
+            "distinct_seed_count": 5
+          },
+          {
+            "group": {
+              "profile": "s180",
+              "target_count": "40",
+              "condition": "medium",
+              "route_name": "gnn"
+            },
+            "record_count": 5,
+            "distinct_seed_count": 5
+          },
+          {
+            "group": {
+              "profile": "s180",
+              "target_count": "60",
+              "condition": "clean",
+              "route_name": "epipolar_mht"
+            },
+            "record_count": 5,
+            "distinct_seed_count": 5
+          },
+          {
+            "group": {
+              "profile": "s180",
+              "target_count": "60",
+              "condition": "clean",
+              "route_name": "gnn"
+            },
+            "record_count": 5,
+            "distinct_seed_count": 5
+          },
+          {
+            "group": {
+              "profile": "s180",
+              "target_count": "60",
+              "condition": "heavy",
+              "route_name": "epipolar_mht"
+            },
+            "record_count": 5,
+            "distinct_seed_count": 5
+          },
+          {
+            "group": {
+              "profile": "s180",
+              "target_count": "60",
+              "condition": "heavy",
+              "route_name": "gnn"
+            },
+            "record_count": 5,
+            "distinct_seed_count": 5
+          },
+          {
+            "group": {
+              "profile": "s180",
+              "target_count": "60",
+              "condition": "light",
+              "route_name": "epipolar_mht"
+            },
+            "record_count": 5,
+            "distinct_seed_count": 5
+          },
+          {
+            "group": {
+              "profile": "s180",
+              "target_count": "60",
+              "condition": "light",
+              "route_name": "gnn"
+            },
+            "record_count": 5,
+            "distinct_seed_count": 5
+          },
+          {
+            "group": {
+              "profile": "s180",
+              "target_count": "60",
+              "condition": "medium",
+              "route_name": "epipolar_mht"
+            },
+            "record_count": 5,
+            "distinct_seed_count": 5
+          },
+          {
+            "group": {
+              "profile": "s180",
+              "target_count": "60",
+              "condition": "medium",
+              "route_name": "gnn"
+            },
+            "record_count": 5,
+            "distinct_seed_count": 5
+          }
+        ],
+        "scope": "Record structure only; no deduplication, imputation, metric calculation or independence claim."
+      },
+      "row_count": 270,
+      "unchecked_column_types": [
+        "deadline_met",
+        "evidence_status",
+        "inference_input_fingerprint",
+        "protocol_bridge_applied",
+        "route_freeze",
+        "route_freeze_sha256",
+        "schema_version",
+        "source_input_fingerprint",
+        "timed_out"
+      ],
+      "file_record_counts": {
+        "research_modules/independent_experiments/dual_optical_online_benchmark/outputs/report_replay_20260819_v2/combined_final_case_metrics.csv": 270
+      },
+      "distinct_seed_ids_count": 30
+    },
+    {
+      "source": "dual_rounds",
+      "status": "passed",
+      "errors": [],
+      "config": {
+        "kind": "csv",
+        "paths": [
+          "research_modules/independent_experiments/dual_optical_online_benchmark/outputs/report_replay_20260819_v2/oracle_360/round_metrics.csv",
+          "research_modules/independent_experiments/dual_optical_online_benchmark/outputs/report_replay_20260819_v2/continuous_360/round_metrics.csv",
+          "research_modules/independent_experiments/dual_optical_online_benchmark/outputs/report_replay_20260819_v2/s180_derived/round_metrics.csv"
+        ],
+        "expected": {
+          "rows": 2340,
+          "groups": 54,
+          "seeds_per_group": 5
+        },
+        "record_contract": {
+          "unique_key": [
+            "profile",
+            "target_count",
+            "condition",
+            "route_name",
+            "seed",
+            "round_index"
+          ],
+          "group_by": [
+            "profile",
+            "target_count",
+            "condition",
+            "route_name"
+          ],
+          "seed_field": "seed",
+          "numeric_fields": [
+            "target_count",
+            "seed",
+            "round_index",
+            "output_match_count",
+            "correct_match_count",
+            "false_match_count",
+            "association_precision",
+            "correct_unique_target_count",
+            "fixed_target_coverage",
+            "latency_ms",
+            "deadline_ms",
+            "on_time_correct_unique_target_count",
+            "on_time_fixed_target_coverage",
+            "dual_station_residual_loss_count",
+            "single_station_correct_identity_count",
+            "single_station_identity_opportunity_count",
+            "single_station_coverage",
+            "single_station_dominant_observation_count",
+            "single_station_labeled_observation_count",
+            "single_station_precision",
+            "single_station_duplicate_track_count",
+            "single_station_mixed_track_count",
+            "single_station_false_only_track_count",
+            "single_station_labeled_track_count",
+            "shared_correct_truth_count"
+          ],
+          "nullable_fields": [
+            "association_precision"
+          ]
+        },
+        "notes": "The round index is part of the key. Repeated seeds across rounds are allowed and not counted as new seeds. Final rows overlap this representation and are audited separately."
+      },
+      "record_validation": {
+        "status": "passed",
+        "record_count": 2340,
+        "unique_key": [
+          "profile",
+          "target_count",
+          "condition",
+          "route_name",
+          "seed",
+          "round_index"
+        ],
+        "numeric_fields": {
+          "target_count": {
+            "valid_count": 2340,
+            "missing_count": 0,
+            "all_missing": false
+          },
+          "seed": {
+            "valid_count": 2340,
+            "missing_count": 0,
+            "all_missing": false
+          },
+          "round_index": {
+            "valid_count": 2340,
+            "missing_count": 0,
+            "all_missing": false
+          },
+          "output_match_count": {
+            "valid_count": 2340,
+            "missing_count": 0,
+            "all_missing": false
+          },
+          "correct_match_count": {
+            "valid_count": 2340,
+            "missing_count": 0,
+            "all_missing": false
+          },
+          "false_match_count": {
+            "valid_count": 2340,
+            "missing_count": 0,
+            "all_missing": false
+          },
+          "association_precision": {
+            "valid_count": 1800,
+            "missing_count": 540,
+            "all_missing": false
+          },
+          "correct_unique_target_count": {
+            "valid_count": 2340,
+            "missing_count": 0,
+            "all_missing": false
+          },
+          "fixed_target_coverage": {
+            "valid_count": 2340,
+            "missing_count": 0,
+            "all_missing": false
+          },
+          "latency_ms": {
+            "valid_count": 2340,
+            "missing_count": 0,
+            "all_missing": false
+          },
+          "deadline_ms": {
+            "valid_count": 2340,
+            "missing_count": 0,
+            "all_missing": false
+          },
+          "on_time_correct_unique_target_count": {
+            "valid_count": 2340,
+            "missing_count": 0,
+            "all_missing": false
+          },
+          "on_time_fixed_target_coverage": {
+            "valid_count": 2340,
+            "missing_count": 0,
+            "all_missing": false
+          },
+          "dual_station_residual_loss_count": {
+            "valid_count": 2340,
+            "missing_count": 0,
+            "all_missing": false
+          },
+          "single_station_correct_identity_count": {
+            "valid_count": 2340,
+            "missing_count": 0,
+            "all_missing": false
+          },
+          "single_station_identity_opportunity_count": {
+            "valid_count": 2340,
+            "missing_count": 0,
+            "all_missing": false
+          },
+          "single_station_coverage": {
+            "valid_count": 2340,
+            "missing_count": 0,
+            "all_missing": false
+          },
+          "single_station_dominant_observation_count": {
+            "valid_count": 2340,
+            "missing_count": 0,
+            "all_missing": false
+          },
+          "single_station_labeled_observation_count": {
+            "valid_count": 2340,
+            "missing_count": 0,
+            "all_missing": false
+          },
+          "single_station_precision": {
+            "valid_count": 2340,
+            "missing_count": 0,
+            "all_missing": false
+          },
+          "single_station_duplicate_track_count": {
+            "valid_count": 2340,
+            "missing_count": 0,
+            "all_missing": false
+          },
+          "single_station_mixed_track_count": {
+            "valid_count": 2340,
+            "missing_count": 0,
+            "all_missing": false
+          },
+          "single_station_false_only_track_count": {
+            "valid_count": 2340,
+            "missing_count": 0,
+            "all_missing": false
+          },
+          "single_station_labeled_track_count": {
+            "valid_count": 2340,
+            "missing_count": 0,
+            "all_missing": false
+          },
+          "shared_correct_truth_count": {
+            "valid_count": 2340,
+            "missing_count": 0,
+            "all_missing": false
+          }
+        },
+        "groups": [
+          {
+            "group": {
+              "profile": "oracle_360",
+              "target_count": "20",
+              "condition": "clean",
+              "route_name": "epipolar_mht"
+            },
+            "record_count": 30,
+            "distinct_seed_count": 5
+          },
+          {
+            "group": {
+              "profile": "oracle_360",
+              "target_count": "40",
+              "condition": "clean",
+              "route_name": "epipolar_mht"
+            },
+            "record_count": 30,
+            "distinct_seed_count": 5
+          },
+          {
+            "group": {
+              "profile": "oracle_360",
+              "target_count": "60",
+              "condition": "clean",
+              "route_name": "epipolar_mht"
+            },
+            "record_count": 30,
+            "distinct_seed_count": 5
+          },
+          {
+            "group": {
+              "profile": "oracle_360",
+              "target_count": "20",
+              "condition": "clean",
+              "route_name": "gnn"
+            },
+            "record_count": 30,
+            "distinct_seed_count": 5
+          },
+          {
+            "group": {
+              "profile": "oracle_360",
+              "target_count": "40",
+              "condition": "clean",
+              "route_name": "gnn"
+            },
+            "record_count": 30,
+            "distinct_seed_count": 5
+          },
+          {
+            "group": {
+              "profile": "oracle_360",
+              "target_count": "60",
+              "condition": "clean",
+              "route_name": "gnn"
+            },
+            "record_count": 30,
+            "distinct_seed_count": 5
+          },
+          {
+            "group": {
+              "profile": "continuous_360",
+              "target_count": "20",
+              "condition": "clean",
+              "route_name": "epipolar_mht"
+            },
+            "record_count": 30,
+            "distinct_seed_count": 5
+          },
+          {
+            "group": {
+              "profile": "continuous_360",
+              "target_count": "20",
+              "condition": "light",
+              "route_name": "epipolar_mht"
+            },
+            "record_count": 30,
+            "distinct_seed_count": 5
+          },
+          {
+            "group": {
+              "profile": "continuous_360",
+              "target_count": "20",
+              "condition": "medium",
+              "route_name": "epipolar_mht"
+            },
+            "record_count": 30,
+            "distinct_seed_count": 5
+          },
+          {
+            "group": {
+              "profile": "continuous_360",
+              "target_count": "20",
+              "condition": "heavy",
+              "route_name": "epipolar_mht"
+            },
+            "record_count": 30,
+            "distinct_seed_count": 5
+          },
+          {
+            "group": {
+              "profile": "continuous_360",
+              "target_count": "40",
+              "condition": "clean",
+              "route_name": "epipolar_mht"
+            },
+            "record_count": 30,
+            "distinct_seed_count": 5
+          },
+          {
+            "group": {
+              "profile": "continuous_360",
+              "target_count": "40",
+              "condition": "light",
+              "route_name": "epipolar_mht"
+            },
+            "record_count": 30,
+            "distinct_seed_count": 5
+          },
+          {
+            "group": {
+              "profile": "continuous_360",
+              "target_count": "40",
+              "condition": "medium",
+              "route_name": "epipolar_mht"
+            },
+            "record_count": 30,
+            "distinct_seed_count": 5
+          },
+          {
+            "group": {
+              "profile": "continuous_360",
+              "target_count": "40",
+              "condition": "heavy",
+              "route_name": "epipolar_mht"
+            },
+            "record_count": 30,
+            "distinct_seed_count": 5
+          },
+          {
+            "group": {
+              "profile": "continuous_360",
+              "target_count": "60",
+              "condition": "light",
+              "route_name": "epipolar_mht"
+            },
+            "record_count": 30,
+            "distinct_seed_count": 5
+          },
+          {
+            "group": {
+              "profile": "continuous_360",
+              "target_count": "60",
+              "condition": "clean",
+              "route_name": "epipolar_mht"
+            },
+            "record_count": 30,
+            "distinct_seed_count": 5
+          },
+          {
+            "group": {
+              "profile": "continuous_360",
+              "target_count": "60",
+              "condition": "heavy",
+              "route_name": "epipolar_mht"
+            },
+            "record_count": 30,
+            "distinct_seed_count": 5
+          },
+          {
+            "group": {
+              "profile": "continuous_360",
+              "target_count": "60",
+              "condition": "medium",
+              "route_name": "epipolar_mht"
+            },
+            "record_count": 30,
+            "distinct_seed_count": 5
+          },
+          {
+            "group": {
+              "profile": "continuous_360",
+              "target_count": "20",
+              "condition": "clean",
+              "route_name": "gnn"
+            },
+            "record_count": 30,
+            "distinct_seed_count": 5
+          },
+          {
+            "group": {
+              "profile": "continuous_360",
+              "target_count": "20",
+              "condition": "heavy",
+              "route_name": "gnn"
+            },
+            "record_count": 30,
+            "distinct_seed_count": 5
+          },
+          {
+            "group": {
+              "profile": "continuous_360",
+              "target_count": "20",
+              "condition": "light",
+              "route_name": "gnn"
+            },
+            "record_count": 30,
+            "distinct_seed_count": 5
+          },
+          {
+            "group": {
+              "profile": "continuous_360",
+              "target_count": "20",
+              "condition": "medium",
+              "route_name": "gnn"
+            },
+            "record_count": 30,
+            "distinct_seed_count": 5
+          },
+          {
+            "group": {
+              "profile": "continuous_360",
+              "target_count": "40",
+              "condition": "clean",
+              "route_name": "gnn"
+            },
+            "record_count": 30,
+            "distinct_seed_count": 5
+          },
+          {
+            "group": {
+              "profile": "continuous_360",
+              "target_count": "40",
+              "condition": "heavy",
+              "route_name": "gnn"
+            },
+            "record_count": 30,
+            "distinct_seed_count": 5
+          },
+          {
+            "group": {
+              "profile": "continuous_360",
+              "target_count": "40",
+              "condition": "light",
+              "route_name": "gnn"
+            },
+            "record_count": 30,
+            "distinct_seed_count": 5
+          },
+          {
+            "group": {
+              "profile": "continuous_360",
+              "target_count": "40",
+              "condition": "medium",
+              "route_name": "gnn"
+            },
+            "record_count": 30,
+            "distinct_seed_count": 5
+          },
+          {
+            "group": {
+              "profile": "continuous_360",
+              "target_count": "60",
+              "condition": "clean",
+              "route_name": "gnn"
+            },
+            "record_count": 30,
+            "distinct_seed_count": 5
+          },
+          {
+            "group": {
+              "profile": "continuous_360",
+              "target_count": "60",
+              "condition": "heavy",
+              "route_name": "gnn"
+            },
+            "record_count": 30,
+            "distinct_seed_count": 5
+          },
+          {
+            "group": {
+              "profile": "continuous_360",
+              "target_count": "60",
+              "condition": "light",
+              "route_name": "gnn"
+            },
+            "record_count": 30,
+            "distinct_seed_count": 5
+          },
+          {
+            "group": {
+              "profile": "continuous_360",
+              "target_count": "60",
+              "condition": "medium",
+              "route_name": "gnn"
+            },
+            "record_count": 30,
+            "distinct_seed_count": 5
+          },
+          {
+            "group": {
+              "profile": "s180",
+              "target_count": "20",
+              "condition": "heavy",
+              "route_name": "epipolar_mht"
+            },
+            "record_count": 60,
+            "distinct_seed_count": 5
+          },
+          {
+            "group": {
+              "profile": "s180",
+              "target_count": "20",
+              "condition": "medium",
+              "route_name": "epipolar_mht"
+            },
+            "record_count": 60,
+            "distinct_seed_count": 5
+          },
+          {
+            "group": {
+              "profile": "s180",
+              "target_count": "20",
+              "condition": "light",
+              "route_name": "epipolar_mht"
+            },
+            "record_count": 60,
+            "distinct_seed_count": 5
+          },
+          {
+            "group": {
+              "profile": "s180",
+              "target_count": "20",
+              "condition": "clean",
+              "route_name": "epipolar_mht"
+            },
+            "record_count": 60,
+            "distinct_seed_count": 5
+          },
+          {
+            "group": {
+              "profile": "s180",
+              "target_count": "40",
+              "condition": "light",
+              "route_name": "epipolar_mht"
+            },
+            "record_count": 60,
+            "distinct_seed_count": 5
+          },
+          {
+            "group": {
+              "profile": "s180",
+              "target_count": "40",
+              "condition": "clean",
+              "route_name": "epipolar_mht"
+            },
+            "record_count": 60,
+            "distinct_seed_count": 5
+          },
+          {
+            "group": {
+              "profile": "s180",
+              "target_count": "40",
+              "condition": "medium",
+              "route_name": "epipolar_mht"
+            },
+            "record_count": 60,
+            "distinct_seed_count": 5
+          },
+          {
+            "group": {
+              "profile": "s180",
+              "target_count": "40",
+              "condition": "heavy",
+              "route_name": "epipolar_mht"
+            },
+            "record_count": 60,
+            "distinct_seed_count": 5
+          },
+          {
+            "group": {
+              "profile": "s180",
+              "target_count": "60",
+              "condition": "medium",
+              "route_name": "epipolar_mht"
+            },
+            "record_count": 60,
+            "distinct_seed_count": 5
+          },
+          {
+            "group": {
+              "profile": "s180",
+              "target_count": "60",
+              "condition": "clean",
+              "route_name": "epipolar_mht"
+            },
+            "record_count": 60,
+            "distinct_seed_count": 5
+          },
+          {
+            "group": {
+              "profile": "s180",
+              "target_count": "60",
+              "condition": "heavy",
+              "route_name": "epipolar_mht"
+            },
+            "record_count": 60,
+            "distinct_seed_count": 5
+          },
+          {
+            "group": {
+              "profile": "s180",
+              "target_count": "60",
+              "condition": "light",
+              "route_name": "epipolar_mht"
+            },
+            "record_count": 60,
+            "distinct_seed_count": 5
+          },
+          {
+            "group": {
+              "profile": "s180",
+              "target_count": "20",
+              "condition": "clean",
+              "route_name": "gnn"
+            },
+            "record_count": 60,
+            "distinct_seed_count": 5
+          },
+          {
+            "group": {
+              "profile": "s180",
+              "target_count": "20",
+              "condition": "heavy",
+              "route_name": "gnn"
+            },
+            "record_count": 60,
+            "distinct_seed_count": 5
+          },
+          {
+            "group": {
+              "profile": "s180",
+              "target_count": "20",
+              "condition": "light",
+              "route_name": "gnn"
+            },
+            "record_count": 60,
+            "distinct_seed_count": 5
+          },
+          {
+            "group": {
+              "profile": "s180",
+              "target_count": "20",
+              "condition": "medium",
+              "route_name": "gnn"
+            },
+            "record_count": 60,
+            "distinct_seed_count": 5
+          },
+          {
+            "group": {
+              "profile": "s180",
+              "target_count": "40",
+              "condition": "clean",
+              "route_name": "gnn"
+            },
+            "record_count": 60,
+            "distinct_seed_count": 5
+          },
+          {
+            "group": {
+              "profile": "s180",
+              "target_count": "40",
+              "condition": "heavy",
+              "route_name": "gnn"
+            },
+            "record_count": 60,
+            "distinct_seed_count": 5
+          },
+          {
+            "group": {
+              "profile": "s180",
+              "target_count": "40",
+              "condition": "light",
+              "route_name": "gnn"
+            },
+            "record_count": 60,
+            "distinct_seed_count": 5
+          },
+          {
+            "group": {
+              "profile": "s180",
+              "target_count": "40",
+              "condition": "medium",
+              "route_name": "gnn"
+            },
+            "record_count": 60,
+            "distinct_seed_count": 5
+          },
+          {
+            "group": {
+              "profile": "s180",
+              "target_count": "60",
+              "condition": "clean",
+              "route_name": "gnn"
+            },
+            "record_count": 60,
+            "distinct_seed_count": 5
+          },
+          {
+            "group": {
+              "profile": "s180",
+              "target_count": "60",
+              "condition": "heavy",
+              "route_name": "gnn"
+            },
+            "record_count": 60,
+            "distinct_seed_count": 5
+          },
+          {
+            "group": {
+              "profile": "s180",
+              "target_count": "60",
+              "condition": "light",
+              "route_name": "gnn"
+            },
+            "record_count": 60,
+            "distinct_seed_count": 5
+          },
+          {
+            "group": {
+              "profile": "s180",
+              "target_count": "60",
+              "condition": "medium",
+              "route_name": "gnn"
+            },
+            "record_count": 60,
+            "distinct_seed_count": 5
+          }
+        ],
+        "scope": "Record structure only; no deduplication, imputation, metric calculation or independence claim."
+      },
+      "row_count": 2340,
+      "unchecked_column_types": [
+        "deadline_met",
+        "evidence_status",
+        "inference_input_fingerprint",
+        "protocol_bridge_applied",
+        "route_freeze",
+        "route_freeze_sha256",
+        "schema_version",
+        "source_input_fingerprint",
+        "timed_out"
+      ],
+      "file_record_counts": {
+        "research_modules/independent_experiments/dual_optical_online_benchmark/outputs/report_replay_20260819_v2/oracle_360/round_metrics.csv": 180,
+        "research_modules/independent_experiments/dual_optical_online_benchmark/outputs/report_replay_20260819_v2/continuous_360/round_metrics.csv": 720,
+        "research_modules/independent_experiments/dual_optical_online_benchmark/outputs/report_replay_20260819_v2/s180_derived/round_metrics.csv": 1440
+      },
+      "distinct_seed_ids_count": 30
+    },
+    {
+      "source": "search_rows",
+      "status": "passed",
+      "errors": [],
+      "config": {
+        "kind": "csv",
+        "path": "research_modules/independent_experiments/center_terminal_cv_campaign/outputs/offline_search_100pct_cues_20260819/matrix.csv",
+        "expected": {
+          "rows": 45,
+          "groups": 9,
+          "seeds_per_group": 5
+        },
+        "record_contract": {
+          "unique_key": [
+            "scenario_id",
+            "position_sigma_m",
+            "seed"
+          ],
+          "group_by": [
+            "scenario_id",
+            "position_sigma_m"
+          ],
+          "seed_field": "seed",
+          "numeric_fields": [
+            "target_count",
+            "resource_count",
+            "position_sigma_m",
+            "seed",
+            "source_cue_count",
+            "source_fixture_precision",
+            "source_fixture_recall",
+            "source_ghost_count",
+            "source_duplicate_count",
+            "source_missed_target_count",
+            "search_cell_count",
+            "executed_observation_task_count",
+            "true_frustum_covered_cell_count",
+            "true_frustum_cell_coverage_rate",
+            "true_frustum_probability_mass_coverage_rate",
+            "unexecuted_task_count",
+            "closed_after_confirmation_cell_count",
+            "detected_target_count",
+            "target_discovery_rate",
+            "continuously_confirmed_target_count",
+            "continuous_confirmation_rate",
+            "first_discovery_mean_s",
+            "first_discovery_p95_s",
+            "first_confirmation_mean_s",
+            "repeated_confirmed_observation_count",
+            "repeated_confirmed_observation_rate",
+            "closed_cue_count",
+            "correctly_closed_cue_count",
+            "identity_misclosed_cue_count",
+            "deadline_candidate_rejection_count",
+            "planner_call_count",
+            "planner_compute_mean_ms",
+            "planner_compute_p95_ms",
+            "planner_compute_max_ms",
+            "online_truth_leakage_count",
+            "camera_vertical_fov_deg",
+            "camera_horizontal_footprint_m",
+            "camera_vertical_footprint_m",
+            "trajectory_recorded_end_s",
+            "trajectory_extrapolated_after_s"
+          ],
+          "nullable_fields": []
+        },
+        "notes": "Applies to this saved 45-row batch only. A future missing discovery time requires a new explicitly reviewed record contract, not automatic zero imputation."
+      },
+      "record_validation": {
+        "status": "passed",
+        "record_count": 45,
+        "unique_key": [
+          "scenario_id",
+          "position_sigma_m",
+          "seed"
+        ],
+        "numeric_fields": {
+          "target_count": {
+            "valid_count": 45,
+            "missing_count": 0,
+            "all_missing": false
+          },
+          "resource_count": {
+            "valid_count": 45,
+            "missing_count": 0,
+            "all_missing": false
+          },
+          "position_sigma_m": {
+            "valid_count": 45,
+            "missing_count": 0,
+            "all_missing": false
+          },
+          "seed": {
+            "valid_count": 45,
+            "missing_count": 0,
+            "all_missing": false
+          },
+          "source_cue_count": {
+            "valid_count": 45,
+            "missing_count": 0,
+            "all_missing": false
+          },
+          "source_fixture_precision": {
+            "valid_count": 45,
+            "missing_count": 0,
+            "all_missing": false
+          },
+          "source_fixture_recall": {
+            "valid_count": 45,
+            "missing_count": 0,
+            "all_missing": false
+          },
+          "source_ghost_count": {
+            "valid_count": 45,
+            "missing_count": 0,
+            "all_missing": false
+          },
+          "source_duplicate_count": {
+            "valid_count": 45,
+            "missing_count": 0,
+            "all_missing": false
+          },
+          "source_missed_target_count": {
+            "valid_count": 45,
+            "missing_count": 0,
+            "all_missing": false
+          },
+          "search_cell_count": {
+            "valid_count": 45,
+            "missing_count": 0,
+            "all_missing": false
+          },
+          "executed_observation_task_count": {
+            "valid_count": 45,
+            "missing_count": 0,
+            "all_missing": false
+          },
+          "true_frustum_covered_cell_count": {
+            "valid_count": 45,
+            "missing_count": 0,
+            "all_missing": false
+          },
+          "true_frustum_cell_coverage_rate": {
+            "valid_count": 45,
+            "missing_count": 0,
+            "all_missing": false
+          },
+          "true_frustum_probability_mass_coverage_rate": {
+            "valid_count": 45,
+            "missing_count": 0,
+            "all_missing": false
+          },
+          "unexecuted_task_count": {
+            "valid_count": 45,
+            "missing_count": 0,
+            "all_missing": false
+          },
+          "closed_after_confirmation_cell_count": {
+            "valid_count": 45,
+            "missing_count": 0,
+            "all_missing": false
+          },
+          "detected_target_count": {
+            "valid_count": 45,
+            "missing_count": 0,
+            "all_missing": false
+          },
+          "target_discovery_rate": {
+            "valid_count": 45,
+            "missing_count": 0,
+            "all_missing": false
+          },
+          "continuously_confirmed_target_count": {
+            "valid_count": 45,
+            "missing_count": 0,
+            "all_missing": false
+          },
+          "continuous_confirmation_rate": {
+            "valid_count": 45,
+            "missing_count": 0,
+            "all_missing": false
+          },
+          "first_discovery_mean_s": {
+            "valid_count": 45,
+            "missing_count": 0,
+            "all_missing": false
+          },
+          "first_discovery_p95_s": {
+            "valid_count": 45,
+            "missing_count": 0,
+            "all_missing": false
+          },
+          "first_confirmation_mean_s": {
+            "valid_count": 45,
+            "missing_count": 0,
+            "all_missing": false
+          },
+          "repeated_confirmed_observation_count": {
+            "valid_count": 45,
+            "missing_count": 0,
+            "all_missing": false
+          },
+          "repeated_confirmed_observation_rate": {
+            "valid_count": 45,
+            "missing_count": 0,
+            "all_missing": false
+          },
+          "closed_cue_count": {
+            "valid_count": 45,
+            "missing_count": 0,
+            "all_missing": false
+          },
+          "correctly_closed_cue_count": {
+            "valid_count": 45,
+            "missing_count": 0,
+            "all_missing": false
+          },
+          "identity_misclosed_cue_count": {
+            "valid_count": 45,
+            "missing_count": 0,
+            "all_missing": false
+          },
+          "deadline_candidate_rejection_count": {
+            "valid_count": 45,
+            "missing_count": 0,
+            "all_missing": false
+          },
+          "planner_call_count": {
+            "valid_count": 45,
+            "missing_count": 0,
+            "all_missing": false
+          },
+          "planner_compute_mean_ms": {
+            "valid_count": 45,
+            "missing_count": 0,
+            "all_missing": false
+          },
+          "planner_compute_p95_ms": {
+            "valid_count": 45,
+            "missing_count": 0,
+            "all_missing": false
+          },
+          "planner_compute_max_ms": {
+            "valid_count": 45,
+            "missing_count": 0,
+            "all_missing": false
+          },
+          "online_truth_leakage_count": {
+            "valid_count": 45,
+            "missing_count": 0,
+            "all_missing": false
+          },
+          "camera_vertical_fov_deg": {
+            "valid_count": 45,
+            "missing_count": 0,
+            "all_missing": false
+          },
+          "camera_horizontal_footprint_m": {
+            "valid_count": 45,
+            "missing_count": 0,
+            "all_missing": false
+          },
+          "camera_vertical_footprint_m": {
+            "valid_count": 45,
+            "missing_count": 0,
+            "all_missing": false
+          },
+          "trajectory_recorded_end_s": {
+            "valid_count": 45,
+            "missing_count": 0,
+            "all_missing": false
+          },
+          "trajectory_extrapolated_after_s": {
+            "valid_count": 45,
+            "missing_count": 0,
+            "all_missing": false
+          }
+        },
+        "groups": [
+          {
+            "group": {
+              "scenario_id": "n20_m8",
+              "position_sigma_m": "30.0"
+            },
+            "record_count": 5,
+            "distinct_seed_count": 5
+          },
+          {
+            "group": {
+              "scenario_id": "n20_m8",
+              "position_sigma_m": "60.0"
+            },
+            "record_count": 5,
+            "distinct_seed_count": 5
+          },
+          {
+            "group": {
+              "scenario_id": "n20_m8",
+              "position_sigma_m": "100.0"
+            },
+            "record_count": 5,
+            "distinct_seed_count": 5
+          },
+          {
+            "group": {
+              "scenario_id": "n20_m30",
+              "position_sigma_m": "30.0"
+            },
+            "record_count": 5,
+            "distinct_seed_count": 5
+          },
+          {
+            "group": {
+              "scenario_id": "n20_m30",
+              "position_sigma_m": "60.0"
+            },
+            "record_count": 5,
+            "distinct_seed_count": 5
+          },
+          {
+            "group": {
+              "scenario_id": "n20_m30",
+              "position_sigma_m": "100.0"
+            },
+            "record_count": 5,
+            "distinct_seed_count": 5
+          },
+          {
+            "group": {
+              "scenario_id": "n40_m50",
+              "position_sigma_m": "30.0"
+            },
+            "record_count": 5,
+            "distinct_seed_count": 5
+          },
+          {
+            "group": {
+              "scenario_id": "n40_m50",
+              "position_sigma_m": "60.0"
+            },
+            "record_count": 5,
+            "distinct_seed_count": 5
+          },
+          {
+            "group": {
+              "scenario_id": "n40_m50",
+              "position_sigma_m": "100.0"
+            },
+            "record_count": 5,
+            "distinct_seed_count": 5
+          }
+        ],
+        "scope": "Record structure only; no deduplication, imputation, metric calculation or independence claim."
+      },
+      "row_count": 45,
+      "unchecked_column_types": [
+        "acceptance",
+        "data_source",
+        "run_id",
+        "run_path",
+        "scenario_label",
+        "schema_version",
+        "trajectory_sha256"
+      ],
+      "file_record_counts": {
+        "research_modules/independent_experiments/center_terminal_cv_campaign/outputs/offline_search_100pct_cues_20260819/matrix.csv": 45
+      },
+      "distinct_seed_ids_count": 5
+    },
+    {
+      "source": "center_rows",
+      "status": "passed",
+      "errors": [],
+      "config": {
+        "kind": "csv",
+        "path": "research_modules/independent_experiments/center_terminal_cv_campaign/outputs/center_handover_sensor_error_20260820/per_run_metrics.csv",
+        "expected": {
+          "rows": 960,
+          "groups": 96,
+          "seeds_per_group": 10
+        },
+        "record_contract": {
+          "unique_key": [
+            "target_count",
+            "handover_mode",
+            "attitude_mode",
+            "navigation_mode",
+            "detection_mode",
+            "backend",
+            "seed"
+          ],
+          "group_by": [
+            "target_count",
+            "handover_mode",
+            "attitude_mode",
+            "navigation_mode",
+            "detection_mode",
+            "backend"
+          ],
+          "seed_field": "seed",
+          "numeric_fields": [
+            "target_count",
+            "resource_count",
+            "seed",
+            "binding_precision",
+            "binding_recall",
+            "true_binding_count",
+            "false_binding_count",
+            "confirmed_pair_count",
+            "final_frame_local_track_count",
+            "final_frame_recognized_local_track_count",
+            "unregistered_local_track_candidate_count",
+            "realized_distinct_true_track_count",
+            "realized_true_detection_miss_count",
+            "realized_false_alarm_count",
+            "eligible_candidate_count_all_frames",
+            "projected_mean_outside_but_support_retained_count",
+            "final_hint_count",
+            "final_validated_hint_count",
+            "final_hint_fallback_count",
+            "final_hint_validation_rate",
+            "realized_navigation_error_mean_m",
+            "realized_navigation_error_max_m",
+            "realized_body_yaw_error_mean_abs_deg",
+            "realized_body_yaw_error_max_abs_deg",
+            "runtime_s"
+          ],
+          "nullable_fields": [
+            "final_hint_validation_rate"
+          ]
+        },
+        "notes": "Existing zero precision values are not converted to null. Optional hint validation rate is checked for declared missingness, not interpreted as a performance result."
+      },
+      "record_validation": {
+        "status": "passed",
+        "record_count": 960,
+        "unique_key": [
+          "target_count",
+          "handover_mode",
+          "attitude_mode",
+          "navigation_mode",
+          "detection_mode",
+          "backend",
+          "seed"
+        ],
+        "numeric_fields": {
+          "target_count": {
+            "valid_count": 960,
+            "missing_count": 0,
+            "all_missing": false
+          },
+          "resource_count": {
+            "valid_count": 960,
+            "missing_count": 0,
+            "all_missing": false
+          },
+          "seed": {
+            "valid_count": 960,
+            "missing_count": 0,
+            "all_missing": false
+          },
+          "binding_precision": {
+            "valid_count": 960,
+            "missing_count": 0,
+            "all_missing": false
+          },
+          "binding_recall": {
+            "valid_count": 960,
+            "missing_count": 0,
+            "all_missing": false
+          },
+          "true_binding_count": {
+            "valid_count": 960,
+            "missing_count": 0,
+            "all_missing": false
+          },
+          "false_binding_count": {
+            "valid_count": 960,
+            "missing_count": 0,
+            "all_missing": false
+          },
+          "confirmed_pair_count": {
+            "valid_count": 960,
+            "missing_count": 0,
+            "all_missing": false
+          },
+          "final_frame_local_track_count": {
+            "valid_count": 960,
+            "missing_count": 0,
+            "all_missing": false
+          },
+          "final_frame_recognized_local_track_count": {
+            "valid_count": 960,
+            "missing_count": 0,
+            "all_missing": false
+          },
+          "unregistered_local_track_candidate_count": {
+            "valid_count": 960,
+            "missing_count": 0,
+            "all_missing": false
+          },
+          "realized_distinct_true_track_count": {
+            "valid_count": 960,
+            "missing_count": 0,
+            "all_missing": false
+          },
+          "realized_true_detection_miss_count": {
+            "valid_count": 960,
+            "missing_count": 0,
+            "all_missing": false
+          },
+          "realized_false_alarm_count": {
+            "valid_count": 960,
+            "missing_count": 0,
+            "all_missing": false
+          },
+          "eligible_candidate_count_all_frames": {
+            "valid_count": 960,
+            "missing_count": 0,
+            "all_missing": false
+          },
+          "projected_mean_outside_but_support_retained_count": {
+            "valid_count": 960,
+            "missing_count": 0,
+            "all_missing": false
+          },
+          "final_hint_count": {
+            "valid_count": 960,
+            "missing_count": 0,
+            "all_missing": false
+          },
+          "final_validated_hint_count": {
+            "valid_count": 960,
+            "missing_count": 0,
+            "all_missing": false
+          },
+          "final_hint_fallback_count": {
+            "valid_count": 960,
+            "missing_count": 0,
+            "all_missing": false
+          },
+          "final_hint_validation_rate": {
+            "valid_count": 480,
+            "missing_count": 480,
+            "all_missing": false
+          },
+          "realized_navigation_error_mean_m": {
+            "valid_count": 960,
+            "missing_count": 0,
+            "all_missing": false
+          },
+          "realized_navigation_error_max_m": {
+            "valid_count": 960,
+            "missing_count": 0,
+            "all_missing": false
+          },
+          "realized_body_yaw_error_mean_abs_deg": {
+            "valid_count": 960,
+            "missing_count": 0,
+            "all_missing": false
+          },
+          "realized_body_yaw_error_max_abs_deg": {
+            "valid_count": 960,
+            "missing_count": 0,
+            "all_missing": false
+          },
+          "runtime_s": {
+            "valid_count": 960,
+            "missing_count": 0,
+            "all_missing": false
+          }
+        },
+        "groups": [
+          {
+            "group": {
+              "target_count": "20",
+              "handover_mode": "anonymous",
+              "attitude_mode": "normal",
+              "navigation_mode": "satellite",
+              "detection_mode": "ideal",
+              "backend": "geometry"
+            },
+            "record_count": 10,
+            "distinct_seed_count": 10
+          },
+          {
+            "group": {
+              "target_count": "20",
+              "handover_mode": "anonymous",
+              "attitude_mode": "normal",
+              "navigation_mode": "satellite",
+              "detection_mode": "ideal",
+              "backend": "gnn"
+            },
+            "record_count": 10,
+            "distinct_seed_count": 10
+          },
+          {
+            "group": {
+              "target_count": "20",
+              "handover_mode": "anonymous",
+              "attitude_mode": "normal",
+              "navigation_mode": "satellite",
+              "detection_mode": "light",
+              "backend": "geometry"
+            },
+            "record_count": 10,
+            "distinct_seed_count": 10
+          },
+          {
+            "group": {
+              "target_count": "20",
+              "handover_mode": "anonymous",
+              "attitude_mode": "normal",
+              "navigation_mode": "satellite",
+              "detection_mode": "light",
+              "backend": "gnn"
+            },
+            "record_count": 10,
+            "distinct_seed_count": 10
+          },
+          {
+            "group": {
+              "target_count": "20",
+              "handover_mode": "anonymous",
+              "attitude_mode": "normal",
+              "navigation_mode": "visual_navigation",
+              "detection_mode": "ideal",
+              "backend": "geometry"
+            },
+            "record_count": 10,
+            "distinct_seed_count": 10
+          },
+          {
+            "group": {
+              "target_count": "20",
+              "handover_mode": "anonymous",
+              "attitude_mode": "normal",
+              "navigation_mode": "visual_navigation",
+              "detection_mode": "ideal",
+              "backend": "gnn"
+            },
+            "record_count": 10,
+            "distinct_seed_count": 10
+          },
+          {
+            "group": {
+              "target_count": "20",
+              "handover_mode": "anonymous",
+              "attitude_mode": "normal",
+              "navigation_mode": "visual_navigation",
+              "detection_mode": "light",
+              "backend": "geometry"
+            },
+            "record_count": 10,
+            "distinct_seed_count": 10
+          },
+          {
+            "group": {
+              "target_count": "20",
+              "handover_mode": "anonymous",
+              "attitude_mode": "normal",
+              "navigation_mode": "visual_navigation",
+              "detection_mode": "light",
+              "backend": "gnn"
+            },
+            "record_count": 10,
+            "distinct_seed_count": 10
+          },
+          {
+            "group": {
+              "target_count": "20",
+              "handover_mode": "anonymous",
+              "attitude_mode": "degraded",
+              "navigation_mode": "satellite",
+              "detection_mode": "ideal",
+              "backend": "geometry"
+            },
+            "record_count": 10,
+            "distinct_seed_count": 10
+          },
+          {
+            "group": {
+              "target_count": "20",
+              "handover_mode": "anonymous",
+              "attitude_mode": "degraded",
+              "navigation_mode": "satellite",
+              "detection_mode": "ideal",
+              "backend": "gnn"
+            },
+            "record_count": 10,
+            "distinct_seed_count": 10
+          },
+          {
+            "group": {
+              "target_count": "20",
+              "handover_mode": "anonymous",
+              "attitude_mode": "degraded",
+              "navigation_mode": "satellite",
+              "detection_mode": "light",
+              "backend": "geometry"
+            },
+            "record_count": 10,
+            "distinct_seed_count": 10
+          },
+          {
+            "group": {
+              "target_count": "20",
+              "handover_mode": "anonymous",
+              "attitude_mode": "degraded",
+              "navigation_mode": "satellite",
+              "detection_mode": "light",
+              "backend": "gnn"
+            },
+            "record_count": 10,
+            "distinct_seed_count": 10
+          },
+          {
+            "group": {
+              "target_count": "20",
+              "handover_mode": "anonymous",
+              "attitude_mode": "degraded",
+              "navigation_mode": "visual_navigation",
+              "detection_mode": "ideal",
+              "backend": "geometry"
+            },
+            "record_count": 10,
+            "distinct_seed_count": 10
+          },
+          {
+            "group": {
+              "target_count": "20",
+              "handover_mode": "anonymous",
+              "attitude_mode": "degraded",
+              "navigation_mode": "visual_navigation",
+              "detection_mode": "ideal",
+              "backend": "gnn"
+            },
+            "record_count": 10,
+            "distinct_seed_count": 10
+          },
+          {
+            "group": {
+              "target_count": "20",
+              "handover_mode": "anonymous",
+              "attitude_mode": "degraded",
+              "navigation_mode": "visual_navigation",
+              "detection_mode": "light",
+              "backend": "geometry"
+            },
+            "record_count": 10,
+            "distinct_seed_count": 10
+          },
+          {
+            "group": {
+              "target_count": "20",
+              "handover_mode": "anonymous",
+              "attitude_mode": "degraded",
+              "navigation_mode": "visual_navigation",
+              "detection_mode": "light",
+              "backend": "gnn"
+            },
+            "record_count": 10,
+            "distinct_seed_count": 10
+          },
+          {
+            "group": {
+              "target_count": "20",
+              "handover_mode": "coarse_hint",
+              "attitude_mode": "normal",
+              "navigation_mode": "satellite",
+              "detection_mode": "ideal",
+              "backend": "geometry"
+            },
+            "record_count": 10,
+            "distinct_seed_count": 10
+          },
+          {
+            "group": {
+              "target_count": "20",
+              "handover_mode": "coarse_hint",
+              "attitude_mode": "normal",
+              "navigation_mode": "satellite",
+              "detection_mode": "ideal",
+              "backend": "gnn"
+            },
+            "record_count": 10,
+            "distinct_seed_count": 10
+          },
+          {
+            "group": {
+              "target_count": "20",
+              "handover_mode": "coarse_hint",
+              "attitude_mode": "normal",
+              "navigation_mode": "satellite",
+              "detection_mode": "light",
+              "backend": "geometry"
+            },
+            "record_count": 10,
+            "distinct_seed_count": 10
+          },
+          {
+            "group": {
+              "target_count": "20",
+              "handover_mode": "coarse_hint",
+              "attitude_mode": "normal",
+              "navigation_mode": "satellite",
+              "detection_mode": "light",
+              "backend": "gnn"
+            },
+            "record_count": 10,
+            "distinct_seed_count": 10
+          },
+          {
+            "group": {
+              "target_count": "20",
+              "handover_mode": "coarse_hint",
+              "attitude_mode": "normal",
+              "navigation_mode": "visual_navigation",
+              "detection_mode": "ideal",
+              "backend": "geometry"
+            },
+            "record_count": 10,
+            "distinct_seed_count": 10
+          },
+          {
+            "group": {
+              "target_count": "20",
+              "handover_mode": "coarse_hint",
+              "attitude_mode": "normal",
+              "navigation_mode": "visual_navigation",
+              "detection_mode": "ideal",
+              "backend": "gnn"
+            },
+            "record_count": 10,
+            "distinct_seed_count": 10
+          },
+          {
+            "group": {
+              "target_count": "20",
+              "handover_mode": "coarse_hint",
+              "attitude_mode": "normal",
+              "navigation_mode": "visual_navigation",
+              "detection_mode": "light",
+              "backend": "geometry"
+            },
+            "record_count": 10,
+            "distinct_seed_count": 10
+          },
+          {
+            "group": {
+              "target_count": "20",
+              "handover_mode": "coarse_hint",
+              "attitude_mode": "normal",
+              "navigation_mode": "visual_navigation",
+              "detection_mode": "light",
+              "backend": "gnn"
+            },
+            "record_count": 10,
+            "distinct_seed_count": 10
+          },
+          {
+            "group": {
+              "target_count": "20",
+              "handover_mode": "coarse_hint",
+              "attitude_mode": "degraded",
+              "navigation_mode": "satellite",
+              "detection_mode": "ideal",
+              "backend": "geometry"
+            },
+            "record_count": 10,
+            "distinct_seed_count": 10
+          },
+          {
+            "group": {
+              "target_count": "20",
+              "handover_mode": "coarse_hint",
+              "attitude_mode": "degraded",
+              "navigation_mode": "satellite",
+              "detection_mode": "ideal",
+              "backend": "gnn"
+            },
+            "record_count": 10,
+            "distinct_seed_count": 10
+          },
+          {
+            "group": {
+              "target_count": "20",
+              "handover_mode": "coarse_hint",
+              "attitude_mode": "degraded",
+              "navigation_mode": "satellite",
+              "detection_mode": "light",
+              "backend": "geometry"
+            },
+            "record_count": 10,
+            "distinct_seed_count": 10
+          },
+          {
+            "group": {
+              "target_count": "20",
+              "handover_mode": "coarse_hint",
+              "attitude_mode": "degraded",
+              "navigation_mode": "satellite",
+              "detection_mode": "light",
+              "backend": "gnn"
+            },
+            "record_count": 10,
+            "distinct_seed_count": 10
+          },
+          {
+            "group": {
+              "target_count": "20",
+              "handover_mode": "coarse_hint",
+              "attitude_mode": "degraded",
+              "navigation_mode": "visual_navigation",
+              "detection_mode": "ideal",
+              "backend": "geometry"
+            },
+            "record_count": 10,
+            "distinct_seed_count": 10
+          },
+          {
+            "group": {
+              "target_count": "20",
+              "handover_mode": "coarse_hint",
+              "attitude_mode": "degraded",
+              "navigation_mode": "visual_navigation",
+              "detection_mode": "ideal",
+              "backend": "gnn"
+            },
+            "record_count": 10,
+            "distinct_seed_count": 10
+          },
+          {
+            "group": {
+              "target_count": "20",
+              "handover_mode": "coarse_hint",
+              "attitude_mode": "degraded",
+              "navigation_mode": "visual_navigation",
+              "detection_mode": "light",
+              "backend": "geometry"
+            },
+            "record_count": 10,
+            "distinct_seed_count": 10
+          },
+          {
+            "group": {
+              "target_count": "20",
+              "handover_mode": "coarse_hint",
+              "attitude_mode": "degraded",
+              "navigation_mode": "visual_navigation",
+              "detection_mode": "light",
+              "backend": "gnn"
+            },
+            "record_count": 10,
+            "distinct_seed_count": 10
+          },
+          {
+            "group": {
+              "target_count": "40",
+              "handover_mode": "anonymous",
+              "attitude_mode": "normal",
+              "navigation_mode": "satellite",
+              "detection_mode": "ideal",
+              "backend": "geometry"
+            },
+            "record_count": 10,
+            "distinct_seed_count": 10
+          },
+          {
+            "group": {
+              "target_count": "40",
+              "handover_mode": "anonymous",
+              "attitude_mode": "normal",
+              "navigation_mode": "satellite",
+              "detection_mode": "ideal",
+              "backend": "gnn"
+            },
+            "record_count": 10,
+            "distinct_seed_count": 10
+          },
+          {
+            "group": {
+              "target_count": "40",
+              "handover_mode": "anonymous",
+              "attitude_mode": "normal",
+              "navigation_mode": "satellite",
+              "detection_mode": "light",
+              "backend": "geometry"
+            },
+            "record_count": 10,
+            "distinct_seed_count": 10
+          },
+          {
+            "group": {
+              "target_count": "40",
+              "handover_mode": "anonymous",
+              "attitude_mode": "normal",
+              "navigation_mode": "satellite",
+              "detection_mode": "light",
+              "backend": "gnn"
+            },
+            "record_count": 10,
+            "distinct_seed_count": 10
+          },
+          {
+            "group": {
+              "target_count": "40",
+              "handover_mode": "anonymous",
+              "attitude_mode": "normal",
+              "navigation_mode": "visual_navigation",
+              "detection_mode": "ideal",
+              "backend": "geometry"
+            },
+            "record_count": 10,
+            "distinct_seed_count": 10
+          },
+          {
+            "group": {
+              "target_count": "40",
+              "handover_mode": "anonymous",
+              "attitude_mode": "normal",
+              "navigation_mode": "visual_navigation",
+              "detection_mode": "ideal",
+              "backend": "gnn"
+            },
+            "record_count": 10,
+            "distinct_seed_count": 10
+          },
+          {
+            "group": {
+              "target_count": "40",
+              "handover_mode": "anonymous",
+              "attitude_mode": "normal",
+              "navigation_mode": "visual_navigation",
+              "detection_mode": "light",
+              "backend": "geometry"
+            },
+            "record_count": 10,
+            "distinct_seed_count": 10
+          },
+          {
+            "group": {
+              "target_count": "40",
+              "handover_mode": "anonymous",
+              "attitude_mode": "normal",
+              "navigation_mode": "visual_navigation",
+              "detection_mode": "light",
+              "backend": "gnn"
+            },
+            "record_count": 10,
+            "distinct_seed_count": 10
+          },
+          {
+            "group": {
+              "target_count": "40",
+              "handover_mode": "anonymous",
+              "attitude_mode": "degraded",
+              "navigation_mode": "satellite",
+              "detection_mode": "ideal",
+              "backend": "geometry"
+            },
+            "record_count": 10,
+            "distinct_seed_count": 10
+          },
+          {
+            "group": {
+              "target_count": "40",
+              "handover_mode": "anonymous",
+              "attitude_mode": "degraded",
+              "navigation_mode": "satellite",
+              "detection_mode": "ideal",
+              "backend": "gnn"
+            },
+            "record_count": 10,
+            "distinct_seed_count": 10
+          },
+          {
+            "group": {
+              "target_count": "40",
+              "handover_mode": "anonymous",
+              "attitude_mode": "degraded",
+              "navigation_mode": "satellite",
+              "detection_mode": "light",
+              "backend": "geometry"
+            },
+            "record_count": 10,
+            "distinct_seed_count": 10
+          },
+          {
+            "group": {
+              "target_count": "40",
+              "handover_mode": "anonymous",
+              "attitude_mode": "degraded",
+              "navigation_mode": "satellite",
+              "detection_mode": "light",
+              "backend": "gnn"
+            },
+            "record_count": 10,
+            "distinct_seed_count": 10
+          },
+          {
+            "group": {
+              "target_count": "40",
+              "handover_mode": "anonymous",
+              "attitude_mode": "degraded",
+              "navigation_mode": "visual_navigation",
+              "detection_mode": "ideal",
+              "backend": "geometry"
+            },
+            "record_count": 10,
+            "distinct_seed_count": 10
+          },
+          {
+            "group": {
+              "target_count": "40",
+              "handover_mode": "anonymous",
+              "attitude_mode": "degraded",
+              "navigation_mode": "visual_navigation",
+              "detection_mode": "ideal",
+              "backend": "gnn"
+            },
+            "record_count": 10,
+            "distinct_seed_count": 10
+          },
+          {
+            "group": {
+              "target_count": "40",
+              "handover_mode": "anonymous",
+              "attitude_mode": "degraded",
+              "navigation_mode": "visual_navigation",
+              "detection_mode": "light",
+              "backend": "geometry"
+            },
+            "record_count": 10,
+            "distinct_seed_count": 10
+          },
+          {
+            "group": {
+              "target_count": "40",
+              "handover_mode": "anonymous",
+              "attitude_mode": "degraded",
+              "navigation_mode": "visual_navigation",
+              "detection_mode": "light",
+              "backend": "gnn"
+            },
+            "record_count": 10,
+            "distinct_seed_count": 10
+          },
+          {
+            "group": {
+              "target_count": "40",
+              "handover_mode": "coarse_hint",
+              "attitude_mode": "normal",
+              "navigation_mode": "satellite",
+              "detection_mode": "ideal",
+              "backend": "geometry"
+            },
+            "record_count": 10,
+            "distinct_seed_count": 10
+          },
+          {
+            "group": {
+              "target_count": "40",
+              "handover_mode": "coarse_hint",
+              "attitude_mode": "normal",
+              "navigation_mode": "satellite",
+              "detection_mode": "ideal",
+              "backend": "gnn"
+            },
+            "record_count": 10,
+            "distinct_seed_count": 10
+          },
+          {
+            "group": {
+              "target_count": "40",
+              "handover_mode": "coarse_hint",
+              "attitude_mode": "normal",
+              "navigation_mode": "satellite",
+              "detection_mode": "light",
+              "backend": "geometry"
+            },
+            "record_count": 10,
+            "distinct_seed_count": 10
+          },
+          {
+            "group": {
+              "target_count": "40",
+              "handover_mode": "coarse_hint",
+              "attitude_mode": "normal",
+              "navigation_mode": "satellite",
+              "detection_mode": "light",
+              "backend": "gnn"
+            },
+            "record_count": 10,
+            "distinct_seed_count": 10
+          },
+          {
+            "group": {
+              "target_count": "40",
+              "handover_mode": "coarse_hint",
+              "attitude_mode": "normal",
+              "navigation_mode": "visual_navigation",
+              "detection_mode": "ideal",
+              "backend": "geometry"
+            },
+            "record_count": 10,
+            "distinct_seed_count": 10
+          },
+          {
+            "group": {
+              "target_count": "40",
+              "handover_mode": "coarse_hint",
+              "attitude_mode": "normal",
+              "navigation_mode": "visual_navigation",
+              "detection_mode": "ideal",
+              "backend": "gnn"
+            },
+            "record_count": 10,
+            "distinct_seed_count": 10
+          },
+          {
+            "group": {
+              "target_count": "40",
+              "handover_mode": "coarse_hint",
+              "attitude_mode": "normal",
+              "navigation_mode": "visual_navigation",
+              "detection_mode": "light",
+              "backend": "geometry"
+            },
+            "record_count": 10,
+            "distinct_seed_count": 10
+          },
+          {
+            "group": {
+              "target_count": "40",
+              "handover_mode": "coarse_hint",
+              "attitude_mode": "normal",
+              "navigation_mode": "visual_navigation",
+              "detection_mode": "light",
+              "backend": "gnn"
+            },
+            "record_count": 10,
+            "distinct_seed_count": 10
+          },
+          {
+            "group": {
+              "target_count": "40",
+              "handover_mode": "coarse_hint",
+              "attitude_mode": "degraded",
+              "navigation_mode": "satellite",
+              "detection_mode": "ideal",
+              "backend": "geometry"
+            },
+            "record_count": 10,
+            "distinct_seed_count": 10
+          },
+          {
+            "group": {
+              "target_count": "40",
+              "handover_mode": "coarse_hint",
+              "attitude_mode": "degraded",
+              "navigation_mode": "satellite",
+              "detection_mode": "ideal",
+              "backend": "gnn"
+            },
+            "record_count": 10,
+            "distinct_seed_count": 10
+          },
+          {
+            "group": {
+              "target_count": "40",
+              "handover_mode": "coarse_hint",
+              "attitude_mode": "degraded",
+              "navigation_mode": "satellite",
+              "detection_mode": "light",
+              "backend": "geometry"
+            },
+            "record_count": 10,
+            "distinct_seed_count": 10
+          },
+          {
+            "group": {
+              "target_count": "40",
+              "handover_mode": "coarse_hint",
+              "attitude_mode": "degraded",
+              "navigation_mode": "satellite",
+              "detection_mode": "light",
+              "backend": "gnn"
+            },
+            "record_count": 10,
+            "distinct_seed_count": 10
+          },
+          {
+            "group": {
+              "target_count": "40",
+              "handover_mode": "coarse_hint",
+              "attitude_mode": "degraded",
+              "navigation_mode": "visual_navigation",
+              "detection_mode": "ideal",
+              "backend": "geometry"
+            },
+            "record_count": 10,
+            "distinct_seed_count": 10
+          },
+          {
+            "group": {
+              "target_count": "40",
+              "handover_mode": "coarse_hint",
+              "attitude_mode": "degraded",
+              "navigation_mode": "visual_navigation",
+              "detection_mode": "ideal",
+              "backend": "gnn"
+            },
+            "record_count": 10,
+            "distinct_seed_count": 10
+          },
+          {
+            "group": {
+              "target_count": "40",
+              "handover_mode": "coarse_hint",
+              "attitude_mode": "degraded",
+              "navigation_mode": "visual_navigation",
+              "detection_mode": "light",
+              "backend": "geometry"
+            },
+            "record_count": 10,
+            "distinct_seed_count": 10
+          },
+          {
+            "group": {
+              "target_count": "40",
+              "handover_mode": "coarse_hint",
+              "attitude_mode": "degraded",
+              "navigation_mode": "visual_navigation",
+              "detection_mode": "light",
+              "backend": "gnn"
+            },
+            "record_count": 10,
+            "distinct_seed_count": 10
+          },
+          {
+            "group": {
+              "target_count": "60",
+              "handover_mode": "anonymous",
+              "attitude_mode": "normal",
+              "navigation_mode": "satellite",
+              "detection_mode": "ideal",
+              "backend": "geometry"
+            },
+            "record_count": 10,
+            "distinct_seed_count": 10
+          },
+          {
+            "group": {
+              "target_count": "60",
+              "handover_mode": "anonymous",
+              "attitude_mode": "normal",
+              "navigation_mode": "satellite",
+              "detection_mode": "ideal",
+              "backend": "gnn"
+            },
+            "record_count": 10,
+            "distinct_seed_count": 10
+          },
+          {
+            "group": {
+              "target_count": "60",
+              "handover_mode": "anonymous",
+              "attitude_mode": "normal",
+              "navigation_mode": "satellite",
+              "detection_mode": "light",
+              "backend": "geometry"
+            },
+            "record_count": 10,
+            "distinct_seed_count": 10
+          },
+          {
+            "group": {
+              "target_count": "60",
+              "handover_mode": "anonymous",
+              "attitude_mode": "normal",
+              "navigation_mode": "satellite",
+              "detection_mode": "light",
+              "backend": "gnn"
+            },
+            "record_count": 10,
+            "distinct_seed_count": 10
+          },
+          {
+            "group": {
+              "target_count": "60",
+              "handover_mode": "anonymous",
+              "attitude_mode": "normal",
+              "navigation_mode": "visual_navigation",
+              "detection_mode": "ideal",
+              "backend": "geometry"
+            },
+            "record_count": 10,
+            "distinct_seed_count": 10
+          },
+          {
+            "group": {
+              "target_count": "60",
+              "handover_mode": "anonymous",
+              "attitude_mode": "normal",
+              "navigation_mode": "visual_navigation",
+              "detection_mode": "ideal",
+              "backend": "gnn"
+            },
+            "record_count": 10,
+            "distinct_seed_count": 10
+          },
+          {
+            "group": {
+              "target_count": "60",
+              "handover_mode": "anonymous",
+              "attitude_mode": "normal",
+              "navigation_mode": "visual_navigation",
+              "detection_mode": "light",
+              "backend": "geometry"
+            },
+            "record_count": 10,
+            "distinct_seed_count": 10
+          },
+          {
+            "group": {
+              "target_count": "60",
+              "handover_mode": "anonymous",
+              "attitude_mode": "normal",
+              "navigation_mode": "visual_navigation",
+              "detection_mode": "light",
+              "backend": "gnn"
+            },
+            "record_count": 10,
+            "distinct_seed_count": 10
+          },
+          {
+            "group": {
+              "target_count": "60",
+              "handover_mode": "anonymous",
+              "attitude_mode": "degraded",
+              "navigation_mode": "satellite",
+              "detection_mode": "ideal",
+              "backend": "geometry"
+            },
+            "record_count": 10,
+            "distinct_seed_count": 10
+          },
+          {
+            "group": {
+              "target_count": "60",
+              "handover_mode": "anonymous",
+              "attitude_mode": "degraded",
+              "navigation_mode": "satellite",
+              "detection_mode": "ideal",
+              "backend": "gnn"
+            },
+            "record_count": 10,
+            "distinct_seed_count": 10
+          },
+          {
+            "group": {
+              "target_count": "60",
+              "handover_mode": "anonymous",
+              "attitude_mode": "degraded",
+              "navigation_mode": "satellite",
+              "detection_mode": "light",
+              "backend": "geometry"
+            },
+            "record_count": 10,
+            "distinct_seed_count": 10
+          },
+          {
+            "group": {
+              "target_count": "60",
+              "handover_mode": "anonymous",
+              "attitude_mode": "degraded",
+              "navigation_mode": "satellite",
+              "detection_mode": "light",
+              "backend": "gnn"
+            },
+            "record_count": 10,
+            "distinct_seed_count": 10
+          },
+          {
+            "group": {
+              "target_count": "60",
+              "handover_mode": "anonymous",
+              "attitude_mode": "degraded",
+              "navigation_mode": "visual_navigation",
+              "detection_mode": "ideal",
+              "backend": "geometry"
+            },
+            "record_count": 10,
+            "distinct_seed_count": 10
+          },
+          {
+            "group": {
+              "target_count": "60",
+              "handover_mode": "anonymous",
+              "attitude_mode": "degraded",
+              "navigation_mode": "visual_navigation",
+              "detection_mode": "ideal",
+              "backend": "gnn"
+            },
+            "record_count": 10,
+            "distinct_seed_count": 10
+          },
+          {
+            "group": {
+              "target_count": "60",
+              "handover_mode": "anonymous",
+              "attitude_mode": "degraded",
+              "navigation_mode": "visual_navigation",
+              "detection_mode": "light",
+              "backend": "geometry"
+            },
+            "record_count": 10,
+            "distinct_seed_count": 10
+          },
+          {
+            "group": {
+              "target_count": "60",
+              "handover_mode": "anonymous",
+              "attitude_mode": "degraded",
+              "navigation_mode": "visual_navigation",
+              "detection_mode": "light",
+              "backend": "gnn"
+            },
+            "record_count": 10,
+            "distinct_seed_count": 10
+          },
+          {
+            "group": {
+              "target_count": "60",
+              "handover_mode": "coarse_hint",
+              "attitude_mode": "normal",
+              "navigation_mode": "satellite",
+              "detection_mode": "ideal",
+              "backend": "geometry"
+            },
+            "record_count": 10,
+            "distinct_seed_count": 10
+          },
+          {
+            "group": {
+              "target_count": "60",
+              "handover_mode": "coarse_hint",
+              "attitude_mode": "normal",
+              "navigation_mode": "satellite",
+              "detection_mode": "ideal",
+              "backend": "gnn"
+            },
+            "record_count": 10,
+            "distinct_seed_count": 10
+          },
+          {
+            "group": {
+              "target_count": "60",
+              "handover_mode": "coarse_hint",
+              "attitude_mode": "normal",
+              "navigation_mode": "satellite",
+              "detection_mode": "light",
+              "backend": "geometry"
+            },
+            "record_count": 10,
+            "distinct_seed_count": 10
+          },
+          {
+            "group": {
+              "target_count": "60",
+              "handover_mode": "coarse_hint",
+              "attitude_mode": "normal",
+              "navigation_mode": "satellite",
+              "detection_mode": "light",
+              "backend": "gnn"
+            },
+            "record_count": 10,
+            "distinct_seed_count": 10
+          },
+          {
+            "group": {
+              "target_count": "60",
+              "handover_mode": "coarse_hint",
+              "attitude_mode": "normal",
+              "navigation_mode": "visual_navigation",
+              "detection_mode": "ideal",
+              "backend": "geometry"
+            },
+            "record_count": 10,
+            "distinct_seed_count": 10
+          },
+          {
+            "group": {
+              "target_count": "60",
+              "handover_mode": "coarse_hint",
+              "attitude_mode": "normal",
+              "navigation_mode": "visual_navigation",
+              "detection_mode": "ideal",
+              "backend": "gnn"
+            },
+            "record_count": 10,
+            "distinct_seed_count": 10
+          },
+          {
+            "group": {
+              "target_count": "60",
+              "handover_mode": "coarse_hint",
+              "attitude_mode": "normal",
+              "navigation_mode": "visual_navigation",
+              "detection_mode": "light",
+              "backend": "geometry"
+            },
+            "record_count": 10,
+            "distinct_seed_count": 10
+          },
+          {
+            "group": {
+              "target_count": "60",
+              "handover_mode": "coarse_hint",
+              "attitude_mode": "normal",
+              "navigation_mode": "visual_navigation",
+              "detection_mode": "light",
+              "backend": "gnn"
+            },
+            "record_count": 10,
+            "distinct_seed_count": 10
+          },
+          {
+            "group": {
+              "target_count": "60",
+              "handover_mode": "coarse_hint",
+              "attitude_mode": "degraded",
+              "navigation_mode": "satellite",
+              "detection_mode": "ideal",
+              "backend": "geometry"
+            },
+            "record_count": 10,
+            "distinct_seed_count": 10
+          },
+          {
+            "group": {
+              "target_count": "60",
+              "handover_mode": "coarse_hint",
+              "attitude_mode": "degraded",
+              "navigation_mode": "satellite",
+              "detection_mode": "ideal",
+              "backend": "gnn"
+            },
+            "record_count": 10,
+            "distinct_seed_count": 10
+          },
+          {
+            "group": {
+              "target_count": "60",
+              "handover_mode": "coarse_hint",
+              "attitude_mode": "degraded",
+              "navigation_mode": "satellite",
+              "detection_mode": "light",
+              "backend": "geometry"
+            },
+            "record_count": 10,
+            "distinct_seed_count": 10
+          },
+          {
+            "group": {
+              "target_count": "60",
+              "handover_mode": "coarse_hint",
+              "attitude_mode": "degraded",
+              "navigation_mode": "satellite",
+              "detection_mode": "light",
+              "backend": "gnn"
+            },
+            "record_count": 10,
+            "distinct_seed_count": 10
+          },
+          {
+            "group": {
+              "target_count": "60",
+              "handover_mode": "coarse_hint",
+              "attitude_mode": "degraded",
+              "navigation_mode": "visual_navigation",
+              "detection_mode": "ideal",
+              "backend": "geometry"
+            },
+            "record_count": 10,
+            "distinct_seed_count": 10
+          },
+          {
+            "group": {
+              "target_count": "60",
+              "handover_mode": "coarse_hint",
+              "attitude_mode": "degraded",
+              "navigation_mode": "visual_navigation",
+              "detection_mode": "ideal",
+              "backend": "gnn"
+            },
+            "record_count": 10,
+            "distinct_seed_count": 10
+          },
+          {
+            "group": {
+              "target_count": "60",
+              "handover_mode": "coarse_hint",
+              "attitude_mode": "degraded",
+              "navigation_mode": "visual_navigation",
+              "detection_mode": "light",
+              "backend": "geometry"
+            },
+            "record_count": 10,
+            "distinct_seed_count": 10
+          },
+          {
+            "group": {
+              "target_count": "60",
+              "handover_mode": "coarse_hint",
+              "attitude_mode": "degraded",
+              "navigation_mode": "visual_navigation",
+              "detection_mode": "light",
+              "backend": "gnn"
+            },
+            "record_count": 10,
+            "distinct_seed_count": 10
+          }
+        ],
+        "scope": "Record structure only; no deduplication, imputation, metric calculation or independence claim."
+      },
+      "row_count": 960,
+      "unchecked_column_types": [
+        "gnn_scale_status",
+        "metric_condition",
+        "run_id",
+        "runtime_uses_warm_projection_cache"
+      ],
+      "file_record_counts": {
+        "research_modules/independent_experiments/center_terminal_cv_campaign/outputs/center_handover_sensor_error_20260820/per_run_metrics.csv": 960
+      },
+      "distinct_seed_ids_count": 10
+    }
+  ],
+  "file_hash_checks": [
+    {
+      "source": "dual_final",
+      "path": "research_modules/independent_experiments/dual_optical_online_benchmark/outputs/report_replay_20260819_v2/combined_final_case_metrics.csv",
+      "before_sha256": "3af9c252503aae2bc6f7e14a174004cd913385453bd04b189a39d7edf51157c8",
+      "after_sha256": "3af9c252503aae2bc6f7e14a174004cd913385453bd04b189a39d7edf51157c8",
+      "unchanged": true
+    },
+    {
+      "source": "dual_rounds",
+      "path": "research_modules/independent_experiments/dual_optical_online_benchmark/outputs/report_replay_20260819_v2/oracle_360/round_metrics.csv",
+      "before_sha256": "8325e0919ffa2c5cc617141550aad3024aebd46fa619c0a893dee3b88a8e7172",
+      "after_sha256": "8325e0919ffa2c5cc617141550aad3024aebd46fa619c0a893dee3b88a8e7172",
+      "unchanged": true
+    },
+    {
+      "source": "dual_rounds",
+      "path": "research_modules/independent_experiments/dual_optical_online_benchmark/outputs/report_replay_20260819_v2/continuous_360/round_metrics.csv",
+      "before_sha256": "1f66394eefd846c4d6ea66e0d330dd51581f100ab8886cb55931bd5b0ab3bcd3",
+      "after_sha256": "1f66394eefd846c4d6ea66e0d330dd51581f100ab8886cb55931bd5b0ab3bcd3",
+      "unchanged": true
+    },
+    {
+      "source": "dual_rounds",
+      "path": "research_modules/independent_experiments/dual_optical_online_benchmark/outputs/report_replay_20260819_v2/s180_derived/round_metrics.csv",
+      "before_sha256": "f2467b632801f99be56ed2c0a2be18dee8cf8c5d4534d148773cbca72624adb5",
+      "after_sha256": "f2467b632801f99be56ed2c0a2be18dee8cf8c5d4534d148773cbca72624adb5",
+      "unchanged": true
+    },
+    {
+      "source": "search_rows",
+      "path": "research_modules/independent_experiments/center_terminal_cv_campaign/outputs/offline_search_100pct_cues_20260819/matrix.csv",
+      "before_sha256": "a0fef618c286074cddb9528d178fb1c4e0e3544d92a3daf1b1124f0389a7c065",
+      "after_sha256": "a0fef618c286074cddb9528d178fb1c4e0e3544d92a3daf1b1124f0389a7c065",
+      "unchanged": true
+    },
+    {
+      "source": "center_rows",
+      "path": "research_modules/independent_experiments/center_terminal_cv_campaign/outputs/center_handover_sensor_error_20260820/per_run_metrics.csv",
+      "before_sha256": "80f6267a22da2b25a570af6f0640d132df33e0a6371bb85ca731964a5f65c29d",
+      "after_sha256": "80f6267a22da2b25a570af6f0640d132df33e0a6371bb85ca731964a5f65c29d",
+      "unchanged": true
+    }
+  ],
+  "allowed_missing_cell_count": 1020,
+  "audited_record_count": 3615,
+  "checker_files": [
+    {
+      "path": "/home/linux/Documents/MSM/deliverables/project_audits/tools/audit_saved_table_records.py",
+      "sha256": "f9d3b4b373e2e3cbe4f7ca8b702e7169c7d4d445cee71018dbc260b98a0e8ed6"
+    },
+    {
+      "path": "/home/linux/Documents/MSM/deliverables/project_audits/tools/audit_record_validation.py",
+      "sha256": "1c88acc0ca65d8fb211f7a4c34156cd2dbc8d86a20fae74e3118c5a49b20fb75"
+    },
+    {
+      "path": "/home/linux/Documents/MSM/deliverables/project_audits/tools/audit_report_evidence.py",
+      "sha256": "9fe484e032e5ae6e8e50fd5b49e6acf14305f64240b12ca2acd86d5ac918b649"
+    },
+    {
+      "path": "/home/linux/Documents/MSM/deliverables/project_audits/tools/audit_workspace_metadata.py",
+      "sha256": "a81fec4b6184d86145a78c753ca2558a004b138ca604efe240e4103b67ccc9ca"
+    }
+  ],
+  "scope": "Saved record structure and declared counts only. Rows may overlap across sources; not independent experiment counts.",
+  "experiments_run": false,
+  "metrics_recomputed": false,
+  "source_writes_performed": false
+}

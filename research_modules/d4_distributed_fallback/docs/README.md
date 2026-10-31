@@ -1,5 +1,9 @@
 # D4 文档索引
 
+<!-- evidence-status-sync:20260926:begin -->
+2026-09-26 仅作资料同步，不是新的实验日期。[当前证据状态](CURRENT_EVIDENCE_STATUS_CN.md) 为唯一集中说明；下列旧章节仅按其日期作为历史阶段阅读，包括旧 0/324、fcf8525 预检及历史待办。本次不勾选旧任务、不关闭 GAP、不升级能力或权限，原 Goal 状态不因文档同步而改变。
+<!-- evidence-status-sync:20260926:end -->
+
 2026-08-03 完成 A2 v8 source request 实现绑定重冻结。新增 `regional_failover.py` 直接绑定，
 刷新 main 共享 adapter 摘要；request 内容/文件 SHA-256 为 `7e026359...01cb`、
 `c4f74fb4...b019`。51 项 readiness 专项和 94 项 v8 聚焦测试通过。main 已完成三批提交，

@@ -1,5 +1,10 @@
 # D3 集中式资源-目标分配算法与实施方案
 
+<!-- evidence-status-sync:20260926:begin -->
+> 2026-09-26 仅同步资料，不是新实验日期。当前证据统一见[当前证据状态](CURRENT_EVIDENCE_STATUS_CN.md)。
+> 下文旧日期、状态及待办仅作带日期历史阶段阅读；原Goal状态、能力、GAP及权限不因本次同步改变。
+<!-- evidence-status-sync:20260926:end -->
+
 > 状态基线：2026-08-02。
 >
 > 本文依据本模块当前源码、测试、`README.md`、`PLAN.md`、

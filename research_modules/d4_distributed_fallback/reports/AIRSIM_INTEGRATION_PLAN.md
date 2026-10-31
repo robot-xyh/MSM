@@ -1,5 +1,9 @@
 # D4 AirSim Episode 集成计划
 
+<!-- evidence-status-sync:20260926:begin -->
+2026-09-26 仅作资料同步，不是新的实验日期。[当前证据状态](../docs/CURRENT_EVIDENCE_STATUS_CN.md) 为唯一集中说明；下列旧章节仅按其日期作为历史阶段阅读，包括旧 0/324、fcf8525 预检及历史待办。本次不勾选旧任务、不关闭 GAP、不升级能力或权限，原 Goal 状态不因文档同步而改变。
+<!-- evidence-status-sync:20260926:end -->
+
 ## 2026-07-31 权威代次接口要求
 
 后续 AirSim episode 使用的 `modules.d3.assignment_plan` 必须在首次发布时携带

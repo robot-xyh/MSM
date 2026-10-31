@@ -1,0 +1,234 @@
+{
+  "module": "D6",
+  "synced_at": "2026-09-26",
+  "scope": "纯文档资料同步，不是新的实验日期；原Goal仍未完成，状态不因本次同步改变。无算法、参数、模型、实验输出变更，无能力升级、历史任务勾选或GAP关闭。",
+  "changed_files": [
+    "research_modules/d6_evaluation_metrics/README.md",
+    "research_modules/d6_evaluation_metrics/PLAN.md",
+    "subagent_reviews/D6_IMPLEMENTATION_GAP_AUDIT.md",
+    "subagent_reviews/D6_EVALUATION_METRICS_REVIEW_AND_PLAN.md",
+    "subagent_reviews/D6_M_TO_N_EVALUATION_FRAMEWORK_REVIEW.md",
+    "research_modules/d6_evaluation_metrics/docs/MODULE_PRINCIPLES_CN.md",
+    "research_modules/d6_evaluation_metrics/docs/ALGORITHM_AND_IMPLEMENTATION.md",
+    "research_modules/d6_evaluation_metrics/AIRSIM_INTEGRATION_PLAN.md",
+    "research_modules/d6_evaluation_metrics/docs/EXPERIMENT_REPORT.md",
+    "research_modules/d6_evaluation_metrics/EXPERIMENT_REPORT.md",
+    "research_modules/d6_evaluation_metrics/docs/README.md",
+    "research_modules/d6_evaluation_metrics/docs/CURRENT_EVIDENCE_STATUS_CN.md"
+  ],
+  "checked_unchanged": [
+    {
+      "path": "research_modules/d6_evaluation_metrics/docs/AIRSIM_INTEGRATION_PLAN.md",
+      "exists": false,
+      "reason": "该预期路径不存在；实际根目录AIRSIM_INTEGRATION_PLAN.md已插入当前索引，不创建空壳或复制替代文件。"
+    },
+    {
+      "path": "deliverables/project_audits/goal_owner_review_sync_20260926_v1/owners/D6_review.json",
+      "exists": true,
+      "reason": "保留上一批只读复核快照，作为本次同步依据，不回写其历史权限或结论。"
+    },
+    {
+      "path": "deliverables/project_audits/goal_module_status_sync_20260926_v1/BEFORE.json",
+      "exists": true,
+      "reason": "main保存的源正文与SHA-256基线，只读用于剥离还原检查。"
+    }
+  ],
+  "documentation_checked": [
+    {
+      "path": "research_modules/d6_evaluation_metrics/README.md",
+      "result": "已修改",
+      "reason": "仅在H1后插入标记说明和集中状态相对链接；旧正文逐字保留。"
+    },
+    {
+      "path": "research_modules/d6_evaluation_metrics/PLAN.md",
+      "result": "已修改",
+      "reason": "仅在H1后插入标记说明和集中状态相对链接；旧正文逐字保留。历史勾选项与未完成项保持原样，本次不新增实施计划。"
+    },
+    {
+      "path": "subagent_reviews/D6_IMPLEMENTATION_GAP_AUDIT.md",
+      "result": "已修改",
+      "reason": "仅在H1后插入标记说明和集中状态相对链接；旧正文逐字保留。历史关闭结论仅适用于原章节范围，本次不关闭、重分类或调整 GAP。"
+    },
+    {
+      "path": "subagent_reviews/D6_EVALUATION_METRICS_REVIEW_AND_PLAN.md",
+      "result": "已修改",
+      "reason": "仅在H1后插入标记说明和集中状态相对链接；旧正文逐字保留。"
+    },
+    {
+      "path": "subagent_reviews/D6_M_TO_N_EVALUATION_FRAMEWORK_REVIEW.md",
+      "result": "已修改",
+      "reason": "仅在H1后插入标记说明和集中状态相对链接；旧正文逐字保留。旧 900-cell、开发批次和本批 450 组须按来源分别阅读，不合并验收分母。"
+    },
+    {
+      "path": "research_modules/d6_evaluation_metrics/docs/MODULE_PRINCIPLES_CN.md",
+      "result": "已修改",
+      "reason": "仅在H1后插入标记说明和集中状态相对链接；旧正文逐字保留。"
+    },
+    {
+      "path": "research_modules/d6_evaluation_metrics/docs/ALGORITHM_AND_IMPLEMENTATION.md",
+      "result": "已修改",
+      "reason": "仅在H1后插入标记说明和集中状态相对链接；旧正文逐字保留。"
+    },
+    {
+      "path": "research_modules/d6_evaluation_metrics/AIRSIM_INTEGRATION_PLAN.md",
+      "result": "已修改",
+      "reason": "仅在H1后插入标记说明和集中状态相对链接；旧正文逐字保留。本页是实际 AirSim 计划入口；不存在的 docs 同名路径不另建替代文件。"
+    },
+    {
+      "path": "research_modules/d6_evaluation_metrics/docs/EXPERIMENT_REPORT.md",
+      "result": "已修改",
+      "reason": "仅在H1后插入标记说明和集中状态相对链接；旧正文逐字保留。本页保留 8 月 3 日来源审计与 8 月 10 日专项；较早实验记录另见[模块根实验报告](../EXPERIMENT_REPORT.md)，两者均非原 Goal 最终验收报告。"
+    },
+    {
+      "path": "research_modules/d6_evaluation_metrics/EXPERIMENT_REPORT.md",
+      "result": "已修改",
+      "reason": "仅在H1后插入标记说明和集中状态相对链接；旧正文逐字保留。本页保留较早阶段实验；8 月 3 日来源审计与 8 月 10 日专项见[docs 实验报告](docs/EXPERIMENT_REPORT.md)，不复制或改写本页旧记录。"
+    },
+    {
+      "path": "research_modules/d6_evaluation_metrics/docs/README.md",
+      "result": "已修改",
+      "reason": "仅在H1后插入标记说明和集中状态相对链接；旧正文逐字保留。两份实验报告的日期范围及实际根目录 AirSim 计划路径，统一由该说明索引。"
+    },
+    {
+      "path": "research_modules/d6_evaluation_metrics/docs/AIRSIM_INTEGRATION_PLAN.md",
+      "result": "无需改",
+      "reason": "该预期路径不存在；实际根目录AIRSIM_INTEGRATION_PLAN.md已插入当前索引，不创建空壳或复制替代文件。"
+    },
+    {
+      "path": "research_modules/d6_evaluation_metrics/docs/CURRENT_EVIDENCE_STATUS_CN.md",
+      "result": "新建",
+      "reason": "55行唯一集中当前证据状态说明，登记日期、来源、有限完成范围、未完成范围及旧章节链接。"
+    }
+  ],
+  "evidence": [
+    "deliverables/project_audits/goal_owner_review_sync_20260926_v1/owners/D6_review.json",
+    "deliverables/project_audits/goal_owner_review_sync_20260926_v1/MAIN_REVIEW.json",
+    "deliverables/project_audits/goal_module_status_sync_20260926_v1/BEFORE.json",
+    "deliverables/project_audits/goal_resume_audit_20260926_v1/历史结果定位与完整性核对_CN.md",
+    "deliverables/project_audits/goal_resume_audit_20260926_v1/SUPPLEMENTAL_CHECKS.json",
+    "research_modules/scalable_3d_simulation/docs/SCALABLE_3D_GOAL_COMPLETION_AUDIT_20260803_CN.md",
+    "research_modules/scalable_3d_simulation/docs/SCALABLE_3D_GOAL_PROGRESS_AND_NEXT_PLAN_20260807_CN.md",
+    "research_modules/scalable_3d_simulation/docs/SCALABLE_3D_FORMAL_R0_80E55EB_SHARDS0_9_20260731_CN.md",
+    "research_modules/airsim_runtime/baselines/d5_long_range_20target_20260810/baseline_manifest.json",
+    "research_modules/d6_evaluation_metrics/docs/EXPERIMENT_REPORT.md",
+    "research_modules/d6_evaluation_metrics/EXPERIMENT_REPORT.md",
+    "research_modules/d6_evaluation_metrics/AIRSIM_INTEGRATION_PLAN.md"
+  ],
+  "checks": {
+    "status": "passed",
+    "baseline": "deliverables/project_audits/goal_module_status_sync_20260926_v1/BEFORE.json",
+    "original_document_count": 11,
+    "restoration_records": [
+      {
+        "path": "research_modules/d6_evaluation_metrics/README.md",
+        "original_sha256": "45c41435b72bbfef60dea22b98419a9e0991fe8bfcb0047a22cf8c72fae7354b",
+        "stripped_sha256": "45c41435b72bbfef60dea22b98419a9e0991fe8bfcb0047a22cf8c72fae7354b",
+        "stripped_equal_before": true,
+        "only_marked_insertion": true
+      },
+      {
+        "path": "research_modules/d6_evaluation_metrics/PLAN.md",
+        "original_sha256": "98cb3656f1ff3da0cfbde06bf3b7b6dc317df005f148d5a67131e911713f50ce",
+        "stripped_sha256": "98cb3656f1ff3da0cfbde06bf3b7b6dc317df005f148d5a67131e911713f50ce",
+        "stripped_equal_before": true,
+        "only_marked_insertion": true
+      },
+      {
+        "path": "subagent_reviews/D6_IMPLEMENTATION_GAP_AUDIT.md",
+        "original_sha256": "8366c4ef58eab8fde925d3f0949a7e9abfc0d934fe05e3574cb1ba43c65c1a08",
+        "stripped_sha256": "8366c4ef58eab8fde925d3f0949a7e9abfc0d934fe05e3574cb1ba43c65c1a08",
+        "stripped_equal_before": true,
+        "only_marked_insertion": true
+      },
+      {
+        "path": "subagent_reviews/D6_EVALUATION_METRICS_REVIEW_AND_PLAN.md",
+        "original_sha256": "101bc5e9476d82306ad80249b22a28d62e7905f316d911f9c8ff3d1661a10495",
+        "stripped_sha256": "101bc5e9476d82306ad80249b22a28d62e7905f316d911f9c8ff3d1661a10495",
+        "stripped_equal_before": true,
+        "only_marked_insertion": true
+      },
+      {
+        "path": "subagent_reviews/D6_M_TO_N_EVALUATION_FRAMEWORK_REVIEW.md",
+        "original_sha256": "03efd1fb4b45bd6d3f857f6f700b167ad342f2882611d2cc5e32d3295400da58",
+        "stripped_sha256": "03efd1fb4b45bd6d3f857f6f700b167ad342f2882611d2cc5e32d3295400da58",
+        "stripped_equal_before": true,
+        "only_marked_insertion": true
+      },
+      {
+        "path": "research_modules/d6_evaluation_metrics/docs/MODULE_PRINCIPLES_CN.md",
+        "original_sha256": "962dbf908f08669793c8a6476eaab82383ffed84bece0b04134b44ef6b110080",
+        "stripped_sha256": "962dbf908f08669793c8a6476eaab82383ffed84bece0b04134b44ef6b110080",
+        "stripped_equal_before": true,
+        "only_marked_insertion": true
+      },
+      {
+        "path": "research_modules/d6_evaluation_metrics/docs/ALGORITHM_AND_IMPLEMENTATION.md",
+        "original_sha256": "a96e5621ed6916aef8104897f1cac6d44e7b527191527190b24e953fa075ed77",
+        "stripped_sha256": "a96e5621ed6916aef8104897f1cac6d44e7b527191527190b24e953fa075ed77",
+        "stripped_equal_before": true,
+        "only_marked_insertion": true
+      },
+      {
+        "path": "research_modules/d6_evaluation_metrics/AIRSIM_INTEGRATION_PLAN.md",
+        "original_sha256": "82296cf5ad7637040f519742cd5c7244303070cbe16b89b1f886d767e215cccc",
+        "stripped_sha256": "82296cf5ad7637040f519742cd5c7244303070cbe16b89b1f886d767e215cccc",
+        "stripped_equal_before": true,
+        "only_marked_insertion": true
+      },
+      {
+        "path": "research_modules/d6_evaluation_metrics/docs/EXPERIMENT_REPORT.md",
+        "original_sha256": "81c3a7da5fccb67f9a57b62c654a5b95822b353688d8c3e8664403c3ac6286af",
+        "stripped_sha256": "81c3a7da5fccb67f9a57b62c654a5b95822b353688d8c3e8664403c3ac6286af",
+        "stripped_equal_before": true,
+        "only_marked_insertion": true
+      },
+      {
+        "path": "research_modules/d6_evaluation_metrics/EXPERIMENT_REPORT.md",
+        "original_sha256": "dc5d0ae65345213790a376c21ed7990338ceafd490b4cd0cdc8b15400afe1001",
+        "stripped_sha256": "dc5d0ae65345213790a376c21ed7990338ceafd490b4cd0cdc8b15400afe1001",
+        "stripped_equal_before": true,
+        "only_marked_insertion": true
+      },
+      {
+        "path": "research_modules/d6_evaluation_metrics/docs/README.md",
+        "original_sha256": "384bdca2d61c368233d83347620b450a46ce6e2902023ec6b5fd03783022daed",
+        "stripped_sha256": "384bdca2d61c368233d83347620b450a46ce6e2902023ec6b5fd03783022daed",
+        "stripped_equal_before": true,
+        "only_marked_insertion": true
+      }
+    ],
+    "relative_link_count": 34,
+    "d2_hash_label_erratum": {
+      "status": "confirmed_from_saved_main_review",
+      "source": "deliverables/project_audits/goal_owner_review_sync_20260926_v1/MAIN_REVIEW.json",
+      "hash_objects": {
+        "ARTIFACT_SHA256SUMS": "c9bf5e479526cded07aa3d170540aa389b8083af3ec801496f41d620d4ffb68f",
+        "artifact_inventory.json": "590514ca516f6ae5d8a05a0f28a5409822240abe390903689b32bb79e9556885"
+      },
+      "formal_450_payload_restored": false
+    },
+    "all_relative_links_exist": true,
+    "central_line_count": 55,
+    "markers_once_per_markdown": true,
+    "two_newlines_after_end": true,
+    "h1_insertion_position": true,
+    "missing_docs_airsim_not_created": true,
+    "experiment_execution": false,
+    "git_diff_check": "passed for 11 existing files; new Markdown and JSON also checked with git diff --no-index --check against /dev/null (exit 1 means differences, no whitespace errors)",
+    "validation_scope": "仅新增文本的相对文档链接、标记块及其后恰好两个换行、H1位置、剥离后与BEFORE的文本/哈希一致、集中说明100行限制和Git diff --check；不重检旧正文全部历史链接。",
+    "old_body_changed": false,
+    "old_dates_or_checkboxes_changed": false,
+    "module_pytest_run": false,
+    "model_training_gpu_simulation_registration_control_rescoring_run": false
+  },
+  "limitations": [
+    "来源审计状态仅为source_integrity_audit_passed_not_training_authorized，不代表模型或统一验收；728组来源不等于正式450组。",
+    "正式450组仍摘要可查、完整记录未定位；本轮没有寻找外部副本、恢复载荷或重新评分。",
+    "旧v2高精度结果仍专项失败关闭；新v3只有接口/合成记录，不据此宣称真实实验通过。",
+    "所有不可用指标保持不可用，不补零；旧900-cell、开发批次和本批450组不合并。",
+    "根EXPERIMENT_REPORT与docs同名报告更新范围不同；用跨文件链接衔接，未复制或重写旧结果。",
+    "旧章节仅按原日期与作用范围作历史阶段阅读；本次没有新增研究系统增强计划。",
+    "只写D6授权Markdown及本JSON，不修改其他模块、领导报告或先前审计快照；全仓基线与8份报告的统一终检由main负责。",
+    "未运行模块pytest、模型、训练、GPU、仿真、配准、控制、重放或重新评分；未读取原始真值载荷。"
+  ]
+}

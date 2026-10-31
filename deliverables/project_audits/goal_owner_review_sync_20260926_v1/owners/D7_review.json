@@ -1,0 +1,356 @@
+{
+  "module": "D7",
+  "reviewed_at": "2026-09-26",
+  "scope": "只读复核GOAL_REQUIREMENT_EVIDENCE.csv中owner显式含D7以及D1至D7、D3至D7范围覆盖D7的全部10条。只审阅现有文档及小型历史报告；不设计或优化导引拦截策略，不委托其他智能体。",
+  "status_semantics": "suggested_status仅为审计建议，不改变模块状态，不关闭或重分类GAP。本轮9项建议部分完成、1项建议未完成，均保留原状态。",
+  "source_register": "deliverables/project_audits/goal_resume_audit_20260926_v1/GOAL_REQUIREMENT_EVIDENCE.csv",
+  "evidence_boundaries": [
+    "已实现依据来自现存实现说明和历史审计；本轮不是逐行代码正确性认证。",
+    "历史实验日期与reviewed_at分开。204/213/220 passed、200 pair、9批次、10秒20-seed等均引用2026年7月历史记录，非本轮新测试。",
+    "200 pair有限命令、生命周期、隔离血缘和短时性能证据均不等于统一完整时长物理、实时性或AirSim平台验收。",
+    "450组摘要可查、完整载荷未定位。本轮未重复广域搜档，未声称所有外部副本丢失。",
+    "728组来源不是450组，来源审计不等于当前代际模型训练、正式比较或运行准入。",
+    "未读取大型原始载荷、未重新计算实验指标、未加载模型；未运行pytest、控制、仿真、回放或重新评分。"
+  ],
+  "requirements": [
+    {
+      "requirement_id": "G05",
+      "original_status": "部分完成",
+      "review_result": "限定认可",
+      "suggested_status": "部分完成",
+      "evidence": [
+        "research_modules/d7_proportional_guidance/docs/MODULE_PRINCIPLES_CN.md",
+        "research_modules/d7_proportional_guidance/docs/EXPERIMENT_REPORT.md",
+        "subagent_reviews/D7_IMPLEMENTATION_GAP_AUDIT.md",
+        "research_modules/scalable_3d_simulation/docs/SCALABLE_3D_GOAL_COMPLETION_AUDIT_20260803_CN.md"
+      ],
+      "reason": "文档表明 D7 只复制并核对中心 global_track_id。2026-07-25 的 200 pair、9 批次冻结输入记录身份改写为 0，支持局部合同及有限测试，不证明 D2/D5/D7 在原Goal最终统一矩阵全部无违规。",
+      "remaining_evidence": [
+        "同冻结版本完整矩阵的逐组身份违规记录",
+        "450组完整载荷及与现存摘要的对应关系"
+      ]
+    },
+    {
+      "requirement_id": "G07",
+      "original_status": "部分完成",
+      "review_result": "限定认可",
+      "suggested_status": "部分完成",
+      "evidence": [
+        "research_modules/d7_proportional_guidance/README.md",
+        "research_modules/d7_proportional_guidance/docs/ALGORITHM_AND_IMPLEMENTATION.md",
+        "research_modules/d7_proportional_guidance/docs/EXPERIMENT_REPORT.md",
+        "research_modules/scalable_3d_simulation/docs/SCALABLE_3D_GOAL_COMPLETION_AUDIT_20260803_CN.md"
+      ],
+      "reason": "2026-07-20 文档记录确定性三维及视觉导引实现，14个新增确定性场景和历史204 passed；200 pair有限命令测试存在。实现不等于长时物理、真实平台或实时性验收。2026-07-23的10秒20-seed性能材料也不能替代完整时长、未见种子的统一验收。",
+      "remaining_evidence": [
+        "最终完整时长的统一物理结果",
+        "绑定冻结版本和协议的未见种子记录及验收结论"
+      ]
+    },
+    {
+      "requirement_id": "G11",
+      "original_status": "部分完成",
+      "review_result": "限定认可",
+      "suggested_status": "部分完成",
+      "evidence": [
+        "research_modules/d7_proportional_guidance/README.md",
+        "research_modules/d7_proportional_guidance/docs/ALGORITHM_AND_IMPLEMENTATION.md",
+        "research_modules/d7_proportional_guidance/docs/AIRSIM_INTEGRATION_PLAN.md",
+        "research_modules/scalable_3d_simulation/docs/SCALABLE_3D_GOAL_COMPLETION_AUDIT_20260803_CN.md"
+      ],
+      "reason": "D7文档区分命令生成、held与隔离世界实际写回确认；2026-07-21的application receipt明确为isolated_simulation_only=true、production_runtime_ack=false。历史213 passed是合同测试记录。世界运动模式属于main，D7侧记录不足以独立确认全场景状态回写或真实飞控执行。",
+      "remaining_evidence": [
+        "main世界与D7命令同身份同时间的完整运行记录",
+        "全场景状态回写、实际动力学约束及最终物理结果"
+      ]
+    },
+    {
+      "requirement_id": "G23",
+      "original_status": "部分完成",
+      "review_result": "限定认可",
+      "suggested_status": "部分完成",
+      "evidence": [
+        "research_modules/d7_proportional_guidance/PLAN.md",
+        "research_modules/d7_proportional_guidance/docs/EXPERIMENT_REPORT.md",
+        "subagent_reviews/D7_IMPLEMENTATION_GAP_AUDIT.md",
+        "subagent_reviews/D7_PROPORTIONAL_GUIDANCE_REVIEW_AND_PLAN.md"
+      ],
+      "reason": "每个分配对独立状态和生命周期回收已有实现记录。2026-07-25冻结输入为200 pair、9批次，最终170/170、峰值200，状态上界违规、旧计划接受、身份改写及非有限命令均为0，历史全量220 passed。该结果只覆盖有限序列；命令限幅不等于世界全时长速度、转弯及爬升约束均达标。",
+      "remaining_evidence": [
+        "完整时长的状态峰值与生命周期持久化记录",
+        "世界实际动力学约束统计和物理结果"
+      ]
+    },
+    {
+      "requirement_id": "G38",
+      "original_status": "未完成",
+      "review_result": "认可",
+      "suggested_status": "未完成",
+      "evidence": [
+        "research_modules/scalable_3d_simulation/docs/SCALABLE_3D_GOAL_COMPLETION_AUDIT_20260803_CN.md",
+        "subagent_reviews/D7_IMPLEMENTATION_GAP_AUDIT.md",
+        "deliverables/project_audits/goal_resume_audit_20260926_v1/原Goal逐项状态对照_CN.md"
+      ],
+      "reason": "原Goal完成审计及本批主级复核均明确F1完整体系未完成。D7局部实现、有限命令测试、短时20-seed性能记录和独立AirSim结果，均不提供同冻结版本的完整故障矩阵、至少20个未见种子及五米物理闭环统一结果。",
+      "remaining_evidence": [
+        "F1完整故障矩阵与统一完整时长记录",
+        "同冻结版本、同协议的独立种子物理统计及最终验收报告"
+      ]
+    },
+    {
+      "requirement_id": "G40",
+      "original_status": "部分完成",
+      "review_result": "限定认可",
+      "suggested_status": "部分完成",
+      "evidence": [
+        "research_modules/d7_proportional_guidance/docs/EXPERIMENT_REPORT.md",
+        "subagent_reviews/D7_IMPLEMENTATION_GAP_AUDIT.md",
+        "subagent_reviews/D7_PROPORTIONAL_GUIDANCE_REVIEW_AND_PLAN.md",
+        "research_modules/scalable_3d_simulation/docs/SCALABLE_3D_GOAL_COMPLETION_AUDIT_20260803_CN.md"
+      ],
+      "reason": "2026-07-25局部冻结输入记录10个旧计划拒绝、0个接受，重复资源输入在状态对账前拒绝，并有零身份改写、零非有限输出记录。该证据不能外推为D3至D7全部正式实验的旧计划、重复授权和所有硬约束违规均为0；命令饱和项当时只记录且未设准入阈值。",
+      "remaining_evidence": [
+        "统一矩阵中旧计划、重复授权及各硬约束的逐组分母和违规记录",
+        "各违规指标的冻结验收口径与完整载荷"
+      ]
+    },
+    {
+      "requirement_id": "G45",
+      "original_status": "部分完成",
+      "review_result": "认可",
+      "suggested_status": "部分完成",
+      "evidence": [
+        "research_modules/scalable_3d_simulation/docs/SCALABLE_3D_GOAL_COMPLETION_AUDIT_20260803_CN.md",
+        "research_modules/d7_proportional_guidance/docs/EXPERIMENT_REPORT.md",
+        "subagent_reviews/D7_M_TO_N_COOPERATIVE_GUIDANCE_REVIEW.md"
+      ],
+      "reason": "原状态正确区分判据已实现与最终物理结果未完成。在线估计停止、许可、视觉模式和离线NED三维五米物理成功不是同一指标。2026-07-20无随机seed的2-resource/1-target fixture仅验证任一资源首达；历史M5N2的pair、target、coalition分母也不能互换，更不能充当原Goal完整体系验收。",
+      "remaining_evidence": [
+        "完整时长在线停止与离线物理结果逐pair关联记录",
+        "明确pair/target/coalition分母的最终统一统计"
+      ]
+    },
+    {
+      "requirement_id": "G49",
+      "original_status": "部分完成",
+      "review_result": "限定认可",
+      "suggested_status": "部分完成",
+      "evidence": [
+        "research_modules/d7_proportional_guidance/README.md",
+        "research_modules/d7_proportional_guidance/docs/EXPERIMENT_REPORT.md",
+        "research_modules/scalable_3d_simulation/docs/SCALABLE_3D_GOAL_COMPLETION_AUDIT_20260803_CN.md",
+        "subagent_reviews/D7_SCALABLE_3D_GUIDANCE_PERFORMANCE_AUDIT_20260723.md"
+      ],
+      "reason": "模块和主级文档保留历史代码及接口回归记录：D7在2026-07-20/21/25分别记录204/213/220 passed；主级2026-08-03记录522 passed, 1 warning。不同日期、范围和版本的数量不能相加为同版本最终回归。本轮没有执行这些测试或核验其全部原始日志。",
+      "remaining_evidence": [
+        "最终冻结版本的跨模块回归交付清单",
+        "各历史测试执行日志与源码版本的可定位绑定"
+      ]
+    },
+    {
+      "requirement_id": "G55",
+      "original_status": "部分完成",
+      "review_result": "限定认可",
+      "suggested_status": "部分完成",
+      "evidence": [
+        "research_modules/d7_proportional_guidance/README.md",
+        "research_modules/d7_proportional_guidance/PLAN.md",
+        "subagent_reviews/D7_IMPLEMENTATION_GAP_AUDIT.md",
+        "subagent_reviews/D7_PROPORTIONAL_GUIDANCE_REVIEW_AND_PLAN.md",
+        "research_modules/scalable_3d_simulation/docs/SCALABLE_3D_GOAL_COMPLETION_AUDIT_20260803_CN.md",
+        "deliverables/project_audits/goal_resume_audit_20260926_v1/原Goal逐项状态对照_CN.md"
+      ],
+      "reason": "D7的README、PLAN、GAP/review及四份专项文档均存在，2026-07-25局部生命周期完成与全体系P1开放的边界一致。该同步记录不能证明所有模块历史文档均已同步或满足条件后完成main验收合并。原主级所述D4方案差异不在本轮D7复核范围。",
+      "remaining_evidence": [
+        "跨模块文档与最终冻结交付的一致性证据",
+        "满足验收条件的主级合并记录；分支祖先关系不能替代"
+      ]
+    },
+    {
+      "requirement_id": "G57",
+      "original_status": "部分完成",
+      "review_result": "限定认可",
+      "suggested_status": "部分完成",
+      "evidence": [
+        "research_modules/scalable_3d_simulation/VERSIONING.md",
+        "research_modules/d7_proportional_guidance/docs/ALGORITHM_AND_IMPLEMENTATION.md",
+        "research_modules/d7_proportional_guidance/docs/AIRSIM_INTEGRATION_PLAN.md",
+        "deliverables/project_audits/goal_resume_audit_20260926_v1/历史结果定位与完整性核对_CN.md"
+      ],
+      "reason": "版本管理文档及D7隔离命令血缘合同存在，能够区分计划版本、哈希和世界写回凭据的语义。仅有schema或历史摘要不能证明每组实际manifest完整。原450组仍为摘要可查、完整载荷未定位；D3/D4/D5的728组是另外的来源数据，不能补作450组manifest或最终模型冻结证据。",
+      "remaining_evidence": [
+        "450组原manifest、配置及完整载荷的对应关系",
+        "最终世界/总线/模型/阈值/计划/联盟配置版本绑定"
+      ]
+    }
+  ],
+  "documentation_checked": [
+    {
+      "path": "research_modules/d7_proportional_guidance/README.md",
+      "exists": true,
+      "inspected_scope": "2026-07-25、07-23、07-21、07-20顶部增量及历史范围说明",
+      "finding": "局部实现和有限测试边界清楚；明确07-15及更早online 3D deferred是历史状态，不能作为当前三维质点实现状态。",
+      "synchronization_needed_in_this_task": false,
+      "modified": false,
+      "reason": "本轮仅复核已有证据，没有能力、接口、GAP状态或实验结果变更；仅登记历史口径差异，不改原文。"
+    },
+    {
+      "path": "research_modules/d7_proportional_guidance/PLAN.md",
+      "exists": true,
+      "inspected_scope": "2026-07-25生命周期及07-23、07-21计划段",
+      "finding": "模块状态容器局部完成；统一持久化、长时多seed和平台标定仍列后续。历史待接线条目不能独立证明9月接线现状。",
+      "synchronization_needed_in_this_task": false,
+      "modified": false,
+      "reason": "本轮仅复核已有证据，没有能力、接口、GAP状态或实验结果变更；仅登记历史口径差异，不改原文。"
+    },
+    {
+      "path": "subagent_reviews/D7_IMPLEMENTATION_GAP_AUDIT.md",
+      "exists": true,
+      "inspected_scope": "2026-07-25 GAP、P0/P1及07-23性能段",
+      "finding": "仅模块状态累积缺口历史关闭，200v200长时物理、未见seed和实时性仍开放；未发现与本批原状态冲突。",
+      "synchronization_needed_in_this_task": false,
+      "modified": false,
+      "reason": "本轮仅复核已有证据，没有能力、接口、GAP状态或实验结果变更；仅登记历史口径差异，不改原文。"
+    },
+    {
+      "path": "subagent_reviews/D7_PROPORTIONAL_GUIDANCE_REVIEW_AND_PLAN.md",
+      "exists": true,
+      "inspected_scope": "2026-07-25和07-23评审及07-20边界",
+      "finding": "局部评审通过不批准长时物理或实时准入，与G07/G23部分完成一致。",
+      "synchronization_needed_in_this_task": false,
+      "modified": false,
+      "reason": "本轮仅复核已有证据，没有能力、接口、GAP状态或实验结果变更；仅登记历史口径差异，不改原文。"
+    },
+    {
+      "path": "research_modules/d7_proportional_guidance/docs/MODULE_PRINCIPLES_CN.md",
+      "exists": true,
+      "inspected_scope": "2026-07-25状态管理、07-21隔离、07-20三维和07-15历史证据",
+      "finding": "07-20历史段保留任一合同失配立即清空的概括，07-25顶段已区分暂态控制门与分配失效。属于日期性口径差异；引用当前行为时须以新版范围为准。",
+      "synchronization_needed_in_this_task": false,
+      "modified": false,
+      "reason": "本轮仅复核已有证据，没有能力、接口、GAP状态或实验结果变更；仅登记历史口径差异，不改原文。"
+    },
+    {
+      "path": "research_modules/d7_proportional_guidance/docs/ALGORITHM_AND_IMPLEMENTATION.md",
+      "exists": true,
+      "inspected_scope": "2026-07-25生命周期及07-21隔离、07-20实现边界",
+      "finding": "有实现描述和历史测试数量；隔离receipt不等于生产ACK，有限命令不等于完整物理验收。",
+      "synchronization_needed_in_this_task": false,
+      "modified": false,
+      "reason": "本轮仅复核已有证据，没有能力、接口、GAP状态或实验结果变更；仅登记历史口径差异，不改原文。"
+    },
+    {
+      "path": "research_modules/d7_proportional_guidance/docs/AIRSIM_INTEGRATION_PLAN.md",
+      "exists": true,
+      "inspected_scope": "2026-07-25诊断、07-21隔离及07-20共享世界接入",
+      "finding": "历史接入待办与后续主级进展日期不同；本轮不据旧待办断言当前全部未接入。AirSim平台验收没有由质点测试自动关闭。",
+      "synchronization_needed_in_this_task": false,
+      "modified": false,
+      "reason": "本轮仅复核已有证据，没有能力、接口、GAP状态或实验结果变更；仅登记历史口径差异，不改原文。"
+    },
+    {
+      "path": "research_modules/d7_proportional_guidance/docs/EXPERIMENT_REPORT.md",
+      "exists": true,
+      "inspected_scope": "2026-07-25验收表、07-23/22短时性能与07-20有限测试记录",
+      "finding": "日期、样本、零失败门槛和剩余限制明确；tracemalloc时延非实时准入，文中本轮均指历史段落日期，不是2026-09-26的新实验。",
+      "synchronization_needed_in_this_task": false,
+      "modified": false,
+      "reason": "本轮仅复核已有证据，没有能力、接口、GAP状态或实验结果变更；仅登记历史口径差异，不改原文。"
+    },
+    {
+      "path": "subagent_reviews/D7_M_TO_N_COOPERATIVE_GUIDANCE_REVIEW.md",
+      "exists": true,
+      "inspected_scope": "2026-07-25、07-20及07-15补充",
+      "finding": "多pair独立命令与协同到达/成员避碰明确区分；2-resource/1-target任一首达不代表全部成员完成。",
+      "synchronization_needed_in_this_task": false,
+      "modified": false,
+      "reason": "本轮仅复核已有证据，没有能力、接口、GAP状态或实验结果变更；仅登记历史口径差异，不改原文。"
+    },
+    {
+      "path": "subagent_reviews/D7_SCALABLE_3D_GUIDANCE_PERFORMANCE_AUDIT_20260722.md",
+      "exists": true,
+      "inspected_scope": "历史三seed、冻结输入及证据边界",
+      "finding": "仅历史性能波动审计；无内核回归证明，不关闭200对实时P1。",
+      "synchronization_needed_in_this_task": false,
+      "modified": false,
+      "reason": "本轮仅复核已有证据，没有能力、接口、GAP状态或实验结果变更；仅登记历史口径差异，不改原文。"
+    },
+    {
+      "path": "subagent_reviews/D7_SCALABLE_3D_GUIDANCE_PERFORMANCE_AUDIT_20260723.md",
+      "exists": true,
+      "inspected_scope": "历史20-seed整栈、固定replay及证据边界",
+      "finding": "10秒nominal、seeds1000-1019与200-pair/185-frame replay仅为历史性能/等价性范围，不构成F1未见种子完整验收。",
+      "synchronization_needed_in_this_task": false,
+      "modified": false,
+      "reason": "本轮仅复核已有证据，没有能力、接口、GAP状态或实验结果变更；仅登记历史口径差异，不改原文。"
+    }
+  ],
+  "documentation_findings": [
+    {
+      "kind": "historical_wording_difference",
+      "paths": [
+        "research_modules/d7_proportional_guidance/docs/MODULE_PRINCIPLES_CN.md",
+        "research_modules/d7_proportional_guidance/README.md"
+      ],
+      "description": "历史清空状态/online 3D deferred概括与07-25/07-20新增段落适用日期不同。已有新版说明限定当前行为，登记引用风险，不判为当前能力回退或需改变GAP。"
+    },
+    {
+      "kind": "historical_followup_not_current_proof",
+      "paths": [
+        "research_modules/d7_proportional_guidance/PLAN.md",
+        "research_modules/d7_proportional_guidance/docs/AIRSIM_INTEGRATION_PLAN.md",
+        "research_modules/scalable_3d_simulation/docs/SCALABLE_3D_GOAL_COMPLETION_AUDIT_20260803_CN.md"
+      ],
+      "description": "7月模块待接线与8月主级部分实现报告时间不同；没有本轮统一episode载荷，不能据旧待办断言当前全部未接入，也不能据主级软件存在认定全部完成。"
+    }
+  ],
+  "validation": {
+    "status": "passed",
+    "checked_at": "2026-09-26T14:22:36Z",
+    "coverage": "10/10",
+    "duplicate_requirement_count": 0,
+    "original_status_matches_csv": true,
+    "existing_relative_evidence_file_count": 14,
+    "markdown_requirement_coverage": "10/10",
+    "new_markdown_local_links_checked": 18,
+    "missing_local_links": 0,
+    "requirement_count": 10,
+    "expected_requirement_ids": [
+      "G05",
+      "G07",
+      "G11",
+      "G23",
+      "G38",
+      "G40",
+      "G45",
+      "G49",
+      "G55",
+      "G57"
+    ],
+    "review_result_counts": {
+      "认可": 2,
+      "限定认可": 8,
+      "需修订": 0,
+      "证据不足": 0
+    },
+    "suggested_status_counts": {
+      "部分完成": 9,
+      "未完成": 1
+    },
+    "documentation_present_count": 11,
+    "historical_document_inline_local_link_check": {
+      "checked": 0,
+      "missing": 0,
+      "scope": "11份文档普通Markdown内联本地链接；未发现此类链接，故不代表文中反引号裸路径或历史输出载荷可用。排除外链、锚点和代码块。"
+    },
+    "allowed_checks": [
+      "JSON解析与必需字段/枚举",
+      "CSV owner范围展开及10条编号覆盖、唯一性、原状态一致性",
+      "仓库相对证据文件路径及文档存在性",
+      "新Markdown普通本地链接与逐项覆盖"
+    ],
+    "module_tests_run": false,
+    "experiment_execution": false,
+    "limitations": "未做外网链接、锚点、历史输出恢复、哈希重验或实验可复现性执行验证。"
+  }
+}

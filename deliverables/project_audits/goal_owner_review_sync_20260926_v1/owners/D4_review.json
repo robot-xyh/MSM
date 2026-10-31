@@ -1,0 +1,573 @@
+{
+  "module": "D4",
+  "reviewed_at": "2026-09-26",
+  "scope": {
+    "repository": "/home/linux/Documents/MSM",
+    "requirement_source": "deliverables/project_audits/goal_resume_audit_20260926_v1/GOAL_REQUIREMENT_EVIDENCE.csv",
+    "detail_source": "deliverables/project_audits/goal_resume_audit_20260926_v1/逐项证据明细_CN.md",
+    "selection": "owner 显式含 D4，或 Dn至Dm 的闭区间包含 4；共 15 项。共享条目只复核 D4 相关证据及其对主级结论的限制。",
+    "mode": "只读历史证据审阅；suggested_status 仅为审计建议，不改变模块、GAP、模型或运行权限状态。",
+    "exclusions": [
+      "不制定算法或武器策略增强及新增实施路径",
+      "不运行 pytest、训练、GPU、AirSim、控制、重新评分",
+      "不读取大量原始真值或进行全盘扫描",
+      "不委托子智能体",
+      "不修改原模块、subagent_reviews、原报告和其他所有者文件"
+    ],
+    "external_metadata_read": "仅定点读取已知 D4 6737b44 来源目录的 generation_session.json 与 generation_checkpoint.json；仓库内定位依据为 SOURCE_DIRECTORY_STATUS.json。未打开样本载荷或真值。",
+    "reproducibility": "仅证据审读；不认证可重跑、可离线重放或可重新评分。"
+  },
+  "summary": {
+    "requirement_count": 15,
+    "review_result_counts": {
+      "认可": 4,
+      "限定认可": 9,
+      "需修订": 1,
+      "证据不足": 1
+    },
+    "suggested_status_counts": {
+      "已完成": 0,
+      "部分完成": 10,
+      "未完成": 4,
+      "证据不足": 1
+    },
+    "status_changes_proposed": 0,
+    "main_objections": [
+      "G55 应登记 D4 文档 0/324 与后续 finalized 324/324、921 条来源记录之间的进展同步缺口。",
+      "合同实现、旧独立评价和原 Goal 统一验收不可等同；旧 v7 不能替代未训练 v8。",
+      "旧 1e5ed8d 的 900 组诊断不属于 80e55eb 的正式 450 组；728 组来源同样不可替代。"
+    ],
+    "formal_450_status": "摘要可查、完整记录未定位",
+    "source_728_is_formal_450": false,
+    "current_generation_training_complete": false
+  },
+  "historical_evidence": [
+    {
+      "date": "2026-07-13",
+      "identity": "D4 episode-clock 安全矩阵",
+      "scope": "6 类场景各 10 seeds，共 60 cases；历史文档记安全 60/60，不能外推真实网络或原 Goal 完整体系。",
+      "evidence": [
+        "subagent_reviews/D4_IMPLEMENTATION_GAP_AUDIT.md",
+        "research_modules/d4_distributed_fallback/reports/AIRSIM_INTEGRATION_PLAN.md"
+      ]
+    },
+    {
+      "date": "2026-07-30",
+      "identity": "旧 v7 来源独立评价",
+      "scope": "M16N24、8 区域、seed 5216-5279、64 episode/128 帧；validation/test 精确正动作均为 0/9，失败关闭；非 v8。",
+      "evidence": [
+        "research_modules/d4_distributed_fallback/reports/D4_V7_SOURCE_INDEPENDENT_EVALUATION_20260730.md"
+      ]
+    },
+    {
+      "date": "2026-07-30",
+      "identity": "旧 1e5ed8d 正式 R0 联盟诊断",
+      "scope": "旧报告记 900/900、872/900 严格业务通过及计划错位诊断；不属于次日 80e55eb 的 450 组。仅引用保存报告，未核验旧载荷。",
+      "evidence": [
+        "research_modules/d4_distributed_fallback/reports/FORMAL_R0_COALITION_ACK_DIAGNOSTIC_20260730.md"
+      ]
+    },
+    {
+      "date": "2026-07-31",
+      "identity": "80e55eb 正式 R0 shard 0-9",
+      "scope": "450/900，seed 1000-1009；当前仅摘要与归档登记可查，完整载荷未定位。",
+      "evidence": [
+        "research_modules/scalable_3d_simulation/docs/SCALABLE_3D_FORMAL_R0_80E55EB_SHARDS0_9_20260731_CN.md",
+        "deliverables/project_audits/goal_resume_audit_20260926_v1/历史结果定位与完整性核对_CN.md"
+      ]
+    },
+    {
+      "date": "2026-08-03",
+      "identity": "A2 v8 来源生成及 D6 来源审计",
+      "source_commit": "6737b44515526b5269ae98faad39e1f92716f423",
+      "scope": "324 TRAIN episode，seed 28100-28423，921 条来源记录；source_integrity_audit_passed_not_training_authorized。921 是来源记录数，不是文档另记的历史 pytest 数。",
+      "evidence": [
+        "research_modules/scalable_3d_simulation/docs/SCALABLE_3D_GOAL_COMPLETION_AUDIT_20260803_CN.md",
+        "deliverables/project_audits/goal_resume_audit_20260926_v1/SOURCE_DIRECTORY_STATUS.json"
+      ]
+    },
+    {
+      "date": "2026-08-07",
+      "identity": "原 Goal 保存断点",
+      "scope": "v8 未训练，validation/test 未冻结；临时中心机为方案，未同步为 D4 正式实现。",
+      "evidence": [
+        "research_modules/scalable_3d_simulation/docs/SCALABLE_3D_GOAL_PROGRESS_AND_NEXT_PLAN_20260807_CN.md"
+      ]
+    }
+  ],
+  "requirements": [
+    {
+      "requirement_id": "G04",
+      "original_status": "部分完成",
+      "review_result": "限定认可",
+      "suggested_status": "部分完成",
+      "evidence": [
+        "research_modules/scalable_3d_simulation/docs/SCALABLE_3D_GOAL_COMPLETION_AUDIT_20260803_CN.md",
+        "research_modules/scalable_3d_simulation/docs/SCALABLE_3D_FORMAL_R0_80E55EB_SHARDS0_9_20260731_CN.md",
+        "deliverables/project_audits/goal_resume_audit_20260926_v1/历史结果定位与完整性核对_CN.md",
+        "deliverables/project_audits/goal_resume_audit_20260926_v1/SOURCE_DIRECTORY_STATUS.json",
+        "subagent_reviews/D4_IMPLEMENTATION_GAP_AUDIT.md"
+      ],
+      "reason": "认可 D4 在线输入真值隔离的合同与历史来源审计证据。450 组的在线真值使用为零仅是 2026-07-31 保存摘要；728 组来源审计中的 D4 为 324 组 TRAIN 来源，不能替代正式 450 组。D4 对 D2 不可用身份指标的门控也不能证明完整系统每组均无泄漏。",
+      "remaining_evidence": [
+        "正式 450 组完整在线记录、清单及可绑定的逐组隔离证据未定位。",
+        "原 Goal 最终同版本全矩阵的真值隔离验收未完成。"
+      ],
+      "historical_dates": [
+        "2026-07-31",
+        "2026-08-03"
+      ]
+    },
+    {
+      "requirement_id": "G16",
+      "original_status": "部分完成",
+      "review_result": "限定认可",
+      "suggested_status": "部分完成",
+      "evidence": [
+        "research_modules/scalable_3d_simulation/docs/SCALABLE_3D_GOAL_COMPLETION_AUDIT_20260803_CN.md",
+        "research_modules/d4_distributed_fallback/docs/MODULE_PRINCIPLES_CN.md",
+        "research_modules/d4_distributed_fallback/reports/AIRSIM_INTEGRATION_PLAN.md"
+      ],
+      "reason": "D4 文档支持匿名摘要消费、版本及租约约束和已有区域接口；不等于统一总线订阅闭环。原审计明确 D1 总线摘要双时间戳不全、D1-D3 仍有对象直传；另须区分 D4 风险摘要可读取协方差与 A2 v8 TRAIN 来源不含协方差，不能把前者外推为后者字段完整。",
+      "remaining_evidence": [
+        "缺原 Goal 同版本逐消息双时间戳、协方差及订阅消费链的完整记录。",
+        "当前来源字段边界未被最终统一消息验收覆盖。"
+      ],
+      "historical_dates": [
+        "2026-07-31",
+        "2026-08-03"
+      ]
+    },
+    {
+      "requirement_id": "G20",
+      "original_status": "部分完成",
+      "review_result": "限定认可",
+      "suggested_status": "部分完成",
+      "evidence": [
+        "research_modules/scalable_3d_simulation/docs/SCALABLE_3D_GOAL_COMPLETION_AUDIT_20260803_CN.md",
+        "research_modules/scalable_3d_simulation/docs/SCALABLE_3D_GOAL_PROGRESS_AND_NEXT_PLAN_20260807_CN.md",
+        "subagent_reviews/D4_IMPLEMENTATION_GAP_AUDIT.md",
+        "subagent_reviews/D4_M_TO_N_DISTRIBUTED_COALITION_REVIEW.md",
+        "deliverables/project_audits/goal_resume_audit_20260926_v1/SOURCE_DIRECTORY_STATUS.json"
+      ],
+      "reason": "规则层 epoch、lease、计划版本、过期拒绝和联盟完整 ACK 合同有历史实现依据。D4 GAP 仍列自主成员形成、真实通信、恢复双轨日志及多种子完整故障验证缺口，不能概括为所有联盟能力完成。主级后续临时中心机表述属方案，现有完全分布式路径未因此替换；A2 v8 来源完成也不是降级性能验收。",
+      "remaining_evidence": [
+        "缺冻结完整故障矩阵及真实通信、恢复、主动降级准确率的统一验收记录。",
+        "后续临时中心机方案没有对应正式实现与统一验证证据。"
+      ],
+      "historical_dates": [
+        "2026-08-03",
+        "2026-08-07"
+      ]
+    },
+    {
+      "requirement_id": "G30",
+      "original_status": "部分完成",
+      "review_result": "限定认可",
+      "suggested_status": "部分完成",
+      "evidence": [
+        "research_modules/scalable_3d_simulation/docs/SCALABLE_3D_GOAL_COMPLETION_AUDIT_20260803_CN.md",
+        "research_modules/scalable_3d_simulation/docs/SCALABLE_3D_GOAL_PROGRESS_AND_NEXT_PLAN_20260807_CN.md",
+        "deliverables/project_audits/goal_resume_audit_20260926_v1/SOURCE_DIRECTORY_STATUS.json",
+        "deliverables/project_audits/goal_resume_audit_20260926_v1/SUPPLEMENTAL_CHECKS.json",
+        "research_modules/d4_distributed_fallback/reports/D4_V7_SOURCE_INDEPENDENT_EVALUATION_20260730.md",
+        "research_modules/d4_distributed_fallback/README.md"
+      ],
+      "reason": "A2 v8 的 324 个 TRAIN episode、921 条来源记录有主级审计及保存元数据支持；已只读核对既知 generation_session/checkpoint，状态 finalized、324/324，training_started=false。旧 v7 的来源独立 validation/test 精确正动作均为 0/9，不能当作 v8 成果；预生成 viability 的 972 帧也不是正式 921 条记录。模块顶部 0/324 为滞后阶段快照，不能否定后续来源完成，见 G55。",
+      "remaining_evidence": [
+        "v8 冻结模型、模型卡、训练结果及独立 validation/test 来源与评价未完成。",
+        "D4 模块文档缺后续来源完成和独立审计状态的明确衔接。"
+      ],
+      "historical_dates": [
+        "2026-07-30",
+        "2026-08-03",
+        "2026-08-07"
+      ]
+    },
+    {
+      "requirement_id": "G32",
+      "original_status": "部分完成",
+      "review_result": "限定认可",
+      "suggested_status": "部分完成",
+      "evidence": [
+        "research_modules/scalable_3d_simulation/docs/SCALABLE_3D_GOAL_COMPLETION_AUDIT_20260803_CN.md",
+        "subagent_reviews/D4_IMPLEMENTATION_GAP_AUDIT.md",
+        "research_modules/d4_distributed_fallback/reports/D4_V7_SOURCE_INDEPENDENT_EVALUATION_20260730.md",
+        "research_modules/d4_distributed_fallback/reports/AIRSIM_INTEGRATION_PLAN.md"
+      ],
+      "reason": "可认可确定性投影、异常拒绝和规则回退的软件及历史局部证据。旧 v7 的不变量失败为零与独立正动作 0/9 同时成立，说明安全外层通过并不代表学习有效。旧 nominal 5v5 的 20-seed 隔离记录仅是门控/回退证据，既不授予线上权限，也不证明当前 v8 和全变体非退化。",
+      "remaining_evidence": [
+        "缺当前冻结 v8 的独立安全评价及同键全变体非退化结果。",
+        "缺最终统一矩阵逐组异常与回退记录。"
+      ],
+      "historical_dates": [
+        "2026-07-22",
+        "2026-07-30",
+        "2026-08-03"
+      ]
+    },
+    {
+      "requirement_id": "G36",
+      "original_status": "未完成",
+      "review_result": "认可",
+      "suggested_status": "未完成",
+      "evidence": [
+        "research_modules/scalable_3d_simulation/docs/SCALABLE_3D_GOAL_COMPLETION_AUDIT_20260803_CN.md",
+        "research_modules/scalable_3d_simulation/docs/SCALABLE_3D_GOAL_PROGRESS_AND_NEXT_PLAN_20260807_CN.md",
+        "deliverables/project_audits/goal_resume_audit_20260926_v1/SOURCE_DIRECTORY_STATUS.json"
+      ],
+      "reason": "D4 责任范围内，当前 v8 只完成来源生成和来源完整性审计，未训练、未形成正式 A2 对照。主级记录同样区分 A1 v3、A3 v3 的来源与模型。旧候选或后续独立实验都不能替代当前代际学习方案的正式比较；本意见不替代 D3/D5 对其制品的所有者复核。",
+      "remaining_evidence": [
+        "缺当前代际冻结模型及原 Goal 同版本、同种子、同外生输入的独立正式对照。"
+      ],
+      "historical_dates": [
+        "2026-08-03",
+        "2026-08-07"
+      ]
+    },
+    {
+      "requirement_id": "G38",
+      "original_status": "未完成",
+      "review_result": "认可",
+      "suggested_status": "未完成",
+      "evidence": [
+        "research_modules/scalable_3d_simulation/docs/SCALABLE_3D_GOAL_COMPLETION_AUDIT_20260803_CN.md",
+        "research_modules/scalable_3d_simulation/docs/SCALABLE_3D_GOAL_PROGRESS_AND_NEXT_PLAN_20260807_CN.md",
+        "subagent_reviews/D4_IMPLEMENTATION_GAP_AUDIT.md",
+        "research_modules/d4_distributed_fallback/reports/AIRSIM_INTEGRATION_PLAN.md"
+      ],
+      "reason": "D4 规则接口、历史 episode-clock 安全矩阵及小规模接管正负例只能证明各自范围。文档明确真实网络、成员重构及恢复统计开放，原 Goal F1 完整体系尚无统一验收。独立视觉或中心交接演示不能补成 F1 结果。",
+      "remaining_evidence": [
+        "缺 F1 同一冻结体系的完整故障矩阵、至少 20 个未见种子完整时长结果与统一评估。"
+      ],
+      "historical_dates": [
+        "2026-07-13",
+        "2026-08-03",
+        "2026-08-07"
+      ]
+    },
+    {
+      "requirement_id": "G40",
+      "original_status": "部分完成",
+      "review_result": "限定认可",
+      "suggested_status": "部分完成",
+      "evidence": [
+        "research_modules/scalable_3d_simulation/docs/SCALABLE_3D_GOAL_COMPLETION_AUDIT_20260803_CN.md",
+        "subagent_reviews/D4_IMPLEMENTATION_GAP_AUDIT.md",
+        "research_modules/d4_distributed_fallback/reports/FORMAL_R0_COALITION_ACK_DIAGNOSTIC_20260730.md",
+        "research_modules/scalable_3d_simulation/docs/SCALABLE_3D_FORMAL_R0_80E55EB_SHARDS0_9_20260731_CN.md",
+        "deliverables/project_audits/goal_resume_audit_20260926_v1/历史结果定位与完整性核对_CN.md"
+      ],
+      "reason": "局部旧 epoch/过期 lease/不完整 ACK 拒绝合同支持部分完成，不能外推全部实验零违规。2026-07-30 D4 联盟诊断引用的是 1e5ed8d 的旧 900 组，且记录计划代次错位；本批正式 450 组绑定 80e55eb，两者不能混合，也不能用旧批错误直接断言新批仍有同样错误。",
+      "remaining_evidence": [
+        "缺 80e55eb 正式 450 组完整逐组版本、重复授权和硬约束记录。",
+        "缺最终统一验收范围下各项零违规的完整分母与可追溯证据。"
+      ],
+      "historical_dates": [
+        "2026-07-30",
+        "2026-07-31",
+        "2026-08-03"
+      ]
+    },
+    {
+      "requirement_id": "G44",
+      "original_status": "未完成",
+      "review_result": "认可",
+      "suggested_status": "未完成",
+      "evidence": [
+        "research_modules/scalable_3d_simulation/docs/SCALABLE_3D_GOAL_COMPLETION_AUDIT_20260803_CN.md",
+        "research_modules/scalable_3d_simulation/docs/SCALABLE_3D_GOAL_PROGRESS_AND_NEXT_PLAN_20260807_CN.md",
+        "research_modules/d4_distributed_fallback/reports/D4_V7_SOURCE_INDEPENDENT_EVALUATION_20260730.md",
+        "research_modules/d4_distributed_fallback/reports/AIRSIM_INTEGRATION_PLAN.md"
+      ],
+      "reason": "配对比较框架及旧候选规则回退记录不等于当前代际学习非退化验收。旧 v7 来源独立正类行为失败，旧 20-seed nominal 记录无物理 outcome/paired non-degradation；v8 未训练，因此没有可据以认可当前模型不增加身份交换、重复分配和违规的统一结果。",
+      "remaining_evidence": [
+        "缺当前冻结 A2 与同键 R0 的完整独立配对记录、指标可用性及统一非退化判定。"
+      ],
+      "historical_dates": [
+        "2026-07-22",
+        "2026-07-30",
+        "2026-08-03",
+        "2026-08-07"
+      ]
+    },
+    {
+      "requirement_id": "G47",
+      "original_status": "未完成",
+      "review_result": "认可",
+      "suggested_status": "未完成",
+      "evidence": [
+        "research_modules/scalable_3d_simulation/docs/SCALABLE_3D_GOAL_COMPLETION_AUDIT_20260803_CN.md",
+        "research_modules/scalable_3d_simulation/docs/SCALABLE_3D_GOAL_PROGRESS_AND_NEXT_PLAN_20260807_CN.md",
+        "deliverables/project_audits/goal_resume_audit_20260926_v1/SOURCE_DIRECTORY_STATUS.json"
+      ],
+      "reason": "原审计明确当前代际最终显存验收未形成，v8 checkpoint 只证明来源完成且训练未启动。旧候选、其他模块或独立实验的单模型显存不能代表原 Goal 冻结体系在 RTX4050 上达到 5GB 目标；本轮未查询或使用 GPU。",
+      "remaining_evidence": [
+        "缺绑定 v8 冻结模型、执行环境、运行配置和峰值显存口径的历史验收记录。"
+      ],
+      "historical_dates": [
+        "2026-08-03",
+        "2026-08-07"
+      ]
+    },
+    {
+      "requirement_id": "G49",
+      "original_status": "部分完成",
+      "review_result": "限定认可",
+      "suggested_status": "部分完成",
+      "evidence": [
+        "research_modules/scalable_3d_simulation/docs/SCALABLE_3D_GOAL_COMPLETION_AUDIT_20260803_CN.md",
+        "research_modules/d4_distributed_fallback/README.md",
+        "research_modules/d4_distributed_fallback/reports/EXPERIMENT_REPORT.md",
+        "deliverables/project_audits/goal_resume_audit_20260926_v1/VERSION_DIFFS.json"
+      ],
+      "reason": "522 passed 是原主模块历史摘要，不是本轮验证。D4 2026-08-03 文档另记自包含回归 974 passed/12 skipped/1 deselected，全量命令 986 passed/12 skipped/5 failed/15 errors，并将问题归因于 clean worktree 缺历史制品；不得省略这些限定后宣称最终全模块回归全绿。本轮既未复跑也未重新裁定该历史归因。",
+      "remaining_evidence": [
+        "缺最终同冻结版本全模块回归交付和依赖制品可用性记录。",
+        "历史缺制品全量命令不能作为全部测试通过的证明。"
+      ],
+      "historical_dates": [
+        "2026-08-03"
+      ]
+    },
+    {
+      "requirement_id": "G51",
+      "original_status": "部分完成",
+      "review_result": "限定认可",
+      "suggested_status": "部分完成",
+      "evidence": [
+        "research_modules/scalable_3d_simulation/docs/SCALABLE_3D_GOAL_COMPLETION_AUDIT_20260803_CN.md",
+        "research_modules/scalable_3d_simulation/docs/SCALABLE_3D_GOAL_PROGRESS_AND_NEXT_PLAN_20260807_CN.md",
+        "deliverables/project_audits/goal_resume_audit_20260926_v1/SOURCE_DIRECTORY_STATUS.json",
+        "research_modules/d4_distributed_fallback/README.md"
+      ],
+      "reason": "代码、旧候选及来源生成保存记录只支持交付的一部分。D4 v8 的 finalized 是数据生成状态，training_started=false；不得把 generation_checkpoint 当模型 checkpoint，也不得把旧 BC/v7 权重当当前 v8 模型交付。",
+      "remaining_evidence": [
+        "缺 v8 模型检查点、冻结配置、模型卡及绑定独立评价的最终交付校验清单。"
+      ],
+      "historical_dates": [
+        "2026-08-03",
+        "2026-08-07"
+      ]
+    },
+    {
+      "requirement_id": "G55",
+      "original_status": "部分完成",
+      "review_result": "需修订",
+      "suggested_status": "部分完成",
+      "evidence": [
+        "research_modules/d4_distributed_fallback/README.md",
+        "research_modules/d4_distributed_fallback/PLAN.md",
+        "research_modules/d4_distributed_fallback/docs/MODULE_PRINCIPLES_CN.md",
+        "research_modules/d4_distributed_fallback/docs/ALGORITHM_AND_IMPLEMENTATION.md",
+        "subagent_reviews/D4_IMPLEMENTATION_GAP_AUDIT.md",
+        "subagent_reviews/D4_DISTRIBUTED_FALLBACK_REVIEW_AND_PLAN.md",
+        "subagent_reviews/D4_M_TO_N_DISTRIBUTED_COALITION_REVIEW.md",
+        "research_modules/d4_distributed_fallback/reports/EXPERIMENT_REPORT.md",
+        "research_modules/scalable_3d_simulation/docs/SCALABLE_3D_GOAL_PROGRESS_AND_NEXT_PLAN_20260807_CN.md",
+        "deliverables/project_audits/goal_resume_audit_20260926_v1/SOURCE_DIRECTORY_STATUS.json"
+      ],
+      "reason": "建议保留部分完成，但修订主级理由中笼统的“原断点进展文档已同步保存”：D4 README、PLAN、原理、算法、GAP、两份 review 和实验报告的最新相关段落仍停在 fcf8525 preflight、来源 0/324 或生成待办；保存 session/checkpoint 与主级后续审计已到 6737b44、324/324、921 条来源记录。应明确这是阶段快照未衔接的现成文档不一致，而非来源未完成。临时中心机方案与现有实现仍需分别登记，分支继承也不是 main 验收合并。",
+      "remaining_evidence": [
+        "缺 D4 模块文档对后续来源完成及审计断点的同步说明。",
+        "缺原 Goal 最终验收、满足条件后合并与交付完成记录。"
+      ],
+      "historical_dates": [
+        "2026-08-03",
+        "2026-08-07"
+      ]
+    },
+    {
+      "requirement_id": "G57",
+      "original_status": "部分完成",
+      "review_result": "限定认可",
+      "suggested_status": "部分完成",
+      "evidence": [
+        "research_modules/scalable_3d_simulation/VERSIONING.md",
+        "research_modules/d4_distributed_fallback/docs/MODULE_PRINCIPLES_CN.md",
+        "deliverables/project_audits/goal_resume_audit_20260926_v1/SOURCE_DIRECTORY_STATUS.json",
+        "research_modules/scalable_3d_simulation/docs/SCALABLE_3D_FORMAL_R0_80E55EB_SHARDS0_9_20260731_CN.md",
+        "deliverables/project_audits/goal_resume_audit_20260926_v1/历史结果定位与完整性核对_CN.md"
+      ],
+      "reason": "版本、来源请求和哈希绑定合同存在，保存 D4 session/checkpoint 能区分 fcf8525 preflight 与 6737b44 实际生成身份。VERSIONING 的 2026-08-01 请求阶段表述是历史快照，不是后续生成否定证据。正式 450 组只剩摘要身份，当前模型版本也未冻结，不能从 manifest 代码存在推断全批制品齐全。",
+      "remaining_evidence": [
+        "正式 450 组原始运行 manifest 及完整载荷未定位。",
+        "缺当前 v8 冻结模型版本与最终统一运行配置绑定。"
+      ],
+      "historical_dates": [
+        "2026-07-31",
+        "2026-08-01",
+        "2026-08-03"
+      ]
+    },
+    {
+      "requirement_id": "G59",
+      "original_status": "证据不足",
+      "review_result": "证据不足",
+      "suggested_status": "证据不足",
+      "evidence": [
+        "research_modules/scalable_3d_simulation/VERSIONING.md",
+        "research_modules/scalable_3d_simulation/docs/SCALABLE_3D_GOAL_COMPLETION_AUDIT_20260803_CN.md",
+        "research_modules/scalable_3d_simulation/docs/SCALABLE_3D_GOAL_PROGRESS_AND_NEXT_PLAN_20260807_CN.md",
+        "research_modules/d4_distributed_fallback/reports/D4_V7_SOURCE_INDEPENDENT_EVALUATION_20260730.md"
+      ],
+      "reason": "保存要求和旧 v7 state/model 摘要只证明历史模型身份曾有记录，不能证明当前 v8 模型已经交付或 LFS 远端可取。v8 尚未训练；主表关于长期保存的证据不足判断合理。本轮不查询远端或逐个验证 LFS 对象，也不把有 SHA256 等同于可复载或长期可达。",
+      "remaining_evidence": [
+        "缺当前 v8 最终权重及模型说明、配置和 SHA256 绑定。",
+        "缺相应长期制品或 LFS 对象与远端可达性的实际核验记录。"
+      ],
+      "historical_dates": [
+        "2026-07-30",
+        "2026-08-03",
+        "2026-08-07"
+      ]
+    }
+  ],
+  "documentation_checked": [
+    {
+      "path": "research_modules/d4_distributed_fallback/README.md",
+      "exists": true,
+      "checked": true,
+      "check_scope": "相关日期段落、状态表和证据边界定点审读；非逐行全文复审",
+      "observation": "顶部 2026-08-03 仍写来源 0/324、待 generation-only 授权；与后续保存 finalized 324/324 记录未衔接，登记 G55。",
+      "updated": false,
+      "update_required_in_this_review": false,
+      "reason_not_updated": "本轮只读历史证据复核，没有能力变更、GAP 关闭或重新验证；写权限仅限本批 D4_review 两文件，原文保留，现成不一致只登记。"
+    },
+    {
+      "path": "research_modules/d4_distributed_fallback/PLAN.md",
+      "exists": true,
+      "checked": true,
+      "check_scope": "相关日期段落、状态表和证据边界定点审读；非逐行全文复审",
+      "observation": "生成与审计仍为未勾选后续门；主级后续来源完成断点未回写。属于既存进展同步缺口，不在本轮勾选。",
+      "updated": false,
+      "update_required_in_this_review": false,
+      "reason_not_updated": "本轮只读历史证据复核，没有能力变更、GAP 关闭或重新验证；写权限仅限本批 D4_review 两文件，原文保留，现成不一致只登记。"
+    },
+    {
+      "path": "subagent_reviews/D4_IMPLEMENTATION_GAP_AUDIT.md",
+      "exists": true,
+      "checked": true,
+      "check_scope": "相关日期段落、状态表和证据边界定点审读；非逐行全文复审",
+      "observation": "顶部仍写来源 0/324；后续来源审计进展未衔接。已实现合同与真实网络、恢复、M 对 N 完整验证开放边界仍需保留；本轮不改变任何 GAP。",
+      "updated": false,
+      "update_required_in_this_review": false,
+      "reason_not_updated": "本轮只读历史证据复核，没有能力变更、GAP 关闭或重新验证；写权限仅限本批 D4_review 两文件，原文保留，现成不一致只登记。"
+    },
+    {
+      "path": "subagent_reviews/D4_DISTRIBUTED_FALLBACK_REVIEW_AND_PLAN.md",
+      "exists": true,
+      "checked": true,
+      "check_scope": "相关日期段落、状态表和证据边界定点审读；非逐行全文复审",
+      "observation": "顶部停在重冻结/preflight 和 0/324；主级后续 324/324 未衔接，登记 G55。",
+      "updated": false,
+      "update_required_in_this_review": false,
+      "reason_not_updated": "本轮只读历史证据复核，没有能力变更、GAP 关闭或重新验证；写权限仅限本批 D4_review 两文件，原文保留，现成不一致只登记。"
+    },
+    {
+      "path": "subagent_reviews/D4_M_TO_N_DISTRIBUTED_COALITION_REVIEW.md",
+      "exists": true,
+      "checked": true,
+      "check_scope": "相关日期段落、状态表和证据边界定点审读；非逐行全文复审",
+      "observation": "顶部 0/324 与后续来源完成不一致；原子 ACK、联盟权限及来源不等于执行的限定仍有效。",
+      "updated": false,
+      "update_required_in_this_review": false,
+      "reason_not_updated": "本轮只读历史证据复核，没有能力变更、GAP 关闭或重新验证；写权限仅限本批 D4_review 两文件，原文保留，现成不一致只登记。"
+    },
+    {
+      "path": "research_modules/d4_distributed_fallback/docs/MODULE_PRINCIPLES_CN.md",
+      "exists": true,
+      "checked": true,
+      "check_scope": "相关日期段落、状态表和证据边界定点审读；非逐行全文复审",
+      "observation": "来源绑定原则仍写 0/324；需区分原则合同与当时进展快照，登记 G55，原则本身未变化。",
+      "updated": false,
+      "update_required_in_this_review": false,
+      "reason_not_updated": "本轮只读历史证据复核，没有能力变更、GAP 关闭或重新验证；写权限仅限本批 D4_review 两文件，原文保留，现成不一致只登记。"
+    },
+    {
+      "path": "research_modules/d4_distributed_fallback/docs/ALGORITHM_AND_IMPLEMENTATION.md",
+      "exists": true,
+      "checked": true,
+      "check_scope": "相关日期段落、状态表和证据边界定点审读；非逐行全文复审",
+      "observation": "顶部仍称尚未生成 324 项；版本绑定/任务基数合同是已有实现，不能据该旧进展否定后续来源完成。",
+      "updated": false,
+      "update_required_in_this_review": false,
+      "reason_not_updated": "本轮只读历史证据复核，没有能力变更、GAP 关闭或重新验证；写权限仅限本批 D4_review 两文件，原文保留，现成不一致只登记。"
+    },
+    {
+      "path": "research_modules/d4_distributed_fallback/docs/AIRSIM_INTEGRATION_PLAN.md",
+      "exists": false,
+      "checked": true,
+      "check_scope": "相关日期段落、状态表和证据边界定点审读；非逐行全文复审",
+      "observation": "指定 docs 路径不存在；对应现有文件位于 reports/AIRSIM_INTEGRATION_PLAN.md，已核对，不新建重复文档。",
+      "updated": false,
+      "update_required_in_this_review": false,
+      "reason_not_updated": "本轮只读历史证据复核，没有能力变更、GAP 关闭或重新验证；写权限仅限本批 D4_review 两文件，原文保留，现成不一致只登记。"
+    },
+    {
+      "path": "research_modules/d4_distributed_fallback/reports/AIRSIM_INTEGRATION_PLAN.md",
+      "exists": true,
+      "checked": true,
+      "check_scope": "相关日期段落、状态表和证据边界定点审读；非逐行全文复审",
+      "observation": "实际位于 reports。2026-07-31 明确无新 AirSim episode，旧质点/episode-clock 安全结果不等于真实链路或当前 v8/F1 验收；没有本轮 AirSim 能力或证据变化需要回写。",
+      "updated": false,
+      "update_required_in_this_review": false,
+      "reason_not_updated": "本轮只读历史证据复核，没有能力变更、GAP 关闭或重新验证；写权限仅限本批 D4_review 两文件，原文保留，现成不一致只登记。"
+    },
+    {
+      "path": "research_modules/d4_distributed_fallback/docs/EXPERIMENT_REPORT.md",
+      "exists": false,
+      "checked": true,
+      "check_scope": "相关日期段落、状态表和证据边界定点审读；非逐行全文复审",
+      "observation": "指定 docs 路径不存在；对应现有文件位于 reports/EXPERIMENT_REPORT.md，已核对，不新建重复文档。",
+      "updated": false,
+      "update_required_in_this_review": false,
+      "reason_not_updated": "本轮只读历史证据复核，没有能力变更、GAP 关闭或重新验证；写权限仅限本批 D4_review 两文件，原文保留，现成不一致只登记。"
+    },
+    {
+      "path": "research_modules/d4_distributed_fallback/reports/EXPERIMENT_REPORT.md",
+      "exists": true,
+      "checked": true,
+      "check_scope": "相关日期段落、状态表和证据边界定点审读；非逐行全文复审",
+      "observation": "实际位于 reports。顶部仍为正式来源 0/324；另保留历史全量测试 5 failed/15 errors，不能只摘通过数；预生成 viability 972 帧不等于正式来源 921 条。",
+      "updated": false,
+      "update_required_in_this_review": false,
+      "reason_not_updated": "本轮只读历史证据复核，没有能力变更、GAP 关闭或重新验证；写权限仅限本批 D4_review 两文件，原文保留，现成不一致只登记。"
+    }
+  ],
+  "validation": {
+    "status": "passed",
+    "checked_at": "2026-09-26",
+    "allowed_checks_only": true,
+    "checks": {
+      "json_parse_and_duplicate_keys": "passed",
+      "required_schema_fields": "passed",
+      "owner_range_requirement_coverage": "15/15; no missing, extra or duplicate IDs",
+      "original_status_match": "15/15",
+      "opinion_and_status_enums": "passed",
+      "unique_requirement_evidence_paths": 19,
+      "evidence_paths": "19/19 existing repository-relative files",
+      "markdown_reference_paths": "19/19 existing files",
+      "markdown_requirement_coverage": "15/15",
+      "documentation_checked_entries": 11,
+      "existing_documents": 9,
+      "expected_missing_docs_paths": 2,
+      "expected_missing_docs_explanation": "AIRSIM_INTEGRATION_PLAN.md 与 EXPERIMENT_REPORT.md 实际位于 reports，已检查对应文件；不是新增缺证据或本轮删除。",
+      "protected_original_file_hashes": "13/13 unchanged across review artifact creation",
+      "protected_hash_scope": "D4 九份现有文档、原 CSV、逐项证据明细、20260803 完成度审计、20260807 进展报告",
+      "formatting": "UTF-8 parse, final newline and no trailing whitespace passed",
+      "summary_counts": "passed",
+      "proposed_status_changes": 0
+    },
+    "not_run": [
+      "module pytest",
+      "training",
+      "GPU work",
+      "AirSim",
+      "control",
+      "rescoring",
+      "raw truth payload audit",
+      "full disk scan"
+    ]
+  }
+}

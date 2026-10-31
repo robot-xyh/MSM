@@ -1,5 +1,15 @@
 # Main 实现差距总审计
 
+<!-- evidence-status-sync:20260926:begin -->
+## 2026-09-26 证据复核说明
+
+下文各日期章节保留其当时结论。当前以[原Goal逐项复核登记](../deliverables/project_audits/goal_owner_review_sync_20260926_v1/GOAL_REQUIREMENT_EVIDENCE_REVIEWED.csv)为准：60项中4项已完成、44项部分完成、10项未完成、2项证据不足。本次只同步证据说明，不调整完成分类或GAP优先级。
+
+D3、D4、D5的728组来源已生成且通过来源完整性审计，不能再以生成前的0/300、0/324、0/104表示当前状态；来源审计不代表当前代际模型已训练或原Goal已验收。D5的1934条AirSim关联属于旧v2，新v3的接口接入与合成测试应另行看待。D1的0.8183来自雷达单源、200目标、单seed开发暖机记录，0.95是建议值，不是冻结的验收门限。450组正式试验仍为“摘要可查、完整记录未定位”。
+
+模块入口同步范围与校验见[本批说明](../deliverables/project_audits/goal_module_status_sync_20260926_v1/README.md)。本批没有运行仿真、训练或模块算法；历史测试数字不作为本次执行结果。
+<!-- evidence-status-sync:20260926:end -->
+
 **审计来源**：D1-D7 子智能体分别对照 `subagent_reviews/*_REVIEW_AND_PLAN.md`、`C_UAS_MAINSTREAM_SOLUTIONS_AND_DIFFICULTIES.md` 和各自 `research_modules/` 代码完成自查。
 **审计目标**：列出共识算法与计划使用的开源代码哪些已经实现，哪些没有实现，为什么没有实现，以及缺少哪些条件。
 **边界**：本文只用于科研仿真、接口补齐和后续工程排期；不涉及真实硬件、实机处置、火控或绕过授权的自动动作。

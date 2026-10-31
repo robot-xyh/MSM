@@ -1,0 +1,101 @@
+{
+  "started_utc": "2026-09-26T13:30:05.860600+00:00",
+  "finished_utc": "2026-09-26T13:30:09.646657+00:00",
+  "root": "/home/linux/Documents/MSM",
+  "head": {
+    "command": [
+      "git",
+      "rev-parse",
+      "HEAD"
+    ],
+    "returncode": 0,
+    "stdout": "a0d3d8ad2cd037c71845119840dfd5cae426c2e6\n",
+    "stderr": ""
+  },
+  "branch": {
+    "command": [
+      "git",
+      "branch",
+      "--show-current"
+    ],
+    "returncode": 0,
+    "stdout": "exp/d5-ideal-20target-registration\n",
+    "stderr": ""
+  },
+  "original_tip": {
+    "command": [
+      "git",
+      "rev-parse",
+      "feat/scalable-3d-200v200"
+    ],
+    "returncode": 0,
+    "stdout": "98fd3978a6a6e9a0d1bc5ab341c5db8a77624214\n",
+    "stderr": ""
+  },
+  "original_tip_ancestor": {
+    "command": [
+      "git",
+      "merge-base",
+      "--is-ancestor",
+      "98fd3978a6a6e9a0d1bc5ab341c5db8a77624214",
+      "HEAD"
+    ],
+    "returncode": 0,
+    "stdout": "",
+    "stderr": ""
+  },
+  "tags": {
+    "command": [
+      "git",
+      "tag",
+      "-l",
+      "scalable3d-*"
+    ],
+    "returncode": 0,
+    "stdout": "",
+    "stderr": ""
+  },
+  "inventory_history": {
+    "command": [
+      "git",
+      "log",
+      "--format=%H %aI %s",
+      "--all",
+      "--",
+      "research_modules/d2_data_association/docs/formal_r0_identity_causal_pack_summary_20260731/artifact_inventory.json"
+    ],
+    "returncode": 0,
+    "stdout": "5d5c174ecc722d9b5dd22f99aca5312494a4c51f 2026-07-31T14:39:06-07:00 docs(d2): record formal identity causal audit\n",
+    "stderr": ""
+  },
+  "original_requirements": [
+    {
+      "path": "/home/linux/.codex/attachments/7c61b9dc-0aec-4068-85b1-7b17498b1905/pasted-text-1.txt",
+      "sha256": "575fdd9c2abbcd84c90b97b13836883698e217dc823dc843a71fe27edd22d63d",
+      "lines": 198
+    },
+    {
+      "path": "/home/linux/.codex/attachments/7c61b9dc-0aec-4068-85b1-7b17498b1905/pasted-text-2.txt",
+      "sha256": "3cd05d1c4e4b235b72817d6f1a80b24f763349a4e9b9d36ba6796d4d01880e91",
+      "lines": 66
+    }
+  ],
+  "historical_paths": [
+    {
+      "path": "/tmp/msm-formal-r0-archives-20260731-80e55eb",
+      "exists": false
+    },
+    {
+      "path": "/tmp/msm-formal-r0-20260731-80e55eb",
+      "exists": false
+    },
+    {
+      "path": "/tmp/msm-formal-r0-20260731-80e55eb/d6_strict_partial_450_b6289c5",
+      "exists": false
+    }
+  ],
+  "goal_status": "See separate current get_goal tool result; audit does not create or resume a goal",
+  "experiments_run": false,
+  "models_loaded": false,
+  "payload_audit_repeated": false
+}

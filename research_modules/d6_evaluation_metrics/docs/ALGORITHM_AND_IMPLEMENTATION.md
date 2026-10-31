@@ -1,5 +1,10 @@
 # D6 系统级离线评估：算法原理与实施说明
 
+<!-- evidence-status-sync:20260926:begin -->
+2026-09-26 仅做资料同步，不是新的实验日期；原 Goal 状态不变。
+当前边界统一见[D6 当前证据状态](CURRENT_EVIDENCE_STATUS_CN.md)；下文旧章节仅按原日期和范围作为历史阶段记录阅读。
+<!-- evidence-status-sync:20260926:end -->
+
 ## D5长距离视觉配准离线评估
 
 模块提供 `load_d5_long_range_registration_episode()`、
